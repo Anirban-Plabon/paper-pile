@@ -71,7 +71,12 @@ class MainLayout:
                     self._center_pane()
                 with inner.after:
                     chat_panel()
-                self._status = status_bar(lambda: self.toggle("left"), lambda: self.toggle("right"))
+                self._status = status_bar(
+                    lambda: self.toggle("left"),
+                    lambda: self.toggle("right"),
+                    self.toggle_mode,
+                    self.state.mode,
+                )
         for pane in WIDTH_LIMITS:
             self._apply(pane)
         self._follow_external_changes()
@@ -108,7 +113,12 @@ class MainLayout:
 
     def _center_pane(self) -> None:
         self.editor_pane = EditorPane(
-            Vault(self.vault), self.bus, self._set_save_state, self._on_tabs_changed
+            Vault(self.vault),
+            self.bus,
+            self._set_save_state,
+            self._on_tabs_changed,
+            mode=self.state.mode,
+            on_mode_changed=self._on_mode_changed,
         )
         self.editor_pane.build()
 
@@ -116,6 +126,16 @@ class MainLayout:
         self.state.tabs = paths
         self.state.active = active
         self._save_soon(immediately=True)
+
+    def _on_mode_changed(self, mode: str) -> None:
+        self.state.mode = mode  # type: ignore[assignment]
+        self._save_soon(immediately=True)
+        if self._status is not None:
+            self._status.set_mode(mode)
+
+    def toggle_mode(self) -> None:
+        if self.editor_pane is not None:
+            self.editor_pane.toggle_mode()
 
     def _set_save_state(self, text: str, error: bool) -> None:
         if self._status is not None:

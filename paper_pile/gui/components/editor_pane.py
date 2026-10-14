@@ -26,7 +26,7 @@ from paper_pile.core.events import EventBus
 from paper_pile.core.recovery import RecoveryEntry, RecoveryStore
 from paper_pile.core.tabs import TabList
 from paper_pile.core.vault import Vault, VaultError
-from paper_pile.gui.components.editor import Editor
+from paper_pile.gui.components.editor import Editor, Mode
 from paper_pile.gui.components.tabs import TabBar
 
 log = logging.getLogger("paper_pile.editor_pane")
@@ -42,6 +42,8 @@ class EditorPane:
         bus: EventBus,
         on_state: Callable[[str, bool], None] = lambda text, error: None,
         on_tabs_changed: Callable[[list[str], str | None], None] = lambda paths, active: None,
+        mode: Mode = "live",
+        on_mode_changed: Callable[[Mode], None] = lambda mode: None,
     ) -> None:
         self.vault = vault
         self.bus = bus
@@ -50,6 +52,8 @@ class EditorPane:
         self.buffers: dict[int, NoteBuffer] = {}
         self._on_state = on_state
         self._on_tabs_changed = on_tabs_changed
+        self.mode: Mode = mode
+        self._on_mode_changed = on_mode_changed
         self._timer: asyncio.TimerHandle | None = None
         self._failure_toasted = False
         self._rendered: tuple[tuple[int, str], ...] = ()
@@ -73,6 +77,7 @@ class EditorPane:
             with ui.element("div").classes("pp-editor-area"):
                 self._empty = ui.label("Open a note to start writing").classes("pp-muted pp-empty")
                 self._editor = Editor(
+                    mode=self.mode,
                     on_change=lambda e: self._on_change(e.args),
                     on_blur=lambda e: self._on_flush(e.args),
                     on_save=lambda e: self._on_flush(e.args),
@@ -173,6 +178,12 @@ class EditorPane:
         self._editor.focus()
         self._refresh()
         self._notify_tabs()
+
+    def toggle_mode(self) -> None:
+        """Live Preview <-> Source. Same text and undo history; only the rendering changes."""
+        self.mode = "source" if self.mode == "live" else "live"
+        self._editor.set_mode(self.mode)
+        self._on_mode_changed(self.mode)
 
     def close_active(self) -> None:
         if self.tabs.active is not None:

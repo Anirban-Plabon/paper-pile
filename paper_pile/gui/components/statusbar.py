@@ -11,6 +11,10 @@ class StatusBar:
     left_toggle: ui.button
     right_toggle: ui.button
     save_label: ui.label
+    mode_label: ui.label
+
+    def set_mode(self, mode: str) -> None:
+        self.mode_label.set_text("Live" if mode == "live" else "Source")
 
     def set_save_state(self, text: str, *, error: bool = False) -> None:
         self.save_label.set_text(text)
@@ -21,7 +25,10 @@ class StatusBar:
 
 
 def status_bar(
-    on_toggle_left: Callable[[], None], on_toggle_right: Callable[[], None]
+    on_toggle_left: Callable[[], None],
+    on_toggle_right: Callable[[], None],
+    on_toggle_mode: Callable[[], None],
+    mode: str = "live",
 ) -> StatusBar:
     with ui.row().classes("pp-statusbar items-center no-wrap"):
         left = (
@@ -30,6 +37,9 @@ def status_bar(
             .tooltip("Toggle file tree (Ctrl+B)")
         )
         ui.space()
+        mode_label = ui.label("Live" if mode == "live" else "Source")
+        mode_label.classes("pp-muted pp-mode-toggle").tooltip("Live Preview / Source (Ctrl+E)")
+        mode_label.on("click", lambda _e: on_toggle_mode())
         ui.label("0 words · Ln 1, Col 1").classes("pp-muted")
         save = ui.label("Ready").classes("pp-muted pp-save")
         ui.label("●").classes("pp-dot pp-dot-off").tooltip("Ollama status")
@@ -38,4 +48,4 @@ def status_bar(
             .props("flat dense size=sm")
             .tooltip("Toggle AI chat (Ctrl+L)")
         )
-    return StatusBar(left, right, save)
+    return StatusBar(left, right, save, mode_label)

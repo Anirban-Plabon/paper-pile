@@ -1,8 +1,15 @@
-// Obsidian-style Live Preview: render markdown inline, but keep the raw syntax on
-// every line that holds the cursor or a selection. Render-only: no logic lives here.
+// Obsidian-style Live Preview, inline part: render markdown in place, but keep the raw syntax
+// of whatever the cursor touches. Render-only: no logic lives here.
+//
+// Reveal rules (see reveal.js):
+//   * inline elements (emphasis, strike, code, math, ...): syntax shows while a selection range
+//     touches that element, so only the element being edited turns raw, not the whole line;
+//   * line prefixes (`#`, `>`, list markers): syntax shows while the caret is on that line.
+// Block widgets (display math, mermaid, tables, ...) live in blocks.js (a StateField).
 import { syntaxTree } from "@codemirror/language";
 import { Decoration, ViewPlugin, WidgetType } from "@codemirror/view";
 import katex from "katex";
+import { activeLines, touches } from "./reveal.js";
 
 class MathWidget extends WidgetType {
   constructor(src) {
@@ -25,64 +32,96 @@ class MathWidget extends WidgetType {
 
 const hide = Decoration.replace({});
 const mark = (cls) => Decoration.mark({ class: cls });
-const marks = {
-  StrongEmphasis: mark("pp-strong"),
-  Emphasis: mark("pp-em"),
-  Strikethrough: mark("pp-strike"),
-  InlineCode: mark("pp-code"),
-};
-const lineDeco = Array.from({ length: 6 }, (_, i) => Decoration.line({ class: `pp-h pp-h${i + 1}` }));
-const HIDE_MARKS = new Set(["EmphasisMark", "StrikethroughMark", "CodeMark"]);
+const lineDeco = (cls) => Decoration.line({ class: cls });
 
-function activeLines(state) {
-  const lines = new Set();
-  for (const r of state.selection.ranges) {
-    const a = state.doc.lineAt(r.from).number;
-    const b = state.doc.lineAt(r.to).number;
-    for (let n = a; n <= b; n++) lines.add(n);
-  }
-  return lines;
+// Inline elements: a class over the whole element, and the child marks that are hidden when the
+// element is not being edited.
+const INLINE = {
+  StrongEmphasis: { cls: "pp-strong", marks: "EmphasisMark" },
+  Emphasis: { cls: "pp-em", marks: "EmphasisMark" },
+  Strikethrough: { cls: "pp-strike", marks: "StrikethroughMark" },
+  InlineCode: { cls: "pp-code", marks: "CodeMark" },
+};
+const INLINE_DECO = Object.fromEntries(Object.entries(INLINE).map(([k, v]) => [k, mark(v.cls)]));
+const HEADING_LINE = Array.from({ length: 6 }, (_, i) => lineDeco(`pp-h pp-h${i + 1}`));
+const SETEXT_UNDERLINE = lineDeco("pp-setext-underline");
+
+// Everything the builder needs while walking the tree.
+function context(view) {
+  const { state } = view;
+  return { state, doc: state.doc, active: activeLines(state), out: [] };
 }
 
+const handlers = {
+  ...Object.fromEntries(
+    Object.keys(INLINE).map((name) => [
+      name,
+      (cx, node) => {
+        cx.out.push(INLINE_DECO[name].range(node.from, node.to));
+        if (touches(cx.state, node.from, node.to)) return;
+        for (const m of node.node.getChildren(INLINE[name].marks)) cx.out.push(hide.range(m.from, m.to));
+      },
+    ]),
+  ),
+
+  // `#`..`######` (ATX) headings: the size comes from the line, the marks hide off-line.
+  ...Object.fromEntries(
+    [1, 2, 3, 4, 5, 6].map((level) => [
+      `ATXHeading${level}`,
+      (cx, node) => {
+        const line = cx.doc.lineAt(node.from);
+        cx.out.push(HEADING_LINE[level - 1].range(line.from));
+        if (cx.active.has(line.number)) return;
+        for (const m of node.node.getChildren("HeaderMark")) {
+          const space = cx.doc.sliceString(m.to, m.to + 1) === " " ? 1 : 0;
+          cx.out.push(hide.range(m.from, m.to + space));
+        }
+      },
+    ]),
+  ),
+
+  // Setext headings (`Title` over `=====`): the text lines are headings, the underline is dimmed.
+  ...Object.fromEntries(
+    [1, 2].map((level) => [
+      `SetextHeading${level}`,
+      (cx, node) => {
+        const underline = node.node.getChild("HeaderMark");
+        const last = cx.doc.lineAt(underline ? underline.from : node.to);
+        for (let n = cx.doc.lineAt(node.from).number; n < last.number; n++) {
+          cx.out.push(HEADING_LINE[level - 1].range(cx.doc.line(n).from));
+        }
+        if (underline && !cx.active.has(last.number)) cx.out.push(SETEXT_UNDERLINE.range(last.from));
+      },
+    ]),
+  ),
+
+  // `\*` : the backslash is only an escape; hide it unless the escape is being edited.
+  Escape: (cx, node) => {
+    if (!touches(cx.state, node.from, node.to)) cx.out.push(hide.range(node.from, node.from + 1));
+  },
+
+  // `$x$` / `$$x$$` inside a paragraph.
+  InlineMath: (cx, node) => {
+    const d = cx.doc.sliceString(node.from, node.from + 2) === "$$" ? 2 : 1;
+    const src = cx.doc.sliceString(node.from + d, node.to - d);
+    if (touches(cx.state, node.from, node.to) || src.includes("\n")) return;
+    cx.out.push(Decoration.replace({ widget: new MathWidget(src) }).range(node.from, node.to));
+  },
+};
+
 function build(view) {
-  const { state } = view;
-  const active = activeLines(state);
-  const isActive = (from, to) => {
-    const a = state.doc.lineAt(from).number;
-    const b = state.doc.lineAt(to).number;
-    for (let n = a; n <= b; n++) if (active.has(n)) return true;
-    return false;
-  };
-  const out = [];
+  const cx = context(view);
   for (const { from, to } of view.visibleRanges) {
-    syntaxTree(state).iterate({
+    syntaxTree(cx.state).iterate({
       from,
       to,
       enter(node) {
-        const name = node.name;
-        const h = /^ATXHeading([1-6])$/.exec(name);
-        if (h) out.push(lineDeco[+h[1] - 1].range(state.doc.lineAt(node.from).from));
-        else if (marks[name]) out.push(marks[name].range(node.from, node.to));
-        else if (name === "HeaderMark") {
-          const line = state.doc.lineAt(node.from);
-          if (!active.has(line.number)) {
-            const end = state.sliceDoc(node.to, node.to + 1) === " " ? node.to + 1 : node.to;
-            out.push(hide.range(node.from, end));
-          }
-        } else if (HIDE_MARKS.has(name)) {
-          if (!isActive(node.from, node.to)) out.push(hide.range(node.from, node.to));
-        } else if (name === "InlineMath") {
-          // `$x$` or `$$x$$` (both are inline math inside a paragraph)
-          const d = state.sliceDoc(node.from, node.from + 2) === "$$" ? 2 : 1;
-          const src = state.sliceDoc(node.from + d, node.to - d);
-          if (!isActive(node.from, node.to) && !src.includes("\n")) {
-            out.push(Decoration.replace({ widget: new MathWidget(src) }).range(node.from, node.to));
-          }
-        }
+        const handle = handlers[node.name];
+        if (handle) handle(cx, node);
       },
     });
   }
-  return Decoration.set(out, true);
+  return Decoration.set(cx.out, true);
 }
 
 export const livePreview = ViewPlugin.fromClass(

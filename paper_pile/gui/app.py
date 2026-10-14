@@ -48,6 +48,7 @@ def _build_pages(vault: Path, *, native: bool) -> None:
         layout.build()
         install_shortcuts(
             {
+                "ctrl+e": layout.toggle_mode,
                 "ctrl+b": lambda: layout.toggle("left"),
                 "ctrl+l": lambda: layout.toggle("right"),
                 # Ctrl+W / Ctrl+Tab work in the native window; web browsers reserve them, so

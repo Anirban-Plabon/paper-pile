@@ -7,7 +7,7 @@ Legend: 🧠 = needs Opus (see PLAN §6 model guidance) · ⬜ todo · 🔄 in p
 
 ## Current focus
 - **Phase:** P0 — Foundation
-- **Task:** P2.4 🧠 (next; P0, P1, P2.1–P2.3 done). **Use plan mode (Opus) for the design.**
+- **Task:** P2.4 🧠 Live Preview (🔄 in progress, milestone M1 of M5; plan approved; P0, P1, P2.1–P2.3 done)
 - **Next up:** P2.5 → P2.6
 
 ## Open issues
@@ -41,7 +41,7 @@ Legend: 🧠 = needs Opus (see PLAN §6 model guidance) · ⬜ todo · 🔄 in p
 | P2.1 | Editor + autosave + recovery | ✅ | 147 tests (+17 core); 41 browser checks incl. real `kill -9` crash recovery; 5 in the native window; S1/S2 suites still green. Known gap → open issue for P2.5 | |
 | P2.2 | Tabs (no preview tab, restore) | ✅ | 163 tests (+16 core); 62 browser checks; P2.1/S1/S2 suites still green; 10 checks in the native window incl. real Ctrl+Tab/Ctrl+W and a full relaunch restore |
 | P2.3 | Parser + dollar rule | ✅ | 215 tests (+52); `core/parser.py`; math rules shared with the editor via a 33-case fixture checked by pytest and by the Lezer grammar; also verified in the running app | |
-| P2.4 🧠 | Live Preview decorations + Source toggle | ⬜ | changed 2026-10-14; highest cost |
+| P2.4 🧠 | Live Preview decorations + Source toggle | 🔄 | changed 2026-10-14; highest cost |
 | P2.5 | External-change handling | ⬜ | |
 | P2.6 | .txt plain mode | ⬜ | |
 
