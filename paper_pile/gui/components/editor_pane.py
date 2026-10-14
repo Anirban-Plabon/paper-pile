@@ -1,14 +1,16 @@
-"""Center pane: the editor for the open note, its autosave and its crash recovery.
+"""Center pane: tab bar + editor for the open notes, with autosave and crash recovery.
 
-The browser owns the live text; this pane keeps a :class:`~paper_pile.core.buffer.NoteBuffer`
-in step with it and decides *when* to save (the buffer decides *what* happens):
+``core.tabs.TabList`` owns which notes are open and in what order; every tab has its own
+:class:`~paper_pile.core.buffer.NoteBuffer` (which decides *what* happens to its text) and its
+own editor state in the browser (undo history, cursor), so switching tabs never mixes notes.
+This pane decides *when*:
 
-  * ~1 s after the last keystroke (the editor reports changes 0.3 s after typing stops, then a
-    0.7 s timer runs), immediately on blur, Ctrl+S, switching notes, and when the page closes;
+  * a note is saved ~1 s after its last keystroke (the editor reports at 0.3 s, then a 0.7 s
+    timer runs), immediately on blur, Ctrl+S, leaving its tab, closing it, and page close;
   * a failed save keeps the text dirty and recoverable and is retried every few seconds.
 
-Switching notes bumps a document id; events tagged with an older id are ignored, so a late
-``change`` can never be written into the wrong note.
+Every editor event carries the id of the tab it came from, so a late event is routed to its
+own note, never the one on screen.
 """
 
 import asyncio
@@ -22,8 +24,10 @@ from nicegui import ui
 from paper_pile.core.buffer import NoteBuffer, find_recoverable
 from paper_pile.core.events import EventBus
 from paper_pile.core.recovery import RecoveryEntry, RecoveryStore
+from paper_pile.core.tabs import TabList
 from paper_pile.core.vault import Vault, VaultError
 from paper_pile.gui.components.editor import Editor
+from paper_pile.gui.components.tabs import TabBar
 
 log = logging.getLogger("paper_pile.editor_pane")
 
@@ -37,15 +41,20 @@ class EditorPane:
         vault: Vault,
         bus: EventBus,
         on_state: Callable[[str, bool], None] = lambda text, error: None,
+        on_tabs_changed: Callable[[list[str], str | None], None] = lambda paths, active: None,
     ) -> None:
         self.vault = vault
         self.bus = bus
         self.recovery = RecoveryStore(vault.root)
+        self.tabs = TabList()
+        self.buffers: dict[int, NoteBuffer] = {}
         self._on_state = on_state
-        self.buffer: NoteBuffer | None = None
-        self._doc_id = 0
+        self._on_tabs_changed = on_tabs_changed
         self._timer: asyncio.TimerHandle | None = None
         self._failure_toasted = False
+        self._rendered: tuple[tuple[int, str], ...] = ()
+        self._rendered_active: int | None = None
+        self._tabbar: TabBar
         self._editor: Editor
         self._empty: ui.label
         self._host: ui.element  # holds dialogs and notifications
@@ -54,19 +63,30 @@ class EditorPane:
 
     def build(self) -> None:
         with ui.column().classes("pp-pane pp-center"):
-            self._empty = ui.label("Open a note to start writing").classes("pp-muted pp-empty")
-            self._editor = Editor(
-                on_change=lambda e: self._on_change(e.args),
-                on_blur=lambda e: self._on_flush(e.args),
-                on_save=lambda e: self._on_flush(e.args),
-            ).classes("pp-fill")
-            self._editor.set_visibility(False)
+            self._tabbar = TabBar(
+                self.tabs,
+                on_activate=self._activate,
+                on_close=lambda tab_id: self._spawn(self.close_tab(tab_id)),
+                on_move=self._move_tab,
+            )
+            self._tabbar.build()
+            with ui.element("div").classes("pp-editor-area"):
+                self._empty = ui.label("Open a note to start writing").classes("pp-muted pp-empty")
+                self._editor = Editor(
+                    on_change=lambda e: self._on_change(e.args),
+                    on_blur=lambda e: self._on_flush(e.args),
+                    on_save=lambda e: self._on_flush(e.args),
+                ).classes("pp-fill")
+                self._editor.set_visibility(False)
         self._host = ui.element("div")
         self.bus.subscribe("tree.open", lambda path: self._spawn(self.open(path)))
         self.bus.subscribe("vault.renamed", lambda old, new: self._on_renamed(old, new))
         self.bus.subscribe("vault.deleted", lambda path, **_: self._on_deleted(path))
         ui.context.client.on_disconnect(self._on_disconnect)
-        self._spawn(self._offer_startup_recovery())
+
+    def start(self, paths: list[str], active: str | None) -> None:
+        """Reopen the tabs of the last session, then offer any crash recovery."""
+        self._spawn(self._restore(paths, active))
 
     def _spawn(self, work: Awaitable[None]) -> None:
         async def guarded() -> None:
@@ -78,13 +98,37 @@ class EditorPane:
 
         asyncio.get_running_loop().create_task(guarded())
 
-    # ---- opening and switching -----------------------------------------------------------
+    # ---- opening, activating, closing tabs -----------------------------------------------
+
+    async def _restore(self, paths: list[str], active: str | None) -> None:
+        for path in paths:
+            if self.vault.exists(path):  # notes deleted since last time are skipped quietly
+                await self.open(path, skip_recovery=True, activate=False)
+        target = self.tabs.find(active) if active else None
+        target = target or (self.tabs.tabs[-1] if self.tabs.tabs else None)
+        if target is not None:
+            self._activate(target.id)
+        else:
+            self._notify_tabs()
+        entries = find_recoverable(self.vault, self.recovery)
+        if entries:
+            self._ask_recovery(entries, then_open=None)
 
     async def open(
-        self, path: str, *, recovered: str | None = None, skip_recovery: bool = False
+        self,
+        path: str,
+        *,
+        recovered: str | None = None,
+        skip_recovery: bool = False,
+        activate: bool = True,
     ) -> None:
-        if self.buffer is not None and self.buffer.path == path and recovered is None:
-            self._editor.focus()
+        """Open ``path`` in a tab (or focus its tab). ``recovered`` loads unsaved text instead."""
+        existing = self.tabs.find(path)
+        if existing is not None:
+            if recovered is not None:
+                self._apply_recovered(existing.id, recovered)
+            if activate:
+                self._activate(existing.id)
             return
         if recovered is None and not skip_recovery:
             entry = self.recovery.get(path)
@@ -92,19 +136,15 @@ class EditorPane:
                 self._ask_recovery([entry], then_open=path)
                 return
         try:
-            new = NoteBuffer.open(self.vault, self.recovery, path, recovered=recovered)
+            buffer = NoteBuffer.open(self.vault, self.recovery, path, recovered=recovered)
         except VaultError as exc:
-            self._toast(str(exc), error=True)  # the current note stays open
+            self._toast(str(exc), error=True)  # the tabs that are open stay as they are
             return
-        await self._leave_current()
-        self.buffer = new
-        self._doc_id += 1
-        self._empty.set_visibility(False)
-        self._editor.set_visibility(True)
-        self._editor.set_text(new.text, self._doc_id)
-        self._editor.focus()
-        self._show_state()
-        if new.dirty:  # restored text: the editor reports no change for it, so schedule the save
+        tab, _ = self.tabs.open(path)
+        self.buffers[tab.id] = buffer
+        if activate:
+            self._activate(tab.id)
+        if buffer.dirty:  # restored text: the editor reports no change for it, so schedule a save
             self._schedule_save(AUTOSAVE_AFTER_CHANGE_S)
 
     def _differs_from_disk(self, entry: RecoveryEntry) -> bool:
@@ -113,72 +153,157 @@ class EditorPane:
         except VaultError:
             return True
 
-    async def _leave_current(self) -> None:
-        """Save the open note (pulling the freshest text from the browser) and let go of it."""
-        buf = self.buffer
+    def _apply_recovered(self, tab_id: int, text: str) -> None:
+        """Put recovered text into a tab that is already open (it becomes unsaved)."""
+        self.buffers[tab_id].set_text(text)
+        self._editor.close_doc(tab_id)  # drop its parked state so the new text is what shows
+        if tab_id == self.tabs.active:
+            self._editor.set_text(text, tab_id)
+        self._schedule_save(AUTOSAVE_AFTER_CHANGE_S)
+        self._refresh()
+
+    def _activate(self, tab_id: int) -> None:
+        previous = self.tabs.active
+        if previous is not None and previous != tab_id and previous in self.buffers:
+            self._save_buffer(self.buffers[previous])  # leaving a tab saves it
+        self.tabs.activate(tab_id)
+        self._empty.set_visibility(False)
+        self._editor.set_visibility(True)
+        self._editor.show_doc(tab_id, self.buffers[tab_id].text)
+        self._editor.focus()
+        self._refresh()
+        self._notify_tabs()
+
+    def close_active(self) -> None:
+        if self.tabs.active is not None:
+            self._spawn(self.close_tab(self.tabs.active))
+
+    async def close_tab(self, tab_id: int) -> None:
+        """Save a tab's note (pulling the freshest text from the browser) and close the tab."""
+        buf = self.buffers.get(tab_id)
         if buf is None:
             return
-        self._cancel_timer()
-        text = await self._editor.get_text()
-        if text is not None:
-            buf.set_text(text)
+        if tab_id == self.tabs.active:
+            self._cancel_timer()
+            text = await self._editor.get_text()
+            if text is not None:
+                buf.set_text(text)
         if not buf.save():
-            self._toast(
-                f"Could not save {buf.path}: {buf.error}. The text is kept for recovery.",
-                error=True,
-            )
-        self.buffer = None
+            msg = f"Could not save {buf.path}: {buf.error}. The text is kept for recovery."
+            self._toast(msg, error=True)
+        self._drop_tab(tab_id)
+
+    def _drop_tab(self, tab_id: int) -> None:
+        """Remove a tab (its buffer is already saved or deliberately discarded)."""
+        was_active = tab_id == self.tabs.active
+        self.buffers.pop(tab_id, None)
+        next_active = self.tabs.close(tab_id)
+        if next_active is not None and was_active:
+            self._activate(next_active)  # switches the editor away from the closed tab first
+        elif next_active is None:
+            self._editor.set_visibility(False)
+            self._empty.set_visibility(True)
+        self._editor.close_doc(tab_id)  # only now: the closed tab's state must not be parked again
+        self._refresh()
+        self._notify_tabs()
+
+    def cycle(self, step: int) -> None:
+        target = self.tabs.cycle(step)
+        if target is not None and target != self.tabs.active:
+            self._activate(target)
+
+    def _move_tab(self, src: int, dst: int, after: bool) -> None:
+        if self.tabs.move(src, dst, after=after):
+            self._refresh()
+            self._notify_tabs()
 
     # ---- events from the editor ----------------------------------------------------------
 
     def _on_change(self, args: dict[str, Any]) -> None:
-        buf = self.buffer
-        if buf is None or args.get("docId") != self._doc_id:
-            return  # a late event from a note that is no longer shown
+        tab_id = int(args.get("docId", -1))
+        buf = self.buffers.get(tab_id)
+        if buf is None:
+            return  # a late event from a tab that has since been closed
         buf.set_text(str(args["text"]))
-        self._show_state()
-        self._schedule_save(AUTOSAVE_AFTER_CHANGE_S)
+        if tab_id == self.tabs.active:
+            self._schedule_save(AUTOSAVE_AFTER_CHANGE_S)
+        else:  # the editor flushed a tab we just left: save it right away
+            self._save_buffer(buf)
+        self._refresh()
 
     def _on_flush(self, args: dict[str, Any]) -> None:
         """Blur / Ctrl+S: take the text and save right now."""
-        buf = self.buffer
-        if buf is None or args.get("docId") != self._doc_id:
+        buf = self.buffers.get(int(args.get("docId", -1)))
+        if buf is None:
             return
         buf.set_text(str(args["text"]))
-        self._save_now()
+        self._save_buffer(buf)
+        self._refresh()
 
     def _on_disconnect(self) -> None:
-        if self.buffer is not None:
-            self._cancel_timer()
-            self.buffer.save()
+        self._cancel_timer()
+        for buf in self.buffers.values():
+            buf.save()
 
     # ---- saving --------------------------------------------------------------------------
 
     def _schedule_save(self, delay: float) -> None:
         self._cancel_timer()
-        self._timer = asyncio.get_running_loop().call_later(delay, self._save_now)
+        self._timer = asyncio.get_running_loop().call_later(delay, self._save_all)
 
     def _cancel_timer(self) -> None:
         if self._timer is not None:
             self._timer.cancel()
             self._timer = None
 
-    def _save_now(self) -> None:
+    def _save_all(self) -> None:
+        """Autosave tick: write every unsaved note; retry later if any write failed."""
         self._cancel_timer()
-        buf = self.buffer
-        if buf is None:
-            return
-        if buf.save():
-            self._failure_toasted = False
-        else:
-            if not self._failure_toasted:
-                self._failure_toasted = True
-                self._toast(f"Could not save {buf.path}: {buf.error}", error=True)
+        failed = False
+        for buf in self.buffers.values():
+            if buf.dirty and not self._save_buffer(buf, refresh=False):
+                failed = True
+        if failed:
             self._schedule_save(RETRY_AFTER_FAILURE_S)
+        else:
+            self._failure_toasted = False
+        self._refresh()
+
+    def _save_buffer(self, buf: NoteBuffer, *, refresh: bool = True) -> bool:
+        ok = buf.save()
+        if not ok and not self._failure_toasted:
+            self._failure_toasted = True
+            self._toast(f"Could not save {buf.path}: {buf.error}", error=True)
+        if not ok:
+            self._schedule_save(RETRY_AFTER_FAILURE_S)
+        if refresh:
+            self._refresh()
+        return ok
+
+    # ---- keeping the tab bar and status bar in step --------------------------------------
+
+    def _unsaved(self) -> dict[int, bool]:
+        return {i: b.dirty or bool(b.error) for i, b in self.buffers.items()}
+
+    def _refresh(self) -> None:
+        unsaved = self._unsaved()
+        if self._structure_changed():
+            self._tabbar.render(unsaved)
+        else:
+            self._tabbar.set_unsaved(unsaved)
         self._show_state()
 
+    def _structure_changed(self) -> bool:
+        """Re-render the bar only when tabs, titles or the active tab changed (not on typing)."""
+        shape = tuple((t.id, t.path) for t in self.tabs.tabs)
+        if shape == self._rendered and self.tabs.active == self._rendered_active:
+            return False
+        self._rendered, self._rendered_active = shape, self.tabs.active
+        return True
+
     def _show_state(self) -> None:
-        buf = self.buffer
+        tab = self.tabs.active_tab
+        buf = self.buffers.get(tab.id) if tab else None
         if buf is None:
             self._on_state("Ready", False)
         elif buf.error:
@@ -188,31 +313,28 @@ class EditorPane:
         else:
             self._on_state("Saved", False)
 
-    # ---- the tree renamed / deleted the open note ----------------------------------------
+    def _notify_tabs(self) -> None:
+        active = self.tabs.active_tab
+        self._on_tabs_changed(self.tabs.paths, active.path if active else None)
+
+    # ---- the tree renamed / deleted notes ------------------------------------------------
 
     def _on_renamed(self, old: str, new: str) -> None:
-        buf = self.buffer
-        if buf is not None and (buf.path == old or buf.path.startswith(old + "/")):
-            buf.rename(new + buf.path[len(old) :])
+        changed = self.tabs.rename_prefix(old, new)
+        for tab in changed:
+            self.buffers[tab.id].rename(tab.path)
+        if changed:
+            self._refresh()
+            self._notify_tabs()
 
     def _on_deleted(self, path: str) -> None:
-        buf = self.buffer
-        if buf is None or not (buf.path == path or buf.path.startswith(path + "/")):
-            return
-        self._cancel_timer()
-        buf.discard()  # its note is in .trash now; saving would bring it back
-        self.buffer = None
-        self._doc_id += 1
-        self._editor.set_visibility(False)
-        self._empty.set_visibility(True)
-        self._show_state()
+        for tab in self.tabs.under(path):
+            buf = self.buffers.get(tab.id)
+            if buf is not None:
+                buf.discard()  # its note is in .trash now; saving would bring it back
+            self._drop_tab(tab.id)
 
     # ---- crash recovery ------------------------------------------------------------------
-
-    async def _offer_startup_recovery(self) -> None:
-        entries = find_recoverable(self.vault, self.recovery)
-        if entries:
-            self._ask_recovery(entries, then_open=None)
 
     def _ask_recovery(self, entries: list[RecoveryEntry], *, then_open: str | None) -> None:
         """One dialog listing unsaved text that survived a crash or a failed save."""
@@ -225,18 +347,17 @@ class EditorPane:
                     ui.label(entry.path).classes("pp-recovery-path")
                     ui.label(when).classes("pp-muted")
                     ui.space()
-                    ui.button("Restore", on_click=lambda e=entry: self._restore(dialog, e)).props(
-                        "dense no-caps"
-                    )
+                    ui.button(
+                        "Restore", on_click=lambda e=entry: self._restore_entry(dialog, e)
+                    ).props("dense no-caps")
                     ui.button(
                         "Discard", on_click=lambda e=entry: self._discard(dialog, e, then_open)
                     ).props("flat dense no-caps")
-            ui.button("Later", on_click=lambda: self._later(dialog, then_open)).props(
-                "flat no-caps"
-            )
+            later = ui.button("Later", on_click=lambda: self._later(dialog, then_open))
+            later.props("flat no-caps")
         dialog.open()
 
-    def _restore(self, dialog: ui.dialog, entry: RecoveryEntry) -> None:
+    def _restore_entry(self, dialog: ui.dialog, entry: RecoveryEntry) -> None:
         dialog.close()
         self._spawn(self.open(entry.path, recovered=entry.text))
 

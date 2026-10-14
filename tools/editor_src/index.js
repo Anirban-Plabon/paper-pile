@@ -52,6 +52,13 @@ export function createEditor(
     emit("change", { text: view.state.doc.toString(), docId });
   };
   const snapshot = () => ({ text: view.state.doc.toString(), docId });
+  // Editor state of every open tab that is not on screen: its own undo history, cursor and
+  // scroll anchor. A tab only ever gets its own state back, so Ctrl+Z cannot cross tabs.
+  const parked = new Map();
+  const park = () => {
+    flush(); // report the outgoing tab's pending edit while docId still names it
+    if (docId !== -1) parked.set(docId, view.state);
+  };
 
   const handlePaste = (event, v) => {
     if (performance.now() < rawUntil) return false; // Ctrl+Shift+V: raw paste
@@ -140,11 +147,48 @@ export function createEditor(
 
   return {
     getText: () => view.state.doc.toString(),
-    setText(text, id = docId) {
+    // Show tab `id`: its parked state if it has one, else a fresh state made from `text`.
+    showDoc(id, text) {
+      if (id === docId) return;
+      park();
       clearTimeout(timer);
       timer = null;
+      let state = parked.get(id);
+      if (state) {
+        parked.delete(id);
+        // mode/theme may have changed while this tab was parked
+        state = state.update({
+          effects: [
+            modeSlot.reconfigure(modeExt(currentMode)),
+            themeSlot.reconfigure(themeFacet.of(currentTheme)),
+          ],
+        }).state;
+      } else {
+        state = makeState(text);
+      }
+      docId = id;
+      view.setState(state);
+    },
+    // Replace tab `id`'s content outright (restored text): fresh state, history dropped.
+    setText(text, id = docId) {
+      if (id !== docId) park();
+      else flush();
+      clearTimeout(timer);
+      timer = null;
+      parked.delete(id);
       docId = id;
       view.setState(makeState(text));
+    },
+    // The tab was closed: forget its parked state.
+    closeDoc(id) {
+      parked.delete(id);
+      if (id === docId) {
+        // the tab on screen was closed: show an empty, unowned document so nothing is parked for it
+        clearTimeout(timer);
+        timer = null;
+        docId = -1;
+        view.setState(makeState(""));
+      }
     },
     insertAtCursor(text) {
       view.dispatch(view.state.replaceSelection(text), { userEvent: "input.paste", scrollIntoView: true });

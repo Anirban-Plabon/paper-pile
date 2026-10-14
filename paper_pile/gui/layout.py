@@ -75,6 +75,8 @@ class MainLayout:
         for pane in WIDTH_LIMITS:
             self._apply(pane)
         self._follow_external_changes()
+        if self.editor_pane is not None:  # reopen last session's tabs (after the status bar exists)
+            self.editor_pane.start(list(self.state.tabs), self.state.active)
 
     def _follow_external_changes(self) -> None:
         """Re-list the tree when files change outside the app (watcher, P1.5)."""
@@ -105,8 +107,15 @@ class MainLayout:
             # below the tree: reserved for the profile block (P8.3)
 
     def _center_pane(self) -> None:
-        self.editor_pane = EditorPane(Vault(self.vault), self.bus, self._set_save_state)
+        self.editor_pane = EditorPane(
+            Vault(self.vault), self.bus, self._set_save_state, self._on_tabs_changed
+        )
         self.editor_pane.build()
+
+    def _on_tabs_changed(self, paths: list[str], active: str | None) -> None:
+        self.state.tabs = paths
+        self.state.active = active
+        self._save_soon(immediately=True)
 
     def _set_save_state(self, text: str, error: bool) -> None:
         if self._status is not None:
@@ -118,6 +127,14 @@ class MainLayout:
         self.state.panes_open[pane] = not self.state.panes_open[pane]
         self._apply(pane)
         self._save_soon(immediately=True)
+
+    def close_tab(self) -> None:
+        if self.editor_pane is not None:
+            self.editor_pane.close_active()
+
+    def cycle_tabs(self, step: int) -> None:
+        if self.editor_pane is not None:
+            self.editor_pane.cycle(step)
 
     def _apply(self, pane: str) -> None:
         splitter = self._splitters[pane]

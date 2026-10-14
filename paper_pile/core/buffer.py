@@ -46,7 +46,10 @@ class NoteBuffer:
         text = recovered if recovered is not None else disk
         assert text is not None  # disk is only None when recovered is given
         buf = cls(vault, recovery, path, text, None if disk is None else content_hash(disk))
-        buf._mirror()
+        if buf.dirty:
+            buf._mirror()
+        # A clean buffer must NOT clear the store: an older unsaved draft of this note may be
+        # waiting there for the user to restore or discard it.
         return buf
 
     @property

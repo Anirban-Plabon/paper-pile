@@ -38,6 +38,12 @@ export default {
     async setText(text, docId) {
       (await this.ready).setText(text, docId);
     },
+    async showDoc(docId, text) {
+      (await this.ready).showDoc(docId, text);
+    },
+    async closeDoc(docId) {
+      (await this.ready).closeDoc(docId);
+    },
     async insertAtCursor(text) {
       (await this.ready).insertAtCursor(text);
     },

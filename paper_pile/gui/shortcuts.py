@@ -2,8 +2,9 @@
 
 Only combos that have a registered handler are intercepted (``preventDefault``); everything
 else (Ctrl+C/V/Z, find, ...) reaches the editor untouched. Combos are normalised to
-``ctrl[+alt][+shift]+<key lower-case>``, e.g. ``ctrl+b``, ``ctrl+shift+f``, ``ctrl+,``.
-Meta counts as Ctrl. Verified in the native Qt window in S3.
+``[ctrl+][alt+][shift+]<key lower-case>``, e.g. ``ctrl+b``, ``ctrl+shift+f``, ``alt+w``.
+Meta counts as Ctrl. Alt-only combos exist because web browsers reserve Ctrl+W/Ctrl+Tab.
+Verified in the native Qt window in S3.
 """
 
 import json
@@ -18,9 +19,10 @@ log = logging.getLogger("paper_pile.shortcuts")
 _JS = """
 (function (registered) {
   window.addEventListener('keydown', function (e) {
-    if (!(e.ctrlKey || e.metaKey)) return;
+    if (!(e.ctrlKey || e.metaKey || e.altKey)) return;
     if (['Control', 'Shift', 'Meta', 'Alt'].includes(e.key)) return;
-    var parts = ['ctrl'];
+    var parts = [];
+    if (e.ctrlKey || e.metaKey) parts.push('ctrl');
     if (e.altKey) parts.push('alt');
     if (e.shiftKey) parts.push('shift');
     parts.push(e.key.toLowerCase());

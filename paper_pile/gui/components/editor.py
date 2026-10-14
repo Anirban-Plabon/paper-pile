@@ -62,6 +62,14 @@ class Editor(
         """Replace the document (and reset undo history). ``doc_id`` tags later events."""
         self.run_method("setText", text, doc_id)
 
+    def show_doc(self, doc_id: int, text: str) -> None:
+        """Switch to tab ``doc_id``: its parked editor state if it has one, else ``text``."""
+        self.run_method("showDoc", doc_id, text)
+
+    def close_doc(self, doc_id: int) -> None:
+        """Forget the parked editor state of a closed tab."""
+        self.run_method("closeDoc", doc_id)
+
     def insert_at_cursor(self, text: str) -> None:
         self.run_method("insertAtCursor", text)
 

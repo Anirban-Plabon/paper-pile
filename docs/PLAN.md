@@ -68,6 +68,7 @@ paper-pile/
 │   │   ├── links.py            # extract links, resolve, rewrite on rename
 │   │   ├── index.py            # SQLite: notes, links, FTS
 │   │   ├── watcher.py          # watchdog → events
+│   │   ├── tabs.py             # TabList: open/close/move/rename/cycle bookkeeping
 │   │   ├── commands.py         # slash command registry + actions
 │   │   ├── paste.py            # Smart Paste: html→md, delimiter normalize
 │   │   ├── config.py           # global + vault TOML, defaults
@@ -87,7 +88,7 @@ paper-pile/
 │       ├── theme.py            # light/dark/system, accent palette, CSS vars
 │       ├── components/
 │       │   ├── tree.py         # left pane
-│       │   ├── tabs.py         # tab bar + preview-tab logic
+│       │   ├── tabs.py         # tab bar (render + clicks); no preview-tab logic
 │       │   ├── editor.py       # NiceGUI element wrapping CM6
 │       │   ├── editor_pane.py  # center pane: open note, autosave timing, recovery prompts
 │       │   ├── pp_editor.js    # thin Vue wrapper for the element
@@ -100,6 +101,7 @@ paper-pile/
 │       └── static/
 │           ├── vendor/         # pp-editor/ (cm6 bundle + mermaid chunks), katex/ (committed)
 │           ├── tree.js         # click / right-click / drag-drop capture for the file tree
+│           ├── tabs.js         # drag-to-reorder capture for the tab bar
 │           └── app.css
 └── tests/
     ├── core/
@@ -166,7 +168,13 @@ paper-pile --serve [path] [--port 8080]   # web mode, 127.0.0.1 only, prints URL
 - Rename/move of a note updates its tab; delete closes it.
 - Clicking `[[link]]` opens in current tab; Ctrl+click opens a new tab.
 - Later (not phase 1): split panes.
-
+- **Implementation (P2.2):**
+  - `core/tabs.py` `TabList` is the single source of truth: one tab per note; a new tab goes to the end; closing the active tab activates its **right neighbour, else the left**; closing a background tab changes nothing else; rename/move re-points tabs (a folder path covers its notes) keeping id, position and focus; ids are never reused. Tab chips show the file name plus the folder (dimmed) only when two open notes share a name.
+  - Each tab has its own `NoteBuffer` and its own editor state in the browser (undo history, cursor), restored when you return to the tab; Ctrl+Z can never bring in another note's text. Leaving a tab saves it; closing saves it first (a failed save keeps the text in recovery).
+  - Close with ×, middle-click, or the shortcut; drag a tab onto the left/right half of another to reorder, or onto the empty bar to move it to the end. A ● replaces the close button's place while a note has unsaved/failed-to-save text. Many tabs scroll horizontally and the active one is scrolled into view.
+  - **Shortcuts:** Ctrl+W close, Ctrl+Tab / Ctrl+Shift+Tab cycle (wrapping) — these work in the native window. Web browsers reserve them, so **Alt+W, Alt+PageDown, Alt+PageUp** do the same everywhere (the shortcut layer now accepts Alt-only combos).
+  - Session: `session.json` `tabs` + `active` are rewritten on every open/close/move/activate/rename. On launch the tabs reopen in order; notes that no longer exist are skipped quietly, and the active tab falls back to the last restored one. Crash recovery is offered afterwards and **Restore** puts the recovered text into the tab that is already open.
+  - `vault.deleted` closes the tabs of the deleted note/folder without saving them (they are in `.trash/`).
 ### 4.5 Editor
 - CodeMirror 6 with markdown language, syntax highlighting, line wrapping, search (Ctrl+F), undo/redo, multiple cursors.
 - **Live Preview (default):** CM6 decorations render markdown inline as you type. Syntax markers (`**`, `#`, `[[ ]]`, link URLs, etc.) hide except on the line/selection with the cursor. Headings, bold/italic, lists, tasks (clickable checkbox), quotes, tables, links and images render in place; math (KaTeX) and Mermaid render as block/inline widgets that revert to source when the cursor enters them. The editor is the only pane for a note. Decoration logic is JS (render-only); parsing rules stay consistent with `core/parser.py`.
@@ -309,6 +317,8 @@ On paste into the editor:
 | Ctrl+N | New note |
 | Ctrl+W | Close tab |
 | Ctrl+Tab | Next tab |
+| Ctrl+Shift+Tab | Previous tab |
+| Alt+W / Alt+PageDown / Alt+PageUp | Close / next / previous tab — fallbacks for web mode, where the browser reserves Ctrl+W and Ctrl+Tab |
 | Ctrl+E | Cycle preview mode |
 | Ctrl+B | Toggle left pane |
 | Ctrl+L | Toggle AI chat |

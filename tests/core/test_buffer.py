@@ -148,3 +148,16 @@ def test_find_recoverable_offers_only_real_differences(env: tuple[Vault, Recover
     assert sorted(e.path for e in offered) == ["changed.md", "deleted.md"]
     assert rec.get("same.md") is None  # stale entry was cleaned up
     assert rec.get("../escape.md") is not None  # unknown entries are never deleted blindly
+
+
+def test_opening_a_clean_note_keeps_a_pending_recovery_draft(
+    env: tuple[Vault, RecoveryStore],
+) -> None:
+    vault, rec = env
+    vault.create_note("a.md", "disk text")
+    rec.write("a.md", "older unsaved draft", None)  # left behind by a crash
+    buf = NoteBuffer.open(vault, rec, "a.md")  # e.g. a restored tab, or "Later" then open
+    assert buf.text == "disk text" and not buf.dirty
+    entry = rec.get("a.md")
+    assert entry is not None and entry.text == "older unsaved draft"
+    assert [e.path for e in find_recoverable(vault, rec)] == ["a.md"]  # still offered

@@ -41,6 +41,7 @@ def _build_pages(vault: Path, *, native: bool) -> None:
     def index() -> None:
         ui.add_head_html(f'<link rel="stylesheet" href="{STATIC_URL}/app.css">')
         ui.add_head_html(f'<script src="{STATIC_URL}/tree.js" defer></script>')
+        ui.add_head_html(f'<script src="{STATIC_URL}/tabs.js" defer></script>')
         # "reveal" only makes sense on this machine
         layout = MainLayout(vault, can_reveal=native, fs_bus=fs_bus)
         layout.build()
@@ -48,6 +49,14 @@ def _build_pages(vault: Path, *, native: bool) -> None:
             {
                 "ctrl+b": lambda: layout.toggle("left"),
                 "ctrl+l": lambda: layout.toggle("right"),
+                # Ctrl+W / Ctrl+Tab work in the native window; web browsers reserve them, so
+                # the Alt combos are the ones that work everywhere
+                "ctrl+w": layout.close_tab,
+                "alt+w": layout.close_tab,
+                "ctrl+tab": lambda: layout.cycle_tabs(1),
+                "ctrl+shift+tab": lambda: layout.cycle_tabs(-1),
+                "alt+pagedown": lambda: layout.cycle_tabs(1),
+                "alt+pageup": lambda: layout.cycle_tabs(-1),
             }
         )
 
