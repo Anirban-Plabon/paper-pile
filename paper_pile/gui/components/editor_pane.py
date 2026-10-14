@@ -27,7 +27,7 @@ from paper_pile.core.events import EventBus
 from paper_pile.core.links import external_url
 from paper_pile.core.recovery import RecoveryEntry, RecoveryStore
 from paper_pile.core.tabs import TabList
-from paper_pile.core.vault import Vault, VaultError
+from paper_pile.core.vault import Vault, VaultError, is_plain_text
 from paper_pile.core.watcher import FsEvent
 from paper_pile.gui.components.editor import Editor, Mode
 from paper_pile.gui.components.tabs import TabBar
@@ -48,6 +48,7 @@ class EditorPane:
         mode: Mode = "live",
         on_mode_changed: Callable[[Mode], None] = lambda mode: None,
         native: bool = False,
+        on_plain_changed: Callable[[bool], None] = lambda plain: None,
     ) -> None:
         self.vault = vault
         self.bus = bus
@@ -59,6 +60,8 @@ class EditorPane:
         self.mode: Mode = mode
         self._on_mode_changed = on_mode_changed
         self._native = native  # native window: Python opens links; web mode: the page does
+        self._on_plain_changed = on_plain_changed
+        self._plain_shown: bool | None = None
         self._timer: asyncio.TimerHandle | None = None
         self._failure_toasted = False
         self._rendered: tuple[tuple[int, str], ...] = ()
@@ -89,6 +92,7 @@ class EditorPane:
                     mode=self.mode,
                     link_target="python" if self._native else "window",
                     on_link=lambda e: self._on_link(e.args),
+                    on_slash=lambda e: self._on_slash(e.args),
                     on_change=lambda e: self._on_change(e.args),
                     on_blur=lambda e: self._on_flush(e.args),
                     on_save=lambda e: self._on_flush(e.args),
@@ -192,6 +196,8 @@ class EditorPane:
 
     def toggle_mode(self) -> None:
         """Live Preview <-> Source. Same text and undo history; only the rendering changes."""
+        if self._active_is_plain():
+            return  # a .txt note is always plain: there is nothing to toggle
         self.mode = "source" if self.mode == "live" else "live"
         self._editor.set_mode(self.mode)
         self._on_mode_changed(self.mode)
@@ -261,6 +267,14 @@ class EditorPane:
         buf.set_text(str(args["text"]))
         self._save_buffer(buf)
         self._refresh()
+
+    def _active_is_plain(self) -> bool:
+        tab = self.tabs.active_tab
+        return tab is not None and is_plain_text(tab.path)
+
+    def _on_slash(self, args: dict[str, Any]) -> None:
+        """`/` typed at a command position in a markdown note. The slash menu arrives in P4.2;
+        plain-text notes never send this event."""
 
     def _on_link(self, args: dict[str, Any]) -> None:
         """Ctrl/Cmd+click on a link. Web links open in the browser (here, in the native window;
@@ -333,6 +347,10 @@ class EditorPane:
             self._tabbar.set_unsaved(unsaved)
         self._show_state()
         self._update_banner()
+        plain = self._active_is_plain()
+        if plain != self._plain_shown:
+            self._plain_shown = plain
+            self._on_plain_changed(plain)
 
     def _structure_changed(self) -> bool:
         """Re-render the bar only when tabs, titles or the active tab changed (not on typing)."""

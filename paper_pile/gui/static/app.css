@@ -114,6 +114,8 @@ html, body { overflow: hidden; }
 .pp-hr { display: block; height: 0; margin: 0.55em 0; border-top: 1px solid var(--pp-border); }
 .pp-mode-toggle { cursor: pointer; user-select: none; padding: 0 4px; border-radius: 3px; }
 .pp-mode-toggle:hover { background: rgba(127, 127, 127, .18); }
+.pp-mode-toggle.pp-mode-plain { cursor: default; }
+.pp-mode-toggle.pp-mode-plain:hover { background: none; }
 
 /* Tab bar (paper_pile/gui/components/tabs.py, static/tabs.js) */
 .pp-tabbar { width: 100%; height: 34px; flex-shrink: 0; gap: 0; overflow-x: auto; overflow-y: hidden; background: var(--pp-bg-side); border-bottom: 1px solid var(--pp-border); }

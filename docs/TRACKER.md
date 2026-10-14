@@ -7,8 +7,8 @@ Legend: 🧠 = needs Opus (see PLAN §6 model guidance) · ⬜ todo · 🔄 in p
 
 ## Current focus
 - **Phase:** P0 — Foundation
-- **Task:** P2.6 (next; P0, P1, P2.1–P2.5 done)
-- **Next up:** P3.1 → P3.2 → P3.3 → P3.4 → 🧠 P3.5
+- **Task:** P3.1 (next; **phases P0, P1 and P2 complete**)
+- **Next up:** P3.2 → P3.3 → P3.4 → 🧠 P3.5 (then P4: slash menu, 🧠 P4.2)
 
 ## Open issues
 <!-- - [ ] YYYY-MM-DD · task ID · what's blocking · what's needed -->
@@ -43,7 +43,7 @@ Legend: 🧠 = needs Opus (see PLAN §6 model guidance) · ⬜ todo · 🔄 in p
 | P2.3 | Parser + dollar rule | ✅ | 215 tests (+52); `core/parser.py`; math rules shared with the editor via a 33-case fixture checked by pytest and by the Lezer grammar; also verified in the running app | |
 | P2.4 🧠 | Live Preview decorations + Source toggle | ✅ | 296 Python tests; 101 browser checks on one gallery note (all elements) + 53 shared grammar cases; S1 18, S2 17, P2.1 41, P2.2 62, layout 21 still green; 14 checks in the native window incl. real Ctrl+E/Ctrl+Z, lazy language chunk and relaunch; perf p95 ≤ 14 ms on 5,000 lines |
 | P2.5 | External-change handling | ✅ | 315 tests (+19 core); 39 browser checks with a separate process editing files; native 7 checks; P2.1/P2.2/gallery suites still green | |
-| P2.6 | .txt plain mode | ⬜ | |
+| P2.6 | .txt plain mode | ✅ | 322 Python tests; 31 browser checks (incl. websocket proof that .txt sends no slash event while .md does) + 5 native; all earlier suites re-run green | |
 
 ### P3 — Links & index
 | ID | Task | Status | Notes |
@@ -166,6 +166,9 @@ Legend: 🧠 = needs Opus (see PLAN §6 model guidance) · ⬜ todo · 🔄 in p
 | 2026-10-14 | P2.5: the losing side of every conflict choice is stashed in `.trash/<stamp>/…(changed on disk | my unsaved edits).md` first (`Vault.stash_text`) | CLAUDE rule 4 (never hard-delete user data) | claude |
 | 2026-10-14 | P2.5: a clean note deleted outside closes its tab (toast); a note moved outside keeps its tab under the new path; "diff" view not built | Simplest behaviour that is safe; diff is a later nicety | claude |
 | 2026-10-14 | P2.1 suite section H updated: an open note deleted outside now yields the banner (status "Changed on disk") instead of "Save failed" + toast | Behaviour intentionally replaced by P2.5 | claude |
+| 2026-10-14 | P2.6: plain-text mode is decided per note by extension (`.txt`), with a smaller editor extension set (no markdown grammar, rendering, syntax colours, slash trigger, link/paste hooks); per-tab kind; rename across .md/.txt rebuilds the tab | PLAN §4.5; smallest change that keeps tabs independent | claude |
+| 2026-10-14 | P2.6: status bar shows "Plain text" (not toggleable) on a .txt tab; Ctrl+E is a no-op there; the global Live/Source choice is unaffected | A .txt note has nothing to toggle; keep the user's mode for .md tabs | claude |
+| 2026-10-14 | P2.6: `EditorPane` registers a no-op `on_slash` placeholder (the slash menu is P4.2) | Makes the slash event observable now, so tests can prove a .txt note never sends it | claude |
 | 2026-10-14 | uv_build backend with `module-root = ""` (flat `paper_pile/` layout, not `src/`) | PLAN §3 layout | claude |
 | 2026-10-13 | Preview-tab (VS Code style) behaviour as default | Chosen during planning, unconfirmed — ask user if unsure | planning |
 | 2026-10-13 | Split preview in phase 1; inline live preview deferred | Inline needs CM6 decorations, highest cost | planning |
@@ -177,6 +180,7 @@ Legend: 🧠 = needs Opus (see PLAN §6 model guidance) · ⬜ todo · 🔄 in p
 | Date | Task | Symptom | Root cause | Fix | Gotcha? |
 |---|---|---|---|---|---|
 | 2026-10-14 | P0.6 | Native window failed to start with `QT_QPA_PLATFORM=xcb`: "Could not load the Qt platform plugin xcb" | Qt ≥ 6.5 xcb plugin needs system libs `libxcb-cursor0`, `libxcb-icccm4`, `libxcb-keysyms1`, `libxcb-xkb1`, `libxkbcommon-x11-0` (+ image/render-util/util) which are not in pip wheels | For the test only: `apt download` the .debs, extract into a scratch dir, `LD_LIBRARY_PATH`. For the app: don't force xcb (default Wayland backend works) | y — pending: CLAUDE.md is read-only, so not yet added to its Gotchas |
+| 2026-10-14 | P2.6 | The "markdown notes DO send slash" control test found 0 events, so the "no slash from .txt" result meant nothing yet | NiceGUI websocket frames carry a listener id, not the event name, and the arguments are a JSON string inside the frame (quotes escaped); my first substring match could never hit | Match on the payload keys in their escaped form; the control now sees the event | n |
 | 2026-10-14 | P2.5 | After **Load theirs** the note still showed "Save failed" and a dirty dot | An earlier failed save left `buffer.error` set; resolving the conflict (and reloading, and adopting an identical disk version) never cleared it | Clear `error` in `load_theirs`, `keep_mine`, the reload path and the identical-text path; regression test | y — pending: CLAUDE.md read-only |
 | 2026-10-14 | P2.5 | Test "clean reload within a second" failed although the editor showed the new text; caret test failed | Test mistakes: mangled string escaping in the expected text; the needle for the caret position was not in the note | Fixed in the test | n |
 | 2026-10-14 | P2.4 | Ctrl+click on a link opened nothing | CodeMirror's own Ctrl+click handling adds a selection on `mousedown`; the link becomes "touched", its DOM is rebuilt and the original element is gone before `click` would fire | Handle the link on `mousedown` and swallow it | y — pending: CLAUDE.md read-only |
@@ -224,3 +228,4 @@ Legend: 🧠 = needs Opus (see PLAN §6 model guidance) · ⬜ todo · 🔄 in p
 - 2026-10-14 · P2.3 · core/parser.py (GFM, front matter, math, safe HTML), shared math fixture + Lezer check, KaTeX css fix in the app page; 215 tests; verified in the running app
 - 2026-10-14 · P2.4 · Live Preview complete: element-level reveal, headings/inline styles, lists + hanging indent, tasks, quotes, rules, links (Ctrl+click), images via asset route, front matter, code blocks with lazy highlighting, tables, Source toggle (Ctrl+E); shared grammar fixtures; 296 Python tests; 101 + regression browser checks; native window verified incl. relaunch
 - 2026-10-14 · P2.5 · external-change handling: NoteBuffer.sync_with_disk + stash_text (core), EditorPane.on_external + conflict banner + resolutions; closes the open issue; 315 tests; 39 browser + 7 native checks
+- 2026-10-14 · P2.6 · plain-text mode for .txt notes (per-note kind, status label, rename across kinds); **phase P2 complete** (editor, tabs, parser, Live Preview, external changes, plain text); 322 Python tests; 31 + regression browser checks; native verified

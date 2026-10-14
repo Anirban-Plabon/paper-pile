@@ -10,6 +10,7 @@ from paper_pile.core.vault import (
     TreeEntry,
     Vault,
     VaultError,
+    is_plain_text,
     join_rel,
     note_filename,
     validate_name,
@@ -502,3 +503,19 @@ def test_assets_are_still_invisible_to_every_other_vault_operation(vault: Vault)
     with pytest.raises(InvalidPathError):
         vault.resolve(".n.assets/a.png")
     assert vault.list_tree() == []
+
+
+@pytest.mark.parametrize(
+    ("name", "plain"),
+    [
+        ("todo.txt", True),
+        ("TODO.TXT", True),
+        ("a.b.txt", True),
+        ("note.md", False),
+        ("n.MD", False),
+        ("txt", False),
+        ("x.txt.md", False),
+    ],
+)
+def test_is_plain_text(name: str, plain: bool) -> None:
+    assert is_plain_text(name) is plain

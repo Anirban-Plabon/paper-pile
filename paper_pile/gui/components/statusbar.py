@@ -13,8 +13,15 @@ class StatusBar:
     save_label: ui.label
     mode_label: ui.label
 
-    def set_mode(self, mode: str) -> None:
-        self.mode_label.set_text("Live" if mode == "live" else "Source")
+    def set_mode(self, mode: str, plain: bool = False) -> None:
+        """Show Live/Source, or "Plain text" (not toggleable) while a .txt note is active."""
+        self.mode_label.set_text(
+            "Plain text" if plain else ("Live" if mode == "live" else "Source")
+        )
+        if plain:
+            self.mode_label.classes("pp-mode-plain")
+        else:
+            self.mode_label.classes(remove="pp-mode-plain")
 
     def set_save_state(self, text: str, *, error: bool = False) -> None:
         self.save_label.set_text(text)

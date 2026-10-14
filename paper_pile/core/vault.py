@@ -70,6 +70,11 @@ def is_note_name(name: str) -> bool:
     return Path(name).suffix.lower() in NOTE_SUFFIXES
 
 
+def is_plain_text(name: str) -> bool:
+    """``.txt`` notes are plain text: no markdown rendering, no slash menu (PLAN §4.5)."""
+    return Path(name).suffix.lower() == ".txt"
+
+
 MAX_NAME_LEN = 255
 
 

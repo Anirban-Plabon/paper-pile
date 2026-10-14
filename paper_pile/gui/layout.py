@@ -47,6 +47,7 @@ class MainLayout:
         self.vault = vault
         self.bus = EventBus()  # tabs/editor subscribe to tree events here (P2)
         self.can_reveal = can_reveal
+        self._plain = False  # is the active note a .txt?
         self.tree: FileTree | None = None
         self.editor_pane: EditorPane | None = None
         self._fs_bus = fs_bus
@@ -122,6 +123,7 @@ class MainLayout:
             mode=self.state.mode,
             on_mode_changed=self._on_mode_changed,
             native=self.can_reveal,  # native window = this machine
+            on_plain_changed=self._on_plain_changed,
         )
         self.editor_pane.build()
 
@@ -134,7 +136,12 @@ class MainLayout:
         self.state.mode = mode  # type: ignore[assignment]
         self._save_soon(immediately=True)
         if self._status is not None:
-            self._status.set_mode(mode)
+            self._status.set_mode(mode, self._plain)
+
+    def _on_plain_changed(self, plain: bool) -> None:
+        self._plain = plain
+        if self._status is not None:
+            self._status.set_mode(self.state.mode, plain)
 
     def toggle_mode(self) -> None:
         if self.editor_pane is not None:

@@ -101,92 +101,122 @@ export function createEditor(
     return true;
   };
 
+  // `.txt` notes are plain text: no markdown language, no rendering, no slash trigger, no link or
+  // paste hooks. Which kind a note is follows its path; `plainDocs` remembers it per open doc.
+  const plainDocs = new Set();
+  const isPlainPath = (path) => /\.txt$/i.test(path || "");
+  const isPlainDoc = () => plainDocs.has(docId);
+
   // A note switch builds a fresh state, which also drops the undo history: Ctrl+Z must never
   // pull the previous note's text into this one.
-  const makeState = (text) =>
-    EditorState.create({
-      doc: text,
-      selection: EditorSelection.cursor(initialCaret(text)),
-      extensions: [
-        history(),
-        drawSelection(),
-        dropCursor(),
-        highlightSelectionMatches(),
-        EditorState.allowMultipleSelections.of(true),
-        EditorView.lineWrapping,
-        markdown({ base: markdownLanguage, extensions: editorExtensions, codeLanguages }),
-        syntaxHighlighting(sourceStyle),
-        syntaxHighlighting(classHighlighter), // `tok-*` classes inside code blocks; colours live in CSS
-        keymap.of([
-          {
-            key: "Mod-s",
-            run: () => {
-              flush();
-              emit("save", snapshot());
-              return true;
-            },
-          },
-          ...defaultKeymap,
-          ...historyKeymap,
-          ...searchKeymap,
-          indentWithTab,
-        ]),
-        themeSlot.of(themeFacet.of(currentTheme)),
-        modeSlot.of(modeExt(currentMode)),
-        EditorView.updateListener.of((u) => {
-          if (u.docChanged) {
-            clearTimeout(timer);
-            timer = setTimeout(flush, CHANGE_DEBOUNCE_MS);
-          }
-        }),
-        EditorView.inputHandler.of((v, from, _to, text) => {
-          if (text !== "/") return false;
-          const line = v.state.doc.lineAt(from);
-          const before = v.state.sliceDoc(line.from, from);
-          if ((before !== "" && !/\s$/.test(before)) || inNoSlashContext(v.state, from)) return false;
-          queueMicrotask(() =>
-            emit("slash", { line: line.number, ch: from - line.from, coords: v.coordsAtPos(from) }),
-          );
-          return false; // let CodeMirror insert the "/"
-        }),
-        EditorView.domEventHandlers({
-          paste: handlePaste,
-          // Ctrl/Cmd+click on a link opens it; a plain click only places the caret (to edit it).
-          // This must be `mousedown`, not `click`: CodeMirror's own Ctrl+click handling adds a
-          // selection, which un-hides the link's syntax and rebuilds its DOM before `click` fires.
-          mousedown: (e) => {
-            if (!(e.ctrlKey || e.metaKey)) return false;
-            const el = e.target.closest ? e.target.closest("[data-href]") : null;
-            if (!el) return false;
-            e.preventDefault();
-            const href = el.getAttribute("data-href");
-            const url = externalUrl(href);
-            // Web mode: open here, inside the click, so the browser's popup blocker allows it.
-            // Native window: Python opens the system browser. Notes/relative links: Python decides.
-            if (url && linkTarget === "window") window.open(url, "_blank", "noopener,noreferrer");
-            else emit("link", { href });
+  const makeState = (text, id) => {
+    const plain = isPlainPath(editorContext.notePath);
+    if (plain) plainDocs.add(id);
+    else plainDocs.delete(id);
+    const common = [
+      history(),
+      drawSelection(),
+      dropCursor(),
+      highlightSelectionMatches(),
+      EditorState.allowMultipleSelections.of(true),
+      EditorView.lineWrapping,
+      keymap.of([
+        {
+          key: "Mod-s",
+          run: () => {
+            flush();
+            emit("save", snapshot());
             return true;
           },
-          keydown: (e) => {
-            if (e.key === "Control" || e.key === "Meta") parent.classList.add("pp-ctrl");
-            if (e.ctrlKey && e.shiftKey && e.key.toLowerCase() === "v") rawUntil = performance.now() + RAW_PASTE_WINDOW_MS;
-            return false;
-          },
-          keyup: (e) => {
-            if (e.key === "Control" || e.key === "Meta") parent.classList.remove("pp-ctrl");
-            return false;
-          },
-          blur: () => {
-            parent.classList.remove("pp-ctrl");
-            flush();
-            emit("blur", snapshot());
-            return false;
-          },
-        }),
-      ],
+        },
+        ...defaultKeymap,
+        ...historyKeymap,
+        ...searchKeymap,
+        indentWithTab,
+      ]),
+      themeSlot.of(themeFacet.of(currentTheme)),
+      EditorView.updateListener.of((u) => {
+        if (u.docChanged) {
+          clearTimeout(timer);
+          timer = setTimeout(flush, CHANGE_DEBOUNCE_MS);
+        }
+      }),
+    ];
+    const onBlur = () => {
+      parent.classList.remove("pp-ctrl");
+      flush();
+      emit("blur", snapshot());
+      return false;
+    };
+    const kind = plain
+      ? [EditorView.domEventHandlers({ blur: onBlur })]
+      : [
+          markdown({ base: markdownLanguage, extensions: editorExtensions, codeLanguages }),
+          syntaxHighlighting(sourceStyle),
+          syntaxHighlighting(classHighlighter), // `tok-*` classes inside code blocks; colours live in CSS
+          modeSlot.of(modeExt(currentMode)),
+          EditorView.inputHandler.of((v, from, _to, text) => {
+            if (text !== "/") return false;
+            const line = v.state.doc.lineAt(from);
+            const before = v.state.sliceDoc(line.from, from);
+            if ((before !== "" && !/\s$/.test(before)) || inNoSlashContext(v.state, from)) return false;
+            queueMicrotask(() =>
+              emit("slash", { line: line.number, ch: from - line.from, coords: v.coordsAtPos(from) }),
+            );
+            return false; // let CodeMirror insert the "/"
+          }),
+          EditorView.domEventHandlers({
+            paste: handlePaste,
+            // Ctrl/Cmd+click on a link opens it; a plain click only places the caret (to edit it).
+            // This must be `mousedown`, not `click`: CodeMirror's own Ctrl+click handling adds a
+            // selection, which un-hides the link's syntax and rebuilds its DOM before `click` fires.
+            mousedown: (e) => {
+              if (!(e.ctrlKey || e.metaKey)) return false;
+              const el = e.target.closest ? e.target.closest("[data-href]") : null;
+              if (!el) return false;
+              e.preventDefault();
+              const href = el.getAttribute("data-href");
+              const url = externalUrl(href);
+              // Web mode: open here, inside the click, so the browser's popup blocker allows it.
+              // Native window: Python opens the system browser. Notes/relative links: Python decides.
+              if (url && linkTarget === "window") window.open(url, "_blank", "noopener,noreferrer");
+              else emit("link", { href });
+              return true;
+            },
+            keydown: (e) => {
+              if (e.key === "Control" || e.key === "Meta") parent.classList.add("pp-ctrl");
+              if (e.ctrlKey && e.shiftKey && e.key.toLowerCase() === "v") rawUntil = performance.now() + RAW_PASTE_WINDOW_MS;
+              return false;
+            },
+            keyup: (e) => {
+              if (e.key === "Control" || e.key === "Meta") parent.classList.remove("pp-ctrl");
+              return false;
+            },
+            blur: onBlur,
+          }),
+        ];
+    return EditorState.create({
+      doc: text,
+      selection: EditorSelection.cursor(initialCaret(text)),
+      extensions: [...common, ...kind],
     });
+  };
 
-  const view = new EditorView({ parent, state: makeState(doc) });
+  const view = new EditorView({ parent, state: makeState(doc, docId) });
+
+  // Put `text` on screen for doc `id` with a fresh state (history dropped).
+  const replaceText = (text, id, path, keepCaret) => {
+    const head = view.state.selection.main.head;
+    editorContext.notePath = path;
+    if (id !== docId) park();
+    else flush();
+    clearTimeout(timer);
+    timer = null;
+    parked.delete(id);
+    docId = id;
+    view.setState(makeState(text, id));
+    if (keepCaret) view.dispatch({ selection: { anchor: Math.min(head, view.state.doc.length) } });
+  };
 
   return {
     getText: () => view.state.doc.toString(),
@@ -200,15 +230,12 @@ export function createEditor(
       let state = parked.get(id);
       if (state) {
         parked.delete(id);
-        // mode/theme may have changed while this tab was parked
-        state = state.update({
-          effects: [
-            modeSlot.reconfigure(modeExt(currentMode)),
-            themeSlot.reconfigure(themeFacet.of(currentTheme)),
-          ],
-        }).state;
+        // mode/theme may have changed while this tab was parked (plain text has no mode)
+        const effects = [themeSlot.reconfigure(themeFacet.of(currentTheme))];
+        if (!plainDocs.has(id)) effects.push(modeSlot.reconfigure(modeExt(currentMode)));
+        state = state.update({ effects }).state;
       } else {
-        state = makeState(text);
+        state = makeState(text, id);
       }
       docId = id;
       view.setState(state);
@@ -217,20 +244,16 @@ export function createEditor(
     // The note on screen was renamed/moved: relative image URLs must be recomputed.
     setPath(path) {
       editorContext.notePath = path;
+      if (docId !== -1 && isPlainPath(path) !== isPlainDoc()) {
+        // renamed across .md <-> .txt: the note changes kind, so rebuild its state in place
+        replaceText(view.state.doc.toString(), docId, path, true);
+        return;
+      }
       view.dispatch({ effects: refreshEffect.of(null) });
     },
     // `keepCaret`: an outside change was reloaded into the note on screen; stay where the user was.
     setText(text, id = docId, path = editorContext.notePath, keepCaret = false) {
-      const head = view.state.selection.main.head;
-      editorContext.notePath = path;
-      if (id !== docId) park();
-      else flush();
-      clearTimeout(timer);
-      timer = null;
-      parked.delete(id);
-      docId = id;
-      view.setState(makeState(text));
-      if (keepCaret) view.dispatch({ selection: { anchor: Math.min(head, view.state.doc.length) } });
+      replaceText(text, id, path, keepCaret);
     },
     // The tab was closed: forget its parked state.
     closeDoc(id) {
@@ -240,7 +263,7 @@ export function createEditor(
         clearTimeout(timer);
         timer = null;
         docId = -1;
-        view.setState(makeState(""));
+        view.setState(makeState("", -1));
       }
     },
     insertAtCursor(text) {
@@ -249,7 +272,7 @@ export function createEditor(
     },
     setMode(m) {
       currentMode = m;
-      view.dispatch({ effects: modeSlot.reconfigure(modeExt(m)) });
+      if (!isPlainDoc()) view.dispatch({ effects: modeSlot.reconfigure(modeExt(m)) });
     },
     setTheme(name) {
       currentTheme = name;
