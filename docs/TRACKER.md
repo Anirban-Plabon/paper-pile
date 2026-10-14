@@ -7,8 +7,8 @@ Legend: 🧠 = needs Opus (see PLAN §6 model guidance) · ⬜ todo · 🔄 in p
 
 ## Current focus
 - **Phase:** P0 — Foundation
-- **Task:** P1.4 (next; P0, P1.1–P1.3 done)
-- **Next up:** P1.5 → P2
+- **Task:** P1.5 (next; P0, P1.1–P1.4 done)
+- **Next up:** P2.1 (🧠 P2.4 later)
 
 ## Open issues
 <!-- - [ ] YYYY-MM-DD · task ID · what's blocking · what's needed -->
@@ -32,7 +32,7 @@ Legend: 🧠 = needs Opus (see PLAN §6 model guidance) · ⬜ todo · 🔄 in p
 | P1.1 | CLI + --serve token | ✅ | 42 tests; all 4 forms verified for real (serve: token/cookie/host/ws; native `.`: window process + server up); closing-window-exits-app left to P1.3 manual QA |
 | P1.2 | core/vault.py | ✅ | 81 tests total (39 new); safety rules mutation-checked (overwrite, trash, symlink escape) | |
 | P1.3 | 3-pane layout | ✅ | 85 tests; 21 browser checks (Chrome) + 12 checks inside the native QtWebEngine window (via CDP); compositor-level keys on Wayland still manual | |
-| P1.4 | Tree + context menu + drag | ⬜ | |
+| P1.4 | Tree + context menu + drag | ✅ | 107 tests (+22 core); 39 browser checks with real mouse/keyboard + 6 in the native window; tab/editor wiring comes via bus events in P2 | |
 | P1.5 | Watcher | ⬜ | |
 
 ### P2 — Editor, tabs, preview
@@ -135,6 +135,10 @@ Legend: 🧠 = needs Opus (see PLAN §6 model guidance) · ⬜ todo · 🔄 in p
 | 2026-10-14 | P1.3: layout = two nested px Quasar splitters (`gui/layout.py`); limits left 180–480 / right 280–640; collapse via Ctrl+B / Ctrl+L + status-bar toggle buttons (no drag-to-collapse); defaults 260/340; state in `session.json` | Predictable, remembers width while collapsed; PLAN only said "collapsible, width remembered" | claude |
 | 2026-10-14 | P1.3: `gui/shortcuts.py` intercepts only registered combos (Ctrl+C/V/F/Z etc. pass through); P9.5 just adds entries | S3 spike intercepted every Ctrl combo, which would break editing | claude |
 | 2026-10-14 | P1.3: `session.json` schema: `panes_open` added, `preview_mode: "split"` replaced by `mode: "live"/"source"`; PLAN §5 and §4.2 diagram updated (diagram still showed a split preview) | Matches the no-preview-pane decision | claude |
+| 2026-10-14 | P1.4: file-tree logic lives in `core/vault.py` (`validate_name`, `note_filename`, `join_rel`, `create_note_in`, `create_folder_in`, `rename_in_place`, `move_into`); GUI is thin (rows + `static/tree.js` event delegation + dialogs) | Core logic gets unit tests; same ops reusable by a future TUI | claude |
+| 2026-10-14 | P1.4: flat indented rows, children listed only while expanded; expansion not persisted yet; no virtualisation, keyboard nav, F2/Delete keys or multi-select | Keep P1.4 to the PLAN scope; revisit if large vaults feel slow | claude |
+| 2026-10-14 | P1.4: tree publishes `tree.open`, `vault.renamed`, `vault.deleted` on `MainLayout.bus` (core `EventBus`); center pane temporarily shows "Opened: <path>" | Tabs/editor (P2) subscribe instead of the tree knowing about them | claude |
+| 2026-10-14 | P1.4: "Reveal in file manager" only in native mode (`xdg-open` on the folder) | In `--serve` mode it would act on the server, not the user's machine (CLAUDE rule 7: web fallback) | claude |
 | 2026-10-14 | uv_build backend with `module-root = ""` (flat `paper_pile/` layout, not `src/`) | PLAN §3 layout | claude |
 | 2026-10-13 | Preview-tab (VS Code style) behaviour as default | Chosen during planning, unconfirmed — ask user if unsure | planning |
 | 2026-10-13 | Split preview in phase 1; inline live preview deferred | Inline needs CM6 decorations, highest cost | planning |
@@ -146,6 +150,9 @@ Legend: 🧠 = needs Opus (see PLAN §6 model guidance) · ⬜ todo · 🔄 in p
 | Date | Task | Symptom | Root cause | Fix | Gotcha? |
 |---|---|---|---|---|---|
 | 2026-10-14 | P0.6 | Native window failed to start with `QT_QPA_PLATFORM=xcb`: "Could not load the Qt platform plugin xcb" | Qt ≥ 6.5 xcb plugin needs system libs `libxcb-cursor0`, `libxcb-icccm4`, `libxcb-keysyms1`, `libxcb-xkb1`, `libxkbcommon-x11-0` (+ image/render-util/util) which are not in pip wheels | For the test only: `apt download` the .debs, extract into a scratch dir, `LD_LIBRARY_PATH`. For the app: don't force xcb (default Wayland backend works) | y — pending: CLAUDE.md is read-only, so not yet added to its Gotchas |
+| 2026-10-14 | P1.4 | Context menu drew *under* the splitter line, clipped to the left pane | `position: fixed` inside a Quasar splitter panel is still inside that panel's stacking context | `with ui.teleport("body")` for the menu | y — pending: CLAUDE.md read-only |
+| 2026-10-14 | P1.4 | Menu labels stayed Quasar-blue and Delete was not red although my CSS had higher specificity and `!important` | NiceGUI ships Quasar's `!important` colour rules inside CSS cascade layers; for `!important`, *layered* beats *unlayered* regardless of specificity, so app CSS can never override a Quasar colour class | Don't give the element a colour class: `ui.button(..., color=None)` | y — pending: CLAUDE.md read-only |
+| 2026-10-14 | P1.4 | `move_into("d", "d/sub")` test expected "into itself" but got "not a folder" | `d/sub` did not exist yet, so the missing-folder check correctly came first | Test the real case (`d` into `d`, and into an existing descendant) | n |
 | 2026-10-14 | P1.3 | Collapsed pane still measured 24 px wide | `.pp-pane` had 12 px side padding; a box with `width:100%` of 0 never gets narrower than its padding (clipped, but not 0) | Pane has no padding and `overflow:hidden`; padding moved to an inner `.pp-pane-body` | y — pending: CLAUDE.md read-only |
 | 2026-10-14 | P1.3 | "Ctrl+B is intercepted" test failed although the shortcut worked | The gate calls `stopPropagation()`, so the test's own bubble-phase listener never ran | Test uses `dispatchEvent()`'s return value (false when `preventDefault` was called) | n |
 | 2026-10-14 | P1.3 | `xdotool` keys sent to the native window had no effect (worked in S3) | Desktop-level key injection on Wayland/XWayland is focus-dependent and not reliable | Verified inside the native renderer instead: QtWebEngine exposed via `QTWEBENGINE_REMOTE_DEBUGGING=9222`, raw CDP `Input.dispatchKeyEvent`/mouse events (Playwright cannot attach: no browser-context support) | n |
@@ -166,3 +173,4 @@ Legend: 🧠 = needs Opus (see PLAN §6 model guidance) · ⬜ todo · 🔄 in p
 - 2026-10-14 · P1.1 · CLI (4 forms), last-vault memory, vault path validation, `.paper-pile/` init, `--serve` TokenGate; 42 tests green; verified with curl + headless Chrome + native launch
 - 2026-10-14 · P1.2 · core/vault.py (tree, read/write, create, rename/move, delete→trash, duplicate) + fsutil; 81 tests green
 - 2026-10-14 · P1.3 · 3-pane layout (resize, limits, collapse, persistence), status bar + chat stubs, shortcuts module; native lifecycle checked: ending the window process exits the app cleanly (exit 0, no leftovers)
+- 2026-10-14 · P1.4 · file tree: lazy expand, context menu, create/rename/duplicate/delete→trash, drag-move, native-only Reveal; 107 tests green; verified with real mouse input in Chrome and in the native window

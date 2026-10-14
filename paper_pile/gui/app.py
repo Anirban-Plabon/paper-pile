@@ -21,13 +21,14 @@ def _title(vault: Path) -> str:
     return f"paper-pile — {vault.name}"
 
 
-def _build_pages(vault: Path) -> None:
+def _build_pages(vault: Path, *, native: bool) -> None:
     app.add_static_files(STATIC_URL, STATIC_DIR)
 
     @ui.page("/")
     def index() -> None:
         ui.add_head_html(f'<link rel="stylesheet" href="{STATIC_URL}/app.css">')
-        layout = MainLayout(vault)
+        ui.add_head_html(f'<script src="{STATIC_URL}/tree.js" defer></script>')
+        layout = MainLayout(vault, can_reveal=native)  # "reveal" only makes sense on this machine
         layout.build()
         install_shortcuts(
             {
@@ -39,11 +40,11 @@ def _build_pages(vault: Path) -> None:
 
 def run_native(vault: Path) -> None:
     os.environ.setdefault("PYWEBVIEW_GUI", "qt")  # skip the noisy GTK probe
-    _build_pages(vault)
+    _build_pages(vault, native=True)
     ui.run(native=True, reload=False, show=False, title=_title(vault), window_size=(1200, 800))
 
 
 def run_serve(vault: Path, port: int, token: str) -> None:
     app.add_middleware(TokenGate, token=token)
-    _build_pages(vault)
+    _build_pages(vault, native=False)
     ui.run(host=SERVE_HOST, port=port, reload=False, show=False, title=_title(vault))

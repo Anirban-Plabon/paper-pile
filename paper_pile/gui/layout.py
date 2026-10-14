@@ -10,9 +10,12 @@ from pathlib import Path
 
 from nicegui import ui
 
+from paper_pile.core.events import EventBus
 from paper_pile.core.session import SessionState, load_session, save_session
+from paper_pile.core.vault import Vault
 from paper_pile.gui.components.chat import chat_panel
 from paper_pile.gui.components.statusbar import StatusBar, status_bar
+from paper_pile.gui.components.tree import FileTree
 
 log = logging.getLogger("paper_pile.layout")
 
@@ -35,8 +38,11 @@ def clamp_width(pane: str, width: int) -> int:
 
 
 class MainLayout:
-    def __init__(self, vault: Path) -> None:
+    def __init__(self, vault: Path, *, can_reveal: bool = False) -> None:
         self.vault = vault
+        self.bus = EventBus()  # tabs/editor subscribe to tree events here (P2)
+        self.can_reveal = can_reveal
+        self.tree: FileTree | None = None
         self.state: SessionState = load_session(vault)
         for pane in WIDTH_LIMITS:
             self.state.pane_widths[pane] = clamp_width(pane, self.state.pane_widths[pane])
@@ -70,14 +76,21 @@ class MainLayout:
         return splitter
 
     def _left_pane(self) -> None:
-        with ui.column().classes("pp-pane pp-left"), ui.column().classes("pp-pane-body"):
-            ui.label("Files").classes("pp-pane-title")
-            ui.label(self.vault.name).classes("pp-muted")  # tree arrives in P1.4
-            ui.space()  # bottom of this pane is reserved for the profile block (P8.3)
+        with (
+            ui.column().classes("pp-pane pp-left"),
+            ui.column().classes("pp-pane-body pp-left-body"),
+        ):
+            ui.label("Files").classes("pp-pane-title").tooltip(str(self.vault))
+            self.tree = FileTree(Vault(self.vault), self.bus, can_reveal=self.can_reveal)
+            self.tree.build()
+            # below the tree: reserved for the profile block (P8.3)
 
     def _center_pane(self) -> None:
         with ui.column().classes("pp-pane pp-center"), ui.column().classes("pp-pane-body"):
-            ui.label("Open a note to start writing").classes("pp-muted pp-empty")
+            label = ui.label("Open a note to start writing").classes("pp-muted pp-empty")
+        # Placeholder until tabs and the editor arrive (P2): just show which note was opened.
+        self.bus.subscribe("tree.open", lambda path: label.set_text(f"Opened: {path}"))
+        self.bus.subscribe("vault.deleted", lambda path, **_: label.set_text(f"Deleted: {path}"))
 
     # ---- behaviour -----------------------------------------------------------------------
 

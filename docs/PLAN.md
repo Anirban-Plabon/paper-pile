@@ -96,6 +96,7 @@ paper-pile/
 │       │   └── settings.py     # settings dialog + bottom-left profile
 │       └── static/
 │           ├── vendor/         # pp-editor/ (cm6 bundle + mermaid chunks), katex/ (committed)
+│           ├── tree.js         # click / right-click / drag-drop capture for the file tree
 │           └── app.css
 └── tests/
     ├── core/
@@ -143,6 +144,14 @@ paper-pile --serve [path] [--port 8080]   # web mode, 127.0.0.1 only, prints URL
 - Drag to move file/folder (move = rename → links + assets updated).
 - **`core/vault.py` contract (P1.2):** `Vault(root)` takes vault-relative POSIX paths only. Absolute paths, `..`, backslashes, any dot-component (`.trash`, `.paper-pile`, `.*.assets`) and paths resolving outside the vault (symlink escapes) raise `InvalidPathError`. Files must be `.md`/`.txt`. Writes are atomic (`fsutil.atomic_write_bytes`: temp + fsync + replace, mode kept) and preserve CRLF; non-UTF-8 files raise instead of being decoded lossily. `create_note`/`create_folder`/`rename`/`duplicate` never overwrite (`ExistsError`). `list_tree(rel)` returns one level (lazy), folders first then notes, case-insensitive. `delete` moves to `.trash/<YYYY-MM-DDTHH-MM-SS-µs>/<original relative path>` (nothing is unlinked). `duplicate` makes `<name> copy`, `<name> copy 2`, … Asset folders and link rewriting are layered on by P3.5/P5.4.
 - Lazy-loads large folders. Live-updates from watcher events.
+- **Implementation (P1.4, `gui/components/tree.py` + `static/tree.js`):**
+  - Rows are flat and indented by depth; a folder's children are listed (via `Vault.list_tree`) only while it is expanded, and expanded folders are remembered for the session (not persisted yet). `FileTree.refresh()` re-lists from disk and is what the watcher (P1.5) calls.
+  - Single click on a folder toggles it; single click on a note selects it and publishes `tree.open`. No preview tab (see §4.4).
+  - Context menu (right-click, on a row or on the empty area): folder → New note, New folder, Rename, Duplicate, Delete; note → Rename, Duplicate, Delete; empty area → New note, New folder; **Reveal in file manager is added in native mode only** (it would open a window on the server in `--serve` mode). The menu is teleported to `<body>`; Escape or an outside click closes it.
+  - Names go through `core.vault`: `validate_name` (no `/`, `\`, leading dot, empty, >255 bytes), `note_filename` (adds `.md` unless `.md`/`.txt` typed). New-note/folder dialogs propose `Untitled` / `New folder` (made unique). Rename shows a note's name without its extension and keeps the extension unless one is typed. Delete asks for confirmation and moves to `.trash/` (§4.9 lifecycle covers assets later). Duplicate → `<name> copy`.
+  - Drag & drop: drop a note or folder on a folder row to move it there, or on the tree background to move it to the vault root; dropping on a note does nothing. Moves never overwrite; a folder cannot go into itself or a descendant; refusals show a toast.
+  - Event bus topics (published on `MainLayout.bus`): `tree.open(path)`, `vault.renamed(old, new)` (rename or move; a folder path covers its children), `vault.deleted(path, trashed)`. Tabs (P2.2) subscribe to these.
+  - Not in P1.4: keyboard navigation, F2/Delete keys, multi-select, persisted expansion, virtualised rows (the flat rows are rebuilt on every expand/refresh, not benchmarked on very large expanded folders).
 
 ### 4.4 Tabs
 - Multiple note tabs.

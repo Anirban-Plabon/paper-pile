@@ -64,6 +64,36 @@ def is_note_name(name: str) -> bool:
     return Path(name).suffix.lower() in NOTE_SUFFIXES
 
 
+MAX_NAME_LEN = 255
+
+
+def validate_name(name: str) -> str:
+    """A single file or folder name typed by a user: no separators, not hidden, not empty."""
+    name = name.strip()
+    if not name:
+        raise InvalidPathError("name is empty")
+    if name in {".", ".."}:
+        raise InvalidPathError(f"invalid name: {name!r}")
+    if "/" in name or "\\" in name or "\0" in name:
+        raise InvalidPathError("a name cannot contain / or \\")
+    if name.startswith("."):
+        raise InvalidPathError("a name cannot start with a dot")
+    if len(name.encode("utf-8")) > MAX_NAME_LEN:
+        raise InvalidPathError("name is too long")
+    return name
+
+
+def note_filename(name: str) -> str:
+    """Validated note file name; ``.md`` is appended unless it already ends in .md/.txt."""
+    name = validate_name(name)
+    return name if is_note_name(name) else f"{name}.md"
+
+
+def join_rel(folder: str | PurePosixPath, name: str) -> str:
+    """Vault-relative POSIX path of ``name`` inside ``folder`` (``""`` is the vault root)."""
+    return (PurePosixPath(str(folder)) / name).as_posix() if str(folder) not in {"", "."} else name
+
+
 @dataclass(frozen=True, slots=True)
 class TreeEntry:
     name: str
@@ -188,7 +218,40 @@ class Vault:
             raise ExistsError(f"already exists: {rel!r}") from exc
         return self._rel(path)
 
+    def create_note_in(self, folder: str | PurePosixPath, name: str, text: str = "") -> str:
+        """Create a note called ``name`` (``.md`` added if needed) inside ``folder``."""
+        return self.create_note(join_rel(folder, note_filename(name)), text)
+
+    def create_folder_in(self, folder: str | PurePosixPath, name: str) -> str:
+        return self.create_folder(join_rel(folder, validate_name(name)))
+
     # ---- moving --------------------------------------------------------------------------
+
+    def rename_in_place(self, rel: str | PurePosixPath, new_name: str) -> str:
+        """Rename within the same folder. A note keeps its extension unless one is typed."""
+        src = self.resolve(rel)
+        if src.is_file():
+            suffix = src.suffix
+            new_name = validate_name(new_name)
+            if not is_note_name(new_name):
+                new_name += suffix
+        else:
+            new_name = validate_name(new_name)
+        parent = PurePosixPath(str(rel)).parent
+        target = join_rel(parent, new_name)
+        if target == PurePosixPath(str(rel)).as_posix():
+            return target
+        return self.rename(rel, target)
+
+    def move_into(self, rel: str | PurePosixPath, folder: str | PurePosixPath) -> str:
+        """Move a note or folder into ``folder`` (``""`` = vault root). Same place is a no-op."""
+        name = PurePosixPath(str(rel)).name
+        target = join_rel(folder, name)
+        if target == PurePosixPath(str(rel)).as_posix():
+            return target
+        if str(folder) not in {"", "."} and not self.resolve(folder).is_dir():
+            raise NotFoundError(f"not a folder: {folder!r}")
+        return self.rename(rel, target)
 
     def rename(self, src: str | PurePosixPath, dst: str | PurePosixPath) -> str:
         """Rename or move a note or folder. Never overwrites. Returns the new path."""

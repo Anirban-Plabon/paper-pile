@@ -1,9 +1,13 @@
 """Small filesystem helpers shared by core modules."""
 
 import contextlib
+import logging
 import os
+import subprocess
 import tempfile
 from pathlib import Path
+
+log = logging.getLogger("paper_pile.fsutil")
 
 DEFAULT_FILE_MODE = 0o644
 
@@ -40,3 +44,24 @@ def _fsync_dir(directory: Path) -> None:
             os.fsync(fd)
         finally:
             os.close(fd)
+
+
+def reveal_in_file_manager(path: Path) -> bool:
+    """Open the folder (or the note's folder) in the desktop file manager. Linux: ``xdg-open``.
+
+    Returns False if it could not be launched. Only meaningful when the app runs on the
+    user's own machine (native mode), never for ``--serve``.
+    """
+    folder = path if path.is_dir() else path.parent
+    try:
+        subprocess.Popen(  # noqa: S603 - fixed argv, no shell
+            ["xdg-open", str(folder)],
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            start_new_session=True,
+        )
+    except OSError:
+        log.warning("could not launch xdg-open for %s", folder, exc_info=True)
+        return False
+    return True

@@ -34,6 +34,27 @@ html, body { overflow: hidden; }
 .pp-dot-off { color: var(--pp-dot-off); }
 .pp-dot-on { color: var(--pp-dot-on); }
 
+/* File tree (paper_pile/gui/components/tree.py, static/tree.js) */
+.pp-left-body { overflow: hidden; }
+.pp-tree { flex: 1 1 0; min-height: 0; width: calc(100% + 24px); margin: 0 -12px; overflow-y: auto; padding: 2px 0 12px; gap: 0; }
+.pp-tree-row { display: flex; align-items: center; gap: 4px; height: 24px; padding-right: 8px; cursor: pointer; user-select: none; white-space: nowrap; }
+.pp-tree-row:hover { background: rgba(127, 127, 127, .12); }
+.pp-tree-selected, .pp-tree-selected:hover { background: rgba(59, 130, 246, .18); }
+.pp-ico { font-size: 16px; width: 16px; flex-shrink: 0; color: var(--pp-muted); }
+.pp-ico-folder { color: #c9a227; }
+.pp-tree-name { overflow: hidden; text-overflow: ellipsis; font-size: 13px; pointer-events: none; }
+.pp-tree-row > * { pointer-events: none; }
+.pp-tree-empty { padding: 6px 12px; }
+.pp-drop-target { background: rgba(59, 130, 246, .28) !important; outline: 1px dashed #3b82f6; outline-offset: -1px; }
+.pp-tree.pp-drop-target { outline-offset: -2px; }
+.pp-ctxmenu { display: none; position: fixed; z-index: 3000; min-width: 190px; padding: 4px; gap: 0; background: var(--pp-bg); border: 1px solid var(--pp-border); border-radius: 6px; box-shadow: 0 6px 20px rgba(0, 0, 0, .18); }
+.pp-ctxmenu-open { display: flex; }
+.pp-ctxmenu .pp-ctx-item.q-btn { width: 100%; justify-content: flex-start; font-size: 13px; font-weight: 400; color: var(--pp-fg) !important; }
+.pp-ctxmenu .pp-ctx-item .q-icon { color: var(--pp-muted); font-size: 18px; }
+.pp-ctxmenu .pp-ctx-danger.q-btn, .pp-ctxmenu .pp-ctx-danger .q-icon { color: #c0392b !important; }
+.pp-dialog { min-width: 320px; gap: 12px; }
+.pp-dialog-title { font-size: 14px; font-weight: 600; }
+
 /* Editor host */
 .pp-editor { border: 1px solid #8884; font: 15px/1.6 monospace; }
 .pp-editor .cm-editor { height: 100%; }

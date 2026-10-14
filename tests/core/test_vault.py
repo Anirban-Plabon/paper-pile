@@ -10,6 +10,9 @@ from paper_pile.core.vault import (
     TreeEntry,
     Vault,
     VaultError,
+    join_rel,
+    note_filename,
+    validate_name,
 )
 
 
@@ -310,3 +313,102 @@ def test_duplicate_folder_copies_tree(vault: Vault) -> None:
 def test_duplicate_missing(vault: Vault) -> None:
     with pytest.raises(NotFoundError):
         vault.duplicate("nope.md")
+
+
+# ---- names and in-folder operations (used by the file tree) ----------------------------
+
+
+@pytest.mark.parametrize("bad", ["", "   ", ".", "..", ".hidden", "a/b", "a\\b", "x" * 300])
+def test_validate_name_rejects(bad: str) -> None:
+    with pytest.raises(InvalidPathError):
+        validate_name(bad)
+
+
+def test_validate_name_strips() -> None:
+    assert validate_name("  My note  ") == "My note"
+
+
+@pytest.mark.parametrize(
+    ("typed", "expected"),
+    [
+        ("idea", "idea.md"),
+        ("idea.md", "idea.md"),
+        ("todo.TXT", "todo.TXT"),
+        ("v1.2", "v1.2.md"),
+        ("  spaced  ", "spaced.md"),
+    ],
+)
+def test_note_filename(typed: str, expected: str) -> None:
+    assert note_filename(typed) == expected
+
+
+def test_join_rel() -> None:
+    assert join_rel("", "a.md") == "a.md"
+    assert join_rel(".", "a.md") == "a.md"
+    assert join_rel("d", "a.md") == "d/a.md"
+    assert join_rel("d/e", "a.md") == "d/e/a.md"
+
+
+def test_create_in_folder(vault: Vault) -> None:
+    vault.create_folder("d")
+    assert vault.create_note_in("", "root") == "root.md"
+    assert vault.create_note_in("d", "child", "hi") == "d/child.md"
+    assert vault.read_text("d/child.md") == "hi"
+    assert vault.create_folder_in("d", "sub") == "d/sub"
+    with pytest.raises(ExistsError):
+        vault.create_note_in("d", "child")
+    with pytest.raises(InvalidPathError):
+        vault.create_note_in("d", "../escape")
+    with pytest.raises(InvalidPathError):
+        vault.create_folder_in("", ".trash")
+
+
+def test_rename_in_place_keeps_extension(vault: Vault) -> None:
+    vault.create_note("d/old.md", "x")
+    vault.create_note("t.txt", "y")
+    assert vault.rename_in_place("d/old.md", "new") == "d/new.md"
+    assert vault.rename_in_place("d/new.md", "other.txt") == "d/other.txt"
+    assert vault.rename_in_place("t.txt", "renamed") == "renamed.txt"
+    assert vault.read_text("d/other.txt") == "x"
+
+
+def test_rename_in_place_folder_and_noop_and_errors(vault: Vault) -> None:
+    vault.create_note("old/n.md", "N")
+    vault.create_note("taken.md")
+    assert vault.rename_in_place("old", "new") == "new"
+    assert vault.read_text("new/n.md") == "N"
+    assert vault.rename_in_place("new", "new") == "new"  # same name: nothing happens
+    vault.create_note("a.md")
+    with pytest.raises(ExistsError):
+        vault.rename_in_place("a.md", "taken")
+    with pytest.raises(InvalidPathError):
+        vault.rename_in_place("a.md", "x/y")
+    assert vault.read_text("a.md") == ""
+
+
+def test_move_into(vault: Vault) -> None:
+    vault.create_note("a.md", "A")
+    vault.create_folder("f")
+    vault.create_note("f/inner/b.md", "B")
+    assert vault.move_into("a.md", "f") == "f/a.md"
+    assert vault.move_into("f/a.md", "") == "a.md"  # back to the root
+    assert vault.move_into("a.md", "") == "a.md"  # already there: no-op
+    assert vault.move_into("f/inner", "") == "inner"
+    assert vault.read_text("inner/b.md") == "B"
+
+
+def test_move_into_refusals(vault: Vault) -> None:
+    vault.create_note("a.md")
+    vault.create_note("f/a.md")
+    vault.create_note("d/x.md")
+    with pytest.raises(ExistsError):
+        vault.move_into("a.md", "f")  # f/a.md exists
+    with pytest.raises(InvalidPathError):
+        vault.move_into("d", "d")  # into itself
+    vault.create_folder("d/sub")
+    with pytest.raises(InvalidPathError):
+        vault.move_into("d", "d/sub")  # into its own descendant
+    with pytest.raises(NotFoundError):
+        vault.move_into("a.md", "nope")
+    with pytest.raises(NotFoundError):
+        vault.move_into("a.md", "f/a.md")  # target is a file, not a folder
