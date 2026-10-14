@@ -7,8 +7,8 @@ Legend: ⬜ todo · 🔄 in progress · ✅ done · ⛔ blocked · ⏭️ skippe
 
 ## Current focus
 - **Phase:** P0 — Foundation
-- **Task:** P0.3 (next; P0.1, P0.2 done)
-- **Next up:** spikes S1/S2/S3
+- **Task:** P0.4 Spike S1 (next; P0.1–P0.3 done)
+- **Next up:** P0.5 (S2), P0.6 (S3)
 
 ## Open issues
 <!-- - [ ] YYYY-MM-DD · task ID · what's blocking · what's needed -->
@@ -21,7 +21,7 @@ Legend: ⬜ todo · 🔄 in progress · ✅ done · ⛔ blocked · ⏭️ skippe
 |---|---|---|---|
 | P0.1 | uv project, pyproject, tooling | ✅ | deps pinned exact; `mypy` config targets `paper_pile/core` (created in P0.2) |
 | P0.2 | Repo skeleton | ✅ | `preview.py` kept as widget-rendering helpers (live preview, no split pane) |
-| P0.3 | events + config | ⬜ | |
+| P0.3 | events + config | ✅ | 12 tests; config saves only changed layer values, corrupt file ignored + `.bak` on save |
 | P0.4 | Spike S1 — editor component | ⬜ | highest risk |
 | P0.5 | Spike S2 — preview (mermaid + KaTeX offline) | ⬜ | |
 | P0.6 | Spike S3 — native mode + shortcuts | ⬜ | |
@@ -117,6 +117,7 @@ Legend: ⬜ todo · 🔄 in progress · ✅ done · ⛔ blocked · ⏭️ skippe
 | 2026-10-14 | `git init` (branch `main`) | Commit convention needs git | user |
 | 2026-10-14 | Default Ollama model for dev/testing: `gemma4:12b` | User choice; installed locally | user |
 | 2026-10-14 | Pinned exact versions: nicegui 3.18.0, pywebview[qt] 6.2.1, markdown-it-py 4.2.0, mdit-py-plugins 0.6.1, watchdog 6.0.0, beautifulsoup4 4.15.0, markdownify 1.2.3, ollama 0.6.3, tomli-w 1.2.0, platformdirs 4.13.0, pillow 12.3.0; dev: pytest 9.1.1, pytest-asyncio 1.4.0, ruff 0.17.0, mypy 2.4.0 | PLAN §2 requires pins | claude |
+| 2026-10-14 | Config layers saved separately (global/vault), atomic writes, unparseable TOML ignored with warning and backed up to `.bak` before overwrite; `EventBus` is synchronous and swallows+logs handler errors | Never lose user settings; UI must not break core | claude |
 | 2026-10-14 | uv_build backend with `module-root = ""` (flat `paper_pile/` layout, not `src/`) | PLAN §3 layout | claude |
 | 2026-10-13 | Preview-tab (VS Code style) behaviour as default | Chosen during planning, unconfirmed — ask user if unsure | planning |
 | 2026-10-13 | Split preview in phase 1; inline live preview deferred | Inline needs CM6 decorations, highest cost | planning |
@@ -135,3 +136,4 @@ Legend: ⬜ todo · 🔄 in progress · ✅ done · ⛔ blocked · ⏭️ skippe
 - 2026-10-14 · requirement change · no preview tab, Obsidian-style Live Preview (PLAN + Decision log updated)
 - 2026-10-14 · P0.1 · uv project, pinned deps, ruff/mypy/pytest config, CLI stub with --help
 - 2026-10-14 · P0.2 · skeleton per PLAN §3; ruff + mypy(core) green
+- 2026-10-14 · P0.3 · core/events.py + core/config.py with unit tests (merge order, save round-trip)
