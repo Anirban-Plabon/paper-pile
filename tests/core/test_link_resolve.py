@@ -32,6 +32,8 @@ def test_norm_name() -> None:
         ("nope", "a.md", None),
         ("", "x/b.md", "x/b.md"),  # [[#heading]] is the current note
         ("/a", "x/b.md", "a.md"),
+        ("/b", "x/b.md", None),  # a leading slash is an exact path: no name matching
+        ("/Notes/Idea", "a.md", "Notes/Idea.md"),
     ],
 )
 def test_resolve_wikilink(note: str, source: str, expected: str | None) -> None:

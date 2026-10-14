@@ -9,6 +9,7 @@ import logging
 import re
 import sqlite3
 import threading
+from collections.abc import Collection
 from dataclasses import dataclass
 from pathlib import Path
 from urllib.parse import unquote
@@ -270,6 +271,19 @@ class Index:
                 (rel,),
             ).fetchall()
         return [LinkRow(*r) for r in rows]
+
+    def link_sources(self, keys: Collection[str]) -> set[str]:
+        """Notes holding a link that names any of ``keys`` (see :func:`links.link_keys`)."""
+        if not keys:
+            return set()
+        marks = ",".join("?" * len(keys))
+        with self._lock:
+            rows = self._db.execute(
+                "SELECT DISTINCT n.path FROM links l JOIN notes n ON n.id=l.src_id "
+                f"WHERE l.dst_key IN ({marks})",
+                tuple(keys),
+            ).fetchall()
+        return {r[0] for r in rows}
 
     def backlinks(self, target: str) -> list[Backlink]:
         """Notes that link to ``target`` (not counting itself), with the link's line.

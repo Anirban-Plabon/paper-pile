@@ -86,6 +86,16 @@ class Editor(
         """Forget the parked editor state of a closed tab."""
         self.run_method("closeDoc", doc_id)
 
+    async def apply_changes(
+        self, doc_id: int, changes: list[dict[str, int | str]], expected: str
+    ) -> bool:
+        """Apply text edits to tab ``doc_id`` keeping its undo history. ``False`` means the tab
+        no longer held ``expected`` (or the browser did not answer) and nothing was changed."""
+        try:
+            return bool(await self.run_method("applyChanges", doc_id, changes, expected))
+        except TimeoutError:
+            return False
+
     def set_known_notes(self, names: list[str]) -> None:
         """Names wikilinks may use for existing notes; other links get the "missing" look."""
         self.run_method("setKnownNotes", names)

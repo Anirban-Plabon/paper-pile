@@ -275,6 +275,22 @@ export function createEditor(
         view.setState(makeState("", -1));
       }
     },
+    // Apply edits made by Python (a link rewrite) to tab `id`, keeping its undo history. `changes`
+    // are {from, to, insert} in UTF-16 offsets of `expected`, the text Python planned them on.
+    // If the tab no longer holds exactly that text (a keystroke raced in) nothing is touched and
+    // false is returned, so Python can leave that note alone instead of overwriting typing.
+    applyChanges(id, changes, expected) {
+      if (id === docId) {
+        if (view.state.doc.toString() !== expected) return false;
+        view.dispatch({ changes });
+        return true;
+      }
+      const state = parked.get(id);
+      if (!state) return true; // never shown yet: it will be built from Python's text
+      if (state.doc.toString() !== expected) return false;
+      parked.set(id, state.update({ changes }).state);
+      return true;
+    },
     // Wikilink targets that exist (normalised names), so links to missing notes can be styled.
     setKnownNotes(names) {
       editorContext.known = new Set(names);

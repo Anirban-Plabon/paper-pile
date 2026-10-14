@@ -35,6 +35,7 @@ from paper_pile.core.links import (
 )
 from paper_pile.core.parser import find_heading
 from paper_pile.core.recovery import RecoveryEntry, RecoveryStore
+from paper_pile.core.rewrite import Edit, plan_rewrites
 from paper_pile.core.tabs import TabList
 from paper_pile.core.vault import Vault, VaultError, is_plain_text
 from paper_pile.core.watcher import FsEvent
@@ -43,6 +44,16 @@ from paper_pile.gui.components.editor import Editor, Mode
 from paper_pile.gui.components.tabs import TabBar
 
 log = logging.getLogger("paper_pile.editor_pane")
+
+
+def _utf16(text: str, index: int) -> int:
+    """``index`` (code points) as a JavaScript string offset (UTF-16 units)."""
+    return len(text[:index].encode("utf-16-le")) // 2
+
+
+def _count(n: int, noun: str) -> str:
+    return f"{n} {noun}{'' if n == 1 else 's'}"
+
 
 AUTOSAVE_AFTER_CHANGE_S = 0.7  # on top of the editor's own 0.3 s debounce: ~1 s in total
 RETRY_AFTER_FAILURE_S = 5.0
@@ -120,7 +131,7 @@ class EditorPane:
         self._host = ui.element("div")
         self.bus.subscribe("tree.open", lambda path: self._spawn(self.open(path)))
         self.bus.subscribe("vault.created", lambda path: self._reindex_soon())
-        self.bus.subscribe("vault.renamed", lambda old, new: self._on_renamed(old, new))
+        self.bus.subscribe("vault.renamed", self._renamed_in_app)
         self.bus.subscribe("vault.deleted", lambda path, **_: self._on_deleted(path))
         ui.context.client.on_disconnect(self._on_disconnect)
 
@@ -640,6 +651,93 @@ class EditorPane:
         if changed:
             self._refresh()
             self._notify_tabs()
+
+    def _renamed_in_app(self, old: str, new: str) -> None:
+        """The tree renamed or moved something: tabs follow it, and links are repaired.
+        (Renames seen by the watcher only move tabs: outside changes are left alone.)"""
+        self._on_renamed(old, new)
+        self._spawn(self._rewrite_links(old, new))
+
+    async def _rewrite_links(self, old: str, new: str) -> None:
+        """Keep every link pointing at the note it pointed at (rules: ``core/rewrite.py``)."""
+        if self.index is None:
+            return
+        moves = self._moves(old, new)
+        if not moves:
+            return
+        active = self.tabs.active
+        if active in self.buffers:
+            text = await self._editor.get_text()  # the browser may hold unreported keystrokes
+            if text is not None:
+                self.buffers[active].set_text(text)
+        await asyncio.to_thread(self.index.sync)
+        keys = set(link_keys(moves)) | set(link_keys(moves.values()))
+        candidates = self.index.link_sources(keys) | set(moves.values())
+        open_tabs = {t.path: t.id for t in self.tabs.tabs if t.id in self.buffers}
+        texts: dict[str, str] = {}
+        for path in sorted(candidates):
+            try:
+                if path in open_tabs:
+                    texts[path] = self.buffers[open_tabs[path]].text.replace("\r\n", "\n")
+                else:
+                    texts[path] = self.vault.read_text(path)
+            except VaultError:
+                continue
+        plan = plan_rewrites(moves, set(self.index.paths()), texts)
+        links = notes = 0
+        skipped = plan.skipped
+        for path, edits in plan.edits.items():
+            if path in open_tabs:
+                done = await self._rewrite_open(
+                    open_tabs[path], texts[path], edits, plan.texts[path]
+                )
+            else:
+                done = self._rewrite_closed(path, texts[path], plan.texts[path])
+            if done:
+                links += len(edits)
+                notes += 1
+            else:
+                skipped += len(edits)
+        await asyncio.to_thread(self.index.sync)
+        self.refresh_links()
+        self.refresh_backlinks()
+        self._refresh()
+        if links:
+            self._toast(f"Updated {_count(links, 'link')} in {_count(notes, 'note')}")
+        if skipped:
+            self._toast(f"{_count(skipped, 'link')} could not be updated automatically", error=True)
+
+    def _moves(self, old: str, new: str) -> dict[str, str]:
+        """Old path -> new path of every note a rename/move of ``old`` to ``new`` carried along."""
+        if not self.vault.exists(new):
+            return {}
+        if self.vault.resolve(new).is_file():
+            return {old: new}
+        prefix = new + "/"
+        return {old + p[len(new) :]: p for p in self.vault.walk_notes() if p.startswith(prefix)}
+
+    async def _rewrite_open(self, tab_id: int, before: str, edits: list[Edit], after: str) -> bool:
+        """Apply a link rewrite to a note that is open in a tab (undo history kept)."""
+        changes = [
+            {"from": _utf16(before, e.start), "to": _utf16(before, e.end), "insert": e.insert}
+            for e in edits
+        ]
+        if not await self._editor.apply_changes(tab_id, changes, before):
+            return False
+        self.buffers[tab_id].set_text(after)
+        self._schedule_save(AUTOSAVE_AFTER_CHANGE_S)
+        return True
+
+    def _rewrite_closed(self, path: str, before: str, after: str) -> bool:
+        """Write a link rewrite to a note nobody is editing; only if it is still as planned."""
+        try:
+            if self.vault.read_text(path) != before:
+                return False
+            self.vault.write_text(path, after)
+        except (VaultError, OSError):
+            log.exception("could not rewrite links in %s", path)
+            return False
+        return True
 
     def _on_deleted(self, path: str) -> None:
         for tab in self.tabs.under(path):

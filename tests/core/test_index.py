@@ -167,3 +167,14 @@ def test_backlinks(tmp_path: Path) -> None:
     v.create_note("newcomer.md", "hi")
     ix.sync()
     assert [b.src for b in ix.backlinks("newcomer.md")] == ["later.md"]
+
+
+def test_link_sources(tmp_path: Path) -> None:
+    v = Vault(tmp_path)
+    v.create_note("a.md", "[[Target]]")
+    v.create_note("b.md", "[m](sub/target.md)")
+    v.create_note("c.md", "[[other]]")
+    ix = Index(v)
+    ix.sync()
+    assert ix.link_sources({"target"}) == {"a.md", "b.md"}
+    assert ix.link_sources({"nothing"}) == set() and ix.link_sources(set()) == set()

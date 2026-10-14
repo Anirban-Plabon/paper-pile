@@ -88,10 +88,10 @@ def resolve_wikilink(note: str, source: str, paths: Iterable[str]) -> str | None
     """The note path a ``[[note]]`` points at, or ``None``.
 
     ``note`` is a vault-relative path or a bare name, with or without extension, in any case.
-    A name written with a ``/`` prefers the exact vault path over a trailing-part match
-    (``folder/note``). When several notes match, the one in the source note's folder wins, then
-    the shallowest, then ``.md`` over ``.txt``, then alphabetical order. ``[[#heading]]`` (empty
-    ``note``) points at the source note itself.
+    A name starting with ``/`` is an exact vault path. A name written with a ``/`` prefers the
+    exact vault path over a trailing-part match (``folder/note``). When several notes match, the
+    one in the source note's folder wins, then the shallowest, then ``.md`` over ``.txt``, then
+    alphabetical order. ``[[#heading]]`` (empty ``note``) points at the source note itself.
     """
     if not note.strip():
         return source
@@ -106,6 +106,8 @@ def resolve_wikilink(note: str, source: str, paths: Iterable[str]) -> str | None
         elif stem.endswith("/" + key):
             partial.append(path)
     # a bare name competes across all folders; a path (`a/b`) prefers the exact full path
+    if note.strip().startswith("/"):
+        partial = []  # a leading slash means the exact vault path
     pool = full + partial if "/" not in key else (full or partial)
     if explicit_ext:
         exact = [p for p in pool if p.lower().endswith(note.strip().lower().lstrip("/"))]

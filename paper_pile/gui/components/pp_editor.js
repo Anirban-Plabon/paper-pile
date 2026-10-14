@@ -49,6 +49,9 @@ export default {
     async closeDoc(docId) {
       (await this.ready).closeDoc(docId);
     },
+    async applyChanges(docId, changes, expected) {
+      return (await this.ready).applyChanges(docId, changes, expected);
+    },
     async setKnownNotes(names) {
       (await this.ready).setKnownNotes(names);
     },

@@ -32,6 +32,7 @@ from markdown_it.common.utils import escapeHtml
 from markdown_it.renderer import RendererProtocol
 from markdown_it.rules_block import StateBlock
 from markdown_it.rules_inline import StateInline
+from markdown_it.rules_inline.link import link as _link_rule
 from markdown_it.token import Token
 from markdown_it.utils import EnvType, OptionsDict
 from mdit_py_plugins.dollarmath import dollarmath_plugin
@@ -62,6 +63,7 @@ def make_parser(*, breaks: bool = True) -> MarkdownIt:
     )
     md.block.ruler.before("table", "front_matter", _front_matter_rule)
     md.inline.ruler.before("link", "wikilink", _wikilink_rule)
+    md.inline.ruler.at("link", _located_link_rule)
     md.add_render_rule("wikilink", _render_wikilink)
     # let a `$$` block start right after a paragraph line (the plugin's own registration cannot)
     md.block.ruler.at("math_block", _interrupting_math_block(), {"alt": _PARAGRAPH_LIKE})
@@ -90,9 +92,27 @@ def _wikilink_rule(state: StateInline, silent: bool) -> bool:
     if not silent:
         token = state.push("wikilink", "", 0)
         token.content = inner
-        token.meta = {"note": target.note, "heading": target.heading, "alias": target.alias}
+        token.meta = {
+            "note": target.note,
+            "heading": target.heading,
+            "alias": target.alias,
+            "pos": pos,
+        }
     state.pos = end + 2
     return True
+
+
+def _located_link_rule(state: StateInline, silent: bool) -> bool:
+    """markdown-it's own ``link`` rule, plus where the link sits in the inline text and its
+    source text, so :func:`link_spans` can find it again in the file."""
+    start, mark = state.pos, len(state.tokens)
+    matched = _link_rule(state, silent)
+    if matched and not silent:
+        for tok in state.tokens[mark:]:
+            if tok.type == "link_open":
+                tok.meta = {"pos": start, "source": state.src[start : state.pos]}
+                break
+    return matched
 
 
 def _render_wikilink(
@@ -279,3 +299,50 @@ def find_heading(text: str, wanted: str) -> Heading | None:
 
     target = norm(wanted)
     return next((h for h in headings(text) if norm(h.text) == target), None)
+
+
+@dataclass(frozen=True, slots=True)
+class LinkSpan:
+    """A note link with enough information to find it in the raw file (see ``core/rewrite.py``)."""
+
+    kind: str  # "wiki" | "md"
+    raw: str  # wiki: the text inside [[ ]]; md: the (normalised) href
+    line: int  # 1-based line in the file
+    source: str  # the link exactly as written, e.g. ``[[a|b]]`` or ``[t](x.md "title")``
+    line_offset: int  # where ``source`` starts inside its (container-stripped) line
+    line_text: str  # that line, container prefixes (``> ``, list indent) removed
+
+
+def link_spans(text: str) -> list[LinkSpan]:
+    """Like :func:`note_links`, but with each link's source text and position."""
+    found: list[LinkSpan] = []
+    for tok in _PARSER.parse(text):
+        if tok.type != "inline" or not tok.children:
+            continue
+        first = (tok.map[0] + 1) if tok.map else 1
+        content = tok.content
+        for child in tok.children:
+            meta = child.meta or {}
+            if child.type == "wikilink":
+                kind, raw, source = "wiki", child.content, f"[[{child.content}]]"
+            elif child.type == "link_open" and "source" in meta:
+                href = str(child.attrGet("href") or "")
+                if not href or href.startswith(("#", "/", "//")) or ":" in href.split("/")[0]:
+                    continue
+                kind, raw, source = "md", href, str(meta["source"])
+            else:
+                continue
+            pos = int(meta["pos"])
+            line_start = content.rfind("\n", 0, pos) + 1
+            line_end = content.find("\n", pos)
+            found.append(
+                LinkSpan(
+                    kind,
+                    raw,
+                    first + content.count("\n", 0, pos),
+                    source,
+                    pos - line_start,
+                    content[line_start : line_end if line_end >= 0 else len(content)],
+                )
+            )
+    return found

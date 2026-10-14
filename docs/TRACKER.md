@@ -7,8 +7,8 @@ Legend: 🧠 = needs Opus (see PLAN §6 model guidance) · ⬜ todo · 🔄 in p
 
 ## Current focus
 - **Phase:** P0 — Foundation
-- **Task:** P3.5 🧠 next (P3.1–P3.4 ✅; **phases P0, P1 and P2 complete**)
-- **Next up:** 🧠 P3.5 (then P4: slash menu, 🧠 P4.2)
+- **Task:** P4.1 next (**P3 complete**; **phases P0, P1 and P2 complete**)
+- **Next up:** P4.1 → 🧠 P4.2 (slash menu), then P5 images
 
 ## Open issues
 <!-- - [ ] YYYY-MM-DD · task ID · what's blocking · what's needed -->
@@ -52,7 +52,7 @@ Legend: 🧠 = needs Opus (see PLAN §6 model guidance) · ⬜ todo · 🔄 in p
 | P3.2 | SQLite index + FTS | ✅ | `core/index.py` Index: sync/update/remove/rename/rebuild/search; not yet wired into the app (P3.3/P3.4/P9.2 consume it) |
 | P3.3 | Resolve + navigate + create-on-missing | ✅ | Resolution is against the live file list (not the index); see Decision log |
 | P3.4 | Backlinks pane | ✅ | Index is now wired into EditorPane (synced at start, on saves, outside changes, create/rename/delete) |
-| P3.5 🧠 | Rename-safe rewriting | ⬜ | |
+| P3.5 🧠 | Rename-safe rewriting | ✅ | `core/rewrite.py` + EditorPane._rewrite_links; see Decision log |
 
 ### P4 — Slash menu
 | ID | Task | Status | Notes |
@@ -180,6 +180,8 @@ Legend: 🧠 = needs Opus (see PLAN §6 model guidance) · ⬜ todo · 🔄 in p
 | 2026-10-14 | Wikilink resolution order: full path match, then name or trailing-path match; ties → same folder as the source, shallowest, `.md` over `.txt`, alphabetical (PLAN said "unique basename"; ambiguity now resolves deterministically instead of failing). Missing target: Ctrl/Cmd+click creates an empty `.md` next to the source (a name written with `/` is a path from the vault root; hidden/`..` names are refused). Links to missing notes get a dashed amber style, driven by a name set Python pushes to the editor (`link_keys`); an ambiguous name is styled as existing. `[[note#heading]]` jumps to the first heading with that text (case/whitespace-insensitive); unknown heading just opens the note with a toast. Relative markdown links open the note too | Obsidian-compatible, never fails silently | claude |
 | 2026-10-14 | Backlinks: `links` gets a `dst_key` column (normalised name a link uses; schema v2, old DBs rebuild). `Index.backlinks(target)` selects candidates by key, then resolves each exactly as a click would, so only links that really lead to the note count; self-links are excluded. Link line numbers are exact (paragraph start + soft breaks seen). Bare-name wikilinks now compete across all folders (same folder wins, then shallowest); only names containing `/` prefer the exact full path | A link must count as a backlink iff clicking it opens that note; `[[target]]` written in `sub/` must mean `sub/target` | claude |
 | 2026-10-14 | Backlinks pane sits under the editor (collapsible, in-memory state, max ~190 px, 100 items); click opens the note at the link's line. Not yet persisted in session.json | Keep P3.4 small | claude |
+| 2026-10-14 | P3.5 invariant: after a rename/move every link keeps pointing at the note it pointed at. A link is edited only if resolving it from the source's new place no longer gives `moved(old target)`; only its target part is rewritten (alias, heading, `!`, title, `#fragment` untouched) in the shortest form that resolves correctly (bare name → trailing path → `/exact/path`; path-style links stay path-style; md links get a relative path). Idempotent and round-trip exact (tested). New rule: a wikilink starting with `/` is an exact vault path (needed to address a root note whose name is shared by a nearer note) | Never corrupt notes; the rule also covers links inside moved notes and links hijacked by a move | claude |
+| 2026-10-14 | P3.5 limits: only in-app renames/moves rewrite (watcher-seen moves just move tabs); reference-style `[t][r]` / `[r]: x.md`, `\\|` inside table-cell wikilinks and links whose file position is not certain are reported as "could not be updated", never guessed; `.txt` notes have no links. Open notes are edited through the editor (undo history kept; a rewrite can be undone with Ctrl+Z) and saved by the normal autosave; if the tab's text changed meanwhile that note is skipped. Closed notes are rewritten atomically only if still as planned. Not transactional across files; failures are counted and toasted | Safety over completeness | claude |
 
 ## Issues log
 <!-- YYYY-MM-DD · task · symptom → root cause → fix · (gotcha added? y/n) -->
@@ -239,3 +241,4 @@ Legend: 🧠 = needs Opus (see PLAN §6 model guidance) · ⬜ todo · 🔄 in p
 - 2026-10-14 · P3.2 · core/index.py (SQLite + FTS5, incremental sync, rebuild, corruption recovery) + parser.note_links; 393 tests; 1,000-note vault indexes in well under 5 s
 - 2026-10-14 · P3.3 · link resolution + navigation + create-on-missing + missing-link style + heading jump (core/links.py, parser.headings, EditorPane, editor gotoLine/setKnownNotes); 409 tests; 18 new browser checks (nav) + 101 gallery + 31 plain + 15 wiki
 - 2026-10-14 · P3.4 · backlinks: Index.backlinks + link_snippet + BacklinksPane, index wired into EditorPane; 411 tests; 9 new browser checks (bl) + nav 18, gallery 101, plain 31, wiki 15
+- 2026-10-14 · P3.5 · rename-safe link rewriting (core/rewrite.py, parser.link_spans, Index.link_sources, applyChanges in the editor, EditorPane._rewrite_links); 452 tests incl. round-trip, idempotence and 25 randomized vaults; 15 browser checks (rename) + nav 18, gallery 101, plain 31, wiki 15, backlinks 11; **phase P3 complete**
