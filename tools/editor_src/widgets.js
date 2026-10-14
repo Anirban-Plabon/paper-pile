@@ -2,6 +2,7 @@
 // which dispatches a one-character change through the normal editor path (undo, autosave).
 import { WidgetType } from "@codemirror/view";
 import katex from "katex";
+import { editorContext } from "./context.js";
 
 export class MathWidget extends WidgetType {
   constructor(src) {
@@ -67,6 +68,53 @@ export class CheckboxWidget extends WidgetType {
   }
   ignoreEvent() {
     return true; // handled above; keep the editor from also acting on the click
+  }
+}
+
+const REMOTE = /^([a-zA-Z][a-zA-Z0-9+.-]*:|\/\/)/;
+
+// `![alt|300](.note.assets/x.png)`. Only vault images are loaded (through Python's /_pp/asset
+// route); a remote URL is shown as a chip and never fetched (offline rule, no tracking pixels).
+export class ImageWidget extends WidgetType {
+  constructor(src, alt, width) {
+    super();
+    this.src = src;
+    this.alt = alt;
+    this.width = width;
+    this.note = editorContext.notePath;
+  }
+  eq(other) {
+    return other.src === this.src && other.alt === this.alt && other.width === this.width && other.note === this.note;
+  }
+  chip(text, title) {
+    const el = document.createElement("span");
+    el.className = "pp-image-chip";
+    el.textContent = text;
+    if (title) el.title = title;
+    return el;
+  }
+  toDOM(view) {
+    const wrap = document.createElement("span");
+    wrap.className = "pp-image";
+    if (REMOTE.test(this.src)) {
+      wrap.appendChild(this.chip(this.alt || "remote image", `Remote image not loaded: ${this.src}`));
+      return wrap;
+    }
+    const img = document.createElement("img");
+    img.alt = this.alt;
+    img.loading = "lazy";
+    img.src = `/_pp/asset?note=${encodeURIComponent(this.note)}&path=${encodeURIComponent(this.src)}`;
+    if (this.width) img.style.width = `${this.width}px`;
+    img.addEventListener("load", () => view.requestMeasure());
+    img.addEventListener("error", () => {
+      wrap.replaceChildren(this.chip(`image not found: ${this.src}`));
+      view.requestMeasure();
+    });
+    wrap.appendChild(img);
+    return wrap;
+  }
+  ignoreEvent() {
+    return false;
   }
 }
 

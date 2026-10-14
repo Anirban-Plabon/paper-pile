@@ -412,3 +412,93 @@ def test_move_into_refusals(vault: Vault) -> None:
         vault.move_into("a.md", "nope")
     with pytest.raises(NotFoundError):
         vault.move_into("a.md", "f/a.md")  # target is a file, not a folder
+
+
+# ---- asset_path: images referenced from a note ----------------------------------------
+
+
+def _png(vault: Vault, rel: str) -> None:
+    path = vault.root / rel
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_bytes(b"\x89PNG\r\n")
+
+
+def test_asset_path_serves_images_from_the_notes_asset_folder(vault: Vault) -> None:
+    _png(vault, "notes/.mamba.assets/a3f9c1d2e4b0.png")
+    got = vault.asset_path("notes/mamba.md", ".mamba.assets/a3f9c1d2e4b0.png")
+    assert got == vault.root / "notes" / ".mamba.assets" / "a3f9c1d2e4b0.png"
+
+
+def test_asset_path_from_a_root_note_and_with_percent_encoding(vault: Vault) -> None:
+    _png(vault, ".my note.assets/pic one.PNG")
+    got = vault.asset_path("my note.md", ".my%20note.assets/pic%20one.PNG")
+    assert got.name == "pic one.PNG"
+
+
+def test_asset_path_ordinary_visible_images_and_parent_folders(vault: Vault) -> None:
+    _png(vault, "pics/cat.jpg")
+    _png(vault, "deep/er/note-pic.webp")
+    assert vault.asset_path("deep/er/n.md", "../../pics/cat.jpg").name == "cat.jpg"
+    assert vault.asset_path("deep/er/n.md", "note-pic.webp").name == "note-pic.webp"
+
+
+@pytest.mark.parametrize(
+    "ref",
+    [
+        "../../etc/passwd.png",  # climbs out of the vault
+        "../../../x.png",
+        "/etc/shadow.png",
+        "C:\\x.png",
+        "..\\x.png",
+        "https://example.org/x.png",
+        "data:image/png;base64,AAAA",
+        "file:///etc/x.png",
+        ".trash/old/pic.png",  # hidden, not an .assets folder
+        ".paper-pile/recovery/x.png",
+        ".hidden/pic.png",
+        ".x.assets/../../.paper-pile/y.png",
+        ".assets/pic.png",  # not `.<stem>.assets`
+        ".n.assets/.secret.png",  # hidden file
+        ".n.assets/notes.md",  # not an image
+        ".n.assets/script.js",
+        ".n.assets/noext",
+        "",
+        ".",
+        "%2e%2e/%2e%2e/x.png",  # encoded traversal
+    ],
+)
+def test_asset_path_refuses(vault: Vault, ref: str) -> None:
+    _png(vault, "n/.n.assets/real.png")
+    (vault.root / "n" / ".n.assets" / "script.js").write_text("x")
+    (vault.root / "n" / ".n.assets" / "notes.md").write_text("x")
+    with pytest.raises(VaultError):
+        vault.asset_path("n/n.md", ref)
+
+
+def test_asset_path_missing_image(vault: Vault) -> None:
+    with pytest.raises(NotFoundError):
+        vault.asset_path("n.md", ".n.assets/nope.png")
+
+
+def test_asset_path_refuses_a_bad_note_path(vault: Vault) -> None:
+    _png(vault, "x.png")
+    for note in ["../n.md", "/abs/n.md", ".trash/n.md", ""]:
+        with pytest.raises(InvalidPathError):
+            vault.asset_path(note, "x.png")
+
+
+def test_asset_path_refuses_symlink_escape(vault: Vault, tmp_path: Path) -> None:
+    outside = tmp_path / "secret.png"
+    outside.write_bytes(b"secret")
+    folder = vault.root / ".n.assets"
+    folder.mkdir()
+    (folder / "leak.png").symlink_to(outside)
+    with pytest.raises(InvalidPathError):
+        vault.asset_path("n.md", ".n.assets/leak.png")
+
+
+def test_assets_are_still_invisible_to_every_other_vault_operation(vault: Vault) -> None:
+    _png(vault, ".n.assets/a.png")
+    with pytest.raises(InvalidPathError):
+        vault.resolve(".n.assets/a.png")
+    assert vault.list_tree() == []

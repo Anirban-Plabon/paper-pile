@@ -29,10 +29,12 @@ class Editor(
         mode: Mode = "live",
         theme: Theme = "light",
         image_upload_url: str | None = None,
+        link_target: Literal["window", "python"] = "python",
         on_change: Handler | None = None,
         on_blur: Handler | None = None,
         on_save: Handler | None = None,
         on_slash: Handler | None = None,
+        on_link: Handler | None = None,
         on_paste: Handler | None = None,
     ) -> None:
         super().__init__()
@@ -40,6 +42,7 @@ class Editor(
         self._props["mode"] = mode
         self._props["theme"] = theme
         self._props["imageUploadUrl"] = image_upload_url
+        self._props["linkTarget"] = link_target  # "window": open in the page (web mode)
         if on_change:
             self.on("change", on_change)
         if on_blur:
@@ -48,6 +51,8 @@ class Editor(
             self.on("save", on_save)
         if on_slash:
             self.on("slash", on_slash)
+        if on_link:
+            self.on("link", on_link)
         if on_paste:
             self.on("paste", on_paste)
 
@@ -58,13 +63,18 @@ class Editor(
         except TimeoutError:
             return None
 
-    def set_text(self, text: str, doc_id: int = 0) -> None:
-        """Replace the document (and reset undo history). ``doc_id`` tags later events."""
-        self.run_method("setText", text, doc_id)
+    def set_text(self, text: str, doc_id: int = 0, path: str = "") -> None:
+        """Replace the document (and reset undo history). ``doc_id`` tags later events;
+        ``path`` is the note's vault path (images are resolved relative to it)."""
+        self.run_method("setText", text, doc_id, path)
 
-    def show_doc(self, doc_id: int, text: str) -> None:
+    def show_doc(self, doc_id: int, text: str, path: str = "") -> None:
         """Switch to tab ``doc_id``: its parked editor state if it has one, else ``text``."""
-        self.run_method("showDoc", doc_id, text)
+        self.run_method("showDoc", doc_id, text, path)
+
+    def set_path(self, path: str) -> None:
+        """The shown note was renamed or moved."""
+        self.run_method("setPath", path)
 
     def close_doc(self, doc_id: int) -> None:
         """Forget the parked editor state of a closed tab."""

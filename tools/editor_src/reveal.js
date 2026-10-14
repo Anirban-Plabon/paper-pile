@@ -1,3 +1,9 @@
+import { StateEffect } from "@codemirror/state";
+
+// Dispatch this to make Live Preview rebuild its decorations without any text change (e.g. the
+// note was renamed, so relative image URLs must be recomputed).
+export const refreshEffect = StateEffect.define();
+
 // "Does the selection touch this range?" decides when rendered markdown shows its raw syntax.
 // Inclusive on both ends, so arrowing onto an element's edge reveals it.
 export function touches(state, from, to) {

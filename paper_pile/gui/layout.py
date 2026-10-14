@@ -119,6 +119,7 @@ class MainLayout:
             self._on_tabs_changed,
             mode=self.state.mode,
             on_mode_changed=self._on_mode_changed,
+            native=self.can_reveal,  # native window = this machine
         )
         self.editor_pane.build()
 

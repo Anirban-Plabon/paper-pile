@@ -16,6 +16,7 @@ own note, never the one on screen.
 import asyncio
 import logging
 import time
+import webbrowser
 from collections.abc import Awaitable, Callable
 from typing import Any
 
@@ -23,6 +24,7 @@ from nicegui import ui
 
 from paper_pile.core.buffer import NoteBuffer, find_recoverable
 from paper_pile.core.events import EventBus
+from paper_pile.core.links import external_url
 from paper_pile.core.recovery import RecoveryEntry, RecoveryStore
 from paper_pile.core.tabs import TabList
 from paper_pile.core.vault import Vault, VaultError
@@ -44,6 +46,7 @@ class EditorPane:
         on_tabs_changed: Callable[[list[str], str | None], None] = lambda paths, active: None,
         mode: Mode = "live",
         on_mode_changed: Callable[[Mode], None] = lambda mode: None,
+        native: bool = False,
     ) -> None:
         self.vault = vault
         self.bus = bus
@@ -54,6 +57,7 @@ class EditorPane:
         self._on_tabs_changed = on_tabs_changed
         self.mode: Mode = mode
         self._on_mode_changed = on_mode_changed
+        self._native = native  # native window: Python opens links; web mode: the page does
         self._timer: asyncio.TimerHandle | None = None
         self._failure_toasted = False
         self._rendered: tuple[tuple[int, str], ...] = ()
@@ -78,6 +82,8 @@ class EditorPane:
                 self._empty = ui.label("Open a note to start writing").classes("pp-muted pp-empty")
                 self._editor = Editor(
                     mode=self.mode,
+                    link_target="python" if self._native else "window",
+                    on_link=lambda e: self._on_link(e.args),
                     on_change=lambda e: self._on_change(e.args),
                     on_blur=lambda e: self._on_flush(e.args),
                     on_save=lambda e: self._on_flush(e.args),
@@ -163,7 +169,7 @@ class EditorPane:
         self.buffers[tab_id].set_text(text)
         self._editor.close_doc(tab_id)  # drop its parked state so the new text is what shows
         if tab_id == self.tabs.active:
-            self._editor.set_text(text, tab_id)
+            self._editor.set_text(text, tab_id, self.buffers[tab_id].path)
         self._schedule_save(AUTOSAVE_AFTER_CHANGE_S)
         self._refresh()
 
@@ -174,7 +180,7 @@ class EditorPane:
         self.tabs.activate(tab_id)
         self._empty.set_visibility(False)
         self._editor.set_visibility(True)
-        self._editor.show_doc(tab_id, self.buffers[tab_id].text)
+        self._editor.show_doc(tab_id, self.buffers[tab_id].text, self.buffers[tab_id].path)
         self._editor.focus()
         self._refresh()
         self._notify_tabs()
@@ -250,6 +256,20 @@ class EditorPane:
         buf.set_text(str(args["text"]))
         self._save_buffer(buf)
         self._refresh()
+
+    def _on_link(self, args: dict[str, Any]) -> None:
+        """Ctrl/Cmd+click on a link. Web links open in the browser (here, in the native window;
+        in web mode the page already opened them). Note and relative links come with P3.3."""
+        href = str(args.get("href", ""))
+        url = external_url(href)
+        if url is None:
+            self._toast("Opening notes by link comes with link navigation (P3.3).")
+        elif self._native:
+            try:
+                webbrowser.open(url)
+            except Exception:
+                log.exception("could not open %s", url)
+                self._toast("Could not open the link.", error=True)
 
     def _on_disconnect(self) -> None:
         self._cancel_timer()
@@ -334,6 +354,8 @@ class EditorPane:
         changed = self.tabs.rename_prefix(old, new)
         for tab in changed:
             self.buffers[tab.id].rename(tab.path)
+            if tab.id == self.tabs.active:
+                self._editor.set_path(tab.path)  # relative image URLs depend on the note's folder
         if changed:
             self._refresh()
             self._notify_tabs()

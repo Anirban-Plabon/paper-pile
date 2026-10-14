@@ -9,7 +9,9 @@ import { EditorView, drawSelection, dropCursor, keymap } from "@codemirror/view"
 import { tags as t } from "@lezer/highlight";
 import { blocks, themeFacet } from "./blocks.js";
 import { livePreview } from "./livepreview.js";
-import { MathExt } from "./math.js";
+import { refreshEffect } from "./reveal.js";
+import { editorContext } from "./context.js";
+import { editorExtensions } from "./grammar.js";
 
 const CHANGE_DEBOUNCE_MS = 300;
 const RAW_PASTE_WINDOW_MS = 600;
@@ -22,6 +24,14 @@ const sourceStyle = HighlightStyle.define([
   { tag: t.monospace, fontFamily: "monospace" },
 ]);
 
+// Only these may be opened from a note (mirrors paper_pile/core/links.py `external_url`).
+function externalUrl(href) {
+  href = (href || "").trim();
+  if (/[\s\x00-\x1f\x7f]/.test(href)) return null;
+  if (/^www\./i.test(href)) href = "https://" + href;
+  return /^(https?:\/\/[^/?#\s]+|mailto:\S+)/i.test(href) ? href : null;
+}
+
 function inNoSlashContext(state, pos) {
   for (let n = syntaxTree(state).resolveInner(pos, -1); n; n = n.parent) {
     if (NO_SLASH_NODES.has(n.name)) return true;
@@ -31,7 +41,7 @@ function inNoSlashContext(state, pos) {
 
 export function createEditor(
   parent,
-  { doc = "", mode = "live", theme = "light", emit = () => {}, imageUploadUrl = null } = {},
+  { doc = "", mode = "live", theme = "light", emit = () => {}, imageUploadUrl = null, linkTarget = "python" } = {},
 ) {
   const modeSlot = new Compartment();
   const themeSlot = new Compartment();
@@ -94,7 +104,7 @@ export function createEditor(
         highlightSelectionMatches(),
         EditorState.allowMultipleSelections.of(true),
         EditorView.lineWrapping,
-        markdown({ base: markdownLanguage, extensions: [MathExt] }),
+        markdown({ base: markdownLanguage, extensions: editorExtensions }),
         syntaxHighlighting(sourceStyle),
         keymap.of([
           {
@@ -130,11 +140,33 @@ export function createEditor(
         }),
         EditorView.domEventHandlers({
           paste: handlePaste,
+          // Ctrl/Cmd+click on a link opens it; a plain click only places the caret (to edit it).
+          // This must be `mousedown`, not `click`: CodeMirror's own Ctrl+click handling adds a
+          // selection, which un-hides the link's syntax and rebuilds its DOM before `click` fires.
+          mousedown: (e) => {
+            if (!(e.ctrlKey || e.metaKey)) return false;
+            const el = e.target.closest ? e.target.closest("[data-href]") : null;
+            if (!el) return false;
+            e.preventDefault();
+            const href = el.getAttribute("data-href");
+            const url = externalUrl(href);
+            // Web mode: open here, inside the click, so the browser's popup blocker allows it.
+            // Native window: Python opens the system browser. Notes/relative links: Python decides.
+            if (url && linkTarget === "window") window.open(url, "_blank", "noopener,noreferrer");
+            else emit("link", { href });
+            return true;
+          },
           keydown: (e) => {
+            if (e.key === "Control" || e.key === "Meta") parent.classList.add("pp-ctrl");
             if (e.ctrlKey && e.shiftKey && e.key.toLowerCase() === "v") rawUntil = performance.now() + RAW_PASTE_WINDOW_MS;
             return false;
           },
+          keyup: (e) => {
+            if (e.key === "Control" || e.key === "Meta") parent.classList.remove("pp-ctrl");
+            return false;
+          },
           blur: () => {
+            parent.classList.remove("pp-ctrl");
             flush();
             emit("blur", snapshot());
             return false;
@@ -148,7 +180,8 @@ export function createEditor(
   return {
     getText: () => view.state.doc.toString(),
     // Show tab `id`: its parked state if it has one, else a fresh state made from `text`.
-    showDoc(id, text) {
+    showDoc(id, text, path = "") {
+      editorContext.notePath = path; // before the state swap: widgets built next read it
       if (id === docId) return;
       park();
       clearTimeout(timer);
@@ -170,7 +203,13 @@ export function createEditor(
       view.setState(state);
     },
     // Replace tab `id`'s content outright (restored text): fresh state, history dropped.
-    setText(text, id = docId) {
+    // The note on screen was renamed/moved: relative image URLs must be recomputed.
+    setPath(path) {
+      editorContext.notePath = path;
+      view.dispatch({ effects: refreshEffect.of(null) });
+    },
+    setText(text, id = docId, path = editorContext.notePath) {
+      editorContext.notePath = path;
       if (id !== docId) park();
       else flush();
       clearTimeout(timer);

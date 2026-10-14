@@ -68,6 +68,51 @@ class DisplayMathWidget extends WidgetType {
   }
 }
 
+// YAML front matter as a compact properties block. Logic stays in Python: this only splits
+// `key: value` lines for display (continuation lines are appended to the previous value).
+class FrontMatterWidget extends WidgetType {
+  constructor(text) {
+    super();
+    this.text = text;
+  }
+  eq(other) {
+    return other.text === this.text;
+  }
+  rows() {
+    const rows = [];
+    for (const line of this.text.split("\n")) {
+      if (!line.trim()) continue;
+      const m = /^([^\s:#-][^:]*):\s*(.*)$/.exec(line);
+      if (m) rows.push([m[1], m[2]]);
+      else if (rows.length) rows[rows.length - 1][1] += (rows[rows.length - 1][1] ? " " : "") + line.trim();
+    }
+    return rows;
+  }
+  toDOM(view) {
+    const el = document.createElement("div");
+    el.className = "pp-frontmatter";
+    const rows = this.rows();
+    if (!rows.length) el.textContent = "properties";
+    for (const [k, v] of rows) {
+      const row = document.createElement("div");
+      row.className = "pp-fm-row";
+      const key = document.createElement("span");
+      key.className = "pp-fm-key";
+      key.textContent = k;
+      const val = document.createElement("span");
+      val.className = "pp-fm-val";
+      val.textContent = v;
+      row.append(key, val);
+      el.appendChild(row);
+    }
+    revealOnMouseDown(el, view);
+    return el;
+  }
+  ignoreEvent() {
+    return false;
+  }
+}
+
 class MermaidWidget extends WidgetType {
   constructor(src, theme) {
     super();
@@ -120,7 +165,10 @@ function candidates(state) {
   tree.iterate({
     enter(node) {
       if (isInlineOnly(node.name)) return false;
-      if (node.name === "BlockMath") {
+      if (node.name === "FrontMatter") {
+        const marks = node.node.getChildren("FrontMatterMark");
+        push(node, new FrontMatterWidget(doc.sliceString(marks[0].to, marks[1].from).trim()));
+      } else if (node.name === "BlockMath") {
         const marks = node.node.getChildren("BlockMathMark");
         // a block is only ever parsed when it is closed, so both marks exist
         const raw = doc.sliceString(marks[0].to, marks[marks.length - 1].from);

@@ -9,6 +9,7 @@ export default {
     mode: { type: String, default: "live" },
     theme: { type: String, default: "light" },
     imageUploadUrl: { type: String, default: null },
+    linkTarget: { type: String, default: "python" },
   },
   data() {
     return {
@@ -24,6 +25,7 @@ export default {
       mode: this.mode,
       theme: this.theme,
       imageUploadUrl: this.imageUploadUrl,
+      linkTarget: this.linkTarget,
       emit: (name, payload) => this.$emit(name, payload),
     });
     this.resolveReady(this.api);
@@ -35,11 +37,14 @@ export default {
     async getText() {
       return (await this.ready).getText();
     },
-    async setText(text, docId) {
-      (await this.ready).setText(text, docId);
+    async setText(text, docId, path) {
+      (await this.ready).setText(text, docId, path);
     },
-    async showDoc(docId, text) {
-      (await this.ready).showDoc(docId, text);
+    async showDoc(docId, text, path) {
+      (await this.ready).showDoc(docId, text, path);
+    },
+    async setPath(path) {
+      (await this.ready).setPath(path);
     },
     async closeDoc(docId) {
       (await this.ready).closeDoc(docId);

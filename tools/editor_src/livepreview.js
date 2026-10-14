@@ -8,8 +8,8 @@
 // Block widgets (display math, mermaid, tables, ...) live in blocks.js (a StateField).
 import { syntaxTree } from "@codemirror/language";
 import { Decoration, ViewPlugin } from "@codemirror/view";
-import { activeLines, touches } from "./reveal.js";
-import { BulletWidget, CheckboxWidget, HrWidget, MathWidget } from "./widgets.js";
+import { activeLines, refreshEffect, touches } from "./reveal.js";
+import { BulletWidget, CheckboxWidget, HrWidget, ImageWidget, MathWidget } from "./widgets.js";
 
 const hide = Decoration.replace({});
 const mark = (cls) => Decoration.mark({ class: cls });
@@ -24,8 +24,28 @@ const INLINE = {
   InlineCode: { cls: "pp-code", marks: "CodeMark" },
 };
 const INLINE_DECO = Object.fromEntries(Object.entries(INLINE).map(([k, v]) => [k, mark(v.cls)]));
+const linkDeco = (href) =>
+  Decoration.mark({ class: "pp-link", attributes: href ? { "data-href": href, title: href } : {} });
+const normLabel = (s) => s.trim().replace(/\s+/g, " ").toLowerCase();
+
+// `[label]: url` definitions, for `[text][label]` / `[label]` links. Built once per pass.
+function references(cx) {
+  if (cx.refs) return cx.refs;
+  cx.refs = new Map();
+  for (let n = syntaxTree(cx.state).topNode.firstChild; n; n = n.nextSibling) {
+    if (n.name !== "LinkReference") continue;
+    const label = n.getChild("LinkLabel");
+    const url = n.getChild("URL");
+    if (label && url) {
+      cx.refs.set(normLabel(cx.doc.sliceString(label.from + 1, label.to - 1)), cx.doc.sliceString(url.from, url.to));
+    }
+  }
+  return cx.refs;
+}
+
 const HEADING_LINE = Array.from({ length: 6 }, (_, i) => lineDeco(`pp-h pp-h${i + 1}`));
 const SETEXT_UNDERLINE = lineDeco("pp-setext-underline");
+const FM_LINE = lineDeco("pp-fm-line");
 const QUOTE_LINE = [1, 2, 3].map((n) => lineDeco(`pp-quote pp-quote-${n}`));
 const LIST_GLYPHS = ["\u2022", "\u25E6", "\u25AA"]; // bullet, white bullet, small square by depth
 const LIST_NUM = mark("pp-list-num");
@@ -140,6 +160,64 @@ const handlers = {
     cx.out.push(Decoration.replace({ widget: new HrWidget() }).range(node.from, node.to));
   },
 
+  // `[text](url)`, `[text][ref]`, `[ref]`: the text is styled as a link and carries its target (for
+  // Ctrl/Cmd+click); `[` and `](url)` hide unless the link is being edited.
+  Link: (cx, node) => {
+    const n = node.node;
+    const marks = n.getChildren("LinkMark");
+    if (marks.length < 2) return;
+    const [open, close] = marks;
+    const url = n.getChild("URL");
+    let href = url ? cx.doc.sliceString(url.from, url.to) : null;
+    if (!url) {
+      const label = n.getChild("LinkLabel");
+      const inner = label ? cx.doc.sliceString(label.from + 1, label.to - 1) : "";
+      href = references(cx).get(normLabel(inner || cx.doc.sliceString(open.to, close.from))) ?? null;
+    }
+    if (close.from > open.to) cx.out.push(linkDeco(href).range(open.to, close.from));
+    if (touches(cx.state, node.from, node.to)) return;
+    cx.out.push(hide.range(open.from, open.to));
+    cx.out.push(hide.range(close.from, node.to));
+  },
+
+  // `<https://example.org>`
+  Autolink: (cx, node) => {
+    const url = node.node.getChild("URL");
+    const marks = node.node.getChildren("LinkMark");
+    if (!url || marks.length < 2) return;
+    cx.out.push(linkDeco(cx.doc.sliceString(url.from, url.to)).range(url.from, url.to));
+    if (touches(cx.state, node.from, node.to)) return;
+    cx.out.push(hide.range(marks[0].from, marks[0].to));
+    cx.out.push(hide.range(marks[marks.length - 1].from, marks[marks.length - 1].to));
+  },
+
+  // A bare `https://...` / `www....` in the text (the URL of a Link/Image is styled by its parent).
+  URL: (cx, node) => {
+    const parent = node.node.parent?.name;
+    if (parent === "Link" || parent === "Image" || parent === "Autolink" || parent === "LinkReference") return;
+    cx.out.push(linkDeco(cx.doc.sliceString(node.from, node.to)).range(node.from, node.to));
+  },
+
+  // `![alt|300](path)`: the picture, with the width taken from the `|300` in the alt text.
+  Image: (cx, node) => {
+    const n = node.node;
+    const marks = n.getChildren("LinkMark");
+    const url = n.getChild("URL");
+    if (marks.length < 3 || !url || touches(cx.state, node.from, node.to)) return;
+    const altRaw = cx.doc.sliceString(marks[0].to, marks[1].from);
+    const sized = /^(.*?)\|(\d+)$/.exec(altRaw);
+    const widget = new ImageWidget(cx.doc.sliceString(url.from, url.to), sized ? sized[1] : altRaw, sized ? Number(sized[2]) : null);
+    cx.out.push(Decoration.replace({ widget }).range(node.from, node.to));
+  },
+
+  // Front matter lines, as raw text (only visible while the caret is in the block; otherwise the
+  // block widget covers them): dimmed so the metadata reads as metadata.
+  FrontMatter: (cx, node) => {
+    for (let n = cx.doc.lineAt(node.from).number; n <= cx.doc.lineAt(node.to).number; n++) {
+      cx.out.push(FM_LINE.range(cx.doc.line(n).from));
+    }
+  },
+
   // `\*` : the backslash is only an escape; hide it unless the escape is being edited.
   Escape: (cx, node) => {
     if (!touches(cx.state, node.from, node.to)) cx.out.push(hide.range(node.from, node.from + 1));
@@ -178,7 +256,8 @@ export const livePreview = ViewPlugin.fromClass(
       this.decorations = build(view);
     }
     update(u) {
-      if (u.docChanged || u.selectionSet || u.viewportChanged || syntaxTree(u.startState) !== syntaxTree(u.state)) {
+      const refresh = u.transactions.some((tr) => tr.effects.some((e) => e.is(refreshEffect)));
+      if (refresh || u.docChanged || u.selectionSet || u.viewportChanged || syntaxTree(u.startState) !== syntaxTree(u.state)) {
         this.decorations = build(u.view);
       }
     }

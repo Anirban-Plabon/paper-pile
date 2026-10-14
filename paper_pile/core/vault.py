@@ -10,11 +10,14 @@ Rules this module enforces (callers pass vault-relative POSIX paths):
 
 import logging
 import os
+import posixpath
+import re
 import shutil
 from collections.abc import Iterator
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path, PurePosixPath
+from urllib.parse import unquote
 
 from paper_pile.core.fsutil import atomic_write_bytes
 
@@ -23,6 +26,9 @@ log = logging.getLogger("paper_pile.vault")
 META_DIR = ".paper-pile"
 TRASH_DIR = ".trash"
 NOTE_SUFFIXES = frozenset({".md", ".txt"})
+IMAGE_SUFFIXES = frozenset({".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg", ".bmp", ".avif"})
+_ASSET_DIR = re.compile(r"^\..+\.assets$")  # `.<note stem>.assets`, the only hidden folders served
+_SCHEME = re.compile(r"^[A-Za-z][A-Za-z0-9+.-]*:")
 
 
 class VaultError(Exception):
@@ -179,6 +185,37 @@ class Vault:
             return self.resolve(rel).exists()
         except InvalidPathError:
             return False
+
+    def asset_path(self, note: str | PurePosixPath, ref: str) -> Path:
+        """Absolute path of the image ``ref`` as written in ``note`` (read access only).
+
+        ``ref`` is the markdown URL, relative to the note's folder (``.mamba.assets/a3f9.png``,
+        ``../pics/x.png``), possibly percent-encoded. Unlike every other Vault method this may
+        enter hidden ``.<stem>.assets`` folders (that is where images live), and nothing else
+        hidden: ``.trash``, ``.paper-pile`` and the like stay refused. Only image files, only
+        inside the vault, no symlink escapes. Raises ``VaultError`` otherwise.
+        """
+        self.resolve(note)  # the note itself must be a safe vault path (it may not exist yet)
+        ref = unquote(ref)
+        if not ref or "\\" in ref or "\0" in ref or ref.startswith("/") or _SCHEME.match(ref):
+            raise InvalidPathError(f"not a vault-relative image path: {ref!r}")
+        folder = PurePosixPath(str(note)).parent.as_posix()
+        joined = posixpath.normpath(posixpath.join("" if folder == "." else folder, ref))
+        if joined in {"", "."} or joined == ".." or joined.startswith("../"):
+            raise InvalidPathError(f"image path escapes the vault: {ref!r}")
+        parts = PurePosixPath(joined).parts
+        for part in parts[:-1]:
+            if part.startswith(".") and not _ASSET_DIR.match(part):
+                raise InvalidPathError(f"hidden folder is not accessible: {part!r}")
+        name = parts[-1]
+        if name.startswith(".") or PurePosixPath(name).suffix.lower() not in IMAGE_SUFFIXES:
+            raise InvalidPathError(f"not an image: {name!r}")
+        path = self.root.joinpath(*parts)
+        if not self._inside(path):
+            raise InvalidPathError(f"image resolves outside the vault: {ref!r}")
+        if not path.is_file():
+            raise NotFoundError(f"no such image: {ref!r}")
+        return path
 
     def read_text(self, rel: str | PurePosixPath) -> str:
         path = self._note_path(rel)

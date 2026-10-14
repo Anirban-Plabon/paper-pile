@@ -8,7 +8,9 @@ from pathlib import Path
 from nicegui import app, ui
 
 from paper_pile.core.events import EventBus
+from paper_pile.core.vault import Vault
 from paper_pile.core.watcher import VaultWatcher
+from paper_pile.gui.files import make_asset_router
 from paper_pile.gui.layout import MainLayout
 from paper_pile.gui.security import TokenGate
 from paper_pile.gui.shortcuts import install_shortcuts
@@ -26,6 +28,7 @@ def _title(vault: Path) -> str:
 
 def _build_pages(vault: Path, *, native: bool) -> None:
     app.add_static_files(STATIC_URL, STATIC_DIR)
+    app.include_router(make_asset_router(Vault(vault)))  # images shown inside notes
     fs_bus = EventBus()  # one watcher per process; every open page subscribes to this bus
 
     async def start_watcher() -> None:

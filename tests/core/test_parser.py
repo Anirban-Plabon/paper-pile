@@ -7,6 +7,7 @@ from paper_pile.core.parser import front_matter, make_parser, math_spans, render
 
 FIXTURE = Path(__file__).parent.parent / "fixtures" / "math_cases.json"
 MATH_CASES = json.loads(FIXTURE.read_text(encoding="utf-8"))
+FM_CASES = json.loads((FIXTURE.parent / "front_matter_cases.json").read_text(encoding="utf-8"))
 
 
 # ---- math: the shared fixture (also checked against the editor grammar) -----------------
@@ -48,6 +49,27 @@ def test_math_content_is_html_escaped() -> None:
     html = render_html("$a<b>c$ and\n\n$$\n<script>alert(1)</script>\n$$\n")
     assert "<script>" not in html and "<b>" not in html
     assert "&lt;script&gt;" in html
+
+
+# ---- front matter: the shared fixture (also checked against the editor grammar) -----------
+
+
+@pytest.mark.parametrize("case", FM_CASES, ids=[c["name"] for c in FM_CASES])
+def test_front_matter_fixture(case: dict[str, object]) -> None:
+    fm = front_matter(str(case["src"]))
+    if case["raw"] is None:
+        assert fm is None
+    else:
+        assert fm is not None and fm.raw.strip() == case["raw"]
+
+
+def test_a_heading_after_front_matter_is_a_heading() -> None:
+    assert "<h1>Title</h1>" in render_html("---\nk: v\n---\n# Title\n")
+
+
+def test_dashes_that_are_not_front_matter_stay_a_rule_or_heading() -> None:
+    assert "<h2>Title</h2>" in render_html("Title\n---\n")
+    assert "<hr" in render_html("text\n\n---\n\nmore")
 
 
 # ---- GFM and friends --------------------------------------------------------------------

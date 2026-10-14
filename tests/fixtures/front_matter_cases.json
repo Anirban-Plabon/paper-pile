@@ -1,0 +1,102 @@
+[
+ {
+  "name": "basic",
+  "src": "---\ntitle: T\n---\nbody\n",
+  "raw": "title: T"
+ },
+ {
+  "name": "multiple_keys",
+  "src": "---\ntitle: My note\ntags: [a, b]\nauthor: Ada\n---\n\n# Body\n",
+  "raw": "title: My note\ntags: [a, b]\nauthor: Ada"
+ },
+ {
+  "name": "empty",
+  "src": "---\n---\nbody\n",
+  "raw": ""
+ },
+ {
+  "name": "blank_first_line",
+  "src": "\n---\ntitle: T\n---\nbody\n",
+  "raw": null
+ },
+ {
+  "name": "not_at_top",
+  "src": "text\n---\ntitle: T\n---\nbody\n",
+  "raw": null
+ },
+ {
+  "name": "unclosed",
+  "src": "---\ntitle: T\nbody\n",
+  "raw": null
+ },
+ {
+  "name": "trailing_space_open",
+  "src": "--- \ntitle: T\n---\nbody\n",
+  "raw": "title: T"
+ },
+ {
+  "name": "trailing_space_close",
+  "src": "---\ntitle: T\n--- \nbody\n",
+  "raw": "title: T"
+ },
+ {
+  "name": "indented_open",
+  "src": " ---\ntitle: T\n---\nbody\n",
+  "raw": null
+ },
+ {
+  "name": "four_dashes_open",
+  "src": "----\ntitle: T\n---\nbody\n",
+  "raw": null
+ },
+ {
+  "name": "text_after_dashes",
+  "src": "--- x\ntitle: T\n---\nbody\n",
+  "raw": null
+ },
+ {
+  "name": "dots_do_not_close",
+  "src": "---\ntitle: T\n...\nbody\n",
+  "raw": null
+ },
+ {
+  "name": "blank_line_inside",
+  "src": "---\na: 1\n\nb: 2\n---\nbody\n",
+  "raw": "a: 1\n\nb: 2"
+ },
+ {
+  "name": "closes_at_end_of_file",
+  "src": "---\na: 1\n---",
+  "raw": "a: 1"
+ },
+ {
+  "name": "indented_dashes_are_content",
+  "src": "---\na: |\n  ---\n  x\n---\nbody\n",
+  "raw": "a: |\n  ---\n  x"
+ },
+ {
+  "name": "only_the_first_block",
+  "src": "---\na: 1\n---\n\n---\nb: 2\n---\n",
+  "raw": "a: 1"
+ },
+ {
+  "name": "just_a_rule_pair",
+  "src": "---\n\n---\n",
+  "raw": ""
+ },
+ {
+  "name": "heading_after",
+  "src": "---\nk: v\n---\n# Title\n",
+  "raw": "k: v"
+ },
+ {
+  "name": "no_front_matter",
+  "src": "# Title\n\ntext\n",
+  "raw": null
+ },
+ {
+  "name": "setext_not_front_matter",
+  "src": "Title\n---\n",
+  "raw": null
+ }
+]

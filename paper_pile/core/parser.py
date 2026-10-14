@@ -32,7 +32,6 @@ from markdown_it.rules_block import StateBlock
 from mdit_py_plugins.dollarmath import dollarmath_plugin
 from mdit_py_plugins.dollarmath.index import math_block_dollar
 from mdit_py_plugins.footnote import footnote_plugin
-from mdit_py_plugins.front_matter import front_matter_plugin
 from mdit_py_plugins.tasklists import tasklists_plugin
 
 _PARAGRAPH_LIKE = ["paragraph", "reference", "blockquote", "list"]
@@ -43,7 +42,6 @@ def make_parser(*, breaks: bool = True) -> MarkdownIt:
     md = (
         MarkdownIt("commonmark", {"html": False, "breaks": breaks})
         .enable(["table", "strikethrough"])
-        .use(front_matter_plugin)
         .use(footnote_plugin)
         .use(tasklists_plugin, enabled=True)
         .use(
@@ -55,9 +53,37 @@ def make_parser(*, breaks: bool = True) -> MarkdownIt:
             double_inline=True,
         )
     )
+    md.block.ruler.before("table", "front_matter", _front_matter_rule)
     # let a `$$` block start right after a paragraph line (the plugin's own registration cannot)
     md.block.ruler.at("math_block", _interrupting_math_block(), {"alt": _PARAGRAPH_LIKE})
     return md
+
+
+def _front_matter_rule(state: StateBlock, start: int, end: int, silent: bool) -> bool:
+    """YAML front matter: only at the very top, opened by a line that is exactly ``---`` and
+    closed by the next line that is exactly ``---``. Anything else is not front matter.
+
+    (The plugin's own rule also accepts ``----`` openers, text after the dashes and a ``...``
+    closer, which the editor grammar would have to copy; a plain rule is easier to keep in sync.)
+    """
+    if start != 0:
+        return False
+    lines = state.src.split("\n")
+    if lines[0].rstrip() != "---":
+        return False
+    close = next((i for i in range(1, min(len(lines), end)) if lines[i].rstrip() == "---"), None)
+    if close is None:
+        return False  # unclosed: ordinary markdown
+    if silent:
+        return True
+    token = state.push("front_matter", "", 0)
+    token.hidden = True
+    token.markup = "---"
+    token.block = True
+    token.content = state.getLines(1, close, 0, False)
+    state.line = close + 1
+    token.map = [0, state.line]
+    return True
 
 
 def _interrupting_math_block() -> Callable[[StateBlock, int, int, bool], bool]:

@@ -5,7 +5,7 @@
 set -euo pipefail
 cd "$(dirname "$0")/editor_src"
 npm ci --no-audit --no-fund
-node check_math.mjs  # the editor's math grammar must agree with the Python parser
+node check_sync.mjs  # the editor's grammar must agree with the Python parser
 out=../../paper_pile/gui/static/vendor
 rm -rf "$out/pp-editor"
 mkdir -p "$out/pp-editor" "$out/katex"
