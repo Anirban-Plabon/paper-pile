@@ -61,6 +61,23 @@ html, body { overflow: hidden; }
 .pp-editor .cm-editor.cm-focused { outline: none; }
 .pp-save-error { color: #c0392b; }
 .pp-setext-underline { opacity: .3; font-size: .8em; }
+
+/* Lists, tasks, quotes, rules (tools/editor_src/livepreview.js) */
+.pp-bullet { display: inline-block; width: 1ch; text-align: center; color: var(--pp-muted); }
+.pp-list-num { color: var(--pp-muted); }
+.pp-task { display: inline-block; width: 2ch; text-align: center; cursor: pointer; }
+.pp-task .pp-box { display: inline-block; box-sizing: border-box; width: 1.05ch; height: 1.05ch; border: 1.5px solid var(--pp-muted); border-radius: 3px; vertical-align: -0.12em; }
+.pp-task:hover .pp-box { border-color: #3b82f6; }
+.pp-task-checked .pp-box { background: #3b82f6; border-color: #3b82f6; position: relative; }
+.pp-task-checked .pp-box::after { content: ""; position: absolute; left: 22%; top: 2%; width: 28%; height: 56%; border: solid #fff; border-width: 0 1.5px 1.5px 0; transform: rotate(45deg); }
+.pp-task-done { text-decoration: line-through; color: var(--pp-muted); }
+/* `.pp-editor .cm-line` is needed to beat CodeMirror's own `.cm-line { padding }` rule. A quote's
+   content is pushed right by depth, one 3px bar per level is drawn at the normal text column. */
+.pp-editor .cm-line.pp-quote { --pp-bar: #c3c8d0; color: var(--pp-muted); }
+.pp-editor .cm-line.pp-quote-1 { padding-left: calc(6px + 1.6ch); background: linear-gradient(var(--pp-bar), var(--pp-bar)) 6px 0 / 3px 100% no-repeat; }
+.pp-editor .cm-line.pp-quote-2 { padding-left: calc(6px + 3.2ch); background: linear-gradient(var(--pp-bar), var(--pp-bar)) 6px 0 / 3px 100% no-repeat, linear-gradient(var(--pp-bar), var(--pp-bar)) calc(6px + 1.6ch) 0 / 3px 100% no-repeat; }
+.pp-editor .cm-line.pp-quote-3 { padding-left: calc(6px + 4.8ch); background: linear-gradient(var(--pp-bar), var(--pp-bar)) 6px 0 / 3px 100% no-repeat, linear-gradient(var(--pp-bar), var(--pp-bar)) calc(6px + 1.6ch) 0 / 3px 100% no-repeat, linear-gradient(var(--pp-bar), var(--pp-bar)) calc(6px + 3.2ch) 0 / 3px 100% no-repeat; }
+.pp-hr { display: block; height: 0; margin: 0.55em 0; border-top: 1px solid var(--pp-border); }
 .pp-mode-toggle { cursor: pointer; user-select: none; padding: 0 4px; border-radius: 3px; }
 .pp-mode-toggle:hover { background: rgba(127, 127, 127, .18); }
 
