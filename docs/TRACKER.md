@@ -7,8 +7,8 @@ Legend: 🧠 = needs Opus (see PLAN §6 model guidance) · ⬜ todo · 🔄 in p
 
 ## Current focus
 - **Phase:** P0 — Foundation
-- **Task:** P1.5 (next; P0, P1.1–P1.4 done)
-- **Next up:** P2.1 (🧠 P2.4 later)
+- **Task:** P2.1 (next; **P0 and P1 complete**)
+- **Next up:** P2.2 → P2.3 → 🧠 P2.4
 
 ## Open issues
 <!-- - [ ] YYYY-MM-DD · task ID · what's blocking · what's needed -->
@@ -33,7 +33,7 @@ Legend: 🧠 = needs Opus (see PLAN §6 model guidance) · ⬜ todo · 🔄 in p
 | P1.2 | core/vault.py | ✅ | 81 tests total (39 new); safety rules mutation-checked (overwrite, trash, symlink escape) | |
 | P1.3 | 3-pane layout | ✅ | 85 tests; 21 browser checks (Chrome) + 12 checks inside the native QtWebEngine window (via CDP); compositor-level keys on Wayland still manual | |
 | P1.4 | Tree + context menu + drag | ✅ | 107 tests (+22 core); 39 browser checks with real mouse/keyboard + 6 in the native window; tab/editor wiring comes via bus events in P2 | |
-| P1.5 | Watcher | ⬜ | |
+| P1.5 | Watcher | ✅ | 130 tests (+23); 22 browser checks, all changes visible in 160–180 ms; 5 checks in the native window | |
 
 ### P2 — Editor, tabs, preview
 | ID | Task | Status | Notes |
@@ -139,6 +139,8 @@ Legend: 🧠 = needs Opus (see PLAN §6 model guidance) · ⬜ todo · 🔄 in p
 | 2026-10-14 | P1.4: flat indented rows, children listed only while expanded; expansion not persisted yet; no virtualisation, keyboard nav, F2/Delete keys or multi-select | Keep P1.4 to the PLAN scope; revisit if large vaults feel slow | claude |
 | 2026-10-14 | P1.4: tree publishes `tree.open`, `vault.renamed`, `vault.deleted` on `MainLayout.bus` (core `EventBus`); center pane temporarily shows "Opened: <path>" | Tabs/editor (P2) subscribe instead of the tree knowing about them | claude |
 | 2026-10-14 | P1.4: "Reveal in file manager" only in native mode (`xdg-open` on the folder) | In `--serve` mode it would act on the server, not the user's machine (CLAUDE rule 7: web fallback) | claude |
+| 2026-10-14 | P1.5: one `VaultWatcher` per process publishing batched `vault.fs_changed(events=[FsEvent])` on an app-level bus; pages subscribe and unsubscribe on disconnect; 150 ms debounce window from the first event; `dispatch` callback keeps `core` UI-free (GUI passes `loop.call_soon_threadsafe`) | watchdog runs on its own thread; NiceGUI elements must be touched on the loop; multiple pages in `--serve` mode | claude |
+| 2026-10-14 | P1.5: watcher ignores hidden paths, non-notes and folder-modified noise; moves into/out of `.trash` map to deleted/created; the app's own writes echo back and are not suppressed (P2.5 must detect its own saves) | Matches what the tree shows; keeps the watcher simple and stateless | claude |
 | 2026-10-14 | uv_build backend with `module-root = ""` (flat `paper_pile/` layout, not `src/`) | PLAN §3 layout | claude |
 | 2026-10-13 | Preview-tab (VS Code style) behaviour as default | Chosen during planning, unconfirmed — ask user if unsure | planning |
 | 2026-10-13 | Split preview in phase 1; inline live preview deferred | Inline needs CM6 decorations, highest cost | planning |
@@ -174,3 +176,4 @@ Legend: 🧠 = needs Opus (see PLAN §6 model guidance) · ⬜ todo · 🔄 in p
 - 2026-10-14 · P1.2 · core/vault.py (tree, read/write, create, rename/move, delete→trash, duplicate) + fsutil; 81 tests green
 - 2026-10-14 · P1.3 · 3-pane layout (resize, limits, collapse, persistence), status bar + chat stubs, shortcuts module; native lifecycle checked: ending the window process exits the app cleanly (exit 0, no leftovers)
 - 2026-10-14 · P1.4 · file tree: lazy expand, context menu, create/rename/duplicate/delete→trash, drag-move, native-only Reveal; 107 tests green; verified with real mouse input in Chrome and in the native window
+- 2026-10-14 · P1.5 · core/watcher.py + live tree refresh; **phase P1 complete** (CLI, vault, layout, tree, watcher); 130 tests green

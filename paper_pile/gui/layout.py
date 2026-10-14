@@ -13,6 +13,8 @@ from nicegui import ui
 from paper_pile.core.events import EventBus
 from paper_pile.core.session import SessionState, load_session, save_session
 from paper_pile.core.vault import Vault
+from paper_pile.core.watcher import TOPIC as FS_CHANGED
+from paper_pile.core.watcher import FsEvent
 from paper_pile.gui.components.chat import chat_panel
 from paper_pile.gui.components.statusbar import StatusBar, status_bar
 from paper_pile.gui.components.tree import FileTree
@@ -38,11 +40,14 @@ def clamp_width(pane: str, width: int) -> int:
 
 
 class MainLayout:
-    def __init__(self, vault: Path, *, can_reveal: bool = False) -> None:
+    def __init__(
+        self, vault: Path, *, can_reveal: bool = False, fs_bus: EventBus | None = None
+    ) -> None:
         self.vault = vault
         self.bus = EventBus()  # tabs/editor subscribe to tree events here (P2)
         self.can_reveal = can_reveal
         self.tree: FileTree | None = None
+        self._fs_bus = fs_bus
         self.state: SessionState = load_session(vault)
         for pane in WIDTH_LIMITS:
             self.state.pane_widths[pane] = clamp_width(pane, self.state.pane_widths[pane])
@@ -67,6 +72,18 @@ class MainLayout:
                 self._status = status_bar(lambda: self.toggle("left"), lambda: self.toggle("right"))
         for pane in WIDTH_LIMITS:
             self._apply(pane)
+        self._follow_external_changes()
+
+    def _follow_external_changes(self) -> None:
+        """Re-list the tree when files change outside the app (watcher, P1.5)."""
+        if self._fs_bus is None:
+            return
+        unsubscribe = self._fs_bus.subscribe(FS_CHANGED, lambda events: self._on_external(events))
+        ui.context.client.on_disconnect(unsubscribe)  # a closed page must stop listening
+
+    def _on_external(self, events: list[FsEvent]) -> None:
+        if self.tree is not None:
+            self.tree.refresh()
 
     def _make_splitter(self, pane: str, *, reverse: bool) -> PaneSplitter:
         splitter = PaneSplitter(reverse=reverse, value=self.state.pane_widths[pane])
