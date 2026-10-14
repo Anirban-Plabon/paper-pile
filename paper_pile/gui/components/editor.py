@@ -12,6 +12,7 @@ from nicegui import events
 from nicegui.element import Element
 
 Mode = Literal["live", "source"]
+Theme = Literal["light", "dark"]
 Handler = Callable[[events.GenericEventArguments], Any]
 
 
@@ -25,6 +26,7 @@ class Editor(
         text: str = "",
         *,
         mode: Mode = "live",
+        theme: Theme = "light",
         image_upload_url: str | None = None,
         on_change: Handler | None = None,
         on_slash: Handler | None = None,
@@ -33,6 +35,7 @@ class Editor(
         super().__init__()
         self._props["initialText"] = text
         self._props["mode"] = mode
+        self._props["theme"] = theme
         self._props["imageUploadUrl"] = image_upload_url
         if on_change:
             self.on("change", on_change)
@@ -52,6 +55,9 @@ class Editor(
 
     def set_mode(self, mode: Mode) -> None:
         self.run_method("setMode", mode)
+
+    def set_theme(self, theme: Theme) -> None:
+        self.run_method("setTheme", theme)
 
     def focus(self) -> None:
         self.run_method("focus")

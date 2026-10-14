@@ -7,6 +7,7 @@ import { highlightSelectionMatches, searchKeymap } from "@codemirror/search";
 import { Annotation, Compartment, EditorState } from "@codemirror/state";
 import { EditorView, drawSelection, dropCursor, keymap } from "@codemirror/view";
 import { tags as t } from "@lezer/highlight";
+import { blocks, themeFacet } from "./blocks.js";
 import { livePreview } from "./livepreview.js";
 import { MathExt } from "./math.js";
 
@@ -29,9 +30,14 @@ function inNoSlashContext(state, pos) {
   return false;
 }
 
-export function createEditor(parent, { doc = "", mode = "live", emit = () => {}, imageUploadUrl = null } = {}) {
+export function createEditor(
+  parent,
+  { doc = "", mode = "live", theme = "light", emit = () => {}, imageUploadUrl = null } = {},
+) {
   const modeSlot = new Compartment();
-  const modeExt = (m) => (m === "live" ? livePreview : []);
+  const themeSlot = new Compartment();
+  const modeExt = (m) => (m === "live" ? [livePreview, blocks] : []);
+  parent.classList.toggle("pp-dark", theme === "dark");
   let timer = null;
   let rawUntil = 0;
 
@@ -78,6 +84,7 @@ export function createEditor(parent, { doc = "", mode = "live", emit = () => {},
         markdown({ base: markdownLanguage, extensions: [MathExt] }),
         syntaxHighlighting(sourceStyle),
         keymap.of([...defaultKeymap, ...historyKeymap, ...searchKeymap, indentWithTab]),
+        themeSlot.of(themeFacet.of(theme)),
         modeSlot.of(modeExt(mode)),
         EditorView.updateListener.of((u) => {
           if (u.docChanged && !u.transactions.every((tr) => tr.annotation(External))) {
@@ -126,6 +133,10 @@ export function createEditor(parent, { doc = "", mode = "live", emit = () => {},
     },
     setMode(m) {
       view.dispatch({ effects: modeSlot.reconfigure(modeExt(m)) });
+    },
+    setTheme(name) {
+      parent.classList.toggle("pp-dark", name === "dark");
+      view.dispatch({ effects: themeSlot.reconfigure(themeFacet.of(name)) });
     },
     focus: () => view.focus(),
     flush,

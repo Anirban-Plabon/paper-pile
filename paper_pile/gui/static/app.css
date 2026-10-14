@@ -1,1 +1,23 @@
-/* paper-pile styles; colours come from CSS variables set in theme.py */
+/* paper-pile styles; colours come from CSS variables set in theme.py (P8.1) */
+
+/* Editor host */
+.pp-editor { border: 1px solid #8884; font: 15px/1.6 monospace; }
+.pp-editor .cm-editor { height: 100%; }
+.pp-editor .cm-scroller { overflow: auto; }
+.pp-editor.pp-dark { background: #1e1e1e; color: #ddd; }
+.pp-editor.pp-dark .cm-cursor { border-left-color: #ddd; }
+
+/* Live Preview marks (tools/editor_src/livepreview.js) */
+.pp-h { font-weight: 700; }
+.pp-h1 { font-size: 1.7em; }
+.pp-h2 { font-size: 1.4em; }
+.pp-h3 { font-size: 1.2em; }
+.pp-strong { font-weight: 700; }
+.pp-em { font-style: italic; }
+.pp-strike { text-decoration: line-through; }
+.pp-code { font-family: monospace; background: #8882; border-radius: 3px; }
+
+/* Block widgets (tools/editor_src/blocks.js) */
+.pp-math-block, .pp-mermaid { text-align: center; padding: 8px 0; cursor: text; }
+.pp-mermaid svg { max-width: 100%; height: auto; }
+.pp-render-error { color: #c0392b; font: 12px monospace; white-space: pre-wrap; padding: 8px 0; }

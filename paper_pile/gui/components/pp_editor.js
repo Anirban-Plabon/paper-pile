@@ -7,6 +7,7 @@ export default {
   props: {
     initialText: { type: String, default: "" },
     mode: { type: String, default: "live" },
+    theme: { type: String, default: "light" },
     imageUploadUrl: { type: String, default: null },
   },
   data() {
@@ -21,6 +22,7 @@ export default {
     this.api = createEditor(this.$el, {
       doc: this.initialText,
       mode: this.mode,
+      theme: this.theme,
       imageUploadUrl: this.imageUploadUrl,
       emit: (name, payload) => this.$emit(name, payload),
     });
@@ -41,6 +43,9 @@ export default {
     },
     async setMode(mode) {
       (await this.ready).setMode(mode);
+    },
+    async setTheme(theme) {
+      (await this.ready).setTheme(theme);
     },
     async focus() {
       (await this.ready).focus();

@@ -28,7 +28,7 @@ built-in local AI via Ollama. Plain `.md`/`.txt` files, no lock-in.
 | Editor | CodeMirror 6 (own esbuild bundle: `@codemirror/lang-markdown` GFM + Lezer inline-math extension + live-preview plugin), custom NiceGUI element | S1 result: NiceGUI's built-in `ui.codemirror` rejected (Python-side decorations round-trip per keystroke; no lang-markdown/GFM or Lezer extensions; hard-wired `basicSetup`). Pinned npm versions in `tools/editor_src/package.json` |
 | Markdown parse | `markdown-it-py` + `mdit-py-plugins` | front_matter, dollarmath, tasklists, footnote, + custom wikilink plugin |
 | Math render | KaTeX 0.19.0 (vendored, client-side) | CM6 widget in the editor; CSS + fonts in `static/vendor/katex/` |
-| Diagrams | Mermaid (vendored, client-side) | |
+| Diagrams | Mermaid 12.2.0 (bundled by esbuild into lazy chunks under `static/vendor/pp-editor/chunks/`, client-side) | CM6 block widget; loads on first diagram; `securityLevel: strict`; renders serialized + SVG-cached; theme `default`/`dark` |
 | Code highlight | highlight.js or Pygments | decide in P2, log it |
 | Index / search | stdlib `sqlite3` + FTS5 | `.paper-pile/index.db`, rebuildable |
 | File watching | `watchdog` | external edits |
@@ -55,7 +55,7 @@ paper-pile/
 │   └── TRACKER.md
 ├── tools/
 │   ├── build_editor.sh         # esbuild CodeMirror bundle → gui/static/vendor/
-│   ├── editor_src/             # JS source: index.js (createEditor), math.js, livepreview.js
+│   ├── editor_src/             # JS source: index.js (createEditor), math.js, livepreview.js (inline), blocks.js (block widgets)
 │   └── spike_editor.py         # S1 demo page (dev-only, not shipped)
 ├── paper_pile/
 │   ├── cli.py                  # arg parsing, launch native/serve
@@ -90,7 +90,7 @@ paper-pile/
 │       │   ├── palette.py      # Ctrl+P command palette, Ctrl+O switcher
 │       │   └── settings.py     # settings dialog + bottom-left profile
 │       └── static/
-│           ├── vendor/         # pp-editor/ (cm6 bundle), katex/, mermaid (committed)
+│           ├── vendor/         # pp-editor/ (cm6 bundle + mermaid chunks), katex/ (committed)
 │           └── app.css
 └── tests/
     ├── core/
@@ -159,6 +159,7 @@ paper-pile --serve [path] [--port 8080]   # web mode, 127.0.0.1 only, prints URL
 - Code blocks with highlighting.
 - ` ```mermaid ` → rendered diagram; render error shows inline message, not a crash.
 - Math: `$inline$` and `$$block$$` via KaTeX. Dollar rule (pandoc): no whitespace after opening `$`, no whitespace before closing `$`, closing `$` not followed by a digit → "$5 and $10" stays text.
+- **Block widgets (S2):** `$$…$$` display math (a `$$` line opens, a line ending in `$$` closes; `$$x$$` on one line counts; unclosed runs to end of doc) and ```` ```mermaid ```` fences render as block widgets from a CM6 `StateField` (block/line-spanning replace decorations are not allowed from a ViewPlugin). **Reveal rule:** a block shows its source whenever any selection range touches it; clicking a widget puts the cursor in it. Invalid diagrams show an inline error line, never a crash or mermaid's own error graphic. The `$$` rule in `tools/editor_src/math.js` must stay in sync with markdown-it `dollarmath` in `core/parser.py`.
 - `[[note]]`, `[[note|alias]]`, `[[note#heading]]` → internal links; missing targets styled distinctly (dashed / dim).
 - Standard `[text](other.md)` links also resolved as internal.
 - Images `![alt|300](path)` → width 300px.

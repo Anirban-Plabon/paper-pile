@@ -13,13 +13,33 @@ from paper_pile.gui.components.editor import Editor
 
 STATIC = Path(__file__).resolve().parent.parent / "paper_pile" / "gui" / "static"
 UPLOADS = Path(tempfile.mkdtemp(prefix="pp-spike-"))
-SAMPLE = """# Spike S1
+SAMPLE = """# Spike S1/S2
 
 Some **bold**, some *italic*, `inline code`, and ~~strike~~.
 
 ## Math
 
 Euler: $e^{i\\pi}+1=0$ renders; "$5 and $10" stays text.
+
+$$
+\\int_0^\\infty e^{-x^2}\\,dx = \\frac{\\sqrt{\\pi}}{2}
+$$
+
+$$x^2 + y^2 = z^2$$
+
+## Diagrams
+
+```mermaid
+flowchart LR
+  A[Note] --> B{Link?}
+  B -->|yes| C[Backlink]
+  B -->|no| D[Orphan]
+```
+
+```mermaid
+flowchart LR
+  this is not valid ((
+```
 
 Type / at line start or after a space to fire the slash hook.
 """
@@ -37,15 +57,7 @@ async def paste_image(request: Request) -> dict[str, object]:
 @ui.page("/")
 def index() -> None:
     ui.add_head_html('<link rel="stylesheet" href="/pp-static/vendor/katex/katex.min.css">')
-    ui.add_head_html(
-        "<style>"
-        ".pp-editor{height:340px;border:1px solid #8884;font:15px/1.6 monospace}"
-        ".pp-editor .cm-editor{height:100%}.pp-editor .cm-scroller{overflow:auto}"
-        ".pp-h{font-weight:700}.pp-h1{font-size:1.7em}.pp-h2{font-size:1.4em}.pp-h3{font-size:1.2em}"
-        ".pp-strong{font-weight:700}.pp-em{font-style:italic}.pp-strike{text-decoration:line-through}"
-        ".pp-code{font-family:monospace;background:#8882;border-radius:3px}"
-        "</style>"
-    )
+    ui.add_head_html('<link rel="stylesheet" href="/pp-static/app.css">')
     log = ui.log(max_lines=200).classes("w-full h-48")
 
     def show(name: str):  # type: ignore[no-untyped-def]
@@ -64,13 +76,17 @@ def index() -> None:
         if e.args.get("kind") in ("html", "text"):
             editor.insert_at_cursor(e.args.get("text", ""))
 
-    editor = Editor(
-        SAMPLE,
-        image_upload_url="/_pp/paste-image",
-        on_change=show("change"),
-        on_slash=show("slash"),
-        on_paste=on_paste,
-    ).classes("w-full")
+    editor = (
+        Editor(
+            SAMPLE,
+            image_upload_url="/_pp/paste-image",
+            on_change=show("change"),
+            on_slash=show("slash"),
+            on_paste=on_paste,
+        )
+        .classes("w-full")
+        .style("height: 520px")
+    )
 
     async def get() -> None:
         log.push(f"get_text: {len(await editor.get_text())} chars")
@@ -81,6 +97,8 @@ def index() -> None:
         ui.button("Get text", on_click=get)
         ui.button("Live", on_click=lambda: editor.set_mode("live"))
         ui.button("Source", on_click=lambda: editor.set_mode("source"))
+        ui.button("Light", on_click=lambda: editor.set_theme("light"))
+        ui.button("Dark", on_click=lambda: editor.set_theme("dark"))
 
 
 ui.run(host="127.0.0.1", port=8099, reload=False, show=False, title="S1 spike")

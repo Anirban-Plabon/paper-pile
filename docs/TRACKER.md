@@ -7,8 +7,8 @@ Legend: 🧠 = needs Opus (see PLAN §6 model guidance) · ⬜ todo · 🔄 in p
 
 ## Current focus
 - **Phase:** P0 — Foundation
-- **Task:** P0.5 🧠 Spike S2 (next; P0.1–P0.4 done)
-- **Next up:** P0.6 (S3), then P1
+- **Task:** P0.6 Spike S3 (next; P0.1–P0.5 done)
+- **Next up:** P1.1
 
 ## Open issues
 <!-- - [ ] YYYY-MM-DD · task ID · what's blocking · what's needed -->
@@ -23,7 +23,7 @@ Legend: 🧠 = needs Opus (see PLAN §6 model guidance) · ⬜ todo · 🔄 in p
 | P0.2 | Repo skeleton | ✅ | `preview.py` kept as widget-rendering helpers (live preview, no split pane) |
 | P0.3 | events + config | ✅ | 12 tests; config saves only changed layer values, corrupt file ignored + `.bak` on save |
 | P0.4 🧠 | Spike S1 — editor component | ✅ | own CM6 bundle chosen; all 7 acceptance items verified in headless Chrome (18 checks) |
-| P0.5 🧠 | Spike S2 — preview (mermaid + KaTeX offline) | ⬜ | |
+| P0.5 🧠 | Spike S2 — block widgets (display math + mermaid) in editor, offline | ✅ | 17 browser checks + parser check; requests to non-127.0.0.1 aborted during test |
 | P0.6 | Spike S3 — native mode + shortcuts | ⬜ | |
 
 ### P1 — Shell & vault
@@ -122,6 +122,9 @@ Legend: 🧠 = needs Opus (see PLAN §6 model guidance) · ⬜ todo · 🔄 in p
 | 2026-10-14 | S1: own esbuild CM6 bundle + thin NiceGUI element; built-in `ui.codemirror` rejected | Built-in has Python-driven decorations (per-keystroke round trip), no lang-markdown/GFM or Lezer extensions, hard-wired basicSetup | claude |
 | 2026-10-14 | S1: pasted images go via HTTP POST route, text/HTML via websocket; browser owns buffer, Python edits via explicit methods | socket.io `max_http_buffer_size` is 1 MB; avoid clobbering typing | claude |
 | 2026-10-14 | npm pins (exact): codemirror 6.0.2, @codemirror/{state 6.7.6, view 6.43.14, commands 6.11.1, language 6.13.1, search 6.7.2, lang-markdown 6.5.2}, @lezer/{markdown 1.8.0, highlight 1.2.5}, katex 0.19.0, esbuild 0.28.2 (dev). Bundle + KaTeX css/fonts committed under `static/vendor/` | PLAN §2 requires pins; end users need no Node | claude |
+| 2026-10-14 | S2: block widgets (`$$` math, ```` ```mermaid ````) from a CM6 StateField, source revealed when the selection touches the block; `BlockMath` Lezer block parser in math.js | CM6 forbids line-spanning/block replace decorations from a ViewPlugin | claude |
+| 2026-10-14 | S2: Mermaid 12.2.0 pinned, bundled via esbuild `--splitting` into lazy chunks (committed, ~6 MB under `vendor/pp-editor/`); renders serialized, `parse` before `render` (no mermaid error graphic), SVG cache keyed by theme+source | Offline, main bundle stays ~0.8 MB, mermaid global state is not concurrency-safe | claude |
+| 2026-10-14 | Editor/widget CSS lives in `static/app.css` (moved out of the spike page) | Single place; P8.1 will drive it from CSS variables | claude |
 | 2026-10-14 | uv_build backend with `module-root = ""` (flat `paper_pile/` layout, not `src/`) | PLAN §3 layout | claude |
 | 2026-10-13 | Preview-tab (VS Code style) behaviour as default | Chosen during planning, unconfirmed — ask user if unsure | planning |
 | 2026-10-13 | Split preview in phase 1; inline live preview deferred | Inline needs CM6 decorations, highest cost | planning |
@@ -143,3 +146,4 @@ Legend: 🧠 = needs Opus (see PLAN §6 model guidance) · ⬜ todo · 🔄 in p
 - 2026-10-14 · P0.3 · core/events.py + core/config.py with unit tests (merge order, save round-trip)
 - 2026-10-14 · plan · marked 🧠 Opus tasks in PLAN §6 and TRACKER
 - 2026-10-14 · P0.4 · editor spike: CM6 live preview (headings/emphasis/code/strike hide off-cursor, inline KaTeX widget, pandoc dollar rule), slash/paste hooks, Python↔JS API, 2 MB image paste; verified with headless Chrome via scratch playwright-core (not a project dep)
+- 2026-10-14 · P0.5 · display math + mermaid block widgets in editor, reveal-on-cursor, theme re-render, offline verified; S1 checks still green
