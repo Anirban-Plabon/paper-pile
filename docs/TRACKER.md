@@ -8,7 +8,7 @@ Legend: 🧠 = needs Opus (see PLAN §6 model guidance) · ⬜ todo · 🔄 in p
 ## Current focus
 - **Phase:** P0 — Foundation
 - **Task:** P3.5 🧠 next (P3.1–P3.4 ✅; **phases P0, P1 and P2 complete**)
-- **Next up:** P3.4 → 🧠 P3.5 (then P4: slash menu, 🧠 P4.2)
+- **Next up:** 🧠 P3.5 (then P4: slash menu, 🧠 P4.2)
 
 ## Open issues
 <!-- - [ ] YYYY-MM-DD · task ID · what's blocking · what's needed -->
