@@ -78,7 +78,10 @@ paper-pile/
 │   │       ├── ollama.py       # OllamaProvider
 │   │       └── context.py      # context building + token budget
 │   └── gui/
-│       ├── app.py              # layout, routing, startup
+│       ├── app.py              # routing, startup (native / serve)
+│       ├── layout.py           # 3-pane frame: splitters, collapse, persistence
+│       ├── shortcuts.py        # capture-phase keydown → Python (registered combos only)
+│       ├── security.py         # --serve token gate (ASGI)
 │       ├── theme.py            # light/dark/system, accent palette, CSS vars
 │       ├── components/
 │       │   ├── tree.py         # left pane
@@ -122,14 +125,15 @@ paper-pile --serve [path] [--port 8080]   # web mode, 127.0.0.1 only, prints URL
 ```
 ┌────────────┬──────────────────────────────────┬──────────────┐
 │ Dir tree   │ [tab][tab*][tab]                 │  AI chat     │
-│            │ editor        │ preview          │  (collapsible│
-│            │               │                  │   Ctrl+L)    │
+│            │ editor (Live Preview, one pane)  │  (collapsible│
+│            │                                  │   Ctrl+L)    │
 │            │ ── backlinks ─────────────────── │              │
 ├────────────┤                                  │              │
 │ 👤 ⚙️ ☀️    │ status: words · Ln/Col · saved · ollama ●        │
 └────────────┴──────────────────────────────────┴──────────────┘
 ```
 - Panes resizable (splitters). Left pane collapsible (Ctrl+B), right pane collapsible (Ctrl+L), width remembered.
+- **Implementation (P1.3, `gui/layout.py`):** two nested px-sized Quasar splitters (outer: left | rest, inner: center | right with `reverse`), status bar under center + chat. Defaults 260 px / 340 px; limits while open: left 180–480, right 280–640 (dragging stops at the limits; collapse is by Ctrl+B / Ctrl+L or the two toggle buttons at the status-bar ends, not by dragging). A collapsed pane is exactly 0 wide, keeps its last width, and is disabled for dragging. Widths and open/closed state are saved per vault in `.paper-pile/session.json` (resize debounced 0.4 s, toggles immediately) and restored on every page load. Empty states only: the tree (P1.4), tabs/editor (P2), chat (P7) and the profile block at the bottom of the left pane (P8.3) plug into these slots.
 - Editing modes (single pane, Obsidian-style): **Live Preview** (default for every note, new or existing: markdown syntax hides on non-cursor lines, rendered inline) / **Source** (raw markdown). Toggle Ctrl+E. No split preview pane.
 - Clean, minimal, Cursor-like: thin borders, no heavy chrome, monospace editor font.
 
@@ -309,7 +313,7 @@ meta(key TEXT PK, value TEXT)   -- schema_version
 ```
 - On open: compare mtime/hash, re-index changed files. `Rebuild index` command drops and rebuilds.
 
-**session.json**: `{ "tabs": [...paths], "active": path, "pane_widths": {...}, "preview_mode": "split" }`
+**session.json** (`core/session.py`): `{ "tabs": [...paths], "active": path|null, "pane_widths": {"left": 260, "right": 340}, "panes_open": {"left": true, "right": true}, "mode": "live"|"source" }`. Read tolerantly (bad/missing fields fall back to defaults individually); written atomically; a write failure is logged, never fatal.
 
 ---
 

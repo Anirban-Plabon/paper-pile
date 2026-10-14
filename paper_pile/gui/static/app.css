@@ -1,5 +1,39 @@
 /* paper-pile styles; colours come from CSS variables set in theme.py (P8.1) */
 
+/* Design tokens (light defaults; P8.1 swaps these per theme) */
+:root {
+  --pp-border: #d8dade;
+  --pp-bg: #ffffff;
+  --pp-bg-side: #f6f7f9;
+  --pp-fg: #1f2328;
+  --pp-muted: #6b7280;
+  --pp-dot-off: #b8bcc4;
+  --pp-dot-on: #2da44e;
+}
+
+/* App frame (paper_pile/gui/layout.py) */
+html, body { overflow: hidden; }
+.nicegui-content { padding: 0 !important; gap: 0 !important; }
+.q-page { min-height: 100vh !important; }
+.pp-root { width: 100vw; height: 100vh; background: var(--pp-bg); color: var(--pp-fg); }
+.pp-fill { width: 100%; height: 100%; }
+.pp-main { width: 100%; height: 100%; gap: 0; flex-wrap: nowrap; }
+.pp-grow { flex: 1 1 0; min-height: 0; }
+.pp-root .q-splitter__separator { background: var(--pp-border); }
+/* The pane itself has no padding and clips, so a collapsed (0 px) pane is truly 0 wide. */
+.pp-pane { width: 100%; height: 100%; padding: 0; gap: 0; overflow: hidden; flex-wrap: nowrap; }
+.pp-pane-body { width: 100%; height: 100%; padding: 10px 12px; gap: 6px; overflow: auto; flex-wrap: nowrap; }
+.pp-left { background: var(--pp-bg-side); }
+.pp-chat { background: var(--pp-bg-side); }
+.pp-pane-title { font-size: 11px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--pp-muted); }
+.pp-muted { color: var(--pp-muted); font-size: 12px; }
+.pp-empty { margin: auto; font-size: 14px; }
+.pp-statusbar { width: 100%; height: 26px; padding: 0 6px; gap: 10px; border-top: 1px solid var(--pp-border); background: var(--pp-bg-side); flex-shrink: 0; }
+.pp-toggle-off { opacity: .45; }
+.pp-dot { font-size: 11px; }
+.pp-dot-off { color: var(--pp-dot-off); }
+.pp-dot-on { color: var(--pp-dot-on); }
+
 /* Editor host */
 .pp-editor { border: 1px solid #8884; font: 15px/1.6 monospace; }
 .pp-editor .cm-editor { height: 100%; }

@@ -6,11 +6,15 @@ from pathlib import Path
 
 from nicegui import app, ui
 
+from paper_pile.gui.layout import MainLayout
 from paper_pile.gui.security import TokenGate
+from paper_pile.gui.shortcuts import install_shortcuts
 
 log = logging.getLogger("paper_pile.app")
 
 SERVE_HOST = "127.0.0.1"  # web mode never binds anything else
+STATIC_DIR = Path(__file__).parent / "static"
+STATIC_URL = "/pp-static"
 
 
 def _title(vault: Path) -> str:
@@ -18,9 +22,19 @@ def _title(vault: Path) -> str:
 
 
 def _build_pages(vault: Path) -> None:
+    app.add_static_files(STATIC_URL, STATIC_DIR)
+
     @ui.page("/")
     def index() -> None:
-        ui.label(f"Vault: {vault}")  # placeholder until the 3-pane layout (P1.3)
+        ui.add_head_html(f'<link rel="stylesheet" href="{STATIC_URL}/app.css">')
+        layout = MainLayout(vault)
+        layout.build()
+        install_shortcuts(
+            {
+                "ctrl+b": lambda: layout.toggle("left"),
+                "ctrl+l": lambda: layout.toggle("right"),
+            }
+        )
 
 
 def run_native(vault: Path) -> None:

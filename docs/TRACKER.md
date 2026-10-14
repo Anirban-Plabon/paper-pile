@@ -7,8 +7,8 @@ Legend: 🧠 = needs Opus (see PLAN §6 model guidance) · ⬜ todo · 🔄 in p
 
 ## Current focus
 - **Phase:** P0 — Foundation
-- **Task:** P1.3 (next; P0, P1.1, P1.2 done)
-- **Next up:** P1.4 → P1.5
+- **Task:** P1.4 (next; P0, P1.1–P1.3 done)
+- **Next up:** P1.5 → P2
 
 ## Open issues
 <!-- - [ ] YYYY-MM-DD · task ID · what's blocking · what's needed -->
@@ -31,7 +31,7 @@ Legend: 🧠 = needs Opus (see PLAN §6 model guidance) · ⬜ todo · 🔄 in p
 |---|---|---|---|
 | P1.1 | CLI + --serve token | ✅ | 42 tests; all 4 forms verified for real (serve: token/cookie/host/ws; native `.`: window process + server up); closing-window-exits-app left to P1.3 manual QA |
 | P1.2 | core/vault.py | ✅ | 81 tests total (39 new); safety rules mutation-checked (overwrite, trash, symlink escape) | |
-| P1.3 | 3-pane layout | ⬜ | |
+| P1.3 | 3-pane layout | ✅ | 85 tests; 21 browser checks (Chrome) + 12 checks inside the native QtWebEngine window (via CDP); compositor-level keys on Wayland still manual | |
 | P1.4 | Tree + context menu + drag | ⬜ | |
 | P1.5 | Watcher | ⬜ | |
 
@@ -132,6 +132,9 @@ Legend: 🧠 = needs Opus (see PLAN §6 model guidance) · ⬜ todo · 🔄 in p
 | 2026-10-14 | P1.1: `--serve` auth = `TokenGate` ASGI middleware (query token → HttpOnly SameSite=Strict cookie, loopback Host check, 401/403, ws close 1008); native mode has no token in phase 1 | Covers HTTP + websockets + static; also protects the S1 image-paste route | claude |
 | 2026-10-14 | P1.2: trash layout `.trash/<timestamp-µs>/<original rel path>`; vault API refuses hidden/escaping/non-note paths and never overwrites; non-UTF-8 notes raise instead of lossy decode; symlinks escaping the vault are hidden/refused | Data safety (CLAUDE rule 4), web-mode path traversal, no silent corruption | claude |
 | 2026-10-14 | P1.2: extracted `core/fsutil.atomic_write_bytes` (fsync + mode kept), `config.py` now uses it; PLAN §3 lists `fsutil.py` | One atomic-write implementation for vault and config | claude |
+| 2026-10-14 | P1.3: layout = two nested px Quasar splitters (`gui/layout.py`); limits left 180–480 / right 280–640; collapse via Ctrl+B / Ctrl+L + status-bar toggle buttons (no drag-to-collapse); defaults 260/340; state in `session.json` | Predictable, remembers width while collapsed; PLAN only said "collapsible, width remembered" | claude |
+| 2026-10-14 | P1.3: `gui/shortcuts.py` intercepts only registered combos (Ctrl+C/V/F/Z etc. pass through); P9.5 just adds entries | S3 spike intercepted every Ctrl combo, which would break editing | claude |
+| 2026-10-14 | P1.3: `session.json` schema: `panes_open` added, `preview_mode: "split"` replaced by `mode: "live"/"source"`; PLAN §5 and §4.2 diagram updated (diagram still showed a split preview) | Matches the no-preview-pane decision | claude |
 | 2026-10-14 | uv_build backend with `module-root = ""` (flat `paper_pile/` layout, not `src/`) | PLAN §3 layout | claude |
 | 2026-10-13 | Preview-tab (VS Code style) behaviour as default | Chosen during planning, unconfirmed — ask user if unsure | planning |
 | 2026-10-13 | Split preview in phase 1; inline live preview deferred | Inline needs CM6 decorations, highest cost | planning |
@@ -143,6 +146,9 @@ Legend: 🧠 = needs Opus (see PLAN §6 model guidance) · ⬜ todo · 🔄 in p
 | Date | Task | Symptom | Root cause | Fix | Gotcha? |
 |---|---|---|---|---|---|
 | 2026-10-14 | P0.6 | Native window failed to start with `QT_QPA_PLATFORM=xcb`: "Could not load the Qt platform plugin xcb" | Qt ≥ 6.5 xcb plugin needs system libs `libxcb-cursor0`, `libxcb-icccm4`, `libxcb-keysyms1`, `libxcb-xkb1`, `libxkbcommon-x11-0` (+ image/render-util/util) which are not in pip wheels | For the test only: `apt download` the .debs, extract into a scratch dir, `LD_LIBRARY_PATH`. For the app: don't force xcb (default Wayland backend works) | y — pending: CLAUDE.md is read-only, so not yet added to its Gotchas |
+| 2026-10-14 | P1.3 | Collapsed pane still measured 24 px wide | `.pp-pane` had 12 px side padding; a box with `width:100%` of 0 never gets narrower than its padding (clipped, but not 0) | Pane has no padding and `overflow:hidden`; padding moved to an inner `.pp-pane-body` | y — pending: CLAUDE.md read-only |
+| 2026-10-14 | P1.3 | "Ctrl+B is intercepted" test failed although the shortcut worked | The gate calls `stopPropagation()`, so the test's own bubble-phase listener never ran | Test uses `dispatchEvent()`'s return value (false when `preventDefault` was called) | n |
+| 2026-10-14 | P1.3 | `xdotool` keys sent to the native window had no effect (worked in S3) | Desktop-level key injection on Wayland/XWayland is focus-dependent and not reliable | Verified inside the native renderer instead: QtWebEngine exposed via `QTWEBENGINE_REMOTE_DEBUGGING=9222`, raw CDP `Input.dispatchKeyEvent`/mouse events (Playwright cannot attach: no browser-context support) | n |
 | 2026-10-14 | P1.1 | `test_websocket_with_cookie_ok` got `WebSocketDisconnect` although cookie was valid | Starlette `TestClient` neither replays its cookie jar nor uses `base_url`'s host on websocket handshakes (sends `Host: testserver`, rejected by the loopback check) — test artifact, gate was right | Pass `host` + `cookie` headers explicitly in websocket tests | n |
 | 2026-10-14 | P0.6 | `xdotool key` reached nothing in the Qt window | `windowactivate` did not move keyboard focus under XWayland; page handler itself was fine (proved with a synthetic key from headless Chrome) | `xdotool windowfocus <id>` + click into the page first | n (test tooling only) |
 
@@ -159,3 +165,4 @@ Legend: 🧠 = needs Opus (see PLAN §6 model guidance) · ⬜ todo · 🔄 in p
 - 2026-10-14 · P0.6 · native-window spike: 12/12 shortcuts delivered (Qt X11 backend via injected keys); Wayland-native launches, manual QA noted; **P0 complete**
 - 2026-10-14 · P1.1 · CLI (4 forms), last-vault memory, vault path validation, `.paper-pile/` init, `--serve` TokenGate; 42 tests green; verified with curl + headless Chrome + native launch
 - 2026-10-14 · P1.2 · core/vault.py (tree, read/write, create, rename/move, delete→trash, duplicate) + fsutil; 81 tests green
+- 2026-10-14 · P1.3 · 3-pane layout (resize, limits, collapse, persistence), status bar + chat stubs, shortcuts module; native lifecycle checked: ending the window process exits the app cleanly (exit 0, no leftovers)
