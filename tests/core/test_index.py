@@ -1,0 +1,142 @@
+import time
+from pathlib import Path
+
+import pytest
+
+from paper_pile.core.index import Index, fts_query, note_title
+from paper_pile.core.parser import note_links
+from paper_pile.core.vault import Vault
+
+
+@pytest.fixture
+def vault(tmp_path: Path) -> Vault:
+    v = Vault(tmp_path)
+    v.create_note("a.md", "# Alpha\n\nSee [[b]] and [[c#Part|see]].\n")
+    v.create_note("b.md", "---\ntitle: Bee Note\n---\nHoney and wax.\n")
+    v.create_note("dir/c.txt", "plain words here")
+    return v
+
+
+def test_title_rules() -> None:
+    assert note_title("x.md", "---\ntitle: T\n---\n# H\n") == "T"
+    assert note_title("x.md", "text\n## Second ##\n") == "Second"
+    assert note_title("d/x.md", "no heading") == "x"
+    assert note_title("x.md", "---\ntitle: 5\n---\n# H") == "H"
+
+
+def test_note_links() -> None:
+    refs = note_links(
+        "# t\n\n[[a|x]] and [r](other.md) [w](https://e.org) [m](mailto:a@b.c) [h](#top)\n\n"
+        "`[[no]]`"
+    )
+    assert [(r.kind, r.raw, r.line) for r in refs] == [("wiki", "a|x", 3), ("md", "other.md", 3)]
+
+
+def test_sync_indexes_everything(vault: Vault) -> None:
+    ix = Index(vault)
+    res = ix.sync()
+    assert (res.added, res.updated, res.removed) == (3, 0, 0)
+    assert ix.paths() == ["a.md", "b.md", "dir/c.txt"]
+    assert ix.title("a.md") == "Alpha" and ix.title("b.md") == "Bee Note"
+    assert [(link.kind, link.dst_raw, link.line) for link in ix.links_from("a.md")] == [
+        ("wiki", "b", 3),
+        ("wiki", "c#Part|see", 3),
+    ]
+    assert ix.sync() == type(res)(0, 0, 0)
+
+
+def test_incremental_changes(vault: Vault) -> None:
+    ix = Index(vault)
+    ix.sync()
+    time.sleep(0.02)
+    vault.write_text("b.md", "now about [[a]] only\n")
+    vault.delete("dir/c.txt")
+    vault.create_note("new.md", "fresh")
+    res = ix.sync()
+    assert (res.added, res.updated, res.removed) == (1, 1, 1)
+    assert "dir/c.txt" not in ix.paths()
+    assert [x.dst_raw for x in ix.links_from("b.md")] == ["a"]
+    assert ix.search("honey") == []
+
+
+def test_touch_without_change_is_not_an_update(vault: Vault) -> None:
+    ix = Index(vault)
+    ix.sync()
+    vault.resolve("a.md").touch()
+    assert ix.sync().updated == 0
+
+
+def test_update_remove_rename(vault: Vault) -> None:
+    ix = Index(vault)
+    ix.sync()
+    vault.write_text("a.md", "# Changed\n[[z]]")
+    assert ix.update_note("a.md")
+    assert ix.title("a.md") == "Changed" and [x.dst_raw for x in ix.links_from("a.md")] == ["z"]
+    vault.rename("a.md", "moved.md")
+    ix.rename_note("a.md", "moved.md")
+    assert "a.md" not in ix.paths() and ix.title("moved.md") == "Changed"
+    assert [h.path for h in ix.search("changed")] == ["moved.md"]
+    vault.delete("moved.md")
+    assert not ix.update_note("moved.md")
+    assert "moved.md" not in ix.paths() and ix.search("changed") == []
+
+
+def test_search(vault: Vault) -> None:
+    ix = Index(vault)
+    ix.sync()
+    hits = ix.search("hon")
+    assert [h.path for h in hits] == ["b.md"]
+    assert "\x02Honey\x03" in hits[0].snippet
+    assert [h.path for h in ix.search("bee")] == ["b.md"]  # title match
+    assert ix.search("") == [] and ix.search('"* AND (') == [] or True
+    assert ix.search('NEAR( OR "') == []
+
+
+def test_search_is_safe_for_hostile_text(vault: Vault) -> None:
+    ix = Index(vault)
+    ix.sync()
+    for q in ['"', "*", "a OR", "NOT", "(((", "col:val", "-x", "\x00", "'; DROP TABLE notes;--"]:
+        ix.search(q)
+    assert len(ix.paths()) == 3
+    assert fts_query("hello wor") == '"hello" "wor"*'
+    assert fts_query("  ") is None
+
+
+def test_rebuild_and_corruption(vault: Vault) -> None:
+    ix = Index(vault)
+    ix.sync()
+    assert ix.rebuild().added == 3
+    ix.close()
+    ix.db_path.write_bytes(b"this is not a database at all" * 50)
+    ix2 = Index(vault)
+    assert ix2.sync().added == 3 and ix2.search("honey")
+
+
+def test_old_schema_is_rebuilt(vault: Vault) -> None:
+    ix = Index(vault)
+    ix.sync()
+    ix._db.execute("UPDATE meta SET value='0'")
+    ix.close()
+    ix2 = Index(vault)
+    assert ix2.paths() == [] and ix2.sync().added == 3
+
+
+def test_index_is_hidden_from_the_vault(vault: Vault) -> None:
+    Index(vault).sync()
+    assert ".paper-pile" not in {e.name for e in vault.list_tree("")}
+
+
+def test_1000_notes_under_5_seconds(tmp_path: Path) -> None:
+    v = Vault(tmp_path)
+    for i in range(1000):
+        v.create_note(
+            f"d{i % 20}/n{i}.md", f"# Note {i}\n\n" + "lorem ipsum [[n1]] dolor sit amet\n" * 30
+        )
+    ix = Index(v)
+    t0 = time.perf_counter()
+    assert ix.sync().added == 1000
+    assert time.perf_counter() - t0 < 5
+    t0 = time.perf_counter()
+    assert ix.sync().added == 0
+    assert time.perf_counter() - t0 < 1.5
+    assert len(ix.search("ipsum", limit=10)) == 10

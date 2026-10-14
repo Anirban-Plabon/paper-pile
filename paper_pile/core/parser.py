@@ -221,3 +221,31 @@ def wikilinks(text: str) -> list[WikiTarget]:
 
     walk(_PARSER.parse(text))
     return found
+
+
+@dataclass(frozen=True, slots=True)
+class LinkRef:
+    kind: str  # "wiki" | "md" (a relative markdown link to another note)
+    raw: str  # wiki: the text inside [[ ]]; md: the href
+    line: int  # 1-based line of the paragraph/heading holding it
+
+
+def note_links(text: str) -> list[LinkRef]:
+    """Links that point at other notes: ``[[wikilinks]]`` and relative markdown links."""
+    found: list[LinkRef] = []
+
+    def walk(tokens: list[Any], line: int) -> None:
+        for tok in tokens:
+            if tok.type == "wikilink":
+                found.append(LinkRef("wiki", tok.content, line))
+            elif tok.type == "link_open":
+                href = str(tok.attrGet("href") or "")
+                if href and not href.startswith(("#", "/", "//")) and ":" not in href.split("/")[0]:
+                    found.append(LinkRef("md", href, line))
+            if tok.children:
+                walk(tok.children, line)
+
+    for tok in _PARSER.parse(text):
+        if tok.type == "inline" and tok.children:
+            walk(tok.children, (tok.map[0] + 1) if tok.map else 1)
+    return found
