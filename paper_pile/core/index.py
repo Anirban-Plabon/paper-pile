@@ -11,19 +11,29 @@ import sqlite3
 import threading
 from dataclasses import dataclass
 from pathlib import Path
+from urllib.parse import unquote
 
-from paper_pile.core.parser import front_matter, note_links
+from paper_pile.core.links import (
+    link_keys,
+    norm_name,
+    parse_wikilink,
+    resolve_md_link,
+    resolve_wikilink,
+)
+from paper_pile.core.parser import LinkRef, front_matter, note_links
 from paper_pile.core.vault import META_DIR, Vault, VaultError
 
 log = logging.getLogger("paper_pile.index")
 
-SCHEMA_VERSION = "1"
+SCHEMA_VERSION = "2"
 _SCHEMA = """
 CREATE TABLE notes(id INTEGER PRIMARY KEY, path TEXT UNIQUE NOT NULL, title TEXT NOT NULL,
                    mtime REAL NOT NULL, hash TEXT NOT NULL);
 CREATE TABLE links(src_id INTEGER NOT NULL REFERENCES notes(id) ON DELETE CASCADE,
-                   dst_raw TEXT NOT NULL, dst_path TEXT, kind TEXT NOT NULL, line INTEGER NOT NULL);
+                   dst_raw TEXT NOT NULL, dst_key TEXT NOT NULL, dst_path TEXT, kind TEXT NOT NULL,
+                   line INTEGER NOT NULL);
 CREATE INDEX links_src ON links(src_id);
+CREATE INDEX links_key ON links(dst_key);
 CREATE VIRTUAL TABLE notes_fts USING fts5(
     path, title, body, tokenize='unicode61 remove_diacritics 2');
 CREATE TABLE meta(key TEXT PRIMARY KEY, value TEXT NOT NULL);
@@ -47,6 +57,15 @@ class SearchHit:
 
 
 @dataclass(frozen=True, slots=True)
+class Backlink:
+    src: str  # the note that links here
+    title: str
+    kind: str
+    line: int  # 1-based line of the link in ``src``
+    raw: str  # the link as written
+
+
+@dataclass(frozen=True, slots=True)
 class LinkRow:
     src: str
     dst_raw: str
@@ -64,6 +83,15 @@ def note_title(rel: str, text: str) -> str:
     if m:
         return m.group(1).strip()
     return rel.rsplit("/", 1)[-1].rsplit(".", 1)[0]
+
+
+def _dst_key(ref: LinkRef) -> str:
+    """What a link names, normalised, to find candidate links to a note without resolving all."""
+    if ref.kind == "wiki":
+        target = parse_wikilink(ref.raw)
+        return norm_name(target.note).strip("/") if target else ""
+    path = unquote(ref.raw).split("#", 1)[0].split("?", 1)[0]
+    return norm_name(path.rsplit("/", 1)[-1])
 
 
 def fts_query(user: str) -> str | None:
@@ -217,8 +245,9 @@ class Index:
             "INSERT INTO notes_fts(path, title, body) VALUES(?,?,?)", (rel, title, text)
         )
         self._db.executemany(
-            "INSERT INTO links(src_id, dst_raw, dst_path, kind, line) VALUES(?,?,NULL,?,?)",
-            [(note_id, ref.raw, ref.kind, ref.line) for ref in note_links(text)],
+            "INSERT INTO links(src_id, dst_raw, dst_key, dst_path, kind, line) "
+            "VALUES(?,?,?,NULL,?,?)",
+            [(note_id, ref.raw, _dst_key(ref), ref.kind, ref.line) for ref in note_links(text)],
         )
         return "updated" if known else "added"
 
@@ -241,6 +270,33 @@ class Index:
                 (rel,),
             ).fetchall()
         return [LinkRow(*r) for r in rows]
+
+    def backlinks(self, target: str) -> list[Backlink]:
+        """Notes that link to ``target`` (not counting itself), with the link's line.
+
+        Candidates come from the name each link uses; each is then resolved the way a click
+        would resolve it, so a link only counts if it really leads to ``target``.
+        """
+        keys = link_keys([target])
+        marks = ",".join("?" * len(keys))
+        with self._lock:
+            rows = self._db.execute(
+                "SELECT n.path, n.title, l.kind, l.line, l.dst_raw FROM links l "
+                f"JOIN notes n ON n.id=l.src_id WHERE l.dst_key IN ({marks}) AND n.path != ? "
+                "ORDER BY n.path, l.line, l.rowid",
+                (*keys, target),
+            ).fetchall()
+            paths = {r[0] for r in self._db.execute("SELECT path FROM notes")}
+        found = []
+        for src, title, kind, line, raw in rows:
+            if kind == "wiki":
+                parsed = parse_wikilink(raw)
+                hit = parsed is not None and resolve_wikilink(parsed.note, src, paths) == target
+            else:
+                hit = resolve_md_link(raw, src, paths) == target
+            if hit:
+                found.append(Backlink(src, title, kind, line, raw))
+        return found
 
     def search(self, query: str, limit: int = 50) -> list[SearchHit]:
         """Full-text search over title and body, best match first. Free text is safe to pass."""

@@ -88,7 +88,7 @@ def resolve_wikilink(note: str, source: str, paths: Iterable[str]) -> str | None
     """The note path a ``[[note]]`` points at, or ``None``.
 
     ``note`` is a vault-relative path or a bare name, with or without extension, in any case.
-    A full path match wins; otherwise a match on the name or on a trailing part of the path
+    A name written with a ``/`` prefers the exact vault path over a trailing-part match
     (``folder/note``). When several notes match, the one in the source note's folder wins, then
     the shallowest, then ``.md`` over ``.txt``, then alphabetical order. ``[[#heading]]`` (empty
     ``note``) points at the source note itself.
@@ -105,7 +105,8 @@ def resolve_wikilink(note: str, source: str, paths: Iterable[str]) -> str | None
             full.append(path)
         elif stem.endswith("/" + key):
             partial.append(path)
-    pool = full or partial
+    # a bare name competes across all folders; a path (`a/b`) prefers the exact full path
+    pool = full + partial if "/" not in key else (full or partial)
     if explicit_ext:
         exact = [p for p in pool if p.lower().endswith(note.strip().lower().lstrip("/"))]
         pool = exact or pool
@@ -146,3 +147,13 @@ def new_note_path(note: str, source: str) -> str | None:
     if not _NOTE_EXT.search(name):
         name += ".md"
     return name if "/" in note.strip() else posixpath.join(_folder(source), name)
+
+
+def link_snippet(text: str, line: int, width: int = 140) -> str:
+    """The one line of a note that holds a link, tidied for a list: list/quote/heading markers
+    dropped, whitespace collapsed, cut to ``width`` characters."""
+    lines = text.splitlines()
+    raw = lines[line - 1] if 1 <= line <= len(lines) else ""
+    raw = re.sub(r"^\s*(?:>\s*)*(?:[-*+]\s+(?:\[[ xX]\]\s+)?|\d+[.)]\s+|#{1,6}\s+)?", "", raw)
+    clean = " ".join(raw.split())
+    return clean if len(clean) <= width else clean[: width - 1].rstrip() + "…"

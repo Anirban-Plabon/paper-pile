@@ -11,6 +11,7 @@ from pathlib import Path
 from nicegui import ui
 
 from paper_pile.core.events import EventBus
+from paper_pile.core.index import Index
 from paper_pile.core.session import SessionState, load_session, save_session
 from paper_pile.core.vault import Vault
 from paper_pile.core.watcher import TOPIC as FS_CHANGED
@@ -129,6 +130,7 @@ class MainLayout:
             on_mode_changed=self._on_mode_changed,
             native=self.can_reveal,  # native window = this machine
             on_plain_changed=self._on_plain_changed,
+            index=Index(Vault(self.vault)),
         )
         self.editor_pane.build()
 

@@ -24,9 +24,11 @@ from nicegui import ui
 
 from paper_pile.core.buffer import NoteBuffer, Outcome, content_hash, find_recoverable
 from paper_pile.core.events import EventBus
+from paper_pile.core.index import Index
 from paper_pile.core.links import (
     external_url,
     link_keys,
+    link_snippet,
     new_note_path,
     resolve_md_link,
     resolve_wikilink,
@@ -36,6 +38,7 @@ from paper_pile.core.recovery import RecoveryEntry, RecoveryStore
 from paper_pile.core.tabs import TabList
 from paper_pile.core.vault import Vault, VaultError, is_plain_text
 from paper_pile.core.watcher import FsEvent
+from paper_pile.gui.components.backlinks import BacklinkItem, BacklinksPane
 from paper_pile.gui.components.editor import Editor, Mode
 from paper_pile.gui.components.tabs import TabBar
 
@@ -56,6 +59,7 @@ class EditorPane:
         on_mode_changed: Callable[[Mode], None] = lambda mode: None,
         native: bool = False,
         on_plain_changed: Callable[[bool], None] = lambda plain: None,
+        index: Index | None = None,
     ) -> None:
         self.vault = vault
         self.bus = bus
@@ -69,6 +73,9 @@ class EditorPane:
         self._native = native  # native window: Python opens links; web mode: the page does
         self._on_plain_changed = on_plain_changed
         self._plain_shown: bool | None = None
+        self.index = index
+        self._reindex_handle: asyncio.TimerHandle | None = None
+        self._backlinks: BacklinksPane
         self._timer: asyncio.TimerHandle | None = None
         self._failure_toasted = False
         self._rendered: tuple[tuple[int, str], ...] = ()
@@ -106,8 +113,13 @@ class EditorPane:
                     on_save=lambda e: self._on_flush(e.args),
                 ).classes("pp-fill")
                 self._editor.set_visibility(False)
+            self._backlinks = BacklinksPane(
+                lambda path, line: self._spawn(self.open_link(path, line=line))
+            )
+            self._backlinks.build()
         self._host = ui.element("div")
         self.bus.subscribe("tree.open", lambda path: self._spawn(self.open(path)))
+        self.bus.subscribe("vault.created", lambda path: self._reindex_soon())
         self.bus.subscribe("vault.renamed", lambda old, new: self._on_renamed(old, new))
         self.bus.subscribe("vault.deleted", lambda path, **_: self._on_deleted(path))
         ui.context.client.on_disconnect(self._on_disconnect)
@@ -129,6 +141,8 @@ class EditorPane:
     # ---- opening, activating, closing tabs -----------------------------------------------
 
     async def _restore(self, paths: list[str], active: str | None) -> None:
+        if self.index is not None:
+            await asyncio.to_thread(self.index.sync)  # backlinks need it before the first tab
         for path in paths:
             if self.vault.exists(path):  # notes deleted since last time are skipped quietly
                 await self.open(path, skip_recovery=True, activate=False)
@@ -200,6 +214,7 @@ class EditorPane:
         self._editor.show_doc(tab_id, self.buffers[tab_id].text, self.buffers[tab_id].path)
         self._editor.focus()
         self.refresh_links()
+        self.refresh_backlinks()
         self._refresh()
         self._notify_tabs()
 
@@ -335,11 +350,16 @@ class EditorPane:
         self._toast(f"Created {path}")
         return path
 
-    async def open_link(self, path: str, heading: str = "") -> None:
-        """Open ``path`` in a tab and, if ``heading`` names a heading of it, jump there."""
+    async def open_link(self, path: str, heading: str = "", *, line: int = 0) -> None:
+        """Open ``path`` in a tab and jump to ``line``, or to the heading named ``heading``."""
         await self.open(path)
         tab = self.tabs.find(path)
-        if tab is None or tab.id != self.tabs.active or not heading:
+        if tab is None or tab.id != self.tabs.active:
+            return
+        if line:
+            self._editor.goto_line(line)
+            return
+        if not heading:
             return
         found = find_heading(self.buffers[tab.id].text, heading)
         if found is not None:
@@ -351,12 +371,50 @@ class EditorPane:
         active = self.tabs.active
         return self.buffers[active].path if active in self.buffers else None
 
+    # ---- index and backlinks -------------------------------------------------------------
+
+    def _reindex_soon(self) -> None:
+        """Bring the index in line with the vault (debounced, off the UI thread)."""
+        if self.index is None:
+            return
+        if self._reindex_handle is not None:
+            self._reindex_handle.cancel()
+        self._reindex_handle = asyncio.get_running_loop().call_later(
+            0.3, lambda: self._spawn(self._reindex())
+        )
+
+    async def _reindex(self) -> None:
+        self._reindex_handle = None
+        if self.index is None:
+            return
+        await asyncio.to_thread(self.index.sync)
+        self.refresh_backlinks()
+
+    def refresh_backlinks(self) -> None:
+        """List the notes linking to the active note."""
+        path = self._active_path()
+        if self.index is None or path is None:
+            self._backlinks.set_items([])
+            return
+        items = []
+        for link in self.index.backlinks(path)[:100]:
+            try:
+                snippet = link_snippet(self.vault.read_text(link.src), link.line)
+            except VaultError:
+                snippet = ""
+            items.append(BacklinkItem(link.src, link.title, link.line, snippet))
+        self._backlinks.set_items(items)
+
     def refresh_links(self) -> None:
         """Tell the editor which notes exist, so links to missing ones are styled."""
         self._editor.set_known_notes(link_keys(self.vault.walk_notes()))
 
     def _on_disconnect(self) -> None:
         self._cancel_timer()
+        if self._reindex_handle is not None:
+            self._reindex_handle.cancel()
+        if self.index is not None:
+            self.index.close()
         for buf in self.buffers.values():
             buf.save()
 
@@ -388,6 +446,10 @@ class EditorPane:
         if buf.conflict is not None:  # waiting for the user's decision: never write over theirs
             return False
         ok = buf.save()
+        if ok and self.index is not None:
+            self.index.update_note(buf.path)
+            if buf.path != self._active_path():
+                self.refresh_backlinks()  # a background note changed what links here
         if not ok and not self._failure_toasted:
             self._failure_toasted = True
             self._toast(f"Could not save {buf.path}: {buf.error}", error=True)
@@ -448,6 +510,7 @@ class EditorPane:
     def on_external(self, events: list[FsEvent]) -> None:
         """The watcher saw files change on disk (a terminal, another editor, a sync tool)."""
         self.refresh_links()  # notes may have appeared or vanished
+        self._reindex_soon()
         self._spawn(self._handle_external(events))
 
     async def _handle_external(self, events: list[FsEvent]) -> None:
@@ -573,6 +636,7 @@ class EditorPane:
             if tab.id == self.tabs.active:
                 self._editor.set_path(tab.path)  # relative image URLs depend on the note's folder
         self.refresh_links()
+        self._reindex_soon()
         if changed:
             self._refresh()
             self._notify_tabs()
@@ -584,6 +648,7 @@ class EditorPane:
                 buf.discard()  # its note is in .trash now; saving would bring it back
             self._drop_tab(tab.id)
         self.refresh_links()
+        self._reindex_soon()
 
     # ---- crash recovery ------------------------------------------------------------------
 

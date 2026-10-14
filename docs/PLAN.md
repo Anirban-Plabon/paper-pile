@@ -225,7 +225,7 @@ paper-pile --serve [path] [--port 8080]   # web mode, 127.0.0.1 only, prints URL
 - Link extraction on save → index (`links` table: src, dst_raw, dst_resolved, kind).
 - Resolution (`core/links.resolve_wikilink`): full path match → name or trailing-path match (case-insensitive, `.md`/`.txt` optional); ties → same folder as the source, shallowest, `.md` first, alphabetical → unresolved. Relative `[t](x.md)` links resolve against the source's folder.
 - Ctrl/Cmd+click on a link opens the note in a tab (and jumps to `#heading`); on an unresolved wikilink it creates an empty note (same folder as the source; `[[a/b]]` is a path from the root) and opens it. Links to missing notes are styled dashed amber.
-- Backlinks pane under the editor: list of notes linking to the current note, with a one-line context snippet. Collapsible.
+- Backlinks pane under the editor: notes whose links really resolve to the current note (`Index.backlinks`), each with the link's line as a one-line snippet; click opens the note at that line. Collapsible.
 - **Rename-safe:** renaming/moving a note rewrites every `[[...]]` and `(...md)` reference to it across the vault, in one operation, with a summary toast ("updated 7 links in 4 notes").
 
 ### 4.8 Slash command menu (`/`)

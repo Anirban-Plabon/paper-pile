@@ -234,20 +234,19 @@ def note_links(text: str) -> list[LinkRef]:
     """Links that point at other notes: ``[[wikilinks]]`` and relative markdown links."""
     found: list[LinkRef] = []
 
-    def walk(tokens: list[Any], line: int) -> None:
-        for tok in tokens:
-            if tok.type == "wikilink":
-                found.append(LinkRef("wiki", tok.content, line))
-            elif tok.type == "link_open":
-                href = str(tok.attrGet("href") or "")
+    for tok in _PARSER.parse(text):
+        if tok.type != "inline" or not tok.children:
+            continue
+        line = (tok.map[0] + 1) if tok.map else 1
+        for child in tok.children:
+            if child.type in {"softbreak", "hardbreak"}:
+                line += 1
+            elif child.type == "wikilink":
+                found.append(LinkRef("wiki", child.content, line))
+            elif child.type == "link_open":
+                href = str(child.attrGet("href") or "")
                 if href and not href.startswith(("#", "/", "//")) and ":" not in href.split("/")[0]:
                     found.append(LinkRef("md", href, line))
-            if tok.children:
-                walk(tok.children, line)
-
-    for tok in _PARSER.parse(text):
-        if tok.type == "inline" and tok.children:
-            walk(tok.children, (tok.map[0] + 1) if tok.map else 1)
     return found
 
 

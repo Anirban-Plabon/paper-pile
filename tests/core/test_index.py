@@ -140,3 +140,30 @@ def test_1000_notes_under_5_seconds(tmp_path: Path) -> None:
     assert ix.sync().added == 0
     assert time.perf_counter() - t0 < 1.5
     assert len(ix.search("ipsum", limit=10)) == 10
+
+
+def test_backlinks(tmp_path: Path) -> None:
+    v = Vault(tmp_path)
+    v.create_note("target.md", "# Target\n[[target]] self\n")
+    v.create_note("a.md", "# A\n\nline\nsee [[Target|t]] and [[target#H]]\n")
+    v.create_note("sub/b.md", "# B\n[md](../target.md#x) and [other](nope.md)\n")
+    v.create_note("sub/target.md", "# Other target\n")  # same name, other folder
+    v.create_note("c.md", "[[sub/target]] only\n")
+    v.create_note("d.md", "`[[target]]` in code and [[targets]]\n")
+    ix = Index(v)
+    ix.sync()
+    got = [(b.src, b.kind, b.line) for b in ix.backlinks("target.md")]
+    assert got == [("a.md", "wiki", 4), ("a.md", "wiki", 4), ("sub/b.md", "md", 2)]
+    # [[target]] from sub/ prefers its own folder's note
+    v.create_note("sub/e.md", "[[target]]\n")
+    ix.sync()
+    assert "sub/e.md" in {b.src for b in ix.backlinks("sub/target.md")}
+    assert "sub/e.md" not in {b.src for b in ix.backlinks("target.md")}
+    assert {b.src for b in ix.backlinks("sub/target.md")} == {"c.md", "sub/e.md"}
+    # a link to a note that does not exist yet starts counting once it does
+    v.create_note("later.md", "[[Newcomer]]\n")
+    ix.sync()
+    assert ix.backlinks("newcomer.md") == []
+    v.create_note("newcomer.md", "hi")
+    ix.sync()
+    assert [b.src for b in ix.backlinks("newcomer.md")] == ["later.md"]
