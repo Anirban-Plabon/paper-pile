@@ -63,10 +63,13 @@ class Editor(
         except TimeoutError:
             return None
 
-    def set_text(self, text: str, doc_id: int = 0, path: str = "") -> None:
+    def set_text(
+        self, text: str, doc_id: int = 0, path: str = "", *, keep_caret: bool = False
+    ) -> None:
         """Replace the document (and reset undo history). ``doc_id`` tags later events;
-        ``path`` is the note's vault path (images are resolved relative to it)."""
-        self.run_method("setText", text, doc_id, path)
+        ``path`` is the note's vault path (images are resolved relative to it);
+        ``keep_caret`` leaves the caret where it was (a reload of an outside change)."""
+        self.run_method("setText", text, doc_id, path, keep_caret)
 
     def show_doc(self, doc_id: int, text: str, path: str = "") -> None:
         """Switch to tab ``doc_id``: its parked editor state if it has one, else ``text``."""

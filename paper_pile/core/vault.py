@@ -134,6 +134,22 @@ class Vault:
     def _inside(self, path: Path) -> bool:
         return path.resolve().is_relative_to(self.root)
 
+    def stash_text(self, rel: str | PurePosixPath, text: str, label: str) -> str:
+        """Keep a version of a note that is about to be overwritten or dropped.
+
+        Written to ``.trash/<stamp>/<folder>/<stem> (<label>)<ext>``; returns that path. Used when
+        an outside edit and unsaved edits collide: whichever side loses is stashed here, so
+        resolving a conflict never destroys text.
+        """
+        target = self.resolve(rel)  # also validates the path
+        stamp = datetime.now().strftime("%Y-%m-%dT%H-%M-%S-%f")
+        folder = PurePosixPath(str(rel)).parent
+        name = f"{target.stem} ({label}){target.suffix}"
+        dst = self.root / TRASH_DIR / stamp / ("" if str(folder) == "." else str(folder)) / name
+        dst.parent.mkdir(parents=True, exist_ok=True)
+        atomic_write_bytes(dst, text.encode("utf-8"))
+        return self._rel(dst)
+
     def _rel(self, path: Path) -> str:
         return path.relative_to(self.root).as_posix()
 

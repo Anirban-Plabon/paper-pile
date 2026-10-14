@@ -219,7 +219,9 @@ export function createEditor(
       editorContext.notePath = path;
       view.dispatch({ effects: refreshEffect.of(null) });
     },
-    setText(text, id = docId, path = editorContext.notePath) {
+    // `keepCaret`: an outside change was reloaded into the note on screen; stay where the user was.
+    setText(text, id = docId, path = editorContext.notePath, keepCaret = false) {
+      const head = view.state.selection.main.head;
       editorContext.notePath = path;
       if (id !== docId) park();
       else flush();
@@ -228,6 +230,7 @@ export function createEditor(
       parked.delete(id);
       docId = id;
       view.setState(makeState(text));
+      if (keepCaret) view.dispatch({ selection: { anchor: Math.min(head, view.state.doc.length) } });
     },
     // The tab was closed: forget its parked state.
     closeDoc(id) {

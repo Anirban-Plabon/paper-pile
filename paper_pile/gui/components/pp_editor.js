@@ -37,8 +37,8 @@ export default {
     async getText() {
       return (await this.ready).getText();
     },
-    async setText(text, docId, path) {
-      (await this.ready).setText(text, docId, path);
+    async setText(text, docId, path, keepCaret) {
+      (await this.ready).setText(text, docId, path, keepCaret);
     },
     async showDoc(docId, text, path) {
       (await this.ready).showDoc(docId, text, path);

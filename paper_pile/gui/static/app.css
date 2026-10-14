@@ -59,6 +59,8 @@ html, body { overflow: hidden; }
 .pp-editor { font: 15px/1.6 monospace; }
 .pp-editor .cm-content { padding: 16px 28px; }
 .pp-editor .cm-editor.cm-focused { outline: none; }
+.pp-banner { width: 100%; flex-shrink: 0; gap: 10px; padding: 5px 12px; background: #fff4e5; border-bottom: 1px solid #f0c36d; color: #5c3b00; font-size: 13px; }
+.pp-banner-text { flex: 1 1 auto; }
 .pp-save-error { color: #c0392b; }
 .pp-setext-underline { opacity: .3; font-size: .8em; }
 

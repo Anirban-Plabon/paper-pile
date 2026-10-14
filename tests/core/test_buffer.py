@@ -4,9 +4,9 @@ from pathlib import Path
 
 import pytest
 
-from paper_pile.core.buffer import NoteBuffer, content_hash, find_recoverable
+from paper_pile.core.buffer import NoteBuffer, Outcome, content_hash, find_recoverable
 from paper_pile.core.recovery import RecoveryStore
-from paper_pile.core.vault import NotFoundError, Vault
+from paper_pile.core.vault import NotFoundError, Vault, VaultError
 
 
 @pytest.fixture
@@ -161,3 +161,235 @@ def test_opening_a_clean_note_keeps_a_pending_recovery_draft(
     entry = rec.get("a.md")
     assert entry is not None and entry.text == "older unsaved draft"
     assert [e.path for e in find_recoverable(vault, rec)] == ["a.md"]  # still offered
+
+
+# ---- sync_with_disk: changes made outside the app ----------------------------------------
+
+
+def _external_write(vault: Vault, rel: str, text: str) -> None:
+    (vault.root / rel).write_text(text, encoding="utf-8")  # what a terminal or another editor does
+
+
+def test_unchanged_disk_is_a_noop_and_so_is_the_echo_of_our_own_save(
+    env: tuple[Vault, RecoveryStore],
+) -> None:
+    vault, rec = env
+    vault.create_note("a.md", "v1")
+    buf = NoteBuffer.open(vault, rec, "a.md")
+    assert buf.sync_with_disk() is Outcome.UNCHANGED
+    buf.set_text("v2")
+    assert buf.save()
+    assert buf.sync_with_disk() is Outcome.UNCHANGED  # the watcher reports our own write too
+    assert buf.text == "v2" and not buf.dirty and buf.conflict is None
+
+
+def test_touch_without_a_content_change_is_unchanged(env: tuple[Vault, RecoveryStore]) -> None:
+    vault, rec = env
+    vault.create_note("a.md", "same")
+    buf = NoteBuffer.open(vault, rec, "a.md")
+    _external_write(vault, "a.md", "same")
+    assert buf.sync_with_disk() is Outcome.UNCHANGED
+
+
+def test_clean_buffer_takes_an_outside_change_silently(env: tuple[Vault, RecoveryStore]) -> None:
+    vault, rec = env
+    vault.create_note("a.md", "old")
+    buf = NoteBuffer.open(vault, rec, "a.md")
+    _external_write(vault, "a.md", "new from the terminal")
+    assert buf.sync_with_disk() is Outcome.RELOADED
+    assert buf.text == "new from the terminal" and not buf.dirty and buf.conflict is None
+    assert buf.sync_with_disk() is Outcome.UNCHANGED  # and it is now the known state
+    assert vault.read_text("a.md") == "new from the terminal"  # we never wrote anything
+
+
+def test_dirty_buffer_and_a_different_disk_version_is_a_conflict(
+    env: tuple[Vault, RecoveryStore],
+) -> None:
+    vault, rec = env
+    vault.create_note("a.md", "base")
+    buf = NoteBuffer.open(vault, rec, "a.md")
+    buf.set_text("my edit")
+    _external_write(vault, "a.md", "their edit")
+    assert buf.sync_with_disk() is Outcome.CONFLICT
+    assert buf.conflict is not None and buf.conflict.text == "their edit"
+    assert buf.text == "my edit" and buf.dirty  # nothing lost on either side
+    assert vault.read_text("a.md") == "their edit"
+
+
+def test_a_conflict_blocks_saving_so_nothing_is_overwritten(
+    env: tuple[Vault, RecoveryStore],
+) -> None:
+    vault, rec = env
+    vault.create_note("a.md", "base")
+    buf = NoteBuffer.open(vault, rec, "a.md")
+    buf.set_text("my edit")
+    _external_write(vault, "a.md", "their edit")
+    buf.sync_with_disk()
+    assert buf.save() is False
+    assert "changed on disk" in (buf.error or "")
+    assert vault.read_text("a.md") == "their edit"
+    assert rec.get("a.md").text == "my edit"  # type: ignore[union-attr]
+
+
+def test_a_later_outside_change_updates_the_pending_conflict(
+    env: tuple[Vault, RecoveryStore],
+) -> None:
+    vault, rec = env
+    vault.create_note("a.md", "base")
+    buf = NoteBuffer.open(vault, rec, "a.md")
+    buf.set_text("mine")
+    _external_write(vault, "a.md", "theirs 1")
+    buf.sync_with_disk()
+    _external_write(vault, "a.md", "theirs 2")
+    assert buf.sync_with_disk() is Outcome.CONFLICT
+    assert buf.conflict is not None and buf.conflict.text == "theirs 2"
+
+
+def test_the_conflict_clears_itself_if_the_disk_goes_back(env: tuple[Vault, RecoveryStore]) -> None:
+    vault, rec = env
+    vault.create_note("a.md", "base")
+    buf = NoteBuffer.open(vault, rec, "a.md")
+    buf.set_text("mine")
+    _external_write(vault, "a.md", "theirs")
+    buf.sync_with_disk()
+    _external_write(vault, "a.md", "base")  # reverted outside
+    assert buf.sync_with_disk() is Outcome.UNCHANGED and buf.conflict is None
+    assert buf.save() is True and vault.read_text("a.md") == "mine"
+
+
+def test_typing_exactly_what_someone_wrote_is_not_a_conflict(
+    env: tuple[Vault, RecoveryStore],
+) -> None:
+    vault, rec = env
+    vault.create_note("a.md", "base")
+    buf = NoteBuffer.open(vault, rec, "a.md")
+    buf.set_text("identical")
+    _external_write(vault, "a.md", "identical")
+    assert buf.sync_with_disk() is Outcome.UNCHANGED
+    assert not buf.dirty and buf.conflict is None and rec.pending() == []
+
+
+def test_keep_mine_overwrites_on_the_next_save(env: tuple[Vault, RecoveryStore]) -> None:
+    vault, rec = env
+    vault.create_note("a.md", "base")
+    buf = NoteBuffer.open(vault, rec, "a.md")
+    buf.set_text("mine")
+    _external_write(vault, "a.md", "theirs")
+    buf.sync_with_disk()
+    buf.keep_mine()
+    assert buf.conflict is None and buf.dirty and buf.text == "mine"
+    assert buf.save() is True
+    assert vault.read_text("a.md") == "mine" and rec.pending() == []
+
+
+def test_load_theirs_drops_the_edits_and_adopts_the_disk(env: tuple[Vault, RecoveryStore]) -> None:
+    vault, rec = env
+    vault.create_note("a.md", "base")
+    buf = NoteBuffer.open(vault, rec, "a.md")
+    buf.set_text("mine")
+    _external_write(vault, "a.md", "theirs")
+    buf.sync_with_disk()
+    buf.load_theirs()
+    assert buf.text == "theirs" and not buf.dirty and buf.conflict is None
+    assert rec.pending() == [] and vault.read_text("a.md") == "theirs"
+
+
+def test_clean_note_deleted_outside_is_reported_gone(env: tuple[Vault, RecoveryStore]) -> None:
+    vault, rec = env
+    vault.create_note("a.md", "text")
+    buf = NoteBuffer.open(vault, rec, "a.md")
+    (vault.root / "a.md").unlink()
+    assert buf.sync_with_disk() is Outcome.GONE
+
+
+def test_dirty_note_deleted_outside_is_a_conflict_that_can_recreate_it(
+    env: tuple[Vault, RecoveryStore],
+) -> None:
+    vault, rec = env
+    vault.create_note("a.md", "text")
+    buf = NoteBuffer.open(vault, rec, "a.md")
+    buf.set_text("my unsaved words")
+    (vault.root / "a.md").unlink()
+    assert buf.sync_with_disk() is Outcome.CONFLICT_GONE
+    assert buf.conflict is not None and buf.conflict.text is None
+    assert buf.save() is False and not vault.exists("a.md")  # never silently resurrected
+    buf.keep_mine()
+    assert buf.save() is True and vault.read_text("a.md") == "my unsaved words"
+
+
+def test_load_theirs_is_not_offered_for_a_deleted_note(env: tuple[Vault, RecoveryStore]) -> None:
+    vault, rec = env
+    vault.create_note("a.md", "text")
+    buf = NoteBuffer.open(vault, rec, "a.md")
+    buf.set_text("mine")
+    (vault.root / "a.md").unlink()
+    buf.sync_with_disk()
+    buf.load_theirs()  # no-op
+    assert buf.text == "mine" and buf.conflict is not None
+
+
+def test_a_restored_draft_of_a_note_that_never_existed_is_left_alone(
+    env: tuple[Vault, RecoveryStore],
+) -> None:
+    vault, rec = env
+    buf = NoteBuffer.open(vault, rec, "gone/n.md", recovered="rescued")
+    assert buf.sync_with_disk() is Outcome.UNCHANGED and buf.conflict is None
+
+
+def test_an_unreadable_outside_write_does_not_crash_or_change_the_buffer(
+    env: tuple[Vault, RecoveryStore],
+) -> None:
+    vault, rec = env
+    vault.create_note("a.md", "text")
+    buf = NoteBuffer.open(vault, rec, "a.md")
+    (vault.root / "a.md").write_bytes(b"\xff\xfe\x00 not utf-8")
+    assert buf.sync_with_disk() is Outcome.UNCHANGED
+    assert buf.text == "text"
+
+
+# ---- Vault.stash_text -------------------------------------------------------------------
+
+
+def test_stash_text_keeps_a_version_in_the_trash(env: tuple[Vault, RecoveryStore]) -> None:
+    vault, _ = env
+    where = vault.stash_text("notes/idea.md", "the losing side", "changed on disk")
+    assert where.startswith(".trash/") and where.endswith("/notes/idea (changed on disk).md")
+    assert (vault.root / where).read_text() == "the losing side"
+    assert list(vault.walk_notes()) == []  # trash stays invisible to the app
+
+
+def test_stash_text_never_overwrites(env: tuple[Vault, RecoveryStore]) -> None:
+    vault, _ = env
+    a = vault.stash_text("n.md", "one", "mine")
+    b = vault.stash_text("n.md", "two", "mine")
+    assert (
+        a != b and (vault.root / a).read_text() == "one" and (vault.root / b).read_text() == "two"
+    )
+
+
+def test_stash_text_refuses_unsafe_paths(env: tuple[Vault, RecoveryStore]) -> None:
+    vault, _ = env
+    with pytest.raises(VaultError):
+        vault.stash_text("../escape.md", "x", "mine")
+
+
+def test_resolving_or_reloading_clears_an_old_save_failure(
+    env: tuple[Vault, RecoveryStore],
+) -> None:
+    """A failed save leaves `error` set; once the text it was about is gone (reloaded from disk,
+    or the user chose a side) the note must not keep showing 'Save failed'."""
+    vault, rec = env
+    for how in ("reload", "load_theirs", "keep_mine"):
+        name = f"{how}.md"
+        vault.create_note(name, "base")
+        buf = NoteBuffer.open(vault, rec, name)
+        buf.error = "disk full"  # as left by a failed save
+        if how == "reload":
+            _external_write(vault, name, "theirs")
+            assert buf.sync_with_disk() is Outcome.RELOADED
+        else:
+            buf.set_text("mine")
+            _external_write(vault, name, "theirs")
+            assert buf.sync_with_disk() is Outcome.CONFLICT
+            getattr(buf, how)()
+        assert buf.error is None, how

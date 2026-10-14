@@ -11,6 +11,7 @@ Timing (debounce, blur, tab switch) belongs to the UI; this module only decides 
 import hashlib
 import logging
 from dataclasses import dataclass
+from enum import Enum
 
 from paper_pile.core.recovery import RecoveryEntry, RecoveryStore
 from paper_pile.core.vault import NotFoundError, Vault, VaultError
@@ -22,6 +23,23 @@ def content_hash(text: str) -> str:
     return hashlib.sha256(text.encode("utf-8")).hexdigest()
 
 
+class Outcome(Enum):
+    """What :meth:`NoteBuffer.sync_with_disk` found and did."""
+
+    UNCHANGED = "unchanged"  # disk matches what we last saved/loaded (also our own save's echo)
+    RELOADED = "reloaded"  # clean buffer: took the outside change silently
+    CONFLICT = "conflict"  # unsaved edits here AND a different version on disk
+    GONE = "gone"  # clean buffer, the note was deleted/moved away
+    CONFLICT_GONE = "conflict_gone"  # unsaved edits here, the note was deleted/moved away
+
+
+@dataclass(frozen=True, slots=True)
+class DiskVersion:
+    """The version of the note that appeared on disk behind our back (``text`` None = deleted)."""
+
+    text: str | None
+
+
 @dataclass
 class NoteBuffer:
     vault: Vault
@@ -30,6 +48,7 @@ class NoteBuffer:
     text: str
     saved_hash: str | None  # None: the note does not exist on disk yet
     error: str | None = None  # why the last save failed
+    conflict: DiskVersion | None = None  # set while an outside change waits for a decision
 
     @classmethod
     def open(
@@ -62,8 +81,70 @@ class NoteBuffer:
         self.text = text
         self._mirror()
 
+    def sync_with_disk(self) -> Outcome:
+        """Compare the note on disk with what we last saved or loaded and react.
+
+        The comparison is by content hash, so the echo of our own save (the watcher reports it
+        too) is simply "unchanged", and so is a `touch`. A clean buffer takes an outside change
+        silently. A dirty one is never overwritten and never overwrites: it records a conflict
+        and refuses to save until the user picks a side (:meth:`keep_mine` / :meth:`load_theirs`).
+        """
+        try:
+            disk: str | None = self.vault.read_text(self.path)
+        except NotFoundError:
+            disk = None
+        except VaultError:  # e.g. not valid UTF-8 now: leave the buffer alone
+            log.warning("cannot read %s to compare with the buffer", self.path)
+            return Outcome.UNCHANGED
+        if disk is None:
+            if self.saved_hash is None:
+                return Outcome.UNCHANGED  # a restored draft of a note that never existed on disk
+            if not self.dirty:
+                return Outcome.GONE
+            self.conflict = DiskVersion(None)
+            return Outcome.CONFLICT_GONE
+        disk_hash = content_hash(disk)
+        if disk_hash == self.saved_hash:
+            self.conflict = None  # the disk went back to what we know: nothing to decide
+            return Outcome.UNCHANGED
+        if not self.dirty:
+            self.text, self.saved_hash, self.conflict = disk, disk_hash, None
+            self.error = None  # a failed save of text we no longer hold is no longer relevant
+            self.recovery.clear(self.path)
+            return Outcome.RELOADED
+        if content_hash(self.text) == disk_hash:  # someone wrote exactly what we have typed
+            self.saved_hash, self.conflict, self.error = disk_hash, None, None
+            self.recovery.clear(self.path)
+            return Outcome.UNCHANGED
+        self.conflict = DiskVersion(disk)
+        return Outcome.CONFLICT
+
+    def keep_mine(self) -> None:
+        """Resolve a conflict in favour of this buffer: its next save overwrites the disk version
+        (or recreates the note if it was deleted). The caller stashes the other side first."""
+        if self.conflict is None:
+            return
+        self.saved_hash = None if self.conflict.text is None else content_hash(self.conflict.text)
+        self.conflict = None
+        self.error = None  # the user decided; the next save reports its own result
+        self._mirror()
+
+    def load_theirs(self) -> None:
+        """Resolve a conflict in favour of the disk version; the unsaved edits are dropped (the
+        caller stashes them first). Not meaningful for a deleted note."""
+        if self.conflict is None or self.conflict.text is None:
+            return
+        self.text = self.conflict.text
+        self.saved_hash = content_hash(self.text)
+        self.conflict = None
+        self.error = None
+        self.recovery.clear(self.path)
+
     def save(self) -> bool:
         """Write the buffer to disk atomically. Returns False (text kept) on any failure."""
+        if self.conflict is not None:
+            self.error = "changed on disk: choose Keep mine or Load theirs first"
+            return False
         if not self.dirty:
             self.error = None
             return True

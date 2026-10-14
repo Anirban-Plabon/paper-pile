@@ -93,6 +93,8 @@ class MainLayout:
     def _on_external(self, events: list[FsEvent]) -> None:
         if self.tree is not None:
             self.tree.refresh()
+        if self.editor_pane is not None:
+            self.editor_pane.on_external(events)
 
     def _make_splitter(self, pane: str, *, reverse: bool) -> PaneSplitter:
         splitter = PaneSplitter(reverse=reverse, value=self.state.pane_widths[pane])

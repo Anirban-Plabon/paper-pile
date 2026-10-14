@@ -22,12 +22,13 @@ from typing import Any
 
 from nicegui import ui
 
-from paper_pile.core.buffer import NoteBuffer, find_recoverable
+from paper_pile.core.buffer import NoteBuffer, Outcome, content_hash, find_recoverable
 from paper_pile.core.events import EventBus
 from paper_pile.core.links import external_url
 from paper_pile.core.recovery import RecoveryEntry, RecoveryStore
 from paper_pile.core.tabs import TabList
 from paper_pile.core.vault import Vault, VaultError
+from paper_pile.core.watcher import FsEvent
 from paper_pile.gui.components.editor import Editor, Mode
 from paper_pile.gui.components.tabs import TabBar
 
@@ -61,10 +62,12 @@ class EditorPane:
         self._timer: asyncio.TimerHandle | None = None
         self._failure_toasted = False
         self._rendered: tuple[tuple[int, str], ...] = ()
+        self._banner_key: tuple[int, str] | None = None
         self._rendered_active: int | None = None
         self._tabbar: TabBar
         self._editor: Editor
         self._empty: ui.label
+        self._banner: ui.element
         self._host: ui.element  # holds dialogs and notifications
 
     # ---- building ------------------------------------------------------------------------
@@ -78,6 +81,8 @@ class EditorPane:
                 on_move=self._move_tab,
             )
             self._tabbar.build()
+            self._banner = ui.row().classes("pp-banner items-center no-wrap")
+            self._banner.set_visibility(False)
             with ui.element("div").classes("pp-editor-area"):
                 self._empty = ui.label("Open a note to start writing").classes("pp-muted pp-empty")
                 self._editor = Editor(
@@ -292,7 +297,7 @@ class EditorPane:
         self._cancel_timer()
         failed = False
         for buf in self.buffers.values():
-            if buf.dirty and not self._save_buffer(buf, refresh=False):
+            if buf.conflict is None and buf.dirty and not self._save_buffer(buf, refresh=False):
                 failed = True
         if failed:
             self._schedule_save(RETRY_AFTER_FAILURE_S)
@@ -301,6 +306,8 @@ class EditorPane:
         self._refresh()
 
     def _save_buffer(self, buf: NoteBuffer, *, refresh: bool = True) -> bool:
+        if buf.conflict is not None:  # waiting for the user's decision: never write over theirs
+            return False
         ok = buf.save()
         if not ok and not self._failure_toasted:
             self._failure_toasted = True
@@ -314,7 +321,9 @@ class EditorPane:
     # ---- keeping the tab bar and status bar in step --------------------------------------
 
     def _unsaved(self) -> dict[int, bool]:
-        return {i: b.dirty or bool(b.error) for i, b in self.buffers.items()}
+        return {
+            i: b.dirty or bool(b.error) or b.conflict is not None for i, b in self.buffers.items()
+        }
 
     def _refresh(self) -> None:
         unsaved = self._unsaved()
@@ -323,6 +332,7 @@ class EditorPane:
         else:
             self._tabbar.set_unsaved(unsaved)
         self._show_state()
+        self._update_banner()
 
     def _structure_changed(self) -> bool:
         """Re-render the bar only when tabs, titles or the active tab changed (not on typing)."""
@@ -337,6 +347,8 @@ class EditorPane:
         buf = self.buffers.get(tab.id) if tab else None
         if buf is None:
             self._on_state("Ready", False)
+        elif buf.conflict is not None:
+            self._on_state("Changed on disk", True)
         elif buf.error:
             self._on_state("Save failed", True)
         elif buf.dirty:
@@ -347,6 +359,126 @@ class EditorPane:
     def _notify_tabs(self) -> None:
         active = self.tabs.active_tab
         self._on_tabs_changed(self.tabs.paths, active.path if active else None)
+
+    # ---- changes made outside the app ------------------------------------------------------
+
+    def on_external(self, events: list[FsEvent]) -> None:
+        """The watcher saw files change on disk (a terminal, another editor, a sync tool)."""
+        self._spawn(self._handle_external(events))
+
+    async def _handle_external(self, events: list[FsEvent]) -> None:
+        for e in events:
+            if e.kind == "moved" and e.old_path is not None:
+                self._on_renamed(
+                    e.old_path, e.path
+                )  # the tab follows the note (no-op if we moved it)
+        files = {e.path for e in events if not e.is_dir}
+        ids = {t.id for t in self.tabs.tabs if t.path in files}
+        for e in events:
+            if e.is_dir:  # a folder was moved/deleted: look at the notes inside it
+                ids |= {t.id for t in self.tabs.under(e.path)}
+        for tab_id in sorted(ids):
+            await self._sync_tab(tab_id)
+
+    async def _sync_tab(self, tab_id: int) -> None:
+        """Compare one open note with the disk and react (the rules live in NoteBuffer)."""
+        buf = self.buffers.get(tab_id)
+        if buf is None:
+            return
+        if tab_id == self.tabs.active:
+            # the browser may hold keystrokes we have not been told about yet
+            text = await self._editor.get_text()
+            buf = self.buffers.get(tab_id)
+            if buf is None:
+                return
+            if text is not None:
+                buf.set_text(text)
+        outcome = buf.sync_with_disk()
+        name = buf.path.rsplit("/", 1)[-1]
+        if outcome is Outcome.RELOADED:
+            self._show_text(tab_id, keep_caret=True)
+        elif outcome is Outcome.GONE:
+            self._toast(f"“{name}” was deleted outside the app; its tab was closed.")
+            self._drop_tab(tab_id)
+            return
+        elif outcome in (Outcome.CONFLICT, Outcome.CONFLICT_GONE) and tab_id != self.tabs.active:
+            self._toast(f"“{name}” changed outside the app and has unsaved edits here.", error=True)
+        self._refresh()
+
+    def _show_text(self, tab_id: int, *, keep_caret: bool = False) -> None:
+        """Put a buffer's text on screen after it was replaced from outside the editor."""
+        buf = self.buffers[tab_id]
+        if tab_id == self.tabs.active:
+            self._editor.set_text(buf.text, tab_id, buf.path, keep_caret=keep_caret)
+        else:
+            self._editor.close_doc(tab_id)  # drop the parked state; the next switch shows buf.text
+
+    def _update_banner(self) -> None:
+        """The conflict banner above the editor, for the active tab only."""
+        tab = self.tabs.active_tab
+        buf = self.buffers.get(tab.id) if tab else None
+        conflict = buf.conflict if buf else None
+        if tab is None or buf is None or conflict is None:
+            if self._banner_key is not None:
+                self._banner_key = None
+                self._banner.set_visibility(False)
+            return
+        key = (tab.id, "gone" if conflict.text is None else content_hash(conflict.text))
+        if key == self._banner_key:
+            return
+        self._banner_key = key
+        name = buf.path.rsplit("/", 1)[-1]
+        self._banner.clear()
+        gone = conflict.text is None
+        message = (
+            f"“{name}” was deleted or moved outside the app."
+            if gone
+            else f"“{name}” changed outside the app, and you have unsaved edits."
+        )
+        choices = (
+            [("Keep editing", self._keep_mine), ("Close and discard", self._close_discard)]
+            if gone
+            else [("Keep mine", self._keep_mine), ("Load theirs", self._load_theirs)]
+        )
+        with self._banner:
+            ui.label(message).classes("pp-banner-text")
+            for label, handler in choices:
+                button = ui.button(label, on_click=lambda _e=None, h=handler, i=tab.id: h(i))
+                button.props("flat dense no-caps")
+        self._banner.set_visibility(True)
+
+    # The losing side of every choice is stashed in .trash first: resolving a conflict never
+    # destroys text.
+
+    def _keep_mine(self, tab_id: int) -> None:
+        buf = self.buffers.get(tab_id)
+        if buf is None or buf.conflict is None:
+            return
+        if buf.conflict.text is not None:
+            where = self.vault.stash_text(buf.path, buf.conflict.text, "changed on disk")
+            self._toast(f"Kept your version. The other one is in {where}.")
+        buf.keep_mine()
+        self._schedule_save(AUTOSAVE_AFTER_CHANGE_S)
+        self._refresh()
+
+    def _load_theirs(self, tab_id: int) -> None:
+        buf = self.buffers.get(tab_id)
+        if buf is None or buf.conflict is None or buf.conflict.text is None:
+            return
+        where = self.vault.stash_text(buf.path, buf.text, "my unsaved edits")
+        self._toast(f"Loaded the version from disk. Your edits are in {where}.")
+        buf.load_theirs()
+        self._show_text(tab_id)
+        self._refresh()
+
+    def _close_discard(self, tab_id: int) -> None:
+        buf = self.buffers.get(tab_id)
+        if buf is None:
+            return
+        where = self.vault.stash_text(buf.path, buf.text, "my unsaved edits")
+        self._toast(f"Closed. Your edits are in {where}.")
+        buf.discard()
+        self._drop_tab(tab_id)
 
     # ---- the tree renamed / deleted notes ------------------------------------------------
 

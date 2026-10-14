@@ -7,12 +7,12 @@ Legend: 🧠 = needs Opus (see PLAN §6 model guidance) · ⬜ todo · 🔄 in p
 
 ## Current focus
 - **Phase:** P0 — Foundation
-- **Task:** P2.5 (next; P0, P1, P2.1–P2.4 done). **Priority:** it closes the open issue below.
-- **Next up:** P2.6 → P3 (links & index; 🧠 P3.5 later)
+- **Task:** P2.6 (next; P0, P1, P2.1–P2.5 done)
+- **Next up:** P3.1 → P3.2 → P3.3 → P3.4 → 🧠 P3.5
 
 ## Open issues
 <!-- - [ ] YYYY-MM-DD · task ID · what's blocking · what's needed -->
-- [ ] 2026-10-14 · P2.5 · Edits made to an open note outside the app are not detected yet: the editor shows stale text and the next save overwrites the external change (a clean buffer is never written, a dirty one is). Must land before the app is used for real work · P2.5 (external-change handling; the watcher already reports `modified`, but the app's own saves echo back, so compare content hashes via `core.buffer.content_hash`)
+- (none)  <!-- 2026-10-14 · P2.5 external edits: resolved (content-hash sync + conflict banner), see Decision log -->
 
 ## Task status
 
@@ -42,7 +42,7 @@ Legend: 🧠 = needs Opus (see PLAN §6 model guidance) · ⬜ todo · 🔄 in p
 | P2.2 | Tabs (no preview tab, restore) | ✅ | 163 tests (+16 core); 62 browser checks; P2.1/S1/S2 suites still green; 10 checks in the native window incl. real Ctrl+Tab/Ctrl+W and a full relaunch restore |
 | P2.3 | Parser + dollar rule | ✅ | 215 tests (+52); `core/parser.py`; math rules shared with the editor via a 33-case fixture checked by pytest and by the Lezer grammar; also verified in the running app | |
 | P2.4 🧠 | Live Preview decorations + Source toggle | ✅ | 296 Python tests; 101 browser checks on one gallery note (all elements) + 53 shared grammar cases; S1 18, S2 17, P2.1 41, P2.2 62, layout 21 still green; 14 checks in the native window incl. real Ctrl+E/Ctrl+Z, lazy language chunk and relaunch; perf p95 ≤ 14 ms on 5,000 lines |
-| P2.5 | External-change handling | ⬜ | |
+| P2.5 | External-change handling | ✅ | 315 tests (+19 core); 39 browser checks with a separate process editing files; native 7 checks; P2.1/P2.2/gallery suites still green | |
 | P2.6 | .txt plain mode | ⬜ | |
 
 ### P3 — Links & index
@@ -161,6 +161,11 @@ Legend: 🧠 = needs Opus (see PLAN §6 model guidance) · ⬜ todo · 🔄 in p
 | 2026-10-14 | P2.4: a freshly opened note starts with its caret below front matter; Ctrl/Cmd+click on links acts on `mousedown`; Ctrl+E / status-bar label toggle Live↔Source and persist in `session.json`; web mode opens links in the page, native mode via Python (`webbrowser`), only http/https/mailto | UX details found while testing | claude |
 | 2026-10-14 | P2.4: footnotes (`[^1]`) stay plain text in the editor (Lezer GFM has no footnote support); Python still renders them | Out of scope for phase 1; logged as a limit | claude |
 | 2026-10-14 | P2.4: new npm pins (exact): @codemirror/lang-{javascript 6.2.5, python 6.2.1, json 6.0.2, html 6.4.12, css 6.3.1, sql 6.10.0, rust 6.0.2, cpp 6.0.3, java 6.0.2, go 6.0.1, yaml 6.1.3}, @codemirror/legacy-modes 6.5.5; `check_math.mjs` → `check_sync.mjs`, `test_math_sync.py` → `test_grammar_sync.py` | CLAUDE.md: pin new dependencies | claude |
+| 2026-10-14 | P2.5: outside changes are resolved by **content hash** against what the app last saved/loaded (`NoteBuffer.sync_with_disk`), not by event kind; outcomes unchanged / reloaded / conflict / gone / conflict-gone | The watcher echoes the app's own saves, tools save by rename (delete+create), `touch` changes nothing; only content tells | claude |
+| 2026-10-14 | P2.5: clean buffer reloads silently (caret kept, undo history reset, no toast); dirty buffer + different disk = conflict banner (Keep mine / Load theirs; deleted: Keep editing / Close and discard); autosave and retries are off while a conflict is open | PLAN §4.5; never overwrite either side silently | claude |
+| 2026-10-14 | P2.5: the losing side of every conflict choice is stashed in `.trash/<stamp>/…(changed on disk | my unsaved edits).md` first (`Vault.stash_text`) | CLAUDE rule 4 (never hard-delete user data) | claude |
+| 2026-10-14 | P2.5: a clean note deleted outside closes its tab (toast); a note moved outside keeps its tab under the new path; "diff" view not built | Simplest behaviour that is safe; diff is a later nicety | claude |
+| 2026-10-14 | P2.1 suite section H updated: an open note deleted outside now yields the banner (status "Changed on disk") instead of "Save failed" + toast | Behaviour intentionally replaced by P2.5 | claude |
 | 2026-10-14 | uv_build backend with `module-root = ""` (flat `paper_pile/` layout, not `src/`) | PLAN §3 layout | claude |
 | 2026-10-13 | Preview-tab (VS Code style) behaviour as default | Chosen during planning, unconfirmed — ask user if unsure | planning |
 | 2026-10-13 | Split preview in phase 1; inline live preview deferred | Inline needs CM6 decorations, highest cost | planning |
@@ -172,6 +177,8 @@ Legend: 🧠 = needs Opus (see PLAN §6 model guidance) · ⬜ todo · 🔄 in p
 | Date | Task | Symptom | Root cause | Fix | Gotcha? |
 |---|---|---|---|---|---|
 | 2026-10-14 | P0.6 | Native window failed to start with `QT_QPA_PLATFORM=xcb`: "Could not load the Qt platform plugin xcb" | Qt ≥ 6.5 xcb plugin needs system libs `libxcb-cursor0`, `libxcb-icccm4`, `libxcb-keysyms1`, `libxcb-xkb1`, `libxkbcommon-x11-0` (+ image/render-util/util) which are not in pip wheels | For the test only: `apt download` the .debs, extract into a scratch dir, `LD_LIBRARY_PATH`. For the app: don't force xcb (default Wayland backend works) | y — pending: CLAUDE.md is read-only, so not yet added to its Gotchas |
+| 2026-10-14 | P2.5 | After **Load theirs** the note still showed "Save failed" and a dirty dot | An earlier failed save left `buffer.error` set; resolving the conflict (and reloading, and adopting an identical disk version) never cleared it | Clear `error` in `load_theirs`, `keep_mine`, the reload path and the identical-text path; regression test | y — pending: CLAUDE.md read-only |
+| 2026-10-14 | P2.5 | Test "clean reload within a second" failed although the editor showed the new text; caret test failed | Test mistakes: mangled string escaping in the expected text; the needle for the caret position was not in the note | Fixed in the test | n |
 | 2026-10-14 | P2.4 | Ctrl+click on a link opened nothing | CodeMirror's own Ctrl+click handling adds a selection on `mousedown`; the link becomes "touched", its DOM is rebuilt and the original element is gone before `click` would fire | Handle the link on `mousedown` and swallow it | y — pending: CLAUDE.md read-only |
 | 2026-10-14 | P2.4 | Clicking a checkbox then Ctrl+Z did nothing | `mousedown.preventDefault()` keeps focus where it was; if the editor was not focused, undo never reached it | `view.focus()` after the toggle | y — pending: CLAUDE.md read-only |
 | 2026-10-14 | P2.4 | Bullets/numbers sat 6 px left of the text; quote padding and bars were ignored | Our line `padding-left` replaced CodeMirror's default 6 px line padding, and `.cm-line`'s own rule out-specified `.pp-quote` | Add the 6 px to the hanging indent; scope quote rules as `.pp-editor .cm-line.pp-quote` | y — pending: CLAUDE.md read-only |
@@ -216,3 +223,4 @@ Legend: 🧠 = needs Opus (see PLAN §6 model guidance) · ⬜ todo · 🔄 in p
 - 2026-10-14 · P2.2 · TabList (core) + TabBar + multi-buffer EditorPane + per-tab editor state; close/cycle/reorder/dirty dot/restore/rename-delete follow; found+fixed recovery-draft deletion bug; 163 tests; verified in Chrome and in the native window incl. relaunch
 - 2026-10-14 · P2.3 · core/parser.py (GFM, front matter, math, safe HTML), shared math fixture + Lezer check, KaTeX css fix in the app page; 215 tests; verified in the running app
 - 2026-10-14 · P2.4 · Live Preview complete: element-level reveal, headings/inline styles, lists + hanging indent, tasks, quotes, rules, links (Ctrl+click), images via asset route, front matter, code blocks with lazy highlighting, tables, Source toggle (Ctrl+E); shared grammar fixtures; 296 Python tests; 101 + regression browser checks; native window verified incl. relaunch
+- 2026-10-14 · P2.5 · external-change handling: NoteBuffer.sync_with_disk + stash_text (core), EditorPane.on_external + conflict banner + resolutions; closes the open issue; 315 tests; 39 browser + 7 native checks
