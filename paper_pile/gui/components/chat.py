@@ -1,0 +1,1 @@
+"""Right pane: AI chat."""

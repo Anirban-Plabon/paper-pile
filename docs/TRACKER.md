@@ -7,8 +7,8 @@ Legend: ⬜ todo · 🔄 in progress · ✅ done · ⛔ blocked · ⏭️ skippe
 
 ## Current focus
 - **Phase:** P0 — Foundation
-- **Task:** P0.2 (next; P0.1 done)
-- **Next up:** P0.3 → spikes S1/S2/S3
+- **Task:** P0.3 (next; P0.1, P0.2 done)
+- **Next up:** spikes S1/S2/S3
 
 ## Open issues
 <!-- - [ ] YYYY-MM-DD · task ID · what's blocking · what's needed -->
@@ -20,7 +20,7 @@ Legend: ⬜ todo · 🔄 in progress · ✅ done · ⛔ blocked · ⏭️ skippe
 | ID | Task | Status | Notes |
 |---|---|---|---|
 | P0.1 | uv project, pyproject, tooling | ✅ | deps pinned exact; `mypy` config targets `paper_pile/core` (created in P0.2) |
-| P0.2 | Repo skeleton | ⬜ | |
+| P0.2 | Repo skeleton | ✅ | `preview.py` kept as widget-rendering helpers (live preview, no split pane) |
 | P0.3 | events + config | ⬜ | |
 | P0.4 | Spike S1 — editor component | ⬜ | highest risk |
 | P0.5 | Spike S2 — preview (mermaid + KaTeX offline) | ⬜ | |
@@ -134,3 +134,4 @@ Legend: ⬜ todo · 🔄 in progress · ✅ done · ⛔ blocked · ⏭️ skippe
 - 2026-10-13 · planning · CLAUDE.md, PLAN.md, TRACKER.md created
 - 2026-10-14 · requirement change · no preview tab, Obsidian-style Live Preview (PLAN + Decision log updated)
 - 2026-10-14 · P0.1 · uv project, pinned deps, ruff/mypy/pytest config, CLI stub with --help
+- 2026-10-14 · P0.2 · skeleton per PLAN §3; ruff + mypy(core) green
