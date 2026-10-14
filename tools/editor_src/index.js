@@ -275,6 +275,21 @@ export function createEditor(
         view.setState(makeState("", -1));
       }
     },
+    // Wikilink targets that exist (normalised names), so links to missing notes can be styled.
+    setKnownNotes(names) {
+      editorContext.known = new Set(names);
+      view.dispatch({ effects: refreshEffect.of(null) });
+    },
+    // Put the caret on 1-based `line` and bring it to the top of the view.
+    gotoLine(line) {
+      const doc = view.state.doc;
+      const pos = doc.line(Math.max(1, Math.min(line, doc.lines))).from;
+      view.dispatch({
+        selection: { anchor: pos },
+        effects: EditorView.scrollIntoView(pos, { y: "start", yMargin: 24 }),
+      });
+      view.focus();
+    },
     insertAtCursor(text) {
       view.dispatch(view.state.replaceSelection(text), { userEvent: "input.paste", scrollIntoView: true });
       flush();

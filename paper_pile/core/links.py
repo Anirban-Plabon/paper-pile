@@ -4,9 +4,11 @@ So far: the policy for links that leave the app (P2.4) and the shape of a ``[[wi
 (P3.1). Note-to-note resolution, backlinks and rename rewriting arrive with the rest of P3.
 """
 
+import posixpath
 import re
+from collections.abc import Collection, Iterable
 from dataclasses import dataclass
-from urllib.parse import urlsplit
+from urllib.parse import unquote, urlsplit
 
 # Only these schemes may be opened from a note. Everything else (javascript:, file:, data:, ...)
 # is refused, because a note can contain anything, including text pasted from a chatbot.
@@ -63,3 +65,84 @@ def parse_wikilink(inner: str) -> WikiTarget | None:
     note, _hash, heading = target.partition("#")
     parsed = WikiTarget(note.strip(), heading.strip(), alias.strip() if bar else "")
     return parsed if parsed.note or parsed.heading else None
+
+
+# ---- note-to-note resolution (P3.3) -----------------------------------------------------------
+
+_NOTE_EXT = re.compile(r"\.(md|txt)$", re.IGNORECASE)
+
+
+def norm_name(name: str) -> str:
+    """Comparison key of a note name: trimmed, lower-case, without ``.md`` / ``.txt``.
+
+    The editor repeats this to style links to missing notes (``tools/editor_src/livepreview.js``).
+    """
+    return _NOTE_EXT.sub("", name.strip().lower())
+
+
+def _folder(path: str) -> str:
+    return posixpath.dirname(path)
+
+
+def resolve_wikilink(note: str, source: str, paths: Iterable[str]) -> str | None:
+    """The note path a ``[[note]]`` points at, or ``None``.
+
+    ``note`` is a vault-relative path or a bare name, with or without extension, in any case.
+    A full path match wins; otherwise a match on the name or on a trailing part of the path
+    (``folder/note``). When several notes match, the one in the source note's folder wins, then
+    the shallowest, then ``.md`` over ``.txt``, then alphabetical order. ``[[#heading]]`` (empty
+    ``note``) points at the source note itself.
+    """
+    if not note.strip():
+        return source
+    key = norm_name(note).strip("/")
+    explicit_ext = bool(_NOTE_EXT.search(note.strip()))
+    full: list[str] = []
+    partial: list[str] = []
+    for path in paths:
+        stem = norm_name(path)
+        if stem == key:
+            full.append(path)
+        elif stem.endswith("/" + key):
+            partial.append(path)
+    pool = full or partial
+    if explicit_ext:
+        exact = [p for p in pool if p.lower().endswith(note.strip().lower().lstrip("/"))]
+        pool = exact or pool
+    if not pool:
+        return None
+    here = _folder(source)
+    return min(pool, key=lambda p: (_folder(p) != here, p.count("/"), p.endswith(".txt"), p))
+
+
+def resolve_md_link(href: str, source: str, paths: Collection[str]) -> str | None:
+    """The note a relative markdown link ``[t](../other.md#part)`` points at, or ``None``."""
+    target = unquote(href.strip()).split("#", 1)[0].split("?", 1)[0]
+    if not target or target.startswith("/") or _SCHEME_LIKE.match(target):
+        return None
+    joined = posixpath.normpath(posixpath.join(_folder(source), target))
+    return joined if joined in paths else None
+
+
+_SCHEME_LIKE = re.compile(r"^[A-Za-z][A-Za-z0-9+.-]*:")
+
+
+def link_keys(paths: Iterable[str]) -> list[str]:
+    """Every name a wikilink may use for these notes (see :func:`norm_name`), for the editor to
+    tell links to existing notes from links to missing ones."""
+    keys: set[str] = set()
+    for path in paths:
+        parts = norm_name(path).split("/")
+        keys.update("/".join(parts[i:]) for i in range(len(parts)))
+    return sorted(keys)
+
+
+def new_note_path(note: str, source: str) -> str | None:
+    """Where ``[[note]]`` should be created when it does not exist: next to the source note, or
+    under the vault root when ``note`` is written as a path. ``None`` for an unusable name."""
+    name = note.strip().strip("/")
+    if not name or any(part in {"", ".", ".."} or part.startswith(".") for part in name.split("/")):
+        return None
+    if not _NOTE_EXT.search(name):
+        name += ".md"
+    return name if "/" in note.strip() else posixpath.join(_folder(source), name)

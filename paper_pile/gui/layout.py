@@ -80,6 +80,7 @@ class MainLayout:
                 )
         for pane in WIDTH_LIMITS:
             self._apply(pane)
+        self.bus.subscribe("vault.created", lambda path: self._on_created())
         self._follow_external_changes()
         if self.editor_pane is not None:  # reopen last session's tabs (after the status bar exists)
             self.editor_pane.start(list(self.state.tabs), self.state.active)
@@ -90,6 +91,10 @@ class MainLayout:
             return
         unsubscribe = self._fs_bus.subscribe(FS_CHANGED, lambda events: self._on_external(events))
         ui.context.client.on_disconnect(unsubscribe)  # a closed page must stop listening
+
+    def _on_created(self) -> None:
+        if self.tree is not None:
+            self.tree.refresh()
 
     def _on_external(self, events: list[FsEvent]) -> None:
         if self.tree is not None:

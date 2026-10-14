@@ -86,6 +86,14 @@ class Editor(
         """Forget the parked editor state of a closed tab."""
         self.run_method("closeDoc", doc_id)
 
+    def set_known_notes(self, names: list[str]) -> None:
+        """Names wikilinks may use for existing notes; other links get the "missing" look."""
+        self.run_method("setKnownNotes", names)
+
+    def goto_line(self, line: int) -> None:
+        """Put the caret on a 1-based line of the shown note and scroll it to the top."""
+        self.run_method("gotoLine", line)
+
     def insert_at_cursor(self, text: str) -> None:
         self.run_method("insertAtCursor", text)
 

@@ -223,8 +223,8 @@ paper-pile --serve [path] [--port 8080]   # web mode, 127.0.0.1 only, prints URL
 ### 4.7 Links & backlinks
 - Syntax (built in P3.1): `[[note]]`, `[[note|alias]]`, `[[note#heading]]`, `[[#heading]]`. `[[...]]` must sit on one line, contain no `[`/`]`, and name a note or heading; code spans/fences are never links. The editor shows the alias (else the typed text) and hides the brackets until the caret touches the link; Ctrl/Cmd+click resolves it (P3.3). Rules live in `core/links.py` + `core/parser.py` and `tools/editor_src/wikilink.js`, kept in sync by `tests/fixtures/wikilink_cases.json`.
 - Link extraction on save → index (`links` table: src, dst_raw, dst_resolved, kind).
-- Resolution: exact vault-relative path → unique basename match (case-insensitive) → unresolved.
-- Clicking an unresolved link creates the note (in the same folder as the source) and opens it.
+- Resolution (`core/links.resolve_wikilink`): full path match → name or trailing-path match (case-insensitive, `.md`/`.txt` optional); ties → same folder as the source, shallowest, `.md` first, alphabetical → unresolved. Relative `[t](x.md)` links resolve against the source's folder.
+- Ctrl/Cmd+click on a link opens the note in a tab (and jumps to `#heading`); on an unresolved wikilink it creates an empty note (same folder as the source; `[[a/b]]` is a path from the root) and opens it. Links to missing notes are styled dashed amber.
 - Backlinks pane under the editor: list of notes linking to the current note, with a one-line context snippet. Collapsible.
 - **Rename-safe:** renaming/moving a note rewrites every `[[...]]` and `(...md)` reference to it across the vault, in one operation, with a summary toast ("updated 7 links in 4 notes").
 

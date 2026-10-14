@@ -8,6 +8,7 @@
 // Block widgets (display math, mermaid, tables, ...) live in blocks.js (a StateField).
 import { syntaxTree } from "@codemirror/language";
 import { Decoration, ViewPlugin } from "@codemirror/view";
+import { editorContext, normNote } from "./context.js";
 import { parseWikilink } from "./wikilink.js";
 import { activeLines, refreshEffect, touches } from "./reveal.js";
 import { BulletWidget, CheckboxWidget, HrWidget, ImageWidget, MathWidget } from "./widgets.js";
@@ -196,7 +197,10 @@ const handlers = {
     const bar = inner.indexOf("|");
     const shownFrom = bar < 0 ? node.from + 2 : node.from + 2 + bar + 1;
     const attributes = { "data-wiki-note": target.note, "data-wiki-heading": target.heading };
-    cx.out.push(Decoration.mark({ class: "pp-wikilink", attributes }).range(shownFrom, node.to - 2));
+    const known = editorContext.known;
+    const missing = known && target.note && !known.has(normNote(target.note));
+    const cls = missing ? "pp-wikilink pp-wikilink-missing" : "pp-wikilink";
+    cx.out.push(Decoration.mark({ class: cls, attributes }).range(shownFrom, node.to - 2));
     if (touches(cx.state, node.from, node.to)) return;
     cx.out.push(hide.range(node.from, shownFrom));
     cx.out.push(hide.range(node.to - 2, node.to));

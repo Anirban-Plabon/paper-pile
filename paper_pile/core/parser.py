@@ -249,3 +249,34 @@ def note_links(text: str) -> list[LinkRef]:
         if tok.type == "inline" and tok.children:
             walk(tok.children, (tok.map[0] + 1) if tok.map else 1)
     return found
+
+
+@dataclass(frozen=True, slots=True)
+class Heading:
+    level: int
+    text: str
+    line: int  # 1-based
+
+
+def headings(text: str) -> list[Heading]:
+    """The note's headings, in order (``#`` and underlined; not ``#`` inside code)."""
+    found: list[Heading] = []
+    tokens = _PARSER.parse(text)
+    for i, tok in enumerate(tokens):
+        if tok.type == "heading_open" and tok.map and i + 1 < len(tokens):
+            inline = tokens[i + 1]
+            plain = "".join(
+                c.content for c in (inline.children or []) if c.type in {"text", "code_inline"}
+            )
+            found.append(Heading(int(tok.tag[1:]), plain.strip(), tok.map[0] + 1))
+    return found
+
+
+def find_heading(text: str, wanted: str) -> Heading | None:
+    """The first heading whose text equals ``wanted`` (case-insensitive, whitespace-collapsed)."""
+
+    def norm(s: str) -> str:
+        return " ".join(s.split()).casefold()
+
+    target = norm(wanted)
+    return next((h for h in headings(text) if norm(h.text) == target), None)

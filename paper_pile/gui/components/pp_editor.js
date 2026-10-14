@@ -49,6 +49,12 @@ export default {
     async closeDoc(docId) {
       (await this.ready).closeDoc(docId);
     },
+    async setKnownNotes(names) {
+      (await this.ready).setKnownNotes(names);
+    },
+    async gotoLine(line) {
+      (await this.ready).gotoLine(line);
+    },
     async insertAtCursor(text) {
       (await this.ready).insertAtCursor(text);
     },

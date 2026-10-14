@@ -7,8 +7,8 @@ Legend: 🧠 = needs Opus (see PLAN §6 model guidance) · ⬜ todo · 🔄 in p
 
 ## Current focus
 - **Phase:** P0 — Foundation
-- **Task:** P3.3 next (P3.1, P3.2 ✅; **phases P0, P1 and P2 complete**)
-- **Next up:** P3.3 → P3.4 → 🧠 P3.5 (then P4: slash menu, 🧠 P4.2)
+- **Task:** P3.4 next (P3.1–P3.3 ✅; **phases P0, P1 and P2 complete**)
+- **Next up:** P3.4 → P3.4 → 🧠 P3.5 (then P4: slash menu, 🧠 P4.2)
 
 ## Open issues
 <!-- - [ ] YYYY-MM-DD · task ID · what's blocking · what's needed -->
@@ -50,7 +50,7 @@ Legend: 🧠 = needs Opus (see PLAN §6 model guidance) · ⬜ todo · 🔄 in p
 |---|---|---|---|
 | P3.1 | Wikilink plugin | ✅ | Python rule + Lezer grammar + Live Preview; resolution is P3.3 |
 | P3.2 | SQLite index + FTS | ✅ | `core/index.py` Index: sync/update/remove/rename/rebuild/search; not yet wired into the app (P3.3/P3.4/P9.2 consume it) |
-| P3.3 | Resolve + navigate + create-on-missing | ⬜ | |
+| P3.3 | Resolve + navigate + create-on-missing | ✅ | Resolution is against the live file list (not the index); see Decision log |
 | P3.4 | Backlinks pane | ⬜ | |
 | P3.5 🧠 | Rename-safe rewriting | ⬜ | |
 
@@ -176,6 +176,8 @@ Legend: 🧠 = needs Opus (see PLAN §6 model guidance) · ⬜ todo · 🔄 in p
 | 2026-10-13 | Vault RAG deferred; phase 1 context = selection, note, @note, open tabs, linked notes | MVP scope | planning |
 | 2026-10-14 | Wikilink grammar: `[[` + text on one line with no `[`/`]` + first `]]`; `\|` splits the alias at the FIRST bar, `#` splits the heading at the first hash of the target part; empty target (no note and no heading) is not a link. Shared fixture `wikilink_cases.json` (32 cases) checked by pytest and `check_sync.mjs`. In the editor the link shows the alias, else the text as typed (Python HTML renders `note > heading`). A `\|` inside a table cell is cell syntax, not an alias. Ctrl/Cmd+click emits `wikilink {note, heading}`; resolving it is P3.3 | Keep the two parsers trivially in sync; match Obsidian's alias semantics | claude |
 | 2026-10-14 | Index schema as PLAN §5 plus: FK cascade from `links` to `notes`, `unicode61 remove_diacritics` FTS tokenizer, title rank ×4 (bm25). `links.kind` is `wiki`/`md`; `dst_path` stays NULL until P3.3 resolves it. Re-index check = mtime, then content hash (touch alone is not an update). Free-text search is turned into quoted words with a prefix on the last, so FTS syntax in user input is harmless. A corrupt or old-schema DB is deleted and rebuilt. The index is not yet attached to the app/watcher: that wiring comes with its first consumer | Keep P3.2 core-only and testable; avoid dead UI wiring | claude |
+| 2026-10-14 | P3.3 resolves links against the live vault file list (`walk_notes`), not the SQLite index; the index gets wired in with its first consumer, P3.4 backlinks | A just-created or just-renamed note must resolve immediately; the index is only a cache | claude |
+| 2026-10-14 | Wikilink resolution order: full path match, then name or trailing-path match; ties → same folder as the source, shallowest, `.md` over `.txt`, alphabetical (PLAN said "unique basename"; ambiguity now resolves deterministically instead of failing). Missing target: Ctrl/Cmd+click creates an empty `.md` next to the source (a name written with `/` is a path from the vault root; hidden/`..` names are refused). Links to missing notes get a dashed amber style, driven by a name set Python pushes to the editor (`link_keys`); an ambiguous name is styled as existing. `[[note#heading]]` jumps to the first heading with that text (case/whitespace-insensitive); unknown heading just opens the note with a toast. Relative markdown links open the note too | Obsidian-compatible, never fails silently | claude |
 
 ## Issues log
 <!-- YYYY-MM-DD · task · symptom → root cause → fix · (gotcha added? y/n) -->
@@ -233,3 +235,4 @@ Legend: 🧠 = needs Opus (see PLAN §6 model guidance) · ⬜ todo · 🔄 in p
 - 2026-10-14 · P2.6 · plain-text mode for .txt notes (per-note kind, status label, rename across kinds); **phase P2 complete** (editor, tabs, parser, Live Preview, external changes, plain text); 322 Python tests; 31 + regression browser checks; native verified
 - 2026-10-14 · P3.1 · wikilink plugin: `core/links.py` (WikiTarget, parse_wikilink), markdown-it rule + renderer + `wikilinks()`, Lezer `wikilink.js`, Live Preview (hide brackets/target, reveal on touch, Ctrl+click event), shared fixture; 381 Python tests; 15 new + 101 gallery + 31 plain-text browser checks
 - 2026-10-14 · P3.2 · core/index.py (SQLite + FTS5, incremental sync, rebuild, corruption recovery) + parser.note_links; 393 tests; 1,000-note vault indexes in well under 5 s
+- 2026-10-14 · P3.3 · link resolution + navigation + create-on-missing + missing-link style + heading jump (core/links.py, parser.headings, EditorPane, editor gotoLine/setKnownNotes); 409 tests; 18 new browser checks (nav) + 101 gallery + 31 plain + 15 wiki

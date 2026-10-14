@@ -24,7 +24,14 @@ from nicegui import ui
 
 from paper_pile.core.buffer import NoteBuffer, Outcome, content_hash, find_recoverable
 from paper_pile.core.events import EventBus
-from paper_pile.core.links import external_url
+from paper_pile.core.links import (
+    external_url,
+    link_keys,
+    new_note_path,
+    resolve_md_link,
+    resolve_wikilink,
+)
+from paper_pile.core.parser import find_heading
 from paper_pile.core.recovery import RecoveryEntry, RecoveryStore
 from paper_pile.core.tabs import TabList
 from paper_pile.core.vault import Vault, VaultError, is_plain_text
@@ -192,6 +199,7 @@ class EditorPane:
         self._editor.set_visibility(True)
         self._editor.show_doc(tab_id, self.buffers[tab_id].text, self.buffers[tab_id].path)
         self._editor.focus()
+        self.refresh_links()
         self._refresh()
         self._notify_tabs()
 
@@ -279,21 +287,73 @@ class EditorPane:
 
     def _on_link(self, args: dict[str, Any]) -> None:
         """Ctrl/Cmd+click on a link. Web links open in the browser (here, in the native window;
-        in web mode the page already opened them). Note and relative links come with P3.3."""
+        in web mode the page already opened them). A relative link to a note opens that note."""
         href = str(args.get("href", ""))
         url = external_url(href)
-        if url is None:
-            self._toast("Opening notes by link comes with link navigation (P3.3).")
-        elif self._native:
-            try:
-                webbrowser.open(url)
-            except Exception:
-                log.exception("could not open %s", url)
-                self._toast("Could not open the link.", error=True)
+        if url is not None:
+            if self._native:
+                try:
+                    webbrowser.open(url)
+                except Exception:
+                    log.exception("could not open %s", url)
+                    self._toast("Could not open the link.", error=True)
+            return
+        source = self._active_path()
+        target = resolve_md_link(href, source, set(self.vault.walk_notes())) if source else None
+        if target is None:
+            self._toast(f"No note found for {href}", error=True)
+            return
+        fragment = href.partition("#")[2]
+        self._spawn(self.open_link(target, fragment))
 
     def _on_wikilink(self, args: dict[str, Any]) -> None:
-        """Ctrl/Cmd+click on ``[[note#heading]]``. Resolving it comes with P3.3."""
-        self._toast("Opening notes by link comes with link navigation (P3.3).")
+        """Ctrl/Cmd+click on ``[[note#heading]]``: open the note (at the heading), or create it."""
+        source = self._active_path()
+        if source is None:
+            return
+        note, heading = str(args.get("note", "")), str(args.get("heading", ""))
+        target = resolve_wikilink(note, source, list(self.vault.walk_notes()))
+        if target is None:
+            target = self._create_missing(note, source)
+            if target is None:
+                return
+        self._spawn(self.open_link(target, heading))
+
+    def _create_missing(self, note: str, source: str) -> str | None:
+        """Create the note a wikilink points at (next to the source note); returns its path."""
+        path = new_note_path(note, source)
+        if path is None:
+            self._toast(f"“{note}” is not a valid note name.", error=True)
+            return None
+        try:
+            if not self.vault.exists(path):
+                self.vault.create_note(path)
+                self.bus.publish("vault.created", path=path)
+        except VaultError as exc:
+            self._toast(str(exc), error=True)
+            return None
+        self._toast(f"Created {path}")
+        return path
+
+    async def open_link(self, path: str, heading: str = "") -> None:
+        """Open ``path`` in a tab and, if ``heading`` names a heading of it, jump there."""
+        await self.open(path)
+        tab = self.tabs.find(path)
+        if tab is None or tab.id != self.tabs.active or not heading:
+            return
+        found = find_heading(self.buffers[tab.id].text, heading)
+        if found is not None:
+            self._editor.goto_line(found.line)
+        else:
+            self._toast(f"No heading “{heading}” in {path}")
+
+    def _active_path(self) -> str | None:
+        active = self.tabs.active
+        return self.buffers[active].path if active in self.buffers else None
+
+    def refresh_links(self) -> None:
+        """Tell the editor which notes exist, so links to missing ones are styled."""
+        self._editor.set_known_notes(link_keys(self.vault.walk_notes()))
 
     def _on_disconnect(self) -> None:
         self._cancel_timer()
@@ -387,6 +447,7 @@ class EditorPane:
 
     def on_external(self, events: list[FsEvent]) -> None:
         """The watcher saw files change on disk (a terminal, another editor, a sync tool)."""
+        self.refresh_links()  # notes may have appeared or vanished
         self._spawn(self._handle_external(events))
 
     async def _handle_external(self, events: list[FsEvent]) -> None:
@@ -511,6 +572,7 @@ class EditorPane:
             self.buffers[tab.id].rename(tab.path)
             if tab.id == self.tabs.active:
                 self._editor.set_path(tab.path)  # relative image URLs depend on the note's folder
+        self.refresh_links()
         if changed:
             self._refresh()
             self._notify_tabs()
@@ -521,6 +583,7 @@ class EditorPane:
             if buf is not None:
                 buf.discard()  # its note is in .trash now; saving would bring it back
             self._drop_tab(tab.id)
+        self.refresh_links()
 
     # ---- crash recovery ------------------------------------------------------------------
 
