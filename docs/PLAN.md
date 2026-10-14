@@ -112,7 +112,9 @@ paper-pile .              # current dir = vault
 paper-pile <path>         # given dir = vault
 paper-pile --serve [path] [--port 8080]   # web mode, 127.0.0.1 only, prints URL with token
 ```
-- `--serve` generates a random token; requests without it are rejected.
+- `--serve` generates a random token per run (`secrets.token_urlsafe(16)`) and prints `http://127.0.0.1:<port>/?token=…`. Enforced by `gui/security.py` (`TokenGate`, pure ASGI): every HTTP request and websocket handshake needs `?token=` or the `pp_token` cookie (HttpOnly, SameSite=Strict, set on the first valid visit), else 401 (websocket closes 1008). `Host` must be `127.0.0.1`/`localhost` (403 otherwise, blocks DNS-rebinding). Bound to `127.0.0.1` only, never configurable. `--port` is only valid with `--serve` (1–65535, default 8080).
+- Native mode (no `--serve`) uses NiceGUI's own random localhost port and no token (phase 1; revisit for multi-user).
+- Vault resolution: explicit path (`~` expanded, must be an existing directory — a typo errors with exit 2, it never creates folders) → else the last vault if it still exists → else, on a terminal, prompt for a folder; non-interactive with no last vault is an error. The last vault is remembered in `<user_state_dir>/last_vault.json` (`core/session.py`). A native folder-picker for first run arrives with the layout (P1.3).
 - Creates `<vault>/.paper-pile/` on first open (index.db, vault.toml, session.json).
 
 ### 4.2 Layout

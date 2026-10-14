@@ -7,8 +7,8 @@ Legend: 🧠 = needs Opus (see PLAN §6 model guidance) · ⬜ todo · 🔄 in p
 
 ## Current focus
 - **Phase:** P0 — Foundation
-- **Task:** P1.1 (next; all of P0 done)
-- **Next up:** P1.2 → P1.3
+- **Task:** P1.2 (next; P0, P1.1 done)
+- **Next up:** P1.3 → P1.4 → P1.5
 
 ## Open issues
 <!-- - [ ] YYYY-MM-DD · task ID · what's blocking · what's needed -->
@@ -29,7 +29,7 @@ Legend: 🧠 = needs Opus (see PLAN §6 model guidance) · ⬜ todo · 🔄 in p
 ### P1 — Shell & vault
 | ID | Task | Status | Notes |
 |---|---|---|---|
-| P1.1 | CLI + --serve token | ⬜ | |
+| P1.1 | CLI + --serve token | ✅ | 42 tests; all 4 forms verified for real (serve: token/cookie/host/ws; native `.`: window process + server up); closing-window-exits-app left to P1.3 manual QA |
 | P1.2 | core/vault.py | ⬜ | |
 | P1.3 | 3-pane layout | ⬜ | |
 | P1.4 | Tree + context menu + drag | ⬜ | |
@@ -127,6 +127,9 @@ Legend: 🧠 = needs Opus (see PLAN §6 model guidance) · ⬜ todo · 🔄 in p
 | 2026-10-14 | Editor/widget CSS lives in `static/app.css` (moved out of the spike page) | Single place; P8.1 will drive it from CSS variables | claude |
 | 2026-10-14 | S3: native mode = `pywebview[qt]`, launched with `PYWEBVIEW_GUI=qt`; keep Qt's default (Wayland) backend, do not force xcb | xcb needs 8 apt libs (not pip-only); default backend works out of the box | claude |
 | 2026-10-14 | S3: shortcuts via one capture-phase `keydown` listener + `preventDefault`, forwarded to Python; compare `e.key.toLowerCase()` | Verified all PLAN §4.14 shortcuts reach the page; Shift makes `e.key` uppercase | claude |
+| 2026-10-14 | P1.1: last vault stored in `platformdirs.user_state_dir("paper-pile")/last_vault.json` (not the config dir) | It is state, not a setting the user edits | claude |
+| 2026-10-14 | P1.1: no vault + no last vault → terminal prompt (error if non-interactive); missing path is an error, never auto-created. Native folder picker deferred to P1.3 | Data safety: a typo must not create folders; GUI picker needs the layout | claude |
+| 2026-10-14 | P1.1: `--serve` auth = `TokenGate` ASGI middleware (query token → HttpOnly SameSite=Strict cookie, loopback Host check, 401/403, ws close 1008); native mode has no token in phase 1 | Covers HTTP + websockets + static; also protects the S1 image-paste route | claude |
 | 2026-10-14 | uv_build backend with `module-root = ""` (flat `paper_pile/` layout, not `src/`) | PLAN §3 layout | claude |
 | 2026-10-13 | Preview-tab (VS Code style) behaviour as default | Chosen during planning, unconfirmed — ask user if unsure | planning |
 | 2026-10-13 | Split preview in phase 1; inline live preview deferred | Inline needs CM6 decorations, highest cost | planning |
@@ -138,6 +141,7 @@ Legend: 🧠 = needs Opus (see PLAN §6 model guidance) · ⬜ todo · 🔄 in p
 | Date | Task | Symptom | Root cause | Fix | Gotcha? |
 |---|---|---|---|---|---|
 | 2026-10-14 | P0.6 | Native window failed to start with `QT_QPA_PLATFORM=xcb`: "Could not load the Qt platform plugin xcb" | Qt ≥ 6.5 xcb plugin needs system libs `libxcb-cursor0`, `libxcb-icccm4`, `libxcb-keysyms1`, `libxcb-xkb1`, `libxkbcommon-x11-0` (+ image/render-util/util) which are not in pip wheels | For the test only: `apt download` the .debs, extract into a scratch dir, `LD_LIBRARY_PATH`. For the app: don't force xcb (default Wayland backend works) | y — pending: CLAUDE.md is read-only, so not yet added to its Gotchas |
+| 2026-10-14 | P1.1 | `test_websocket_with_cookie_ok` got `WebSocketDisconnect` although cookie was valid | Starlette `TestClient` neither replays its cookie jar nor uses `base_url`'s host on websocket handshakes (sends `Host: testserver`, rejected by the loopback check) — test artifact, gate was right | Pass `host` + `cookie` headers explicitly in websocket tests | n |
 | 2026-10-14 | P0.6 | `xdotool key` reached nothing in the Qt window | `windowactivate` did not move keyboard focus under XWayland; page handler itself was fine (proved with a synthetic key from headless Chrome) | `xdotool windowfocus <id>` + click into the page first | n (test tooling only) |
 
 ## Session log
@@ -151,3 +155,4 @@ Legend: 🧠 = needs Opus (see PLAN §6 model guidance) · ⬜ todo · 🔄 in p
 - 2026-10-14 · P0.4 · editor spike: CM6 live preview (headings/emphasis/code/strike hide off-cursor, inline KaTeX widget, pandoc dollar rule), slash/paste hooks, Python↔JS API, 2 MB image paste; verified with headless Chrome via scratch playwright-core (not a project dep)
 - 2026-10-14 · P0.5 · display math + mermaid block widgets in editor, reveal-on-cursor, theme re-render, offline verified; S1 checks still green
 - 2026-10-14 · P0.6 · native-window spike: 12/12 shortcuts delivered (Qt X11 backend via injected keys); Wayland-native launches, manual QA noted; **P0 complete**
+- 2026-10-14 · P1.1 · CLI (4 forms), last-vault memory, vault path validation, `.paper-pile/` init, `--serve` TokenGate; 42 tests green; verified with curl + headless Chrome + native launch
