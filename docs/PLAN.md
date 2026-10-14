@@ -25,9 +25,9 @@ built-in local AI via Ollama. Plain `.md`/`.txt` files, no lock-in.
 | Python / env | Python 3.12, `uv` | pin in `pyproject.toml` |
 | UI framework | NiceGUI (latest stable, pin exact) | native mode via pywebview |
 | Native window | `pywebview[qt]` | Qt backend = pip-only, no apt GTK hunt |
-| Editor | CodeMirror 6, vendored bundle, custom NiceGUI element | see Spike S1 |
+| Editor | CodeMirror 6 (own esbuild bundle: `@codemirror/lang-markdown` GFM + Lezer inline-math extension + live-preview plugin), custom NiceGUI element | S1 result: NiceGUI's built-in `ui.codemirror` rejected (Python-side decorations round-trip per keystroke; no lang-markdown/GFM or Lezer extensions; hard-wired `basicSetup`). Pinned npm versions in `tools/editor_src/package.json` |
 | Markdown parse | `markdown-it-py` + `mdit-py-plugins` | front_matter, dollarmath, tasklists, footnote, + custom wikilink plugin |
-| Math render | KaTeX (vendored, client-side) | |
+| Math render | KaTeX 0.19.0 (vendored, client-side) | CM6 widget in the editor; CSS + fonts in `static/vendor/katex/` |
 | Diagrams | Mermaid (vendored, client-side) | |
 | Code highlight | highlight.js or Pygments | decide in P2, log it |
 | Index / search | stdlib `sqlite3` + FTS5 | `.paper-pile/index.db`, rebuildable |
@@ -55,7 +55,8 @@ paper-pile/
 │   └── TRACKER.md
 ├── tools/
 │   ├── build_editor.sh         # esbuild CodeMirror bundle → gui/static/vendor/
-│   └── editor_src/             # JS source for the editor component (small)
+│   ├── editor_src/             # JS source: index.js (createEditor), math.js, livepreview.js
+│   └── spike_editor.py         # S1 demo page (dev-only, not shipped)
 ├── paper_pile/
 │   ├── cli.py                  # arg parsing, launch native/serve
 │   ├── core/                   # ZERO UI imports
@@ -81,6 +82,7 @@ paper-pile/
 │       │   ├── tree.py         # left pane
 │       │   ├── tabs.py         # tab bar + preview-tab logic
 │       │   ├── editor.py       # NiceGUI element wrapping CM6
+│       │   ├── pp_editor.js    # thin Vue wrapper for the element
 │       │   ├── preview.py      # rendered HTML + mermaid/katex post-render
 │       │   ├── backlinks.py
 │       │   ├── chat.py         # right pane, collapsible
@@ -88,8 +90,7 @@ paper-pile/
 │       │   ├── palette.py      # Ctrl+P command palette, Ctrl+O switcher
 │       │   └── settings.py     # settings dialog + bottom-left profile
 │       └── static/
-│           ├── vendor/         # cm6 bundle, katex, mermaid (committed)
-│           ├── editor.js       # built from tools/editor_src
+│           ├── vendor/         # pp-editor/ (cm6 bundle), katex/, mermaid (committed)
 │           └── app.css
 └── tests/
     ├── core/
@@ -147,6 +148,7 @@ paper-pile --serve [path] [--port 8080]   # web mode, 127.0.0.1 only, prints URL
 ### 4.5 Editor
 - CodeMirror 6 with markdown language, syntax highlighting, line wrapping, search (Ctrl+F), undo/redo, multiple cursors.
 - **Live Preview (default):** CM6 decorations render markdown inline as you type. Syntax markers (`**`, `#`, `[[ ]]`, link URLs, etc.) hide except on the line/selection with the cursor. Headings, bold/italic, lists, tasks (clickable checkbox), quotes, tables, links and images render in place; math (KaTeX) and Mermaid render as block/inline widgets that revert to source when the cursor enters them. The editor is the only pane for a note. Decoration logic is JS (render-only); parsing rules stay consistent with `core/parser.py`.
+- **Python ↔ editor protocol (S1):** the browser owns the buffer. Python never sets text through reactive props; it calls `set_text` / `insert_at_cursor` / `set_mode` / `get_text` explicitly. Inserts apply at the JS-side cursor (no offset conversion, so no UTF-16 vs code-point bugs). Events to Python: `change` (full text, debounced 300 ms + flush on blur; API-made changes are not echoed), `slash` (line, ch, caret coords; not fired mid-word or in code/URL), `paste` (`html`+`text`, or image). Pasted images go over an HTTP POST route, not the websocket (socket.io caps messages at ~1 MB). Ctrl+Shift+V skips the hook (raw paste).
 - Autosave: debounced 1 s after last keystroke + on tab switch/close/blur. Atomic write (temp file + rename).
 - External change to an open file: if buffer clean → reload silently; if dirty → conflict banner (keep mine / load theirs / diff later).
 - Crash safety: unsaved buffer mirrored to `.paper-pile/recovery/` until saved.

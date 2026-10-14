@@ -1,0 +1,22 @@
+{
+  "name": "paper-pile-editor",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "CodeMirror 6 live-preview editor bundle for paper-pile (dev-only build)",
+  "dependencies": {
+    "@codemirror/commands": "6.11.1",
+    "@codemirror/lang-markdown": "6.5.2",
+    "@codemirror/language": "6.13.1",
+    "@codemirror/search": "6.7.2",
+    "@codemirror/state": "6.7.6",
+    "@codemirror/view": "6.43.14",
+    "@lezer/highlight": "1.2.5",
+    "@lezer/markdown": "1.8.0",
+    "codemirror": "6.0.2",
+    "katex": "0.19.0"
+  },
+  "devDependencies": {
+    "esbuild": "0.28.2"
+  }
+}

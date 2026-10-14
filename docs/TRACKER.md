@@ -7,8 +7,8 @@ Legend: 🧠 = needs Opus (see PLAN §6 model guidance) · ⬜ todo · 🔄 in p
 
 ## Current focus
 - **Phase:** P0 — Foundation
-- **Task:** P0.4 Spike S1 (next; P0.1–P0.3 done)
-- **Next up:** P0.5 (S2), P0.6 (S3)
+- **Task:** P0.5 🧠 Spike S2 (next; P0.1–P0.4 done)
+- **Next up:** P0.6 (S3), then P1
 
 ## Open issues
 <!-- - [ ] YYYY-MM-DD · task ID · what's blocking · what's needed -->
@@ -22,7 +22,7 @@ Legend: 🧠 = needs Opus (see PLAN §6 model guidance) · ⬜ todo · 🔄 in p
 | P0.1 | uv project, pyproject, tooling | ✅ | deps pinned exact; `mypy` config targets `paper_pile/core` (created in P0.2) |
 | P0.2 | Repo skeleton | ✅ | `preview.py` kept as widget-rendering helpers (live preview, no split pane) |
 | P0.3 | events + config | ✅ | 12 tests; config saves only changed layer values, corrupt file ignored + `.bak` on save |
-| P0.4 🧠 | Spike S1 — editor component | ⬜ | highest risk |
+| P0.4 🧠 | Spike S1 — editor component | ✅ | own CM6 bundle chosen; all 7 acceptance items verified in headless Chrome (18 checks) |
 | P0.5 🧠 | Spike S2 — preview (mermaid + KaTeX offline) | ⬜ | |
 | P0.6 | Spike S3 — native mode + shortcuts | ⬜ | |
 
@@ -119,6 +119,9 @@ Legend: 🧠 = needs Opus (see PLAN §6 model guidance) · ⬜ todo · 🔄 in p
 | 2026-10-14 | Pinned exact versions: nicegui 3.18.0, pywebview[qt] 6.2.1, markdown-it-py 4.2.0, mdit-py-plugins 0.6.1, watchdog 6.0.0, beautifulsoup4 4.15.0, markdownify 1.2.3, ollama 0.6.3, tomli-w 1.2.0, platformdirs 4.13.0, pillow 12.3.0; dev: pytest 9.1.1, pytest-asyncio 1.4.0, ruff 0.17.0, mypy 2.4.0 | PLAN §2 requires pins | claude |
 | 2026-10-14 | Config layers saved separately (global/vault), atomic writes, unparseable TOML ignored with warning and backed up to `.bak` before overwrite; `EventBus` is synchronous and swallows+logs handler errors | Never lose user settings; UI must not break core | claude |
 | 2026-10-14 | Marked P0.4, P0.5, P2.4, P3.5, P4.2 as 🧠 Opus-needed (design in plan mode; `/model opus` if stuck). All other tasks stay on Sonnet | Session uses opusplan; reserve Opus for CM6-internals and data-corruption-risk work | user |
+| 2026-10-14 | S1: own esbuild CM6 bundle + thin NiceGUI element; built-in `ui.codemirror` rejected | Built-in has Python-driven decorations (per-keystroke round trip), no lang-markdown/GFM or Lezer extensions, hard-wired basicSetup | claude |
+| 2026-10-14 | S1: pasted images go via HTTP POST route, text/HTML via websocket; browser owns buffer, Python edits via explicit methods | socket.io `max_http_buffer_size` is 1 MB; avoid clobbering typing | claude |
+| 2026-10-14 | npm pins (exact): codemirror 6.0.2, @codemirror/{state 6.7.6, view 6.43.14, commands 6.11.1, language 6.13.1, search 6.7.2, lang-markdown 6.5.2}, @lezer/{markdown 1.8.0, highlight 1.2.5}, katex 0.19.0, esbuild 0.28.2 (dev). Bundle + KaTeX css/fonts committed under `static/vendor/` | PLAN §2 requires pins; end users need no Node | claude |
 | 2026-10-14 | uv_build backend with `module-root = ""` (flat `paper_pile/` layout, not `src/`) | PLAN §3 layout | claude |
 | 2026-10-13 | Preview-tab (VS Code style) behaviour as default | Chosen during planning, unconfirmed — ask user if unsure | planning |
 | 2026-10-13 | Split preview in phase 1; inline live preview deferred | Inline needs CM6 decorations, highest cost | planning |
@@ -139,3 +142,4 @@ Legend: 🧠 = needs Opus (see PLAN §6 model guidance) · ⬜ todo · 🔄 in p
 - 2026-10-14 · P0.2 · skeleton per PLAN §3; ruff + mypy(core) green
 - 2026-10-14 · P0.3 · core/events.py + core/config.py with unit tests (merge order, save round-trip)
 - 2026-10-14 · plan · marked 🧠 Opus tasks in PLAN §6 and TRACKER
+- 2026-10-14 · P0.4 · editor spike: CM6 live preview (headings/emphasis/code/strike hide off-cursor, inline KaTeX widget, pandoc dollar rule), slash/paste hooks, Python↔JS API, 2 MB image paste; verified with headless Chrome via scratch playwright-core (not a project dep)

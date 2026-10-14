@@ -1,0 +1,86 @@
+"""Spike S1 demo page: exercises every editor capability. Not part of the shipped app.
+
+Run: uv run python tools/spike_editor.py   (then open http://127.0.0.1:8099)
+"""
+
+import tempfile
+from pathlib import Path
+
+from fastapi import Request
+from nicegui import app, ui
+
+from paper_pile.gui.components.editor import Editor
+
+STATIC = Path(__file__).resolve().parent.parent / "paper_pile" / "gui" / "static"
+UPLOADS = Path(tempfile.mkdtemp(prefix="pp-spike-"))
+SAMPLE = """# Spike S1
+
+Some **bold**, some *italic*, `inline code`, and ~~strike~~.
+
+## Math
+
+Euler: $e^{i\\pi}+1=0$ renders; "$5 and $10" stays text.
+
+Type / at line start or after a space to fire the slash hook.
+"""
+
+app.add_static_files("/pp-static", STATIC)
+
+
+@app.post("/_pp/paste-image")
+async def paste_image(request: Request) -> dict[str, object]:
+    body = await request.body()
+    (UPLOADS / "last-paste.bin").write_bytes(body)
+    return {"size": len(body)}
+
+
+@ui.page("/")
+def index() -> None:
+    ui.add_head_html('<link rel="stylesheet" href="/pp-static/vendor/katex/katex.min.css">')
+    ui.add_head_html(
+        "<style>"
+        ".pp-editor{height:340px;border:1px solid #8884;font:15px/1.6 monospace}"
+        ".pp-editor .cm-editor{height:100%}.pp-editor .cm-scroller{overflow:auto}"
+        ".pp-h{font-weight:700}.pp-h1{font-size:1.7em}.pp-h2{font-size:1.4em}.pp-h3{font-size:1.2em}"
+        ".pp-strong{font-weight:700}.pp-em{font-style:italic}.pp-strike{text-decoration:line-through}"
+        ".pp-code{font-family:monospace;background:#8882;border-radius:3px}"
+        "</style>"
+    )
+    log = ui.log(max_lines=200).classes("w-full h-48")
+
+    def show(name: str):  # type: ignore[no-untyped-def]
+        def handler(e):  # type: ignore[no-untyped-def]
+            args = e.args if isinstance(e.args, dict) else {"args": e.args}
+            shown = {
+                k: (v if not isinstance(v, str) or len(v) < 80 else v[:77] + "...")
+                for k, v in args.items()
+            }
+            log.push(f"{name}: {shown}")
+
+        return handler
+
+    def on_paste(e):  # type: ignore[no-untyped-def]
+        show("paste")(e)
+        if e.args.get("kind") in ("html", "text"):
+            editor.insert_at_cursor(e.args.get("text", ""))
+
+    editor = Editor(
+        SAMPLE,
+        image_upload_url="/_pp/paste-image",
+        on_change=show("change"),
+        on_slash=show("slash"),
+        on_paste=on_paste,
+    ).classes("w-full")
+
+    async def get() -> None:
+        log.push(f"get_text: {len(await editor.get_text())} chars")
+
+    with ui.row():
+        ui.button("Set text", on_click=lambda: editor.set_text("# Replaced from Python\n\n**ok**"))
+        ui.button("Insert at cursor", on_click=lambda: editor.insert_at_cursor("hello"))
+        ui.button("Get text", on_click=get)
+        ui.button("Live", on_click=lambda: editor.set_mode("live"))
+        ui.button("Source", on_click=lambda: editor.set_mode("source"))
+
+
+ui.run(host="127.0.0.1", port=8099, reload=False, show=False, title="S1 spike")
