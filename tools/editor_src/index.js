@@ -172,6 +172,15 @@ export function createEditor(
             // selection, which un-hides the link's syntax and rebuilds its DOM before `click` fires.
             mousedown: (e) => {
               if (!(e.ctrlKey || e.metaKey)) return false;
+              const wiki = e.target.closest ? e.target.closest("[data-wiki-note]") : null;
+              if (wiki) {
+                e.preventDefault();
+                emit("wikilink", {
+                  note: wiki.getAttribute("data-wiki-note"),
+                  heading: wiki.getAttribute("data-wiki-heading") || "",
+                });
+                return true;
+              }
               const el = e.target.closest ? e.target.closest("[data-href]") : null;
               if (!el) return false;
               e.preventDefault();

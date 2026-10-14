@@ -22,17 +22,24 @@ must stay safe (chat replies, exports). Single newlines render as line breaks, m
 the editor shows.
 """
 
-from collections.abc import Callable
+from collections.abc import Callable, MutableMapping, Sequence
 from dataclasses import dataclass
 from typing import Any
 
 import yaml
 from markdown_it import MarkdownIt
+from markdown_it.common.utils import escapeHtml
+from markdown_it.renderer import RendererProtocol
 from markdown_it.rules_block import StateBlock
+from markdown_it.rules_inline import StateInline
+from markdown_it.token import Token
+from markdown_it.utils import EnvType, OptionsDict
 from mdit_py_plugins.dollarmath import dollarmath_plugin
 from mdit_py_plugins.dollarmath.index import math_block_dollar
 from mdit_py_plugins.footnote import footnote_plugin
 from mdit_py_plugins.tasklists import tasklists_plugin
+
+from paper_pile.core.links import WikiTarget, parse_wikilink
 
 _PARAGRAPH_LIKE = ["paragraph", "reference", "blockquote", "list"]
 
@@ -54,9 +61,52 @@ def make_parser(*, breaks: bool = True) -> MarkdownIt:
         )
     )
     md.block.ruler.before("table", "front_matter", _front_matter_rule)
+    md.inline.ruler.before("link", "wikilink", _wikilink_rule)
+    md.add_render_rule("wikilink", _render_wikilink)
     # let a `$$` block start right after a paragraph line (the plugin's own registration cannot)
     md.block.ruler.at("math_block", _interrupting_math_block(), {"alt": _PARAGRAPH_LIKE})
     return md
+
+
+def _wikilink_rule(state: StateInline, silent: bool) -> bool:
+    """``[[note]]``, ``[[note|alias]]``, ``[[note#heading]]``, ``[[#heading]]``.
+
+    The text between ``[[`` and the first ``]]`` must sit on one line, contain no ``[`` or ``]``
+    and name something (see :func:`~paper_pile.core.links.parse_wikilink`). Code spans and
+    fenced code are consumed by earlier rules, so a wikilink inside them is never seen here.
+    """
+    src, pos = state.src, state.pos
+    if not src.startswith("[[", pos):
+        return False
+    end = src.find("]]", pos + 2, state.posMax)
+    if end == -1:
+        return False
+    inner = src[pos + 2 : end]
+    if "\n" in inner or "[" in inner or "]" in inner:
+        return False
+    target = parse_wikilink(inner)
+    if target is None:
+        return False
+    if not silent:
+        token = state.push("wikilink", "", 0)
+        token.content = inner
+        token.meta = {"note": target.note, "heading": target.heading, "alias": target.alias}
+    state.pos = end + 2
+    return True
+
+
+def _render_wikilink(
+    self: RendererProtocol,
+    tokens: Sequence[Token],
+    idx: int,
+    options: OptionsDict,
+    env: EnvType,
+) -> str:
+    meta: MutableMapping[str, str] = tokens[idx].meta
+    target = parse_wikilink(tokens[idx].content)
+    text = target.text if target else tokens[idx].content
+    note, heading = escapeHtml(meta["note"]), escapeHtml(meta["heading"])
+    return f'<a class="wikilink" data-note="{note}" data-heading="{heading}">{escapeHtml(text)}</a>'
 
 
 def _front_matter_rule(state: StateBlock, start: int, end: int, silent: bool) -> bool:
@@ -155,3 +205,19 @@ def math_spans(text: str) -> tuple[list[str], list[str]]:
 
     walk(_PARSER.parse(text))
     return inline, block
+
+
+def wikilinks(text: str) -> list[WikiTarget]:
+    """Every ``[[wikilink]]`` in ``text``, in order (code spans and code blocks excluded)."""
+    found: list[WikiTarget] = []
+
+    def walk(tokens: list[Any]) -> None:
+        for tok in tokens:
+            if tok.type == "wikilink":
+                meta = tok.meta
+                found.append(WikiTarget(meta["note"], meta["heading"], meta["alias"]))
+            if tok.children:
+                walk(tok.children)
+
+    walk(_PARSER.parse(text))
+    return found

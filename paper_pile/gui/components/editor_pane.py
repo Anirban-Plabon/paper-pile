@@ -92,6 +92,7 @@ class EditorPane:
                     mode=self.mode,
                     link_target="python" if self._native else "window",
                     on_link=lambda e: self._on_link(e.args),
+                    on_wikilink=lambda e: self._on_wikilink(e.args),
                     on_slash=lambda e: self._on_slash(e.args),
                     on_change=lambda e: self._on_change(e.args),
                     on_blur=lambda e: self._on_flush(e.args),
@@ -289,6 +290,10 @@ class EditorPane:
             except Exception:
                 log.exception("could not open %s", url)
                 self._toast("Could not open the link.", error=True)
+
+    def _on_wikilink(self, args: dict[str, Any]) -> None:
+        """Ctrl/Cmd+click on ``[[note#heading]]``. Resolving it comes with P3.3."""
+        self._toast("Opening notes by link comes with link navigation (P3.3).")
 
     def _on_disconnect(self) -> None:
         self._cancel_timer()

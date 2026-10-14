@@ -221,6 +221,7 @@ paper-pile --serve [path] [--port 8080]   # web mode, 127.0.0.1 only, prints URL
 - Widgets (math, mermaid) re-render debounced (~200 ms) and only when their source changes.
 
 ### 4.7 Links & backlinks
+- Syntax (built in P3.1): `[[note]]`, `[[note|alias]]`, `[[note#heading]]`, `[[#heading]]`. `[[...]]` must sit on one line, contain no `[`/`]`, and name a note or heading; code spans/fences are never links. The editor shows the alias (else the typed text) and hides the brackets until the caret touches the link; Ctrl/Cmd+click resolves it (P3.3). Rules live in `core/links.py` + `core/parser.py` and `tools/editor_src/wikilink.js`, kept in sync by `tests/fixtures/wikilink_cases.json`.
 - Link extraction on save → index (`links` table: src, dst_raw, dst_resolved, kind).
 - Resolution: exact vault-relative path → unique basename match (case-insensitive) → unresolved.
 - Clicking an unresolved link creates the note (in the same folder as the source) and opens it.

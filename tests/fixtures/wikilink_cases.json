@@ -1,0 +1,346 @@
+[
+ {
+  "name": "plain",
+  "src": "See [[note]] for details.",
+  "links": [
+   {
+    "note": "note",
+    "heading": "",
+    "alias": ""
+   }
+  ]
+ },
+ {
+  "name": "alias",
+  "src": "See [[note|the note]] here.",
+  "links": [
+   {
+    "note": "note",
+    "heading": "",
+    "alias": "the note"
+   }
+  ]
+ },
+ {
+  "name": "heading",
+  "src": "Jump to [[note#Section two]].",
+  "links": [
+   {
+    "note": "note",
+    "heading": "Section two",
+    "alias": ""
+   }
+  ]
+ },
+ {
+  "name": "heading_and_alias",
+  "src": "[[note#Intro|start]]",
+  "links": [
+   {
+    "note": "note",
+    "heading": "Intro",
+    "alias": "start"
+   }
+  ]
+ },
+ {
+  "name": "same_note_heading",
+  "src": "Back to [[#Top]] please.",
+  "links": [
+   {
+    "note": "",
+    "heading": "Top",
+    "alias": ""
+   }
+  ]
+ },
+ {
+  "name": "spaces_trimmed",
+  "src": "[[  spaced note  ]] and [[ a | b ]]",
+  "links": [
+   {
+    "note": "spaced note",
+    "heading": "",
+    "alias": ""
+   },
+   {
+    "note": "a",
+    "heading": "",
+    "alias": "b"
+   }
+  ]
+ },
+ {
+  "name": "path_and_extension",
+  "src": "[[folder/sub/note]] and [[note.md]] and [[a b/c d]]",
+  "links": [
+   {
+    "note": "folder/sub/note",
+    "heading": "",
+    "alias": ""
+   },
+   {
+    "note": "note.md",
+    "heading": "",
+    "alias": ""
+   },
+   {
+    "note": "a b/c d",
+    "heading": "",
+    "alias": ""
+   }
+  ]
+ },
+ {
+  "name": "unicode",
+  "src": "[[日本語#見出し|別名]]",
+  "links": [
+   {
+    "note": "日本語",
+    "heading": "見出し",
+    "alias": "別名"
+   }
+  ]
+ },
+ {
+  "name": "two_on_a_line",
+  "src": "[[a]] and [[b]] and [[c|d]]",
+  "links": [
+   {
+    "note": "a",
+    "heading": "",
+    "alias": ""
+   },
+   {
+    "note": "b",
+    "heading": "",
+    "alias": ""
+   },
+   {
+    "note": "c",
+    "heading": "",
+    "alias": "d"
+   }
+  ]
+ },
+ {
+  "name": "empty_alias",
+  "src": "[[a|]]",
+  "links": [
+   {
+    "note": "a",
+    "heading": "",
+    "alias": ""
+   }
+  ]
+ },
+ {
+  "name": "empty_heading",
+  "src": "[[a#]]",
+  "links": [
+   {
+    "note": "a",
+    "heading": "",
+    "alias": ""
+   }
+  ]
+ },
+ {
+  "name": "alias_with_bar",
+  "src": "[[a|b|c]]",
+  "links": [
+   {
+    "note": "a",
+    "heading": "",
+    "alias": "b|c"
+   }
+  ]
+ },
+ {
+  "name": "heading_with_hash",
+  "src": "[[a#b#c]]",
+  "links": [
+   {
+    "note": "a",
+    "heading": "b#c",
+    "alias": ""
+   }
+  ]
+ },
+ {
+  "name": "empty",
+  "src": "[[]] and [[  ]]",
+  "links": []
+ },
+ {
+  "name": "only_hash",
+  "src": "[[#]] and [[|alias]] and [[#|alias]]",
+  "links": []
+ },
+ {
+  "name": "inner_open_bracket",
+  "src": "[[a [b]]",
+  "links": []
+ },
+ {
+  "name": "inner_close_bracket",
+  "src": "[[a]b]]",
+  "links": []
+ },
+ {
+  "name": "newline_inside",
+  "src": "[[a\nb]]",
+  "links": []
+ },
+ {
+  "name": "unclosed",
+  "src": "[[a and text",
+  "links": []
+ },
+ {
+  "name": "single_brackets",
+  "src": "[a] and [[ b",
+  "links": []
+ },
+ {
+  "name": "escaped",
+  "src": "\\[[a]] stays text",
+  "links": []
+ },
+ {
+  "name": "in_inline_code",
+  "src": "`[[a]]` and [[b]]",
+  "links": [
+   {
+    "note": "b",
+    "heading": "",
+    "alias": ""
+   }
+  ]
+ },
+ {
+  "name": "in_fenced_code",
+  "src": "```\n[[a]]\n```\n\n[[b]]",
+  "links": [
+   {
+    "note": "b",
+    "heading": "",
+    "alias": ""
+   }
+  ]
+ },
+ {
+  "name": "in_indented_code",
+  "src": "    [[a]]\n\n[[b]]",
+  "links": [
+   {
+    "note": "b",
+    "heading": "",
+    "alias": ""
+   }
+  ]
+ },
+ {
+  "name": "in_heading",
+  "src": "# Title [[a]]",
+  "links": [
+   {
+    "note": "a",
+    "heading": "",
+    "alias": ""
+   }
+  ]
+ },
+ {
+  "name": "in_list",
+  "src": "- item [[a]]\n- [ ] task [[b]]",
+  "links": [
+   {
+    "note": "a",
+    "heading": "",
+    "alias": ""
+   },
+   {
+    "note": "b",
+    "heading": "",
+    "alias": ""
+   }
+  ]
+ },
+ {
+  "name": "in_quote",
+  "src": "> quoted [[a]]",
+  "links": [
+   {
+    "note": "a",
+    "heading": "",
+    "alias": ""
+   }
+  ]
+ },
+ {
+  "name": "next_to_emphasis",
+  "src": "**[[a]]** and *[[b]]*",
+  "links": [
+   {
+    "note": "a",
+    "heading": "",
+    "alias": ""
+   },
+   {
+    "note": "b",
+    "heading": "",
+    "alias": ""
+   }
+  ]
+ },
+ {
+  "name": "triple_bracket",
+  "src": "[[[a]]]",
+  "links": [
+   {
+    "note": "a",
+    "heading": "",
+    "alias": ""
+   }
+  ]
+ },
+ {
+  "name": "trailing_bracket",
+  "src": "[[a]]]",
+  "links": [
+   {
+    "note": "a",
+    "heading": "",
+    "alias": ""
+   }
+  ]
+ },
+ {
+  "name": "adjacent",
+  "src": "[[a]][[b]]",
+  "links": [
+   {
+    "note": "a",
+    "heading": "",
+    "alias": ""
+   },
+   {
+    "note": "b",
+    "heading": "",
+    "alias": ""
+   }
+  ]
+ },
+ {
+  "name": "md_link_not_wikilink",
+  "src": "[text](http://x.y) and [[a]]",
+  "links": [
+   {
+    "note": "a",
+    "heading": "",
+    "alias": ""
+   }
+  ]
+ }
+]

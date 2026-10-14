@@ -8,6 +8,7 @@
 // Block widgets (display math, mermaid, tables, ...) live in blocks.js (a StateField).
 import { syntaxTree } from "@codemirror/language";
 import { Decoration, ViewPlugin } from "@codemirror/view";
+import { parseWikilink } from "./wikilink.js";
 import { activeLines, refreshEffect, touches } from "./reveal.js";
 import { BulletWidget, CheckboxWidget, HrWidget, ImageWidget, MathWidget } from "./widgets.js";
 
@@ -184,6 +185,21 @@ const handlers = {
     if (touches(cx.state, node.from, node.to)) return;
     cx.out.push(hide.range(open.from, open.to));
     cx.out.push(hide.range(close.from, node.to));
+  },
+
+  // `[[note]]`, `[[note#head|alias]]`: shown as its display text; the brackets (and the target
+  // part when there is an alias) hide unless the link is being edited. Ctrl/Cmd+click resolves it.
+  WikiLink: (cx, node) => {
+    const inner = cx.doc.sliceString(node.from + 2, node.to - 2);
+    const target = parseWikilink(inner);
+    if (!target) return;
+    const bar = inner.indexOf("|");
+    const shownFrom = bar < 0 ? node.from + 2 : node.from + 2 + bar + 1;
+    const attributes = { "data-wiki-note": target.note, "data-wiki-heading": target.heading };
+    cx.out.push(Decoration.mark({ class: "pp-wikilink", attributes }).range(shownFrom, node.to - 2));
+    if (touches(cx.state, node.from, node.to)) return;
+    cx.out.push(hide.range(node.from, shownFrom));
+    cx.out.push(hide.range(node.to - 2, node.to));
   },
 
   // `<https://example.org>`

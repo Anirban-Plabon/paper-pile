@@ -35,6 +35,7 @@ class Editor(
         on_save: Handler | None = None,
         on_slash: Handler | None = None,
         on_link: Handler | None = None,
+        on_wikilink: Handler | None = None,
         on_paste: Handler | None = None,
     ) -> None:
         super().__init__()
@@ -53,6 +54,8 @@ class Editor(
             self.on("slash", on_slash)
         if on_link:
             self.on("link", on_link)
+        if on_wikilink:
+            self.on("wikilink", on_wikilink)
         if on_paste:
             self.on("paste", on_paste)
 

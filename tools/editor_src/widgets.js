@@ -98,6 +98,13 @@ function walk(state, node, from, to, out) {
       el.className = "pp-link";
       if (marks.length > 1) walk(state, c, marks[0].to, marks[1].from, el);
       out.append(el);
+    } else if (c.name === "WikiLink") {
+      const inner = state.sliceDoc(c.from + 2, c.to - 2);
+      const bar = inner.indexOf("|");
+      const el = document.createElement("span");
+      el.className = "pp-wikilink";
+      el.textContent = bar < 0 ? inner.trim() : inner.slice(bar + 1).trim() || inner.slice(0, bar).trim();
+      out.append(el);
     } else if (c.name === "Image") {
       const marks = c.getChildren("LinkMark");
       out.append(marks.length > 1 ? state.sliceDoc(marks[0].to, marks[1].from).replace(/\|\d+$/, "") : "");

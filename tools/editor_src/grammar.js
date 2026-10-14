@@ -2,5 +2,6 @@
 // what the check verifies is exactly what the editor parses.
 import { FrontMatterExt } from "./frontmatter.js";
 import { MathExt } from "./math.js";
+import { WikiLinkExt } from "./wikilink.js";
 
-export const editorExtensions = [MathExt, FrontMatterExt];
+export const editorExtensions = [MathExt, FrontMatterExt, WikiLinkExt];

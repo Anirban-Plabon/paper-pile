@@ -7,7 +7,7 @@ Legend: 🧠 = needs Opus (see PLAN §6 model guidance) · ⬜ todo · 🔄 in p
 
 ## Current focus
 - **Phase:** P0 — Foundation
-- **Task:** P3.1 (next; **phases P0, P1 and P2 complete**)
+- **Task:** P3.2 next (P3.1 ✅; **phases P0, P1 and P2 complete**)
 - **Next up:** P3.2 → P3.3 → P3.4 → 🧠 P3.5 (then P4: slash menu, 🧠 P4.2)
 
 ## Open issues
@@ -48,7 +48,7 @@ Legend: 🧠 = needs Opus (see PLAN §6 model guidance) · ⬜ todo · 🔄 in p
 ### P3 — Links & index
 | ID | Task | Status | Notes |
 |---|---|---|---|
-| P3.1 | Wikilink plugin | ⬜ | |
+| P3.1 | Wikilink plugin | ✅ | Python rule + Lezer grammar + Live Preview; resolution is P3.3 |
 | P3.2 | SQLite index + FTS | ⬜ | |
 | P3.3 | Resolve + navigate + create-on-missing | ⬜ | |
 | P3.4 | Backlinks pane | ⬜ | |
@@ -174,6 +174,7 @@ Legend: 🧠 = needs Opus (see PLAN §6 model guidance) · ⬜ todo · 🔄 in p
 | 2026-10-13 | Split preview in phase 1; inline live preview deferred | Inline needs CM6 decorations, highest cost | planning |
 | 2026-10-14 | **SUPERSEDES the two rows above.** No preview tab. Every note (new or existing) edits in Obsidian-style Live Preview (single pane, syntax hides off-cursor); Source mode toggle via Ctrl+E; no split preview pane. Inline live preview moves from Deferred into phase 1 (S1/S2, P2.4, P5.3) | User: "not vs code like, like obsidian" | user |
 | 2026-10-13 | Vault RAG deferred; phase 1 context = selection, note, @note, open tabs, linked notes | MVP scope | planning |
+| 2026-10-14 | Wikilink grammar: `[[` + text on one line with no `[`/`]` + first `]]`; `\|` splits the alias at the FIRST bar, `#` splits the heading at the first hash of the target part; empty target (no note and no heading) is not a link. Shared fixture `wikilink_cases.json` (32 cases) checked by pytest and `check_sync.mjs`. In the editor the link shows the alias, else the text as typed (Python HTML renders `note > heading`). A `\|` inside a table cell is cell syntax, not an alias. Ctrl/Cmd+click emits `wikilink {note, heading}`; resolving it is P3.3 | Keep the two parsers trivially in sync; match Obsidian's alias semantics | claude |
 
 ## Issues log
 <!-- YYYY-MM-DD · task · symptom → root cause → fix · (gotcha added? y/n) -->
@@ -229,3 +230,4 @@ Legend: 🧠 = needs Opus (see PLAN §6 model guidance) · ⬜ todo · 🔄 in p
 - 2026-10-14 · P2.4 · Live Preview complete: element-level reveal, headings/inline styles, lists + hanging indent, tasks, quotes, rules, links (Ctrl+click), images via asset route, front matter, code blocks with lazy highlighting, tables, Source toggle (Ctrl+E); shared grammar fixtures; 296 Python tests; 101 + regression browser checks; native window verified incl. relaunch
 - 2026-10-14 · P2.5 · external-change handling: NoteBuffer.sync_with_disk + stash_text (core), EditorPane.on_external + conflict banner + resolutions; closes the open issue; 315 tests; 39 browser + 7 native checks
 - 2026-10-14 · P2.6 · plain-text mode for .txt notes (per-note kind, status label, rename across kinds); **phase P2 complete** (editor, tabs, parser, Live Preview, external changes, plain text); 322 Python tests; 31 + regression browser checks; native verified
+- 2026-10-14 · P3.1 · wikilink plugin: `core/links.py` (WikiTarget, parse_wikilink), markdown-it rule + renderer + `wikilinks()`, Lezer `wikilink.js`, Live Preview (hide brackets/target, reveal on touch, Ctrl+click event), shared fixture; 381 Python tests; 15 new + 101 gallery + 31 plain-text browser checks

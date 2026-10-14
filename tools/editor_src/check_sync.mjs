@@ -5,6 +5,7 @@
 import fs from "node:fs";
 import { GFM, parser } from "@lezer/markdown";
 import { editorExtensions } from "./grammar.js";
+import { parseWikilink } from "./wikilink.js";
 
 const load = (name) => JSON.parse(fs.readFileSync(new URL(`../../tests/fixtures/${name}`, import.meta.url), "utf8"));
 const md = parser.configure([GFM, ...editorExtensions]);
@@ -43,6 +44,16 @@ function extractFrontMatter(src) {
   return raw;
 }
 
+function extractWikilinks(src) {
+  const found = [];
+  md.parse(src).iterate({
+    enter(node) {
+      if (node.name === "WikiLink") found.push(parseWikilink(src.slice(node.from + 2, node.to - 2)));
+    },
+  });
+  return found;
+}
+
 let failed = 0;
 const math = load("math_cases.json");
 for (const c of math) {
@@ -64,6 +75,16 @@ for (const c of fm) {
     console.log(`  lezer : ${JSON.stringify(got)}`);
   }
 }
-const total = math.length + fm.length;
-console.log(failed ? `${failed} of ${total} cases differ` : `all ${total} grammar cases agree with the Python parser (${math.length} math, ${fm.length} front matter)`);
+const wiki = load("wikilink_cases.json");
+for (const c of wiki) {
+  const got = extractWikilinks(c.src);
+  if (JSON.stringify(got) !== JSON.stringify(c.links)) {
+    failed++;
+    console.log(`MISMATCH wikilink/${c.name}: ${JSON.stringify(c.src)}`);
+    console.log(`  python: ${JSON.stringify(c.links)}`);
+    console.log(`  lezer : ${JSON.stringify(got)}`);
+  }
+}
+const total = math.length + fm.length + wiki.length;
+console.log(failed ? `${failed} of ${total} cases differ` : `all ${total} grammar cases agree with the Python parser (${math.length} math, ${fm.length} front matter, ${wiki.length} wikilink)`);
 process.exit(failed ? 1 : 0);
