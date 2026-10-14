@@ -24,7 +24,7 @@ built-in local AI via Ollama. Plain `.md`/`.txt` files, no lock-in.
 |---|---|---|
 | Python / env | Python 3.12, `uv` | pin in `pyproject.toml` |
 | UI framework | NiceGUI (latest stable, pin exact) | native mode via pywebview |
-| Native window | `pywebview[qt]` | Qt backend = pip-only, no apt GTK hunt |
+| Native window | `pywebview[qt]` (PyQt6 + QtWebEngine) | S3 result: Qt's default **Wayland** backend is pip-only and works. Launch with `PYWEBVIEW_GUI=qt` (skips the noisy GTK probe). Forcing the X11 backend (`QT_QPA_PLATFORM=xcb`) needs apt libs: `libxcb-cursor0 libxcb-icccm4 libxcb-keysyms1 libxcb-xkb1 libxkbcommon-x11-0 libxcb-image0 libxcb-render-util0 libxcb-util1` |
 | Editor | CodeMirror 6 (own esbuild bundle: `@codemirror/lang-markdown` GFM + Lezer inline-math extension + live-preview plugin), custom NiceGUI element | S1 result: NiceGUI's built-in `ui.codemirror` rejected (Python-side decorations round-trip per keystroke; no lang-markdown/GFM or Lezer extensions; hard-wired `basicSetup`). Pinned npm versions in `tools/editor_src/package.json` |
 | Markdown parse | `markdown-it-py` + `mdit-py-plugins` | front_matter, dollarmath, tasklists, footnote, + custom wikilink plugin |
 | Math render | KaTeX 0.19.0 (vendored, client-side) | CM6 widget in the editor; CSS + fonts in `static/vendor/katex/` |
@@ -56,7 +56,8 @@ paper-pile/
 ├── tools/
 │   ├── build_editor.sh         # esbuild CodeMirror bundle → gui/static/vendor/
 │   ├── editor_src/             # JS source: index.js (createEditor), math.js, livepreview.js (inline), blocks.js (block widgets)
-│   └── spike_editor.py         # S1 demo page (dev-only, not shipped)
+│   ├── spike_editor.py         # S1/S2 demo page (dev-only, not shipped)
+│   └── spike_native.py         # S3 native-window shortcut test (dev-only)
 ├── paper_pile/
 │   ├── cli.py                  # arg parsing, launch native/serve
 │   ├── core/                   # ZERO UI imports
@@ -289,6 +290,8 @@ On paste into the editor:
 | Ctrl+Shift+V | Raw paste |
 | Ctrl+, | Settings |
 
+**Implementation notes (S3):** a single capture-phase `keydown` listener on `window` (`addEventListener(..., true)`), `preventDefault()` on Ctrl/Meta combos, forwards `{key, ctrl, shift, alt}` to Python (`ui.on` + `emitEvent`). With Shift held `e.key` is uppercase (`"F"`, `"V"`): always compare `e.key.toLowerCase()`. Verified in the native Qt window: all 12 shortcuts above are delivered and Ctrl+W does not close the window.
+
 ---
 
 ## 5. Data formats
@@ -420,6 +423,7 @@ on Sonnet. Only mark a task 🧠 when it is genuinely this specialized.
 - [ ] Ollama stopped → app usable, clear banner
 - [ ] Delete note → recoverable from `.trash/`
 - [ ] `--serve` reachable only on 127.0.0.1 and only with token
+- [ ] Native window on Wayland (default Qt backend): every §4.14 shortcut works (run `tools/spike_native.py`, press each, check the log). S3 injected keys only on the X11 backend; Wayland-native launches fine but its keys need this manual check
 
 ---
 

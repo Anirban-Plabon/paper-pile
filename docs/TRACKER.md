@@ -7,8 +7,8 @@ Legend: 🧠 = needs Opus (see PLAN §6 model guidance) · ⬜ todo · 🔄 in p
 
 ## Current focus
 - **Phase:** P0 — Foundation
-- **Task:** P0.6 Spike S3 (next; P0.1–P0.5 done)
-- **Next up:** P1.1
+- **Task:** P1.1 (next; all of P0 done)
+- **Next up:** P1.2 → P1.3
 
 ## Open issues
 <!-- - [ ] YYYY-MM-DD · task ID · what's blocking · what's needed -->
@@ -24,7 +24,7 @@ Legend: 🧠 = needs Opus (see PLAN §6 model guidance) · ⬜ todo · 🔄 in p
 | P0.3 | events + config | ✅ | 12 tests; config saves only changed layer values, corrupt file ignored + `.bak` on save |
 | P0.4 🧠 | Spike S1 — editor component | ✅ | own CM6 bundle chosen; all 7 acceptance items verified in headless Chrome (18 checks) |
 | P0.5 🧠 | Spike S2 — block widgets (display math + mermaid) in editor, offline | ✅ | 17 browser checks + parser check; requests to non-127.0.0.1 aborted during test |
-| P0.6 | Spike S3 — native mode + shortcuts | ⬜ | |
+| P0.6 | Spike S3 — native mode + shortcuts | ✅ | 12/12 shortcuts delivered on Qt X11 backend; Wayland-native launches OK, keys unverified → manual QA item in PLAN checklist | |
 
 ### P1 — Shell & vault
 | ID | Task | Status | Notes |
@@ -125,6 +125,8 @@ Legend: 🧠 = needs Opus (see PLAN §6 model guidance) · ⬜ todo · 🔄 in p
 | 2026-10-14 | S2: block widgets (`$$` math, ```` ```mermaid ````) from a CM6 StateField, source revealed when the selection touches the block; `BlockMath` Lezer block parser in math.js | CM6 forbids line-spanning/block replace decorations from a ViewPlugin | claude |
 | 2026-10-14 | S2: Mermaid 12.2.0 pinned, bundled via esbuild `--splitting` into lazy chunks (committed, ~6 MB under `vendor/pp-editor/`); renders serialized, `parse` before `render` (no mermaid error graphic), SVG cache keyed by theme+source | Offline, main bundle stays ~0.8 MB, mermaid global state is not concurrency-safe | claude |
 | 2026-10-14 | Editor/widget CSS lives in `static/app.css` (moved out of the spike page) | Single place; P8.1 will drive it from CSS variables | claude |
+| 2026-10-14 | S3: native mode = `pywebview[qt]`, launched with `PYWEBVIEW_GUI=qt`; keep Qt's default (Wayland) backend, do not force xcb | xcb needs 8 apt libs (not pip-only); default backend works out of the box | claude |
+| 2026-10-14 | S3: shortcuts via one capture-phase `keydown` listener + `preventDefault`, forwarded to Python; compare `e.key.toLowerCase()` | Verified all PLAN §4.14 shortcuts reach the page; Shift makes `e.key` uppercase | claude |
 | 2026-10-14 | uv_build backend with `module-root = ""` (flat `paper_pile/` layout, not `src/`) | PLAN §3 layout | claude |
 | 2026-10-13 | Preview-tab (VS Code style) behaviour as default | Chosen during planning, unconfirmed — ask user if unsure | planning |
 | 2026-10-13 | Split preview in phase 1; inline live preview deferred | Inline needs CM6 decorations, highest cost | planning |
@@ -135,7 +137,8 @@ Legend: 🧠 = needs Opus (see PLAN §6 model guidance) · ⬜ todo · 🔄 in p
 <!-- YYYY-MM-DD · task · symptom → root cause → fix · (gotcha added? y/n) -->
 | Date | Task | Symptom | Root cause | Fix | Gotcha? |
 |---|---|---|---|---|---|
-| | | | | | |
+| 2026-10-14 | P0.6 | Native window failed to start with `QT_QPA_PLATFORM=xcb`: "Could not load the Qt platform plugin xcb" | Qt ≥ 6.5 xcb plugin needs system libs `libxcb-cursor0`, `libxcb-icccm4`, `libxcb-keysyms1`, `libxcb-xkb1`, `libxkbcommon-x11-0` (+ image/render-util/util) which are not in pip wheels | For the test only: `apt download` the .debs, extract into a scratch dir, `LD_LIBRARY_PATH`. For the app: don't force xcb (default Wayland backend works) | y — pending: CLAUDE.md is read-only, so not yet added to its Gotchas |
+| 2026-10-14 | P0.6 | `xdotool key` reached nothing in the Qt window | `windowactivate` did not move keyboard focus under XWayland; page handler itself was fine (proved with a synthetic key from headless Chrome) | `xdotool windowfocus <id>` + click into the page first | n (test tooling only) |
 
 ## Session log
 <!-- YYYY-MM-DD · tasks completed · short note -->
@@ -147,3 +150,4 @@ Legend: 🧠 = needs Opus (see PLAN §6 model guidance) · ⬜ todo · 🔄 in p
 - 2026-10-14 · plan · marked 🧠 Opus tasks in PLAN §6 and TRACKER
 - 2026-10-14 · P0.4 · editor spike: CM6 live preview (headings/emphasis/code/strike hide off-cursor, inline KaTeX widget, pandoc dollar rule), slash/paste hooks, Python↔JS API, 2 MB image paste; verified with headless Chrome via scratch playwright-core (not a project dep)
 - 2026-10-14 · P0.5 · display math + mermaid block widgets in editor, reveal-on-cursor, theme re-render, offline verified; S1 checks still green
+- 2026-10-14 · P0.6 · native-window spike: 12/12 shortcuts delivered (Qt X11 backend via injected keys); Wayland-native launches, manual QA noted; **P0 complete**
