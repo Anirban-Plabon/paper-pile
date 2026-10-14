@@ -71,6 +71,61 @@ export class CheckboxWidget extends WidgetType {
   }
 }
 
+// Renders the inline markdown inside `node` (a table cell) between `from` and `to` as DOM:
+// emphasis, strike, code, links (styled, not clickable), math, escapes. Syntax marks are skipped.
+const MARKS = new Set(["EmphasisMark", "StrikethroughMark", "CodeMark", "LinkMark", "TableDelimiter"]);
+
+function walk(state, node, from, to, out) {
+  let pos = from;
+  for (let c = node.firstChild; c; c = c.nextSibling) {
+    if (c.to <= from || c.from >= to) continue;
+    if (c.from > pos) out.append(state.sliceDoc(pos, c.from));
+    pos = Math.max(pos, c.to);
+    if (MARKS.has(c.name)) continue;
+    const wrapped = { Emphasis: "em", StrongEmphasis: "strong", Strikethrough: "s" }[c.name];
+    if (wrapped) {
+      const el = document.createElement(wrapped);
+      walk(state, c, c.from, c.to, el);
+      out.append(el);
+    } else if (c.name === "InlineCode") {
+      const marks = c.getChildren("CodeMark");
+      const el = document.createElement("code");
+      el.textContent = state.sliceDoc(marks[0] ? marks[0].to : c.from, marks.length > 1 ? marks[marks.length - 1].from : c.to);
+      out.append(el);
+    } else if (c.name === "Link") {
+      const marks = c.getChildren("LinkMark");
+      const el = document.createElement("span");
+      el.className = "pp-link";
+      if (marks.length > 1) walk(state, c, marks[0].to, marks[1].from, el);
+      out.append(el);
+    } else if (c.name === "Image") {
+      const marks = c.getChildren("LinkMark");
+      out.append(marks.length > 1 ? state.sliceDoc(marks[0].to, marks[1].from).replace(/\|\d+$/, "") : "");
+    } else if (c.name === "InlineMath") {
+      const d = state.sliceDoc(c.from, c.from + 2) === "$$" ? 2 : 1;
+      const el = document.createElement("span");
+      el.innerHTML = katex.renderToString(state.sliceDoc(c.from + d, c.to - d), { throwOnError: false });
+      out.append(el);
+    } else if (c.name === "Escape") {
+      out.append(state.sliceDoc(c.from + 1, c.to));
+    } else if (c.name === "URL") {
+      const el = document.createElement("span");
+      el.className = "pp-link";
+      el.textContent = state.sliceDoc(c.from, c.to);
+      out.append(el);
+    } else {
+      out.append(state.sliceDoc(c.from, c.to));
+    }
+  }
+  if (pos < to) out.append(state.sliceDoc(pos, to));
+}
+
+export function renderInline(state, cell) {
+  const frag = document.createDocumentFragment();
+  walk(state, cell, cell.from, cell.to, frag);
+  return frag;
+}
+
 const REMOTE = /^([a-zA-Z][a-zA-Z0-9+.-]*:|\/\/)/;
 
 // `![alt|300](.note.assets/x.png)`. Only vault images are loaded (through Python's /_pp/asset

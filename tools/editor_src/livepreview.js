@@ -46,6 +46,12 @@ function references(cx) {
 const HEADING_LINE = Array.from({ length: 6 }, (_, i) => lineDeco(`pp-h pp-h${i + 1}`));
 const SETEXT_UNDERLINE = lineDeco("pp-setext-underline");
 const FM_LINE = lineDeco("pp-fm-line");
+const CODE_LINE = lineDeco("pp-codeblock");
+const CODE_FIRST = lineDeco("pp-codeblock pp-code-first");
+const CODE_LAST = lineDeco("pp-codeblock pp-code-last");
+const CODE_ONLY = lineDeco("pp-codeblock pp-code-first pp-code-last");
+const FENCE_LINE = lineDeco("pp-fence-line");
+const CODE_LANG = mark("pp-code-lang");
 const QUOTE_LINE = [1, 2, 3].map((n) => lineDeco(`pp-quote pp-quote-${n}`));
 const LIST_GLYPHS = ["\u2022", "\u25E6", "\u25AA"]; // bullet, white bullet, small square by depth
 const LIST_NUM = mark("pp-list-num");
@@ -208,6 +214,41 @@ const handlers = {
     const sized = /^(.*?)\|(\d+)$/.exec(altRaw);
     const widget = new ImageWidget(cx.doc.sliceString(url.from, url.to), sized ? sized[1] : altRaw, sized ? Number(sized[2]) : null);
     cx.out.push(Decoration.replace({ widget }).range(node.from, node.to));
+  },
+
+  // ``` fenced code: every line is a code line; off-block the fence marks disappear and the
+  // language shows as a small label. (A mermaid block that is drawn as a diagram is a widget.)
+  FencedCode: (cx, node) => {
+    const info = node.node.getChild("CodeInfo");
+    const lang = info ? cx.doc.sliceString(info.from, info.to).trim() : "";
+    const raw = touches(cx.state, node.from, node.to);
+    if (lang === "mermaid" && !raw && node.node.getChild("CodeText")) return;
+    const first = cx.doc.lineAt(node.from).number;
+    const last = cx.doc.lineAt(node.to).number;
+    for (let n = first; n <= last; n++) {
+      const deco = first === last ? CODE_ONLY : n === first ? CODE_FIRST : n === last ? CODE_LAST : CODE_LINE;
+      cx.out.push(deco.range(cx.doc.line(n).from));
+    }
+    if (raw) return;
+    const marks = node.node.getChildren("CodeMark");
+    if (marks.length) cx.out.push(hide.range(marks[0].from, marks[0].to));
+    if (info) cx.out.push(CODE_LANG.range(info.from, info.to));
+    else cx.out.push(FENCE_LINE.range(cx.doc.line(first).from));
+    if (marks.length > 1 && cx.doc.lineAt(marks[marks.length - 1].from).number === last && last > first) {
+      const m = marks[marks.length - 1];
+      cx.out.push(hide.range(m.from, m.to));
+      cx.out.push(FENCE_LINE.range(cx.doc.line(last).from));
+    }
+  },
+
+  // Indented code: no syntax to hide, just the code look.
+  CodeBlock: (cx, node) => {
+    const first = cx.doc.lineAt(node.from).number;
+    const last = cx.doc.lineAt(node.to).number;
+    for (let n = first; n <= last; n++) {
+      const deco = first === last ? CODE_ONLY : n === first ? CODE_FIRST : n === last ? CODE_LAST : CODE_LINE;
+      cx.out.push(deco.range(cx.doc.line(n).from));
+    }
   },
 
   // Front matter lines, as raw text (only visible while the caret is in the block; otherwise the

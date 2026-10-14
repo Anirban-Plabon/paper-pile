@@ -82,6 +82,28 @@ html, body { overflow: hidden; }
 .pp-image { display: inline-block; max-width: 100%; vertical-align: top; }
 .pp-image img { display: block; max-width: 100%; height: auto; border-radius: 4px; margin: 4px 0; }
 .pp-image-chip { display: inline-block; padding: 0 8px; border: 1px dashed var(--pp-border); border-radius: 4px; color: var(--pp-muted); font-size: .85em; }
+/* Code blocks and syntax colours. Token colours are variables so the dark theme can swap them. */
+.pp-editor { --pp-code-bg: #f3f4f6; --pp-tok-keyword: #cf222e; --pp-tok-string: #0a3069; --pp-tok-number: #0550ae; --pp-tok-comment: #6e7781; --pp-tok-type: #953800; --pp-tok-prop: #116329; --pp-tok-meta: #8250df; }
+.pp-editor.pp-dark { --pp-code-bg: #2a2d33; --pp-tok-keyword: #ff7b72; --pp-tok-string: #a5d6ff; --pp-tok-number: #79c0ff; --pp-tok-comment: #8b949e; --pp-tok-type: #ffa657; --pp-tok-prop: #7ee787; --pp-tok-meta: #d2a8ff; }
+.pp-editor .cm-line.pp-codeblock { background: var(--pp-code-bg); font-size: .92em; padding-left: 12px; padding-right: 12px; }
+.pp-editor .cm-line.pp-code-first { border-top-left-radius: 6px; border-top-right-radius: 6px; padding-top: 4px; margin-top: 6px; }
+.pp-editor .cm-line.pp-code-last { border-bottom-left-radius: 6px; border-bottom-right-radius: 6px; padding-bottom: 4px; margin-bottom: 6px; }
+.pp-editor .cm-line.pp-fence-line { line-height: .7; font-size: .7em; min-height: 0; }
+.pp-code-lang { float: right; opacity: .55; font-size: .8em; }
+.pp-codeblock .tok-keyword, .pp-codeblock .tok-operatorKeyword, .pp-codeblock .tok-controlKeyword { color: var(--pp-tok-keyword); }
+.pp-codeblock .tok-string, .pp-codeblock .tok-string2 { color: var(--pp-tok-string); }
+.pp-codeblock .tok-number, .pp-codeblock .tok-bool, .pp-codeblock .tok-atom, .pp-codeblock .tok-literal { color: var(--pp-tok-number); }
+.pp-codeblock .tok-comment { color: var(--pp-tok-comment); font-style: italic; }
+.pp-codeblock .tok-typeName, .pp-codeblock .tok-className, .pp-codeblock .tok-namespace { color: var(--pp-tok-type); }
+.pp-codeblock .tok-propertyName { color: var(--pp-tok-prop); }
+.pp-codeblock .tok-meta, .pp-codeblock .tok-macroName, .pp-codeblock .tok-labelName { color: var(--pp-tok-meta); }
+
+/* Tables */
+.pp-table { overflow-x: auto; margin: 6px 0; cursor: text; }
+.pp-table table { border-collapse: collapse; min-width: 50%; font-size: .95em; }
+.pp-table th, .pp-table td { padding: 4px 12px; border: 1px solid var(--pp-border); }
+.pp-table th { background: var(--pp-bg-side); font-weight: 600; }
+.pp-table code { background: var(--pp-code-bg, #f3f4f6); border-radius: 3px; padding: 0 3px; }
 .pp-fm-line { color: var(--pp-muted); font-size: .88em; }
 .pp-frontmatter { box-sizing: border-box; margin: 4px 0 10px; padding: 6px 10px; border: 1px solid var(--pp-border); border-radius: 6px; background: var(--pp-bg-side); font-size: .85em; color: var(--pp-muted); cursor: text; }
 .pp-fm-row { display: flex; gap: 12px; line-height: 1.6; }

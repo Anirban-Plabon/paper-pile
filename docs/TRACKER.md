@@ -7,7 +7,7 @@ Legend: 🧠 = needs Opus (see PLAN §6 model guidance) · ⬜ todo · 🔄 in p
 
 ## Current focus
 - **Phase:** P0 — Foundation
-- **Task:** P2.4 🧠 Live Preview (🔄 in progress, M1–M3 done, now M4 of M5; plan approved; P0, P1, P2.1–P2.3 done)
+- **Task:** P2.4 🧠 Live Preview (🔄 in progress, M1–M4 done, now M5 (polish, perf, regressions, docs); plan approved; P0, P1, P2.1–P2.3 done)
 - **Next up:** P2.5 → P2.6
 
 ## Open issues

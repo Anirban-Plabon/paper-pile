@@ -6,10 +6,11 @@ import { HighlightStyle, syntaxHighlighting, syntaxTree } from "@codemirror/lang
 import { highlightSelectionMatches, searchKeymap } from "@codemirror/search";
 import { Compartment, EditorState } from "@codemirror/state";
 import { EditorView, drawSelection, dropCursor, keymap } from "@codemirror/view";
-import { tags as t } from "@lezer/highlight";
+import { classHighlighter, tags as t } from "@lezer/highlight";
 import { blocks, themeFacet } from "./blocks.js";
 import { livePreview } from "./livepreview.js";
 import { refreshEffect } from "./reveal.js";
+import { codeLanguages } from "./codelang.js";
 import { editorContext } from "./context.js";
 import { editorExtensions } from "./grammar.js";
 
@@ -104,8 +105,9 @@ export function createEditor(
         highlightSelectionMatches(),
         EditorState.allowMultipleSelections.of(true),
         EditorView.lineWrapping,
-        markdown({ base: markdownLanguage, extensions: editorExtensions }),
+        markdown({ base: markdownLanguage, extensions: editorExtensions, codeLanguages }),
         syntaxHighlighting(sourceStyle),
+        syntaxHighlighting(classHighlighter), // `tok-*` classes inside code blocks; colours live in CSS
         keymap.of([
           {
             key: "Mod-s",

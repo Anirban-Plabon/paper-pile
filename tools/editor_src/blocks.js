@@ -6,6 +6,7 @@ import { Facet, StateField } from "@codemirror/state";
 import { Decoration, EditorView, WidgetType } from "@codemirror/view";
 import katex from "katex";
 import { touches } from "./reveal.js";
+import { renderInline } from "./widgets.js";
 
 export const themeFacet = Facet.define({ combine: (v) => v[0] ?? "light" });
 
@@ -113,6 +114,65 @@ class FrontMatterWidget extends WidgetType {
   }
 }
 
+// A GFM table as a real <table>: column alignment from the delimiter row, inline markdown inside
+// the cells. Editing happens in the source (the table reveals while the caret is in it).
+class TableWidget extends WidgetType {
+  constructor(src, state, table) {
+    super();
+    this.src = src;
+    this.state = state;
+    this.table = table; // SyntaxNode of this tree snapshot
+  }
+  eq(other) {
+    return other.src === this.src;
+  }
+  aligns() {
+    const head = this.table.getChild("TableHeader");
+    const delim = this.state.doc.lineAt(head ? head.to : this.table.from).number + 1;
+    const text = delim <= this.state.doc.lines ? this.state.doc.line(delim).text : "";
+    return text
+      .trim()
+      .replace(/^\||\|$/g, "")
+      .split("|")
+      .map((c) => {
+        const m = /^\s*(:?)-+(:?)\s*$/.exec(c);
+        return m ? (m[1] && m[2] ? "center" : m[2] ? "right" : m[1] ? "left" : "") : "";
+      });
+  }
+  toDOM(view) {
+    const wrap = document.createElement("div");
+    wrap.className = "pp-table";
+    const table = document.createElement("table");
+    const aligns = this.aligns();
+    const addRow = (parent, cells, tag) => {
+      const tr = document.createElement("tr");
+      const count = Math.max(aligns.length, cells.length);
+      for (let i = 0; i < count; i++) {
+        const cell = document.createElement(tag);
+        if (aligns[i]) cell.style.textAlign = aligns[i];
+        if (cells[i]) cell.appendChild(renderInline(this.state, cells[i]));
+        tr.appendChild(cell);
+      }
+      parent.appendChild(tr);
+    };
+    const head = this.table.getChild("TableHeader");
+    if (head) {
+      const thead = document.createElement("thead");
+      addRow(thead, head.getChildren("TableCell"), "th");
+      table.appendChild(thead);
+    }
+    const body = document.createElement("tbody");
+    for (const row of this.table.getChildren("TableRow")) addRow(body, row.getChildren("TableCell"), "td");
+    table.appendChild(body);
+    wrap.appendChild(table);
+    revealOnMouseDown(wrap, view);
+    return wrap;
+  }
+  ignoreEvent() {
+    return false;
+  }
+}
+
 class MermaidWidget extends WidgetType {
   constructor(src, theme) {
     super();
@@ -165,7 +225,10 @@ function candidates(state) {
   tree.iterate({
     enter(node) {
       if (isInlineOnly(node.name)) return false;
-      if (node.name === "FrontMatter") {
+      if (node.name === "Table") {
+        push(node, new TableWidget(doc.sliceString(node.from, node.to), state, node.node));
+        return false; // its cells are rendered by the widget
+      } else if (node.name === "FrontMatter") {
         const marks = node.node.getChildren("FrontMatterMark");
         push(node, new FrontMatterWidget(doc.sliceString(marks[0].to, marks[1].from).trim()));
       } else if (node.name === "BlockMath") {
