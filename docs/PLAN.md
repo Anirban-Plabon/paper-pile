@@ -308,14 +308,29 @@ meta(key TEXT PK, value TEXT)   -- schema_version
 Status lives in TRACKER.md. Each task: do it → verify acceptance → update TRACKER.
 Order matters: risky spikes come first.
 
+**Model guidance (🧠 = use Opus).** The session runs on `opusplan` (Opus in plan
+mode, Sonnet otherwise). Tasks marked 🧠 are highly specialized (CodeMirror 6
+internals, or data-corruption risk). For these: **design in plan mode (Opus)**,
+and if the implementation gets stuck after 2 failed attempts, switch with
+`/model opus` and finish on Opus, then switch back. Every unmarked task is fine
+on Sonnet. Only mark a task 🧠 when it is genuinely this specialized.
+
+| 🧠 task | Why |
+|---|---|
+| P0.4 🧠 | CM6 as a NiceGUI element: view/state/extension model, paste + keydown hooks, first live-preview decorations |
+| P0.5 🧠 | KaTeX/Mermaid as CM6 widget decorations (block widgets, cursor-aware reveal, offline, theme re-render) |
+| P2.4 🧠 | Full Live Preview: cursor-aware syntax hiding, replace/line/widget decorations, tables, clickable tasks; hardest code in the project |
+| P3.5 🧠 | Rename-safe rewrite across the vault: must not corrupt notes (code fences, aliases, anchors, relative paths) |
+| P4.2 🧠 | Slash popup inside CM6: caret-positioned tooltip, trigger rules (not in code/URLs), key handling coexisting with live-preview decorations |
+
 ### P0 — Foundation
 | ID | Task | Acceptance |
 |---|---|---|
 | P0.1 | `uv init`, pyproject (deps pinned, script entry `paper-pile`), ruff/mypy/pytest config | `uv run paper-pile --help` works; `uv run pytest` runs (0 tests ok) |
 | P0.2 | Repo skeleton per §3, empty modules with docstrings | tree matches §3 |
 | P0.3 | `core/events.py` pub/sub + `core/config.py` (defaults, load/merge/save TOML) | unit tests for merge order + save round-trip |
-| P0.4 | **Spike S1 — editor component.** Build minimal CM6 bundle with esbuild, wrap as custom NiceGUI element; prove: load text, change event → Python, set text from Python, insert at cursor from Python, keydown hook for `/`, paste event with html+image → Python, **and live-preview decorations (hide `**`/`#` off-cursor, one KaTeX widget)**. Check first whether NiceGUI's built-in `ui.codemirror` allows custom extensions; if yes, prefer it. | Demo page does all 6 things; decision logged; PLAN §2/§4.5 updated with chosen approach |
-| P0.5 | **Spike S2 — widget rendering.** Mermaid + KaTeX (vendored) as CM6 widgets inside the editor; theme switch re-renders mermaid | Demo renders a mermaid diagram + inline/display math inside the editor offline (network disabled) |
+| P0.4 🧠 | **Spike S1 — editor component.** Build minimal CM6 bundle with esbuild, wrap as custom NiceGUI element; prove: load text, change event → Python, set text from Python, insert at cursor from Python, keydown hook for `/`, paste event with html+image → Python, **and live-preview decorations (hide `**`/`#` off-cursor, one KaTeX widget)**. Check first whether NiceGUI's built-in `ui.codemirror` allows custom extensions; if yes, prefer it. | Demo page does all 6 things; decision logged; PLAN §2/§4.5 updated with chosen approach |
+| P0.5 🧠 | **Spike S2 — widget rendering.** Mermaid + KaTeX (vendored) as CM6 widgets inside the editor; theme switch re-renders mermaid | Demo renders a mermaid diagram + inline/display math inside the editor offline (network disabled) |
 | P0.6 | **Spike S3 — native mode.** `ui.run(native=True)` with pywebview[qt] on Ubuntu; keyboard shortcuts reach the app (Ctrl+P, Ctrl+W not swallowed) | Window opens, shortcuts verified; fallbacks logged if any are swallowed |
 
 ### P1 — Shell & vault
@@ -333,7 +348,7 @@ Order matters: risky spikes come first.
 | P2.1 | Editor component (from S1) wired to open file, autosave (debounce + atomic), recovery buffer | edit → file on disk updates; kill app mid-edit → recovery offered |
 | P2.2 | Tabs per §4.4 (no preview tab), restore session | manual QA checklist §4.4 all pass |
 | P2.3 | `core/parser.py` markdown-it setup + dollar math rule + front matter | unit tests: tables, tasks, footnotes, `$5 and $10` not math |
-| P2.4 | Live Preview decorations (headings, emphasis, lists, tasks, quotes, tables, links, code, math/mermaid widgets) + Source mode toggle | manual QA: syntax hides off-cursor, reappears on cursor |
+| P2.4 🧠 | Live Preview decorations (headings, emphasis, lists, tasks, quotes, tables, links, code, math/mermaid widgets) + Source mode toggle | manual QA: syntax hides off-cursor, reappears on cursor |
 | P2.5 | External-change handling (reload / conflict banner) | edit open file from terminal → correct behaviour both clean and dirty |
 | P2.6 | `.txt` plain mode | .txt opens without preview/slash |
 
@@ -344,13 +359,13 @@ Order matters: risky spikes come first.
 | P3.2 | `core/index.py` schema, incremental index, FTS, rebuild | unit tests; 1,000-note synthetic vault indexes < 5 s |
 | P3.3 | `core/links.py` resolve + click-to-navigate + create-on-missing; Ctrl+click new tab | manual QA |
 | P3.4 | Backlinks pane with snippets | manual QA |
-| P3.5 | Rename-safe link rewriting across vault + toast | unit test: rename updates wikilinks + md links in N files |
+| P3.5 🧠 | Rename-safe link rewriting across vault + toast | unit test: rename updates wikilinks + md links in N files |
 
 ### P4 — Slash menu
 | ID | Task | Acceptance |
 |---|---|---|
 | P4.1 | `core/commands.py` registry, decorator, actions, fuzzy match, recents | unit tests |
-| P4.2 | Notion-style popup in editor JS per §4.8 (look + keys + trigger rules) | manual QA vs reference screenshot; not triggered in code/URLs |
+| P4.2 🧠 | Notion-style popup in editor JS per §4.8 (look + keys + trigger rules) | manual QA vs reference screenshot; not triggered in code/URLs |
 | P4.3 | Implement non-AI phase-1 commands + note picker | each command inserts correct markdown |
 
 ### P5 — Images
