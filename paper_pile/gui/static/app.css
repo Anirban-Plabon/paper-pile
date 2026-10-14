@@ -56,7 +56,13 @@ html, body { overflow: hidden; }
 .pp-dialog-title { font-size: 14px; font-weight: 600; }
 
 /* Editor host */
-.pp-editor { border: 1px solid #8884; font: 15px/1.6 monospace; }
+.pp-editor { font: 15px/1.6 monospace; }
+.pp-editor .cm-content { padding: 16px 28px; }
+.pp-editor .cm-editor.cm-focused { outline: none; }
+.pp-save-error { color: #c0392b; }
+.pp-recovery { min-width: 460px; }
+.pp-recovery-row { gap: 8px; }
+.pp-recovery-path { font-size: 13px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; }
 .pp-editor .cm-editor { height: 100%; }
 .pp-editor .cm-scroller { overflow: auto; }
 .pp-editor.pp-dark { background: #1e1e1e; color: #ddd; }

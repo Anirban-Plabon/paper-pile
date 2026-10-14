@@ -7,12 +7,12 @@ Legend: 🧠 = needs Opus (see PLAN §6 model guidance) · ⬜ todo · 🔄 in p
 
 ## Current focus
 - **Phase:** P0 — Foundation
-- **Task:** P2.1 (next; **P0 and P1 complete**)
-- **Next up:** P2.2 → P2.3 → 🧠 P2.4
+- **Task:** P2.2 (next; P0, P1, P2.1 done)
+- **Next up:** P2.3 → 🧠 P2.4 → P2.5 → P2.6
 
 ## Open issues
 <!-- - [ ] YYYY-MM-DD · task ID · what's blocking · what's needed -->
-- (none)
+- [ ] 2026-10-14 · P2.5 · Edits made to an open note outside the app are not detected yet: the editor shows stale text and the next save overwrites the external change (a clean buffer is never written, a dirty one is). Must land before the app is used for real work · P2.5 (external-change handling; the watcher already reports `modified`, but the app's own saves echo back, so compare content hashes via `core.buffer.content_hash`)
 
 ## Task status
 
@@ -38,7 +38,7 @@ Legend: 🧠 = needs Opus (see PLAN §6 model guidance) · ⬜ todo · 🔄 in p
 ### P2 — Editor, tabs, preview
 | ID | Task | Status | Notes |
 |---|---|---|---|
-| P2.1 | Editor + autosave + recovery | ⬜ | |
+| P2.1 | Editor + autosave + recovery | ✅ | 147 tests (+17 core); 41 browser checks incl. real `kill -9` crash recovery; 5 in the native window; S1/S2 suites still green. Known gap → open issue for P2.5 | |
 | P2.2 | Tabs (no preview tab, restore) | ⬜ | changed 2026-10-14 |
 | P2.3 | Parser + dollar rule | ⬜ | |
 | P2.4 🧠 | Live Preview decorations + Source toggle | ⬜ | changed 2026-10-14; highest cost |
@@ -141,6 +141,11 @@ Legend: 🧠 = needs Opus (see PLAN §6 model guidance) · ⬜ todo · 🔄 in p
 | 2026-10-14 | P1.4: "Reveal in file manager" only in native mode (`xdg-open` on the folder) | In `--serve` mode it would act on the server, not the user's machine (CLAUDE rule 7: web fallback) | claude |
 | 2026-10-14 | P1.5: one `VaultWatcher` per process publishing batched `vault.fs_changed(events=[FsEvent])` on an app-level bus; pages subscribe and unsubscribe on disconnect; 150 ms debounce window from the first event; `dispatch` callback keeps `core` UI-free (GUI passes `loop.call_soon_threadsafe`) | watchdog runs on its own thread; NiceGUI elements must be touched on the loop; multiple pages in `--serve` mode | claude |
 | 2026-10-14 | P1.5: watcher ignores hidden paths, non-notes and folder-modified noise; moves into/out of `.trash` map to deleted/created; the app's own writes echo back and are not suppressed (P2.5 must detect its own saves) | Matches what the tree shows; keeps the watcher simple and stateless | claude |
+| 2026-10-14 | P2.1: autosave = editor reports at 0.3 s + 0.7 s timer (~1 s); immediate on blur, Ctrl+S, note switch, page disconnect; failed save retried every 5 s | Spec says ~1 s debounce; never leave edits only in the browser | claude |
+| 2026-10-14 | P2.1: `NoteBuffer` (core) owns dirty/save/recovery rules; `EditorPane` (GUI) only owns timing and dialogs; saving never recreates a note deleted on disk | Core logic is unit-tested; an autosave must not undo an external delete/move | claude |
+| 2026-10-14 | P2.1: `setText(text, docId)` — events carry the doc id and stale ones are dropped; `setText` builds a fresh CM state (resets undo history) | A late change or Ctrl+Z must never move text between notes (data-corruption risk) | claude |
+| 2026-10-14 | P2.1: recovery entries are one JSON per note named by a hash of the path; startup dialog Restore/Discard/Later; opening a note with a pending entry asks again | Crash safety per PLAN §4.5; user decides, nothing is overwritten silently | claude |
+| 2026-10-14 | P2.1: deleting the open note through the tree discards its buffer instead of saving it | The file is in `.trash/`; saving would resurrect it | claude |
 | 2026-10-14 | uv_build backend with `module-root = ""` (flat `paper_pile/` layout, not `src/`) | PLAN §3 layout | claude |
 | 2026-10-13 | Preview-tab (VS Code style) behaviour as default | Chosen during planning, unconfirmed — ask user if unsure | planning |
 | 2026-10-13 | Split preview in phase 1; inline live preview deferred | Inline needs CM6 decorations, highest cost | planning |
@@ -152,6 +157,9 @@ Legend: 🧠 = needs Opus (see PLAN §6 model guidance) · ⬜ todo · 🔄 in p
 | Date | Task | Symptom | Root cause | Fix | Gotcha? |
 |---|---|---|---|---|---|
 | 2026-10-14 | P0.6 | Native window failed to start with `QT_QPA_PLATFORM=xcb`: "Could not load the Qt platform plugin xcb" | Qt ≥ 6.5 xcb plugin needs system libs `libxcb-cursor0`, `libxcb-icccm4`, `libxcb-keysyms1`, `libxcb-xkb1`, `libxkbcommon-x11-0` (+ image/render-util/util) which are not in pip wheels | For the test only: `apt download` the .debs, extract into a scratch dir, `LD_LIBRARY_PATH`. For the app: don't force xcb (default Wayland backend works) | y — pending: CLAUDE.md is read-only, so not yet added to its Gotchas |
+| 2026-10-14 | P2.1 | After **Restore**, the recovered text was shown but never reached the disk | Autosave is triggered by editor change events; a restored buffer is dirty from the start and the editor reports no change for `setText`, so no save was ever scheduled | `open()` schedules a save when the opened buffer is already dirty | y — pending: CLAUDE.md read-only |
+| 2026-10-14 | P2.1 | Test helper `.cmView.view` was undefined | CodeMirror 6.43 renamed its DOM handle to `cmTile.root.view` | Test reads `cmTile?.root?.view ?? cmView.view` (test-only) | n |
+| 2026-10-14 | P2.1 | Several test failures turned out to be test mistakes: reading the document from the DOM (Live Preview hides markdown marks off-cursor), clicking Restore on the wrong row (oldest entry first), injecting recovery files under a name the app does not use | Not app bugs | Read text from the editor state; target the row; inject with the hashed file name | n |
 | 2026-10-14 | P1.4 | Context menu drew *under* the splitter line, clipped to the left pane | `position: fixed` inside a Quasar splitter panel is still inside that panel's stacking context | `with ui.teleport("body")` for the menu | y — pending: CLAUDE.md read-only |
 | 2026-10-14 | P1.4 | Menu labels stayed Quasar-blue and Delete was not red although my CSS had higher specificity and `!important` | NiceGUI ships Quasar's `!important` colour rules inside CSS cascade layers; for `!important`, *layered* beats *unlayered* regardless of specificity, so app CSS can never override a Quasar colour class | Don't give the element a colour class: `ui.button(..., color=None)` | y — pending: CLAUDE.md read-only |
 | 2026-10-14 | P1.4 | `move_into("d", "d/sub")` test expected "into itself" but got "not a folder" | `d/sub` did not exist yet, so the missing-folder check correctly came first | Test the real case (`d` into `d`, and into an existing descendant) | n |
@@ -177,3 +185,4 @@ Legend: 🧠 = needs Opus (see PLAN §6 model guidance) · ⬜ todo · 🔄 in p
 - 2026-10-14 · P1.3 · 3-pane layout (resize, limits, collapse, persistence), status bar + chat stubs, shortcuts module; native lifecycle checked: ending the window process exits the app cleanly (exit 0, no leftovers)
 - 2026-10-14 · P1.4 · file tree: lazy expand, context menu, create/rename/duplicate/delete→trash, drag-move, native-only Reveal; 107 tests green; verified with real mouse input in Chrome and in the native window
 - 2026-10-14 · P1.5 · core/watcher.py + live tree refresh; **phase P1 complete** (CLI, vault, layout, tree, watcher); 130 tests green
+- 2026-10-14 · P2.1 · NoteBuffer + RecoveryStore (core), EditorPane (autosave/blur/Ctrl+S/switch/disconnect, retry, recovery dialog), save indicator; found+fixed restore-never-saved bug; 147 tests; verified in Chrome (incl. kill -9) and native window

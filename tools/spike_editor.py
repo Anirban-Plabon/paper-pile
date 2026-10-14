@@ -85,11 +85,11 @@ def index() -> None:
             on_paste=on_paste,
         )
         .classes("w-full")
-        .style("height: 520px")
+        .style("height: 520px; border: 1px solid #8884")
     )
 
     async def get() -> None:
-        log.push(f"get_text: {len(await editor.get_text())} chars")
+        log.push(f"get_text: {len(await editor.get_text() or '')} chars")
 
     with ui.row():
         ui.button("Set text", on_click=lambda: editor.set_text("# Replaced from Python\n\n**ok**"))

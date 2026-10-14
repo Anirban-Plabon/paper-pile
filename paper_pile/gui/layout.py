@@ -16,6 +16,7 @@ from paper_pile.core.vault import Vault
 from paper_pile.core.watcher import TOPIC as FS_CHANGED
 from paper_pile.core.watcher import FsEvent
 from paper_pile.gui.components.chat import chat_panel
+from paper_pile.gui.components.editor_pane import EditorPane
 from paper_pile.gui.components.statusbar import StatusBar, status_bar
 from paper_pile.gui.components.tree import FileTree
 
@@ -47,6 +48,7 @@ class MainLayout:
         self.bus = EventBus()  # tabs/editor subscribe to tree events here (P2)
         self.can_reveal = can_reveal
         self.tree: FileTree | None = None
+        self.editor_pane: EditorPane | None = None
         self._fs_bus = fs_bus
         self.state: SessionState = load_session(vault)
         for pane in WIDTH_LIMITS:
@@ -103,11 +105,12 @@ class MainLayout:
             # below the tree: reserved for the profile block (P8.3)
 
     def _center_pane(self) -> None:
-        with ui.column().classes("pp-pane pp-center"), ui.column().classes("pp-pane-body"):
-            label = ui.label("Open a note to start writing").classes("pp-muted pp-empty")
-        # Placeholder until tabs and the editor arrive (P2): just show which note was opened.
-        self.bus.subscribe("tree.open", lambda path: label.set_text(f"Opened: {path}"))
-        self.bus.subscribe("vault.deleted", lambda path, **_: label.set_text(f"Deleted: {path}"))
+        self.editor_pane = EditorPane(Vault(self.vault), self.bus, self._set_save_state)
+        self.editor_pane.build()
+
+    def _set_save_state(self, text: str, error: bool) -> None:
+        if self._status is not None:
+            self._status.set_save_state(text, error=error)
 
     # ---- behaviour -----------------------------------------------------------------------
 

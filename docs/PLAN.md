@@ -72,6 +72,8 @@ paper-pile/
 │   │   ├── paste.py            # Smart Paste: html→md, delimiter normalize
 │   │   ├── config.py           # global + vault TOML, defaults
 │   │   ├── session.py          # open tabs, last vault, restore
+│   │   ├── buffer.py           # NoteBuffer: dirty tracking, save rules, recovery mirror
+│   │   ├── recovery.py         # .paper-pile/recovery store (unsaved buffers)
 │   │   ├── events.py           # simple pub/sub so core can notify UIs
 │   │   └── ai/
 │   │       ├── provider.py     # Provider protocol
@@ -87,6 +89,7 @@ paper-pile/
 │       │   ├── tree.py         # left pane
 │       │   ├── tabs.py         # tab bar + preview-tab logic
 │       │   ├── editor.py       # NiceGUI element wrapping CM6
+│       │   ├── editor_pane.py  # center pane: open note, autosave timing, recovery prompts
 │       │   ├── pp_editor.js    # thin Vue wrapper for the element
 │       │   ├── preview.py      # rendered HTML + mermaid/katex post-render
 │       │   ├── backlinks.py
@@ -169,8 +172,13 @@ paper-pile --serve [path] [--port 8080]   # web mode, 127.0.0.1 only, prints URL
 - **Live Preview (default):** CM6 decorations render markdown inline as you type. Syntax markers (`**`, `#`, `[[ ]]`, link URLs, etc.) hide except on the line/selection with the cursor. Headings, bold/italic, lists, tasks (clickable checkbox), quotes, tables, links and images render in place; math (KaTeX) and Mermaid render as block/inline widgets that revert to source when the cursor enters them. The editor is the only pane for a note. Decoration logic is JS (render-only); parsing rules stay consistent with `core/parser.py`.
 - **Python ↔ editor protocol (S1):** the browser owns the buffer. Python never sets text through reactive props; it calls `set_text` / `insert_at_cursor` / `set_mode` / `get_text` explicitly. Inserts apply at the JS-side cursor (no offset conversion, so no UTF-16 vs code-point bugs). Events to Python: `change` (full text, debounced 300 ms + flush on blur; API-made changes are not echoed), `slash` (line, ch, caret coords; not fired mid-word or in code/URL), `paste` (`html`+`text`, or image). Pasted images go over an HTTP POST route, not the websocket (socket.io caps messages at ~1 MB). Ctrl+Shift+V skips the hook (raw paste).
 - Autosave: debounced 1 s after last keystroke + on tab switch/close/blur. Atomic write (temp file + rename).
+  - **Implementation (P2.1):** the editor reports changes 0.3 s after typing stops, then a 0.7 s timer in `EditorPane` fires (~1 s total). Saved immediately on blur, Ctrl+S, switching notes (the freshest text is pulled with `get_text`) and when the page disconnects. A failed save keeps the text dirty, shows "Save failed" + a toast and is retried every 5 s. Status bar shows `Ready / Saved / Editing… / Save failed`.
+  - `core/buffer.py` `NoteBuffer` decides *what* happens: dirty ⇔ content hash ≠ saved hash (undoing back to the saved text is clean again); every dirty state is mirrored to recovery; saving **never recreates a note that vanished from disk** (it fails and keeps the text) — so deleting or moving a note outside the app cannot be undone by an autosave.
+  - Every `setText` carries a document id; events with an older id are ignored, so a late `change` can never be written into the wrong note. `setText` builds a fresh editor state, which also resets undo history (Ctrl+Z must never pull another note's text into this one).
+  - Tree interplay: `vault.renamed` makes the open buffer follow the note; `vault.deleted` closes the editor and discards the buffer (the note is in `.trash/`).
 - External change to an open file: if buffer clean → reload silently; if dirty → conflict banner (keep mine / load theirs / diff later).
 - Crash safety: unsaved buffer mirrored to `.paper-pile/recovery/` until saved.
+  - **Implementation (P2.1, `core/recovery.py`):** one JSON file per note (`<sha256(path)[:20]>.json` with path, text, base hash, time), written on every reported change, removed on save. On start, entries that differ from disk (or whose note is gone) are offered in one dialog: **Restore** (opens the note with the recovered text as unsaved; autosave then writes it), **Discard**, or **Later** (kept). Opening a note that has a pending entry asks again. Nothing on disk is touched before the user chooses. The window of un-mirrored typing is ≤ 0.3 s (the editor's debounce).
 - `.txt` files: plain text mode, no preview, no slash menu.
 
 ### 4.6 Markdown rendering (inline live preview; no separate preview pane)

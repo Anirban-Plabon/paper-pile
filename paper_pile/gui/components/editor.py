@@ -2,7 +2,8 @@
 
 The browser owns the buffer. Python sets text or inserts at the cursor through explicit
 method calls (never reactive props, so a server push cannot clobber typing) and receives
-``change`` / ``slash`` / ``paste`` events.
+``change`` / ``blur`` / ``save`` / ``slash`` / ``paste`` events. Events about the text carry the
+``docId`` given to the last :meth:`set_text`, so a late event from an old note is detectable.
 """
 
 from collections.abc import Callable
@@ -29,6 +30,8 @@ class Editor(
         theme: Theme = "light",
         image_upload_url: str | None = None,
         on_change: Handler | None = None,
+        on_blur: Handler | None = None,
+        on_save: Handler | None = None,
         on_slash: Handler | None = None,
         on_paste: Handler | None = None,
     ) -> None:
@@ -39,16 +42,25 @@ class Editor(
         self._props["imageUploadUrl"] = image_upload_url
         if on_change:
             self.on("change", on_change)
+        if on_blur:
+            self.on("blur", on_blur)
+        if on_save:
+            self.on("save", on_save)
         if on_slash:
             self.on("slash", on_slash)
         if on_paste:
             self.on("paste", on_paste)
 
-    async def get_text(self) -> str:
-        return str(await self.run_method("getText"))
+    async def get_text(self) -> str | None:
+        """The editor's current text, or ``None`` if the browser did not answer in time."""
+        try:
+            return str(await self.run_method("getText"))
+        except TimeoutError:
+            return None
 
-    def set_text(self, text: str) -> None:
-        self.run_method("setText", text)
+    def set_text(self, text: str, doc_id: int = 0) -> None:
+        """Replace the document (and reset undo history). ``doc_id`` tags later events."""
+        self.run_method("setText", text, doc_id)
 
     def insert_at_cursor(self, text: str) -> None:
         self.run_method("insertAtCursor", text)

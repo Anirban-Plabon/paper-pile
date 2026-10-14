@@ -4,14 +4,13 @@ import { defaultKeymap, history, historyKeymap, indentWithTab } from "@codemirro
 import { markdown, markdownLanguage } from "@codemirror/lang-markdown";
 import { HighlightStyle, syntaxHighlighting, syntaxTree } from "@codemirror/language";
 import { highlightSelectionMatches, searchKeymap } from "@codemirror/search";
-import { Annotation, Compartment, EditorState } from "@codemirror/state";
+import { Compartment, EditorState } from "@codemirror/state";
 import { EditorView, drawSelection, dropCursor, keymap } from "@codemirror/view";
 import { tags as t } from "@lezer/highlight";
 import { blocks, themeFacet } from "./blocks.js";
 import { livePreview } from "./livepreview.js";
 import { MathExt } from "./math.js";
 
-const External = Annotation.define(); // changes made via the API are not echoed back
 const CHANGE_DEBOUNCE_MS = 300;
 const RAW_PASTE_WINDOW_MS = 600;
 const NO_SLASH_NODES = new Set(["FencedCode", "CodeBlock", "InlineCode", "URL", "CodeText"]);
@@ -40,13 +39,19 @@ export function createEditor(
   parent.classList.toggle("pp-dark", theme === "dark");
   let timer = null;
   let rawUntil = 0;
+  let currentMode = mode;
+  let currentTheme = theme;
+  // Which document the editor currently shows. Python bumps it on every note switch and ignores
+  // events carrying an older id, so a late "change" can never land in the wrong note.
+  let docId = 0;
 
   const flush = () => {
     if (timer === null) return;
     clearTimeout(timer);
     timer = null;
-    emit("change", { text: view.state.doc.toString() });
+    emit("change", { text: view.state.doc.toString(), docId });
   };
+  const snapshot = () => ({ text: view.state.doc.toString(), docId });
 
   const handlePaste = (event, v) => {
     if (performance.now() < rawUntil) return false; // Ctrl+Shift+V: raw paste
@@ -70,10 +75,11 @@ export function createEditor(
     return true;
   };
 
-  const view = new EditorView({
-    parent,
-    state: EditorState.create({
-      doc,
+  // A note switch builds a fresh state, which also drops the undo history: Ctrl+Z must never
+  // pull the previous note's text into this one.
+  const makeState = (text) =>
+    EditorState.create({
+      doc: text,
       extensions: [
         history(),
         drawSelection(),
@@ -83,11 +89,24 @@ export function createEditor(
         EditorView.lineWrapping,
         markdown({ base: markdownLanguage, extensions: [MathExt] }),
         syntaxHighlighting(sourceStyle),
-        keymap.of([...defaultKeymap, ...historyKeymap, ...searchKeymap, indentWithTab]),
-        themeSlot.of(themeFacet.of(theme)),
-        modeSlot.of(modeExt(mode)),
+        keymap.of([
+          {
+            key: "Mod-s",
+            run: () => {
+              flush();
+              emit("save", snapshot());
+              return true;
+            },
+          },
+          ...defaultKeymap,
+          ...historyKeymap,
+          ...searchKeymap,
+          indentWithTab,
+        ]),
+        themeSlot.of(themeFacet.of(currentTheme)),
+        modeSlot.of(modeExt(currentMode)),
         EditorView.updateListener.of((u) => {
-          if (u.docChanged && !u.transactions.every((tr) => tr.annotation(External))) {
+          if (u.docChanged) {
             clearTimeout(timer);
             timer = setTimeout(flush, CHANGE_DEBOUNCE_MS);
           }
@@ -110,31 +129,33 @@ export function createEditor(
           },
           blur: () => {
             flush();
+            emit("blur", snapshot());
             return false;
           },
         }),
       ],
-    }),
-  });
+    });
+
+  const view = new EditorView({ parent, state: makeState(doc) });
 
   return {
     getText: () => view.state.doc.toString(),
-    setText(text) {
+    setText(text, id = docId) {
       clearTimeout(timer);
       timer = null;
-      view.dispatch({
-        changes: { from: 0, to: view.state.doc.length, insert: text },
-        annotations: External.of(true),
-      });
+      docId = id;
+      view.setState(makeState(text));
     },
     insertAtCursor(text) {
       view.dispatch(view.state.replaceSelection(text), { userEvent: "input.paste", scrollIntoView: true });
       flush();
     },
     setMode(m) {
+      currentMode = m;
       view.dispatch({ effects: modeSlot.reconfigure(modeExt(m)) });
     },
     setTheme(name) {
+      currentTheme = name;
       parent.classList.toggle("pp-dark", name === "dark");
       view.dispatch({ effects: themeSlot.reconfigure(themeFacet.of(name)) });
     },

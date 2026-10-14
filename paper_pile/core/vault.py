@@ -173,6 +173,13 @@ class Vault:
                     continue
                 yield self._rel(path)
 
+    def exists(self, rel: str | PurePosixPath) -> bool:
+        """True if ``rel`` is an existing note or folder inside the visible vault."""
+        try:
+            return self.resolve(rel).exists()
+        except InvalidPathError:
+            return False
+
     def read_text(self, rel: str | PurePosixPath) -> str:
         path = self._note_path(rel)
         try:

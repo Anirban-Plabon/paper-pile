@@ -35,8 +35,8 @@ export default {
     async getText() {
       return (await this.ready).getText();
     },
-    async setText(text) {
-      (await this.ready).setText(text);
+    async setText(text, docId) {
+      (await this.ready).setText(text, docId);
     },
     async insertAtCursor(text) {
       (await this.ready).insertAtCursor(text);
