@@ -4,7 +4,7 @@ import { defaultKeymap, history, historyKeymap, indentWithTab } from "@codemirro
 import { markdown, markdownLanguage } from "@codemirror/lang-markdown";
 import { HighlightStyle, syntaxHighlighting, syntaxTree } from "@codemirror/language";
 import { highlightSelectionMatches, searchKeymap } from "@codemirror/search";
-import { Compartment, EditorState } from "@codemirror/state";
+import { Compartment, EditorSelection, EditorState } from "@codemirror/state";
 import { EditorView, drawSelection, dropCursor, keymap } from "@codemirror/view";
 import { classHighlighter, tags as t } from "@lezer/highlight";
 import { blocks, themeFacet } from "./blocks.js";
@@ -16,6 +16,14 @@ import { editorExtensions } from "./grammar.js";
 
 const CHANGE_DEBOUNCE_MS = 300;
 const RAW_PASTE_WINDOW_MS = 600;
+// Where the caret starts in a freshly opened note: just below YAML front matter, so the
+// properties block opens rendered instead of revealed (a caret at position 0 would touch it).
+// Same shape as the grammar's rule (frontmatter.js): `---` line, then the next `---` line.
+function initialCaret(text) {
+  const m = /^---[ \t]*\r?\n(?:[^\n]*\n)*?---[ \t]*(?:\r?\n|$)/.exec(text);
+  return m ? Math.min(m[0].length, text.length) : 0;
+}
+
 const NO_SLASH_NODES = new Set(["FencedCode", "CodeBlock", "InlineCode", "URL", "CodeText"]);
 
 const sourceStyle = HighlightStyle.define([
@@ -98,6 +106,7 @@ export function createEditor(
   const makeState = (text) =>
     EditorState.create({
       doc: text,
+      selection: EditorSelection.cursor(initialCaret(text)),
       extensions: [
         history(),
         drawSelection(),

@@ -29,7 +29,7 @@ built-in local AI via Ollama. Plain `.md`/`.txt` files, no lock-in.
 | Markdown parse | `markdown-it-py` + `mdit-py-plugins`, `PyYAML` 6.0.3 (front matter; dev: `types-pyyaml`) | front_matter, dollarmath, tasklists, footnote, table, strikethrough; raw HTML escaped; + custom wikilink plugin (P3.1) |
 | Math render | KaTeX 0.19.0 (vendored, client-side) | CM6 widget in the editor; CSS + fonts in `static/vendor/katex/` |
 | Diagrams | Mermaid 12.2.0 (bundled by esbuild into lazy chunks under `static/vendor/pp-editor/chunks/`, client-side) | CM6 block widget; loads on first diagram; `securityLevel: strict`; renders serialized + SVG-cached; theme `default`/`dark` |
-| Code highlight | highlight.js or Pygments | decide in P2, log it |
+| Code highlight | CodeMirror language packages, lazily loaded (`@codemirror/lang-javascript` 6.2.5, `-python` 6.2.1, `-json` 6.0.2, `-html` 6.4.12, `-css` 6.3.1, `-sql` 6.10.0, `-rust` 6.0.2, `-cpp` 6.0.3, `-java` 6.0.2, `-go` 6.0.1, `-yaml` 6.1.3, `@codemirror/legacy-modes` 6.5.5) | Decided in P2.4: highlighting happens inside the editor (Lezer), so no second highlighter and no server round trip; one esbuild chunk per language |
 | Index / search | stdlib `sqlite3` + FTS5 | `.paper-pile/index.db`, rebuildable |
 | File watching | `watchdog` | external edits |
 | HTML → MD (paste) | `beautifulsoup4` + `markdownify` | custom converters for math/code |
@@ -55,7 +55,7 @@ paper-pile/
 │   └── TRACKER.md
 ├── tools/
 │   ├── build_editor.sh         # esbuild CodeMirror bundle → gui/static/vendor/
-│   ├── editor_src/             # JS source: index.js (createEditor), math.js, livepreview.js (inline), blocks.js (block widgets)
+│   ├── editor_src/             # JS source: index.js (createEditor), grammar.js (+ math.js, frontmatter.js), livepreview.js, blocks.js, widgets.js, codelang.js, reveal.js, context.js; check_sync.mjs
 │   ├── spike_editor.py         # S1/S2 demo page (dev-only, not shipped)
 │   └── spike_native.py         # S3 native-window shortcut test (dev-only)
 ├── paper_pile/
@@ -85,6 +85,7 @@ paper-pile/
 │       ├── layout.py           # 3-pane frame: splitters, collapse, persistence
 │       ├── shortcuts.py        # capture-phase keydown → Python (registered combos only)
 │       ├── security.py         # --serve token gate (ASGI)
+│       ├── files.py            # /_pp/asset route: images referenced from notes
 │       ├── theme.py            # light/dark/system, accent palette, CSS vars
 │       ├── components/
 │       │   ├── tree.py         # left pane
@@ -190,15 +191,24 @@ paper-pile --serve [path] [--port 8080]   # web mode, 127.0.0.1 only, prints URL
 - `.txt` files: plain text mode, no preview, no slash menu.
 
 ### 4.6 Markdown rendering (inline live preview; no separate preview pane)
-- CommonMark + GFM tables, task lists, footnotes, front matter (hidden in preview, shown as small metadata block).
-- Code blocks with highlighting.
+- CommonMark + GFM tables, task lists, strikethrough, front matter (shown as a small properties block). **Footnotes** are rendered by the Python parser (chat, export) but are *not* recognised by the editor's grammar: `[^1]` stays plain text while editing (documented limit).
+- **Live Preview implementation (P2.4)** — files in `tools/editor_src/`: `livepreview.js` (inline + line decorations), `blocks.js` (block widgets from a StateField), `widgets.js`, `frontmatter.js`, `codelang.js`, `reveal.js`, `grammar.js`.
+  - **Reveal rules.** Inline elements (bold, italic, strike, inline code, links, images, inline math, escapes) show their raw syntax only while a selection range *touches that element* (inclusive, so arrowing onto its edge reveals it); line prefixes (`#`, `>`, list markers, task boxes, rules) reveal while the caret is on that line; block widgets (display math, mermaid, tables, front matter, code fences) reveal while the selection touches the block. A freshly opened note starts with its caret below any front matter, so the properties block opens rendered. The block field caches its candidates and only re-walks the tree when the document, the syntax tree or the theme changes; moving the caret just re-filters.
+  - **Headings:** ATX and Setext (the `===` underline is dimmed); sizes h1–h6. **Lists:** bullets become `•`/`◦`/`▪` by depth, ordered numbers stay (muted), wrapped lines hang under the item's text (`padding-left/text-indent` in `ch`; exact because the editor font is monospace). **Tasks:** `- [ ]`/`- [x]` become a checkbox; a click toggles one character through the normal edit path (undo, autosave) and focuses the editor; done items are struck through. **Quotes:** `>` hidden, one bar per nesting level. **Rules:** drawn `<hr>`.
+  - **Links:** `[text](url)`, `[text][ref]`, `[ref]` (resolved through `[ref]: url` definitions), `<url>` and bare `https://…`/`www.…` are styled; **Ctrl/Cmd+click opens** (a plain click edits). Only `http`, `https` and `mailto` ever open (`core/links.external_url`; the editor repeats the check). Web mode: the page opens a new tab inside the click (popup-blocker safe); native: Python opens the system browser; note/relative links are handed to Python and only toast until P3.3. (It must act on `mousedown`: CodeMirror's own Ctrl+click adds a selection, which rebuilds the link's DOM before `click` fires.)
+  - **Images:** `![alt|300](.note.assets/x.png)` shows the picture (width from `|300`) through the token-protected route `/_pp/asset?note=…&path=…`, backed by `Vault.asset_path` (images only; `.<stem>.assets` is the only hidden folder allowed; no traversal, symlink escape, `.trash`, `.paper-pile`; SVG served with a sandboxing CSP). **Remote images are never fetched** (offline rule, no tracking): a chip is shown; a missing file shows "image not found". The editor learns the note's path through `show_doc/set_text/set_path`.
+  - **Code blocks:** fence lines are hidden off-block (compact), the language shows as a small label, every code line gets the code look; highlighting via `markdown({codeLanguages})` with a curated, **lazily loaded** set (JavaScript/TypeScript, Python, JSON, HTML, CSS, SQL, Rust, C/C++, Java, Go, YAML, shell, TOML, diff); only languages used in the open note are downloaded; token colours are theme variables (light and dark). An unknown language is plain text. Indented code gets the same look.
+  - **Tables:** a real `<table>` block widget (alignment from the delimiter row, inline markdown inside cells); editing is in the source, which appears while the caret is in the table (no inline cell editing in phase 1).
+  - **Front matter:** `---` first line, closed by the next line that is exactly `---`, only at the very top (otherwise ordinary markdown); rendered as a properties block (`key: value` rows; no YAML library in JS), raw and dimmed while touched.
+  - **Source mode** (Ctrl+E, or the `Live`/`Source` label in the status bar): drops every decoration and widget, keeps text, undo history and syntax colours in code blocks; persisted per vault (`session.json` `mode`), applied on load.
+  - **Measured:** on a 5,000-line note mixing every element, the synchronous editor update is p95 ≈ 14 ms for caret moves and ≈ 8 ms for typing (budget 30 ms); opening takes ≈ 0.2 s.
 - ` ```mermaid ` → rendered diagram; render error shows inline message, not a crash.
 - Math: `$inline$`, `$$inline$$` and `$$block$$` via KaTeX. **Rules (final, P2.3; reference = `core/parser.py`, markdown-it `dollarmath`):**
   - `$inline$`: no whitespace right after the opening `$` or right before the closing one; no digit directly before the opening or after the closing `$` (→ "$5 and $10" and "$5.50" stay text); `\$` is a literal dollar; empty content is not math. The **first** unescaped closing `$` decides: if it is invalid, the opening `$` is plain text (it does not scan further).
   - `$$inline$$` inside a paragraph is math with no whitespace rules.
   - `$$` block: a line starting with `$$` (indent < 4) that closes on the same line (`$$x$$`) or on a later line ending in `$$`. **Unclosed, or a blank line before the closing `$$`, means plain text.** A block may start directly after a paragraph line (no blank line needed); it works in lists and blockquotes.
   - Known limits: inside a blockquote the Python renderer keeps the `>` markers in the math content (plugin limitation; the editor strips them); odd constructs like `$$a$$ and $$b$$` at the start of a line or `$$x$$5` are not guaranteed to match between the two engines and are not in the shared fixture.
-  - **Kept in sync by a shared fixture:** `tests/fixtures/math_cases.json` (generated from the Python parser) is asserted by pytest and by `tools/editor_src/check_math.mjs` against the editor's Lezer grammar; `tools/build_editor.sh` runs the check, and `tests/core/test_math_sync.py` runs it from pytest.
+  - **Kept in sync by a shared fixture:** `tests/fixtures/math_cases.json` (generated from the Python parser) is asserted by pytest and by `tools/editor_src/check_sync.mjs` against the editor's Lezer grammar (`grammar.js`: math + front matter); `tools/build_editor.sh` runs the check, and `tests/core/test_grammar_sync.py` runs it from pytest. Front matter has its own fixture, `tests/fixtures/front_matter_cases.json`.
 - **Block widgets (S2):** `$$…$$` display math (see the rules above; an unclosed `$$` is not a block) and ```` ```mermaid ```` fences render as block widgets from a CM6 `StateField` (block/line-spanning replace decorations are not allowed from a ViewPlugin). **Reveal rule:** a block shows its source whenever any selection range touches it; clicking a widget puts the cursor in it. Invalid diagrams show an inline error line, never a crash or mermaid's own error graphic. The grammar in `tools/editor_src/math.js` is kept in sync with `core/parser.py` by the shared fixture above.
 - `[[note]]`, `[[note|alias]]`, `[[note#heading]]` → internal links; missing targets styled distinctly (dashed / dim).
 - Standard `[text](other.md)` links also resolved as internal.

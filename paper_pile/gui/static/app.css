@@ -137,7 +137,14 @@ html, body { overflow: hidden; }
 .pp-recovery-path { font-size: 13px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; }
 .pp-editor .cm-editor { height: 100%; }
 .pp-editor .cm-scroller { overflow: auto; }
-.pp-editor.pp-dark { background: #1e1e1e; color: #ddd; }
+/* Dark editor: everything inside the editor reads the --pp-* variables, so redefining them here
+   re-colours links, quotes, tables, front matter, borders... P8.1 will drive these from a theme. */
+.pp-editor.pp-dark { background: #1e1e1e; color: #d6d9de; --pp-fg: #d6d9de; --pp-muted: #8b929c; --pp-border: #3a3f47; --pp-bg: #1e1e1e; --pp-bg-side: #25272b; }
+.pp-editor.pp-dark .pp-link { color: #7aa7ff; text-decoration-color: rgba(122, 167, 255, .45); }
+.pp-editor.pp-dark .cm-line.pp-quote { --pp-bar: #4b5160; }
+.pp-editor.pp-dark .pp-task-checked .pp-box { background: #4c8dff; border-color: #4c8dff; }
+.pp-editor.pp-dark .pp-code { background: rgba(255, 255, 255, .09); }
+.pp-editor.pp-dark .pp-image img { opacity: .92; }
 .pp-editor.pp-dark .cm-cursor { border-left-color: #ddd; }
 
 /* Live Preview marks (tools/editor_src/livepreview.js) */
