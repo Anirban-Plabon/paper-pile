@@ -7,8 +7,8 @@ Legend: 🧠 = needs Opus (see PLAN §6 model guidance) · ⬜ todo · 🔄 in p
 
 ## Current focus
 - **Phase:** P0 — Foundation
-- **Task:** P1.2 (next; P0, P1.1 done)
-- **Next up:** P1.3 → P1.4 → P1.5
+- **Task:** P1.3 (next; P0, P1.1, P1.2 done)
+- **Next up:** P1.4 → P1.5
 
 ## Open issues
 <!-- - [ ] YYYY-MM-DD · task ID · what's blocking · what's needed -->
@@ -30,7 +30,7 @@ Legend: 🧠 = needs Opus (see PLAN §6 model guidance) · ⬜ todo · 🔄 in p
 | ID | Task | Status | Notes |
 |---|---|---|---|
 | P1.1 | CLI + --serve token | ✅ | 42 tests; all 4 forms verified for real (serve: token/cookie/host/ws; native `.`: window process + server up); closing-window-exits-app left to P1.3 manual QA |
-| P1.2 | core/vault.py | ⬜ | |
+| P1.2 | core/vault.py | ✅ | 81 tests total (39 new); safety rules mutation-checked (overwrite, trash, symlink escape) | |
 | P1.3 | 3-pane layout | ⬜ | |
 | P1.4 | Tree + context menu + drag | ⬜ | |
 | P1.5 | Watcher | ⬜ | |
@@ -130,6 +130,8 @@ Legend: 🧠 = needs Opus (see PLAN §6 model guidance) · ⬜ todo · 🔄 in p
 | 2026-10-14 | P1.1: last vault stored in `platformdirs.user_state_dir("paper-pile")/last_vault.json` (not the config dir) | It is state, not a setting the user edits | claude |
 | 2026-10-14 | P1.1: no vault + no last vault → terminal prompt (error if non-interactive); missing path is an error, never auto-created. Native folder picker deferred to P1.3 | Data safety: a typo must not create folders; GUI picker needs the layout | claude |
 | 2026-10-14 | P1.1: `--serve` auth = `TokenGate` ASGI middleware (query token → HttpOnly SameSite=Strict cookie, loopback Host check, 401/403, ws close 1008); native mode has no token in phase 1 | Covers HTTP + websockets + static; also protects the S1 image-paste route | claude |
+| 2026-10-14 | P1.2: trash layout `.trash/<timestamp-µs>/<original rel path>`; vault API refuses hidden/escaping/non-note paths and never overwrites; non-UTF-8 notes raise instead of lossy decode; symlinks escaping the vault are hidden/refused | Data safety (CLAUDE rule 4), web-mode path traversal, no silent corruption | claude |
+| 2026-10-14 | P1.2: extracted `core/fsutil.atomic_write_bytes` (fsync + mode kept), `config.py` now uses it; PLAN §3 lists `fsutil.py` | One atomic-write implementation for vault and config | claude |
 | 2026-10-14 | uv_build backend with `module-root = ""` (flat `paper_pile/` layout, not `src/`) | PLAN §3 layout | claude |
 | 2026-10-13 | Preview-tab (VS Code style) behaviour as default | Chosen during planning, unconfirmed — ask user if unsure | planning |
 | 2026-10-13 | Split preview in phase 1; inline live preview deferred | Inline needs CM6 decorations, highest cost | planning |
@@ -156,3 +158,4 @@ Legend: 🧠 = needs Opus (see PLAN §6 model guidance) · ⬜ todo · 🔄 in p
 - 2026-10-14 · P0.5 · display math + mermaid block widgets in editor, reveal-on-cursor, theme re-render, offline verified; S1 checks still green
 - 2026-10-14 · P0.6 · native-window spike: 12/12 shortcuts delivered (Qt X11 backend via injected keys); Wayland-native launches, manual QA noted; **P0 complete**
 - 2026-10-14 · P1.1 · CLI (4 forms), last-vault memory, vault path validation, `.paper-pile/` init, `--serve` TokenGate; 42 tests green; verified with curl + headless Chrome + native launch
+- 2026-10-14 · P1.2 · core/vault.py (tree, read/write, create, rename/move, delete→trash, duplicate) + fsutil; 81 tests green

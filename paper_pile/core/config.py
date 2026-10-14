@@ -6,16 +6,17 @@ so a file only ever contains the values the user changed.
 """
 
 import copy
+import io
 import logging
-import os
 import shutil
-import tempfile
 import tomllib
 from pathlib import Path
 from typing import Any, Literal
 
 import platformdirs
 import tomli_w
+
+from paper_pile.core.fsutil import atomic_write_bytes
 
 log = logging.getLogger("paper_pile.config")
 
@@ -77,14 +78,9 @@ def _read_toml(path: Path) -> tuple[dict[str, Any], bool]:
 
 def _write_toml_atomic(path: Path, data: dict[str, Any]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    fd, tmp = tempfile.mkstemp(dir=path.parent, prefix=f".{path.name}.", suffix=".tmp")
-    try:
-        with os.fdopen(fd, "wb") as f:
-            tomli_w.dump(data, f)
-        os.replace(tmp, path)
-    except BaseException:
-        Path(tmp).unlink(missing_ok=True)
-        raise
+    buf = io.BytesIO()
+    tomli_w.dump(data, buf)
+    atomic_write_bytes(path, buf.getvalue())
 
 
 class Config:

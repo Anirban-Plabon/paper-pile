@@ -61,6 +61,7 @@ paper-pile/
 ├── paper_pile/
 │   ├── cli.py                  # arg parsing, launch native/serve
 │   ├── core/                   # ZERO UI imports
+│   │   ├── fsutil.py           # atomic_write_bytes (shared by vault + config)
 │   │   ├── vault.py            # file ops, tree, trash, rename/move
 │   │   ├── assets.py           # image storage, lifecycle, orphan sweep
 │   │   ├── parser.py           # markdown-it setup, wikilink plugin, render → HTML
@@ -136,6 +137,7 @@ paper-pile --serve [path] [--port 8080]   # web mode, 127.0.0.1 only, prints URL
 - Shows `.md` and `.txt` files + folders. Hides dotfiles/dot-folders (`.paper-pile`, `.trash`, `.*.assets`).
 - Context menu: new note, new folder, rename, delete (→ trash), duplicate, reveal in file manager.
 - Drag to move file/folder (move = rename → links + assets updated).
+- **`core/vault.py` contract (P1.2):** `Vault(root)` takes vault-relative POSIX paths only. Absolute paths, `..`, backslashes, any dot-component (`.trash`, `.paper-pile`, `.*.assets`) and paths resolving outside the vault (symlink escapes) raise `InvalidPathError`. Files must be `.md`/`.txt`. Writes are atomic (`fsutil.atomic_write_bytes`: temp + fsync + replace, mode kept) and preserve CRLF; non-UTF-8 files raise instead of being decoded lossily. `create_note`/`create_folder`/`rename`/`duplicate` never overwrite (`ExistsError`). `list_tree(rel)` returns one level (lazy), folders first then notes, case-insensitive. `delete` moves to `.trash/<YYYY-MM-DDTHH-MM-SS-µs>/<original relative path>` (nothing is unlinked). `duplicate` makes `<name> copy`, `<name> copy 2`, … Asset folders and link rewriting are layered on by P3.5/P5.4.
 - Lazy-loads large folders. Live-updates from watcher events.
 
 ### 4.4 Tabs
