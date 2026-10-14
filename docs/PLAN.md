@@ -26,7 +26,7 @@ built-in local AI via Ollama. Plain `.md`/`.txt` files, no lock-in.
 | UI framework | NiceGUI (latest stable, pin exact) | native mode via pywebview |
 | Native window | `pywebview[qt]` (PyQt6 + QtWebEngine) | S3 result: Qt's default **Wayland** backend is pip-only and works. Launch with `PYWEBVIEW_GUI=qt` (skips the noisy GTK probe). Forcing the X11 backend (`QT_QPA_PLATFORM=xcb`) needs apt libs: `libxcb-cursor0 libxcb-icccm4 libxcb-keysyms1 libxcb-xkb1 libxkbcommon-x11-0 libxcb-image0 libxcb-render-util0 libxcb-util1` |
 | Editor | CodeMirror 6 (own esbuild bundle: `@codemirror/lang-markdown` GFM + Lezer inline-math extension + live-preview plugin), custom NiceGUI element | S1 result: NiceGUI's built-in `ui.codemirror` rejected (Python-side decorations round-trip per keystroke; no lang-markdown/GFM or Lezer extensions; hard-wired `basicSetup`). Pinned npm versions in `tools/editor_src/package.json` |
-| Markdown parse | `markdown-it-py` + `mdit-py-plugins` | front_matter, dollarmath, tasklists, footnote, + custom wikilink plugin |
+| Markdown parse | `markdown-it-py` + `mdit-py-plugins`, `PyYAML` 6.0.3 (front matter; dev: `types-pyyaml`) | front_matter, dollarmath, tasklists, footnote, table, strikethrough; raw HTML escaped; + custom wikilink plugin (P3.1) |
 | Math render | KaTeX 0.19.0 (vendored, client-side) | CM6 widget in the editor; CSS + fonts in `static/vendor/katex/` |
 | Diagrams | Mermaid 12.2.0 (bundled by esbuild into lazy chunks under `static/vendor/pp-editor/chunks/`, client-side) | CM6 block widget; loads on first diagram; `securityLevel: strict`; renders serialized + SVG-cached; theme `default`/`dark` |
 | Code highlight | highlight.js or Pygments | decide in P2, log it |
@@ -64,7 +64,7 @@ paper-pile/
 │   │   ├── fsutil.py           # atomic_write_bytes (shared by vault + config)
 │   │   ├── vault.py            # file ops, tree, trash, rename/move
 │   │   ├── assets.py           # image storage, lifecycle, orphan sweep
-│   │   ├── parser.py           # markdown-it setup, wikilink plugin, render → HTML
+│   │   ├── parser.py           # markdown-it setup (GFM, front matter, math), render → HTML, front_matter()
 │   │   ├── links.py            # extract links, resolve, rewrite on rename
 │   │   ├── index.py            # SQLite: notes, links, FTS
 │   │   ├── watcher.py          # watchdog → events
@@ -193,8 +193,13 @@ paper-pile --serve [path] [--port 8080]   # web mode, 127.0.0.1 only, prints URL
 - CommonMark + GFM tables, task lists, footnotes, front matter (hidden in preview, shown as small metadata block).
 - Code blocks with highlighting.
 - ` ```mermaid ` → rendered diagram; render error shows inline message, not a crash.
-- Math: `$inline$` and `$$block$$` via KaTeX. Dollar rule (pandoc): no whitespace after opening `$`, no whitespace before closing `$`, closing `$` not followed by a digit → "$5 and $10" stays text.
-- **Block widgets (S2):** `$$…$$` display math (a `$$` line opens, a line ending in `$$` closes; `$$x$$` on one line counts; unclosed runs to end of doc) and ```` ```mermaid ```` fences render as block widgets from a CM6 `StateField` (block/line-spanning replace decorations are not allowed from a ViewPlugin). **Reveal rule:** a block shows its source whenever any selection range touches it; clicking a widget puts the cursor in it. Invalid diagrams show an inline error line, never a crash or mermaid's own error graphic. The `$$` rule in `tools/editor_src/math.js` must stay in sync with markdown-it `dollarmath` in `core/parser.py`.
+- Math: `$inline$`, `$$inline$$` and `$$block$$` via KaTeX. **Rules (final, P2.3; reference = `core/parser.py`, markdown-it `dollarmath`):**
+  - `$inline$`: no whitespace right after the opening `$` or right before the closing one; no digit directly before the opening or after the closing `$` (→ "$5 and $10" and "$5.50" stay text); `\$` is a literal dollar; empty content is not math. The **first** unescaped closing `$` decides: if it is invalid, the opening `$` is plain text (it does not scan further).
+  - `$$inline$$` inside a paragraph is math with no whitespace rules.
+  - `$$` block: a line starting with `$$` (indent < 4) that closes on the same line (`$$x$$`) or on a later line ending in `$$`. **Unclosed, or a blank line before the closing `$$`, means plain text.** A block may start directly after a paragraph line (no blank line needed); it works in lists and blockquotes.
+  - Known limits: inside a blockquote the Python renderer keeps the `>` markers in the math content (plugin limitation; the editor strips them); odd constructs like `$$a$$ and $$b$$` at the start of a line or `$$x$$5` are not guaranteed to match between the two engines and are not in the shared fixture.
+  - **Kept in sync by a shared fixture:** `tests/fixtures/math_cases.json` (generated from the Python parser) is asserted by pytest and by `tools/editor_src/check_math.mjs` against the editor's Lezer grammar; `tools/build_editor.sh` runs the check, and `tests/core/test_math_sync.py` runs it from pytest.
+- **Block widgets (S2):** `$$…$$` display math (see the rules above; an unclosed `$$` is not a block) and ```` ```mermaid ```` fences render as block widgets from a CM6 `StateField` (block/line-spanning replace decorations are not allowed from a ViewPlugin). **Reveal rule:** a block shows its source whenever any selection range touches it; clicking a widget puts the cursor in it. Invalid diagrams show an inline error line, never a crash or mermaid's own error graphic. The grammar in `tools/editor_src/math.js` is kept in sync with `core/parser.py` by the shared fixture above.
 - `[[note]]`, `[[note|alias]]`, `[[note#heading]]` → internal links; missing targets styled distinctly (dashed / dim).
 - Standard `[text](other.md)` links also resolved as internal.
 - Images `![alt|300](path)` → width 300px.

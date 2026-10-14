@@ -117,9 +117,10 @@ function build(state) {
     enter(node) {
       if (node.name === "BlockMath") {
         const marks = node.node.getChildren("BlockMathMark");
-        const open = marks[0];
-        const close = marks.length > 1 ? marks[marks.length - 1] : null;
-        const src = doc.sliceString(open.to, close ? close.from : node.to).trim();
+        // a block is only ever parsed when it is closed, so both marks exist
+        const raw = doc.sliceString(marks[0].to, marks[marks.length - 1].from);
+        // list indentation and blockquote markers are not part of the formula
+        const src = raw.split("\n").map((l) => l.replace(/^[\s>]+/, "")).join("\n").trim();
         if (src) add(node, new DisplayMathWidget(src));
       } else if (node.name === "FencedCode") {
         const info = node.node.getChild("CodeInfo");

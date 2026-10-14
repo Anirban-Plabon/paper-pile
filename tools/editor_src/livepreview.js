@@ -72,7 +72,9 @@ function build(view) {
         } else if (HIDE_MARKS.has(name)) {
           if (!isActive(node.from, node.to)) out.push(hide.range(node.from, node.to));
         } else if (name === "InlineMath") {
-          const src = state.sliceDoc(node.from + 1, node.to - 1);
+          // `$x$` or `$$x$$` (both are inline math inside a paragraph)
+          const d = state.sliceDoc(node.from, node.from + 2) === "$$" ? 2 : 1;
+          const src = state.sliceDoc(node.from + d, node.to - d);
           if (!isActive(node.from, node.to) && !src.includes("\n")) {
             out.push(Decoration.replace({ widget: new MathWidget(src) }).range(node.from, node.to));
           }

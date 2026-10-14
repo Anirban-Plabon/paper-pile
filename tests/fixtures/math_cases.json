@@ -1,0 +1,241 @@
+[
+ {
+  "name": "inline_simple",
+  "src": "Euler: $e^{i\\pi}+1=0$ ok",
+  "inline": [
+   "e^{i\\pi}+1=0"
+  ],
+  "block": []
+ },
+ {
+  "name": "inline_two",
+  "src": "$a$ and $b$",
+  "inline": [
+   "a",
+   "b"
+  ],
+  "block": []
+ },
+ {
+  "name": "inline_word_adjacent",
+  "src": "a$b$c",
+  "inline": [
+   "b"
+  ],
+  "block": []
+ },
+ {
+  "name": "inline_currency",
+  "src": "I paid $5 and $10 today",
+  "inline": [],
+  "block": []
+ },
+ {
+  "name": "inline_currency_decimals",
+  "src": "costs $5.00 or $7.50 each",
+  "inline": [],
+  "block": []
+ },
+ {
+  "name": "inline_space_after_open",
+  "src": "a $ x$ b",
+  "inline": [],
+  "block": []
+ },
+ {
+  "name": "inline_space_before_close",
+  "src": "a $x $ b",
+  "inline": [],
+  "block": []
+ },
+ {
+  "name": "inline_digit_after_close",
+  "src": "$x$5",
+  "inline": [],
+  "block": []
+ },
+ {
+  "name": "inline_digit_before_open",
+  "src": "1$x$",
+  "inline": [],
+  "block": []
+ },
+ {
+  "name": "inline_stray_then_math",
+  "src": "$a $b$ c",
+  "inline": [
+   "b"
+  ],
+  "block": []
+ },
+ {
+  "name": "inline_escaped_open",
+  "src": "\\$a$ b",
+  "inline": [],
+  "block": []
+ },
+ {
+  "name": "inline_escaped_close",
+  "src": "$a\\$b$",
+  "inline": [
+   "a\\$b"
+  ],
+  "block": []
+ },
+ {
+  "name": "inline_empty",
+  "src": "$$ inline",
+  "inline": [],
+  "block": []
+ },
+ {
+  "name": "inline_unclosed",
+  "src": "price $5",
+  "inline": [],
+  "block": []
+ },
+ {
+  "name": "inline_in_code",
+  "src": "`$x$` and $y$",
+  "inline": [
+   "y"
+  ],
+  "block": []
+ },
+ {
+  "name": "inline_double",
+  "src": "text $$x^2$$ more",
+  "inline": [
+   "x^2"
+  ],
+  "block": []
+ },
+ {
+  "name": "inline_double_spaces",
+  "src": "text $$ x $$ more",
+  "inline": [
+   " x "
+  ],
+  "block": []
+ },
+ {
+  "name": "inline_double_with_single_dollar_inside",
+  "src": "text $$a$b$$ more",
+  "inline": [
+   "a$b"
+  ],
+  "block": []
+ },
+ {
+  "name": "block_multi",
+  "src": "$$\nx^2\n$$\n",
+  "inline": [],
+  "block": [
+   "x^2"
+  ]
+ },
+ {
+  "name": "block_single",
+  "src": "$$x^2$$\n",
+  "inline": [],
+  "block": [
+   "x^2"
+  ]
+ },
+ {
+  "name": "block_unclosed",
+  "src": "$$\nx^2\nmore\n",
+  "inline": [],
+  "block": []
+ },
+ {
+  "name": "block_blank_inside",
+  "src": "$$\na\n\nb\n$$\n",
+  "inline": [],
+  "block": []
+ },
+ {
+  "name": "block_text_after_open",
+  "src": "$$ x\ny\n$$\n",
+  "inline": [],
+  "block": [
+   "x\ny"
+  ]
+ },
+ {
+  "name": "block_after_paragraph",
+  "src": "para\n$$\nx\n$$\nafter\n",
+  "inline": [],
+  "block": [
+   "x"
+  ]
+ },
+ {
+  "name": "block_after_blank",
+  "src": "para\n\n$$\nx\n$$\nafter\n",
+  "inline": [],
+  "block": [
+   "x"
+  ]
+ },
+ {
+  "name": "block_indented",
+  "src": "  $$\nx\n  $$\n",
+  "inline": [],
+  "block": [
+   "x"
+  ]
+ },
+ {
+  "name": "block_code_indented",
+  "src": "    $$\n    x\n    $$\n",
+  "inline": [],
+  "block": []
+ },
+ {
+  "name": "block_in_list",
+  "src": "- item\n\n  $$\n  y\n  $$\n",
+  "inline": [],
+  "block": [
+   "y"
+  ]
+ },
+ {
+  "name": "block_in_fenced_code",
+  "src": "```\n$$\nx\n$$\n```\n",
+  "inline": [],
+  "block": []
+ },
+ {
+  "name": "inline_in_fenced_code",
+  "src": "```\n$x$\n```\n",
+  "inline": [],
+  "block": []
+ },
+ {
+  "name": "block_two",
+  "src": "$$a$$\n\n$$b$$\n",
+  "inline": [],
+  "block": [
+   "a",
+   "b"
+  ]
+ },
+ {
+  "name": "block_close_with_text_before",
+  "src": "$$\nx $$\n",
+  "inline": [],
+  "block": [
+   "x"
+  ]
+ },
+ {
+  "name": "block_between_paragraphs",
+  "src": "a\n$$\nx\n$$\nb\n$$\ny\n$$\nc\n",
+  "inline": [],
+  "block": [
+   "x",
+   "y"
+  ]
+ }
+]

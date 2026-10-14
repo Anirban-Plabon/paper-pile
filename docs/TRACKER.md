@@ -7,8 +7,8 @@ Legend: 🧠 = needs Opus (see PLAN §6 model guidance) · ⬜ todo · 🔄 in p
 
 ## Current focus
 - **Phase:** P0 — Foundation
-- **Task:** P2.3 (next; P0, P1, P2.1, P2.2 done)
-- **Next up:** 🧠 P2.4 → P2.5 → P2.6
+- **Task:** P2.4 🧠 (next; P0, P1, P2.1–P2.3 done). **Use plan mode (Opus) for the design.**
+- **Next up:** P2.5 → P2.6
 
 ## Open issues
 <!-- - [ ] YYYY-MM-DD · task ID · what's blocking · what's needed -->
@@ -40,7 +40,7 @@ Legend: 🧠 = needs Opus (see PLAN §6 model guidance) · ⬜ todo · 🔄 in p
 |---|---|---|---|
 | P2.1 | Editor + autosave + recovery | ✅ | 147 tests (+17 core); 41 browser checks incl. real `kill -9` crash recovery; 5 in the native window; S1/S2 suites still green. Known gap → open issue for P2.5 | |
 | P2.2 | Tabs (no preview tab, restore) | ✅ | 163 tests (+16 core); 62 browser checks; P2.1/S1/S2 suites still green; 10 checks in the native window incl. real Ctrl+Tab/Ctrl+W and a full relaunch restore |
-| P2.3 | Parser + dollar rule | ⬜ | |
+| P2.3 | Parser + dollar rule | ✅ | 215 tests (+52); `core/parser.py`; math rules shared with the editor via a 33-case fixture checked by pytest and by the Lezer grammar; also verified in the running app | |
 | P2.4 🧠 | Live Preview decorations + Source toggle | ⬜ | changed 2026-10-14; highest cost |
 | P2.5 | External-change handling | ⬜ | |
 | P2.6 | .txt plain mode | ⬜ | |
@@ -150,6 +150,9 @@ Legend: 🧠 = needs Opus (see PLAN §6 model guidance) · ⬜ todo · 🔄 in p
 | 2026-10-14 | P2.2: web-mode shortcut fallbacks Alt+W / Alt+PageDown / Alt+PageUp (shortcut layer accepts Alt-only combos); Ctrl+W/Ctrl+Tab stay for native | Browsers reserve Ctrl+W/Ctrl+Tab (S3 fallback rule); keeps `--serve` usable (CLAUDE rule 7) | claude |
 | 2026-10-14 | P2.2: restore skips vanished notes silently, activates the last restored tab if the saved active one is gone; recovery dialog comes after the restore | A stale session must not produce a wall of errors | claude |
 | 2026-10-14 | P2.2: opening an already-open note only focuses its tab (no recovery re-prompt); the on-open recovery prompt applies to notes not yet open | A pending draft is already offered at startup; prompting on every focus would be noise | claude |
+| 2026-10-14 | P2.3: the Python parser (markdown-it + `dollarmath`) is the reference for math semantics; the editor's Lezer grammar was changed to match it (first-closing-`$`-decides, no digit before the opening `$`, inline `$$x$$`, unclosed/blank-line `$$` blocks are text, block may follow a paragraph line) and a shared fixture `tests/fixtures/math_cases.json` is checked by pytest and `tools/editor_src/check_math.mjs` (run by `build_editor.sh`) | PLAN demanded the two stay in sync; Python renders the real output | claude |
+| 2026-10-14 | P2.3: parser config: raw HTML escaped (`html=False`), `breaks=True`, GFM tables + strikethrough, task lists, footnotes, front matter; `$$` made able to interrupt a paragraph by wrapping the plugin rule (it ignores `silent`) | Safe output for chat/export; newline rendering matches the editor; friendlier for pasted chat text | claude |
+| 2026-10-14 | P2.3: new dependency `PyYAML==6.0.3` pinned explicitly (was only present transitively) + dev `types-pyyaml==6.0.12.20260906`; PLAN §2 updated | Front matter parsing; CLAUDE.md requires pinning new deps | claude |
 | 2026-10-14 | uv_build backend with `module-root = ""` (flat `paper_pile/` layout, not `src/`) | PLAN §3 layout | claude |
 | 2026-10-13 | Preview-tab (VS Code style) behaviour as default | Chosen during planning, unconfirmed — ask user if unsure | planning |
 | 2026-10-13 | Split preview in phase 1; inline live preview deferred | Inline needs CM6 decorations, highest cost | planning |
@@ -161,6 +164,9 @@ Legend: 🧠 = needs Opus (see PLAN §6 model guidance) · ⬜ todo · 🔄 in p
 | Date | Task | Symptom | Root cause | Fix | Gotcha? |
 |---|---|---|---|---|---|
 | 2026-10-14 | P0.6 | Native window failed to start with `QT_QPA_PLATFORM=xcb`: "Could not load the Qt platform plugin xcb" | Qt ≥ 6.5 xcb plugin needs system libs `libxcb-cursor0`, `libxcb-icccm4`, `libxcb-keysyms1`, `libxcb-xkb1`, `libxkbcommon-x11-0` (+ image/render-util/util) which are not in pip wheels | For the test only: `apt download` the .debs, extract into a scratch dir, `LD_LIBRARY_PATH`. For the app: don't force xcb (default Wayland backend works) | y — pending: CLAUDE.md is read-only, so not yet added to its Gotchas |
+| 2026-10-14 | P2.3 | In the running app every formula showed twice (typeset + plain text) | The app page never loaded `vendor/katex/katex.min.css` (only the spike page did), so KaTeX's visually-hidden MathML copy was visible; found by looking at a screenshot — the DOM checks all passed | Link the KaTeX CSS in the page head; test now asserts the MathML copy is ≤ 2 px wide | y — pending: CLAUDE.md read-only |
+| 2026-10-14 | P2.3 | `$$` block after a paragraph line produced 3 identical math blocks | `dollarmath`'s block rule ignores `silent`; registered as a paragraph terminator it emitted a token on every terminator check | Wrap the rule: in silent mode run it, delete the tokens, restore `state.line` | y — pending: CLAUDE.md read-only |
+| 2026-10-14 | P2.3 | Editor and Python disagreed on 8 of 33 math cases (digit before `$`, stray-`$` scanning, `$$` inline, unclosed/blank-line blocks, …) | S1/S2 grammar was written from the PLAN prose, not from the engine that renders | Rewrote `math.js` to the engine's rules; fixture + check script keep them equal | n |
 | 2026-10-14 | P2.2 | **Data-loss bug:** opening a *clean* note deleted that note's pending recovery draft (so restoring tabs at startup, or "Later" then open, silently destroyed the draft before it was offered) | `NoteBuffer.open()` always called `_mirror()`, which clears the store entry when the buffer is clean | `open()` mirrors only when the buffer is dirty; regression test `test_opening_a_clean_note_keeps_a_pending_recovery_draft` | y — pending: CLAUDE.md read-only |
 | 2026-10-14 | P2.2 | Every tab switch raised "Something went wrong" and the active tab did not move | `ui.run_javascript` (scroll the active tab into view) needs a page slot context; EditorPane runs in background tasks | Use the element's own client: `self._bar.client.run_javascript(...)` | y — pending: CLAUDE.md read-only |
 | 2026-10-14 | P2.2 | P2.1 suite had 3 failures after tabs landed | Expectations of the old single-editor model (Ctrl+Z rewinds across a switch; deleting the only note shows the empty state; re-opening an open note re-prompts) | Updated to tab semantics; invariants (no cross-note text, no resurrection, draft offered) unchanged | n |
@@ -195,3 +201,4 @@ Legend: 🧠 = needs Opus (see PLAN §6 model guidance) · ⬜ todo · 🔄 in p
 - 2026-10-14 · P1.5 · core/watcher.py + live tree refresh; **phase P1 complete** (CLI, vault, layout, tree, watcher); 130 tests green
 - 2026-10-14 · P2.1 · NoteBuffer + RecoveryStore (core), EditorPane (autosave/blur/Ctrl+S/switch/disconnect, retry, recovery dialog), save indicator; found+fixed restore-never-saved bug; 147 tests; verified in Chrome (incl. kill -9) and native window
 - 2026-10-14 · P2.2 · TabList (core) + TabBar + multi-buffer EditorPane + per-tab editor state; close/cycle/reorder/dirty dot/restore/rename-delete follow; found+fixed recovery-draft deletion bug; 163 tests; verified in Chrome and in the native window incl. relaunch
+- 2026-10-14 · P2.3 · core/parser.py (GFM, front matter, math, safe HTML), shared math fixture + Lezer check, KaTeX css fix in the app page; 215 tests; verified in the running app

@@ -39,6 +39,7 @@ def _build_pages(vault: Path, *, native: bool) -> None:
 
     @ui.page("/")
     def index() -> None:
+        ui.add_head_html(f'<link rel="stylesheet" href="{STATIC_URL}/vendor/katex/katex.min.css">')
         ui.add_head_html(f'<link rel="stylesheet" href="{STATIC_URL}/app.css">')
         ui.add_head_html(f'<script src="{STATIC_URL}/tree.js" defer></script>')
         ui.add_head_html(f'<script src="{STATIC_URL}/tabs.js" defer></script>')
