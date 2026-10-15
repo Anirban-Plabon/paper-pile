@@ -4,6 +4,7 @@ Groups: Basic blocks, Code & math, Diagrams, Media (table now; image with P5), L
 The AI group arrives with P7. Icons are Material icon names.
 """
 
+from dataclasses import replace
 from datetime import datetime
 
 from paper_pile.core.commands import (
@@ -14,6 +15,7 @@ from paper_pile.core.commands import (
     ReplaceLinePrefix,
     command,
 )
+from paper_pile.core.tables import Table, format_table
 from paper_pile.core.templates import DATE_FORMAT, TIME_FORMAT
 
 BASIC = "Basic blocks"
@@ -154,8 +156,12 @@ _mermaid(
     aliases=("grid", "spreadsheet"),
 )
 def table(ctx: CommandContext) -> Action:
-    body = "| Column 1 | Column 2 | Column 3 |\n| --- | --- | --- |\n|  |  |  |\n|  |  |  |\n"
-    return block(ctx, body, body.index("|  |") + 2)
+    """A 3 × 3 table (header + two rows), already tidy; the cursor goes into the first body cell."""
+    blank = ["", "", ""]
+    tidy = format_table(
+        Table(["Column 1", "Column 2", "Column 3"], ["", "", ""], [blank, list(blank)])
+    )
+    return replace(block(ctx, tidy + "\n"), focus_cell=(1, 0))
 
 
 LINKS = "Links"

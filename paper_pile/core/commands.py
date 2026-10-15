@@ -36,6 +36,7 @@ class Insert:
 
     text: str
     cursor_offset: int | None = None
+    focus_cell: tuple[int, int] | None = None  # the text is a table: put the cursor in this cell
 
 
 @dataclass(frozen=True, slots=True)

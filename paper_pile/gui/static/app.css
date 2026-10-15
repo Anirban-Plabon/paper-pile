@@ -214,3 +214,21 @@ html, body { overflow: hidden; }
 /* a table being edited: live preview above its source */
 .pp-table-preview { margin: 4px 0 8px; padding-bottom: 8px; border-bottom: 1px dashed var(--pp-border); }
 .pp-table td:empty::before, .pp-table th:empty::before { content: "\00a0"; }
+
+/* editable tables (P4.4) */
+.pp-table-edit { position: relative; overflow: visible; cursor: default; }
+.pp-table-grid { display: flex; align-items: stretch; width: fit-content; max-width: 100%; }
+.pp-table-grid table { min-width: 0; }
+.pp-table-edit th, .pp-table-edit td { min-width: 90px; cursor: text; }
+.pp-table-input { width: 100%; box-sizing: border-box; padding: 0; margin: 0; border: none; outline: none; background: transparent; font: inherit; color: inherit; text-align: inherit; }
+.pp-table-edit td:has(.pp-table-input), .pp-table-edit th:has(.pp-table-input) { outline: 2px solid #3b82f6; outline-offset: -2px; background: rgba(59, 130, 246, .06); }
+.pp-table-add { border: 1px dashed var(--pp-border); background: transparent; color: var(--pp-muted); border-radius: 4px; cursor: pointer; opacity: 0; transition: opacity .12s; font: inherit; line-height: 1; padding: 0; }
+.pp-table-edit:hover .pp-table-add, .pp-table-edit:focus-within .pp-table-add { opacity: .8; }
+.pp-table-add:hover { opacity: 1 !important; background: rgba(59, 130, 246, .12); color: #2563eb; }
+.pp-table-addrow { display: block; width: 100%; max-width: 320px; height: 16px; margin-top: 3px; }
+.pp-table-addcol { width: 16px; margin-left: 3px; flex: none; }
+.pp-tmenu { position: fixed; z-index: 4000; min-width: 190px; padding: 4px; background: var(--pp-bg); color: var(--pp-fg); border: 1px solid var(--pp-border); border-radius: 6px; box-shadow: 0 6px 20px rgba(0, 0, 0, .18); font-family: Roboto, system-ui, sans-serif; font-size: 13px; }
+.pp-tmenu-item { padding: 5px 10px; border-radius: 4px; cursor: pointer; }
+.pp-tmenu-item:hover { background: rgba(59, 130, 246, .14); }
+.pp-tmenu-sep { height: 1px; margin: 4px 2px; background: var(--pp-border); }
+.pp-table-edit th { text-align: left; }

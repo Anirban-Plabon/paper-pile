@@ -52,6 +52,9 @@ export default {
     async applyChanges(docId, changes, expected, cursor) {
       return (await this.ready).applyChanges(docId, changes, expected, cursor ?? null);
     },
+    async focusTableCell(row, col, from) {
+      (await this.ready).focusTableCell(row, col, from ?? null);
+    },
     async setSlashResults(seq, groups) {
       (await this.ready).setSlashResults(seq, groups);
     },

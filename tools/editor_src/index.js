@@ -14,6 +14,7 @@ import { codeLanguages } from "./codelang.js";
 import { editorContext } from "./context.js";
 import { editorExtensions } from "./grammar.js";
 import { closeSlash, setSlashResults, slashExtension } from "./slash.js";
+import { focusTableCell, tableKeys, tablesRuntime } from "./tablewidget.js";
 
 const CHANGE_DEBOUNCE_MS = 300;
 const RAW_PASTE_WINDOW_MS = 600;
@@ -44,9 +45,10 @@ export function createEditor(
   parent,
   { doc = "", mode = "live", theme = "light", emit = () => {}, imageUploadUrl = null, linkTarget = "python" } = {},
 ) {
+  tablesRuntime({ emit, getDocId: () => docId });
   const modeSlot = new Compartment();
   const themeSlot = new Compartment();
-  const modeExt = (m) => (m === "live" ? [livePreview, blocks] : []);
+  const modeExt = (m) => (m === "live" ? [livePreview, blocks, tableKeys] : []);
   parent.classList.toggle("pp-dark", theme === "dark");
   let timer = null;
   let rawUntil = 0;
@@ -279,6 +281,10 @@ export function createEditor(
       if (state.doc.toString() !== expected) return false;
       parked.set(id, state.update({ changes }).state);
       return true;
+    },
+    // Put the cursor in a table cell (row 0 is the header). `from` is the table's start offset.
+    focusTableCell(row, col, from = null) {
+      focusTableCell(row, col, from, view.dom);
     },
     // Python's answer to a `slash_query` (the commands matching the typed text).
     setSlashResults(seq, groups) {

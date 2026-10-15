@@ -25,10 +25,11 @@ from nicegui import ui
 
 from paper_pile.core import commands_builtin  # noqa: F401  (registers the slash commands)
 from paper_pile.core.buffer import NoteBuffer, Outcome, content_hash, find_recoverable
-from paper_pile.core.command_actions import TextEdit, remove_range, resolve
+from paper_pile.core.command_actions import TextChange, TextEdit, remove_range, resolve
 from paper_pile.core.commands import (
     REGISTRY,
     CommandContext,
+    Insert,
     OpenNote,
     OpenPicker,
     StreamInsert,
@@ -51,6 +52,7 @@ from paper_pile.core.parser import find_heading
 from paper_pile.core.picker import search_notes
 from paper_pile.core.recovery import RecoveryEntry, RecoveryStore
 from paper_pile.core.rewrite import Edit, plan_rewrites
+from paper_pile.core.tables import apply_op, table_extent
 from paper_pile.core.tabs import TabList
 from paper_pile.core.templates import render_template
 from paper_pile.core.textpos import codepoint_index, utf16_index
@@ -102,6 +104,7 @@ class EditorPane:
         self.index = index
         self._config = config
         self._get_recents = get_recents
+        self._table_lock = asyncio.Lock()  # table edits apply one after the other
         self._on_command_used = on_command_used
         self._reindex_handle: asyncio.TimerHandle | None = None
         self._backlinks: BacklinksPane
@@ -138,6 +141,7 @@ class EditorPane:
                     on_wikilink=lambda e: self._on_wikilink(e.args),
                     on_slash_query=lambda e: self._on_slash_query(e.args),
                     on_slash_run=lambda e: self._spawn(self._on_slash_run(e.args)),
+                    on_table_op=lambda e: self._spawn(self._on_table_op(e.args)),
                     on_change=lambda e: self._on_change(e.args),
                     on_blur=lambda e: self._on_flush(e.args),
                     on_save=lambda e: self._on_flush(e.args),
@@ -359,6 +363,10 @@ class EditorPane:
         if not await self._apply_edit(tab_id, text, edit):
             return  # a keystroke raced the round trip; the typed /query is left as it was
         self._on_command_used(str(args["id"]))
+        if isinstance(action, Insert) and action.focus_cell is not None:
+            table_start = edit.changes[0].start + (1 if action.text.startswith("\n") else 0)
+            row, col = action.focus_cell
+            self._editor.focus_table_cell(row, col, utf16_index(text, table_start))
         if isinstance(action, OpenNote):
             await self.open_link(action.path)
         elif isinstance(action, OpenPicker):
@@ -443,7 +451,30 @@ class EditorPane:
             text = "!" + link if action.command_id == "embed" else link
         self._editor.insert_at_cursor(text)
 
-    async def _apply_edit(self, tab_id: int, before: str, edit: TextEdit) -> bool:
+    async def _on_table_op(self, args: dict[str, Any]) -> None:
+        """The user edited a table (typed in a cell, added a row, ...): Python decides what the
+        markdown becomes (``core/tables.py``) and the editor applies it as one undo step."""
+        async with self._table_lock:
+            tab_id = self.tabs.active
+            op = args.get("op")
+            if tab_id is None or args.get("docId") != tab_id or not isinstance(op, dict):
+                return
+            text = await self._editor.get_text()
+            if text is None:
+                return
+            start = codepoint_index(text, int(args["from"]))
+            end = table_extent(text, start)  # measured here: earlier edits may have resized it
+            if end is None:
+                return
+            result = apply_op(text[start:end], op)
+            if result is None or result.text == text[start:end]:
+                return
+            edit = TextEdit((TextChange(start, end, result.text),), start)
+            await self._apply_edit(tab_id, text, edit, move_caret=False)
+
+    async def _apply_edit(
+        self, tab_id: int, before: str, edit: TextEdit, *, move_caret: bool = True
+    ) -> bool:
         """Apply a command's edit to the note on screen as one undo step (buffer kept in step)."""
         after = before
         for change in sorted(edit.changes, key=lambda c: c.start, reverse=True):
@@ -456,7 +487,7 @@ class EditorPane:
             }
             for c in edit.changes
         ]
-        cursor = utf16_index(after, edit.cursor)
+        cursor = utf16_index(after, edit.cursor) if move_caret else None
         if not await self._editor.apply_changes(tab_id, changes, before, cursor):
             return False
         self.buffers[tab_id].set_text(after)

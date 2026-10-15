@@ -63,12 +63,17 @@ def test_mermaid_blocks(cid: str, needle: str) -> None:
     assert 'class="language-mermaid"' in render_html(text)
 
 
-def test_table_is_a_valid_3x3_table() -> None:
+def test_table_is_a_valid_tidy_3x3_table() -> None:
+    from paper_pile.core.tables import format_table, parse_table
+
     text, caret = run("table", "", "/table")
     html = render_html(text)
     assert "<table>" in html and html.count("<th>") == 3 and html.count("<tr>") == 3
-    assert text.splitlines()[2].startswith("|  |")
-    assert caret == text.index("|  |") + 2  # inside the first body cell
+    assert caret == len(text)  # after the table; the editor focuses the first body cell
+    parsed = parse_table(text)
+    assert parsed is not None and format_table(parsed) + "\n" == text  # already tidy
+    action = REGISTRY.run("table", CommandContext("a.md", "/table", 0))
+    assert isinstance(action, Insert) and action.focus_cell == (1, 0)
 
 
 def test_callout() -> None:

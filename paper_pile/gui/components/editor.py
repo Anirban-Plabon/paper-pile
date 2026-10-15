@@ -2,9 +2,9 @@
 
 The browser owns the buffer. Python sets text or inserts at the cursor through explicit
 method calls (never reactive props, so a server push cannot clobber typing) and receives
-``change`` / ``blur`` / ``save`` / ``slash_query`` / ``slash_run`` / ``paste`` events. Events
-about the text carry the ``docId`` given to the last :meth:`set_text`, so a late event from an
-old note is detectable.
+``change`` / ``blur`` / ``save`` / ``slash_query`` / ``slash_run`` / ``table_op`` / ``paste``
+events. Events about the text carry the ``docId`` given to the last :meth:`set_text`, so a late
+event from an old note is detectable.
 """
 
 from collections.abc import Callable
@@ -36,6 +36,7 @@ class Editor(
         on_save: Handler | None = None,
         on_slash_query: Handler | None = None,
         on_slash_run: Handler | None = None,
+        on_table_op: Handler | None = None,
         on_link: Handler | None = None,
         on_wikilink: Handler | None = None,
         on_paste: Handler | None = None,
@@ -56,6 +57,8 @@ class Editor(
             self.on("slash_query", on_slash_query)
         if on_slash_run:
             self.on("slash_run", on_slash_run)
+        if on_table_op:
+            self.on("table_op", on_table_op)
         if on_link:
             self.on("link", on_link)
         if on_wikilink:
@@ -105,6 +108,11 @@ class Editor(
             return bool(await self.run_method("applyChanges", doc_id, changes, expected, cursor))
         except TimeoutError:
             return False
+
+    def focus_table_cell(self, row: int, col: int, start: int | None = None) -> None:
+        """Put the cursor in a table cell (row 0 = header). ``start`` is the table's offset in
+        the text (a JavaScript offset); without it the next table update that has the cell wins."""
+        self.run_method("focusTableCell", row, col, start)
 
     def set_slash_results(self, seq: int, groups: list[dict[str, Any]]) -> None:
         """The commands matching query number ``seq`` (see ``groups_json``)."""
