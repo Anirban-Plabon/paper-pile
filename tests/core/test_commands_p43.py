@@ -89,6 +89,10 @@ def test_date_and_time(monkeypatch: pytest.MonkeyPatch) -> None:
     assert run("time", "at ", "/time")[0] == "at 07:05"
 
 
+def test_image_command_opens_the_image_picker() -> None:
+    assert REGISTRY.run("image", CommandContext("a.md", "/i", 0)) == OpenPicker("image", "image")
+
+
 def test_link_and_embed_open_the_note_picker() -> None:
     ctx = CommandContext("a.md", "/l", 0)
     assert REGISTRY.run("link", ctx) == OpenPicker("note", "link")
@@ -113,7 +117,7 @@ def test_every_phase1_group_is_present_in_order() -> None:
     assert names == ["Basic blocks", "Code & math", "Diagrams", "Media", "Links", "Insert"]
     ids = {c.id for c in REGISTRY.all()}
     assert {"callout", "code", "math", "math-inline", "flowchart", "sequence", "gantt"} <= ids
-    assert {"table", "link", "embed", "date", "time", "template"} <= ids
+    assert {"image", "table", "link", "embed", "date", "time", "template"} <= ids
 
 
 # ---- the picker, link names and templates -----------------------------------------------------

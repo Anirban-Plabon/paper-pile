@@ -23,7 +23,10 @@ from typing import Any
 
 from nicegui import ui
 
-from paper_pile.core import commands_builtin  # noqa: F401  (registers the slash commands)
+from paper_pile.core import (
+    assets,
+    commands_builtin,  # noqa: F401  (registers the slash commands)
+)
 from paper_pile.core.buffer import NoteBuffer, Outcome, content_hash, find_recoverable
 from paper_pile.core.command_actions import TextChange, TextEdit, remove_range, resolve
 from paper_pile.core.commands import (
@@ -142,6 +145,11 @@ class EditorPane:
                     on_slash_query=lambda e: self._on_slash_query(e.args),
                     on_slash_run=lambda e: self._spawn(self._on_slash_run(e.args)),
                     on_table_op=lambda e: self._spawn(self._on_table_op(e.args)),
+                    on_image_saved=lambda e: self._on_image_saved(e.args),
+                    on_image_error=lambda e: self._toast(
+                        str(e.args.get("message", "")), error=True
+                    ),
+                    image_upload_url="/_pp/upload",
                     on_change=lambda e: self._on_change(e.args),
                     on_blur=lambda e: self._on_flush(e.args),
                     on_save=lambda e: self._on_flush(e.args),
@@ -277,7 +285,16 @@ class EditorPane:
         if not buf.save():
             msg = f"Could not save {buf.path}: {buf.error}. The text is kept for recovery."
             self._toast(msg, error=True)
+        elif buf.path.lower().endswith(".md"):
+            self._sweep_images(buf.path, buf.text)
         self._drop_tab(tab_id)
+
+    def _sweep_images(self, path: str, text: str) -> None:
+        """The note is closed and saved: images it no longer refers to go to the trash."""
+        try:
+            assets.sweep_orphans(self.vault, path, text)
+        except (VaultError, OSError):
+            log.exception("could not sweep the images of %s", path)
 
     def _drop_tab(self, tab_id: int) -> None:
         """Remove a tab (its buffer is already saved or deliberately discarded)."""
@@ -369,6 +386,8 @@ class EditorPane:
             self._editor.focus_table_cell(row, col, utf16_index(text, table_start))
         if isinstance(action, OpenNote):
             await self.open_link(action.path)
+        elif isinstance(action, OpenPicker) and action.kind == "image":
+            self._editor.pick_image()
         elif isinstance(action, OpenPicker):
             self._open_picker(action, path)
         elif isinstance(action, StreamInsert):
@@ -450,6 +469,23 @@ class EditorPane:
             link = f"[[{wikilink_to(picked, source, notes)}]]"
             text = "!" + link if action.command_id == "embed" else link
         self._editor.insert_at_cursor(text)
+
+    def _on_image_saved(self, args: dict[str, Any]) -> None:
+        """An image was pasted, dropped or picked and stored: insert its markdown at the caret."""
+        path = self._active_path()
+        if path is None or args.get("docId") != self.tabs.active:
+            self._toast("The image was saved, but the note changed before it could be inserted.")
+            return
+        ref = str(args.get("ref", ""))
+        try:
+            self.vault.asset_path(path, ref)  # it must be an image of this note that really exists
+        except VaultError as exc:
+            self._toast(str(exc), error=True)
+            return
+        width = args.get("width")
+        self._editor.insert_at_cursor(
+            assets.image_markdown(ref, width if isinstance(width, int) else None)
+        )
 
     async def _on_table_op(self, args: dict[str, Any]) -> None:
         """The user edited a table (typed in a cell, added a row, ...): Python decides what the

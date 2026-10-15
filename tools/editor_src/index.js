@@ -74,18 +74,37 @@ export function createEditor(
     if (docId !== -1) parked.set(docId, view.state);
   };
 
+  // Send an image to Python's upload route (it stores it in the note's assets folder); Python then
+  // inserts the markdown at the caret. The caret is where the paste/drop/pick happened.
+  const uploadImage = async (file) => {
+    const id = docId;
+    try {
+      const url = `${imageUploadUrl}?note=${encodeURIComponent(editorContext.notePath)}`;
+      const r = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": file.type || "application/octet-stream", "X-PP-Upload": "1" },
+        body: file,
+      });
+      const info = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(info.error || r.statusText);
+      emit("image_saved", { docId: id, ref: info.ref, width: info.width ?? null });
+    } catch (err) {
+      emit("image_error", { docId: id, message: String(err && err.message ? err.message : err) });
+    }
+  };
+  const uploadAll = async (files) => {
+    for (const f of files) await uploadImage(f); // one after the other: each lands after the previous
+  };
+  const isImageFile = (f) => f.type.startsWith("image/") || /\.(png|jpe?g|gif|webp|bmp|avif|svg)$/i.test(f.name);
+
   const handlePaste = (event, v) => {
     if (performance.now() < rawUntil) return false; // Ctrl+Shift+V: raw paste
     const cd = event.clipboardData;
     if (!cd) return false;
     const image = [...cd.items].find((i) => i.kind === "file" && i.type.startsWith("image/"));
     if (image && imageUploadUrl) {
-      const file = image.getAsFile();
       event.preventDefault();
-      fetch(imageUploadUrl, { method: "POST", headers: { "Content-Type": file.type }, body: file })
-        .then((r) => r.json())
-        .then((info) => emit("paste", { kind: "image", mime: file.type, ...info }))
-        .catch((err) => emit("paste", { kind: "error", message: String(err) }));
+      uploadAll([image.getAsFile()]);
       return true;
     }
     const html = cd.getData("text/html");
@@ -153,6 +172,18 @@ export function createEditor(
           slashExtension({ emit, getDocId: () => docId }),
           EditorView.domEventHandlers({
             paste: handlePaste,
+            // dropping image files puts them where they were dropped
+            drop: (e, v) => {
+              const dropped = e.dataTransfer ? [...e.dataTransfer.files] : [];
+              if (!dropped.length) return false; // text and links: the editor's own handling
+              e.preventDefault(); // never let the editor read a dropped file's bytes into the note
+              const files = dropped.filter(isImageFile);
+              if (!files.length || !imageUploadUrl) return true;
+              const pos = v.posAtCoords({ x: e.clientX, y: e.clientY });
+              if (pos !== null) v.dispatch({ selection: { anchor: pos } });
+              uploadAll(files);
+              return true;
+            },
             // Ctrl/Cmd+click on a link opens it; a plain click only places the caret (to edit it).
             // This must be `mousedown`, not `click`: CodeMirror's own Ctrl+click handling adds a
             // selection, which un-hides the link's syntax and rebuilds its DOM before `click` fires.
@@ -317,6 +348,16 @@ export function createEditor(
       currentTheme = name;
       parent.classList.toggle("pp-dark", name === "dark");
       view.dispatch({ effects: themeSlot.reconfigure(themeFacet.of(name)) });
+    },
+    // The `/image` command: let the user choose image files, which are then inserted at the caret.
+    pickImage() {
+      if (!imageUploadUrl) return;
+      const input = document.createElement("input");
+      input.type = "file";
+      input.accept = "image/*";
+      input.multiple = true;
+      input.addEventListener("change", () => uploadAll([...input.files].filter(isImageFile)));
+      input.click();
     },
     focus: () => view.focus(),
     flush,

@@ -2,9 +2,9 @@
 
 The browser owns the buffer. Python sets text or inserts at the cursor through explicit
 method calls (never reactive props, so a server push cannot clobber typing) and receives
-``change`` / ``blur`` / ``save`` / ``slash_query`` / ``slash_run`` / ``table_op`` / ``paste``
-events. Events about the text carry the ``docId`` given to the last :meth:`set_text`, so a late
-event from an old note is detectable.
+``change`` / ``blur`` / ``save`` / ``slash_query`` / ``slash_run`` / ``table_op`` /
+``image_saved`` / ``paste`` events. Events about the text carry the ``docId`` given to the last
+:meth:`set_text`, so a late event from an old note is detectable.
 """
 
 from collections.abc import Callable
@@ -37,6 +37,8 @@ class Editor(
         on_slash_query: Handler | None = None,
         on_slash_run: Handler | None = None,
         on_table_op: Handler | None = None,
+        on_image_saved: Handler | None = None,
+        on_image_error: Handler | None = None,
         on_link: Handler | None = None,
         on_wikilink: Handler | None = None,
         on_paste: Handler | None = None,
@@ -59,6 +61,10 @@ class Editor(
             self.on("slash_run", on_slash_run)
         if on_table_op:
             self.on("table_op", on_table_op)
+        if on_image_saved:
+            self.on("image_saved", on_image_saved)
+        if on_image_error:
+            self.on("image_error", on_image_error)
         if on_link:
             self.on("link", on_link)
         if on_wikilink:
@@ -108,6 +114,11 @@ class Editor(
             return bool(await self.run_method("applyChanges", doc_id, changes, expected, cursor))
         except TimeoutError:
             return False
+
+    def pick_image(self) -> None:
+        """Open the browser's file chooser; the chosen images are uploaded and reported back as
+        ``image_saved`` events."""
+        self.run_method("pickImage")
 
     def focus_table_cell(self, row: int, col: int, start: int | None = None) -> None:
         """Put the cursor in a table cell (row 0 = header). ``start`` is the table's offset in

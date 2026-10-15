@@ -73,6 +73,9 @@ export default {
     async setTheme(theme) {
       (await this.ready).setTheme(theme);
     },
+    async pickImage() {
+      (await this.ready).pickImage();
+    },
     async focus() {
       (await this.ready).focus();
     },

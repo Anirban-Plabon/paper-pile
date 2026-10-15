@@ -147,6 +147,19 @@ _mermaid(
 
 
 @command(
+    "image",
+    "Image",
+    group="Media",
+    icon="image",
+    subtitle="Upload from your computer",
+    hint="![]()",
+    aliases=("picture", "photo", "img", "upload"),
+)
+def image(ctx: CommandContext) -> Action:
+    return OpenPicker("image", "image")
+
+
+@command(
     "table",
     "Table",
     group="Media",
