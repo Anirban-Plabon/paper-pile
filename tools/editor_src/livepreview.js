@@ -58,12 +58,14 @@ const QUOTE_LINE = [1, 2, 3].map((n) => lineDeco(`pp-quote pp-quote-${n}`));
 const LIST_GLYPHS = ["\u2022", "\u25E6", "\u25AA"]; // bullet, white bullet, small square by depth
 const LIST_NUM = mark("pp-list-num");
 const TASK_DONE = mark("pp-task-done");
-const LINE_PAD_PX = 6; // CodeMirror's own left padding of a line; our padding must add to it
+const numberPadded = (pad) => Decoration.mark({ class: "pp-list-num", attributes: { style: `margin-left:${pad}ch` } });
+// A list line is pushed right by `--pp-hang` and its first line pulled back by the same amount, so
+// wrapped lines sit under the item's text. The padding itself is in CSS (app.css), where it adds
+// up with the quote bar's offset `--pp-qpad`, so a list inside a quote stays inside the bar.
 const hangingIndent = (cols) =>
-  Decoration.line({
-    class: "pp-li",
-    attributes: { style: `padding-left:calc(${cols}ch + ${LINE_PAD_PX}px);text-indent:-${cols}ch` },
-  });
+  Decoration.line({ class: "pp-li", attributes: { style: `--pp-hang:${cols}ch` } });
+// How many characters of a line the quote marks (`> `) hide when the line is not being edited.
+const quotePrefix = (text) => /^(?:>[ ]?)+/.exec(text)?.[0].length ?? 0;
 
 // Everything the builder needs while walking the tree.
 function context(view) {
@@ -140,7 +142,17 @@ const handlers = {
       let start = box ? box.to : mark.to;
       while (cx.doc.sliceString(start, start + 1) === " ") start++;
       col = start - first.from;
-      if (ordered) cx.out.push(LIST_NUM.range(mark.from, mark.to));
+      if (ordered) {
+        // numbers of one list line up on their right edge (`9.` under `10.`) and so do the texts
+        let widest = mark.to - mark.from;
+        for (const sib of item.parent.getChildren("ListItem")) {
+          const m = sib.getChild("ListMark");
+          if (m) widest = Math.max(widest, m.to - m.from);
+        }
+        const pad = raw ? 0 : widest - (mark.to - mark.from);
+        col += pad;
+        cx.out.push((pad ? numberPadded(pad) : LIST_NUM).range(mark.from, mark.to));
+      }
       else if (!box && !raw) {
         cx.out.push(Decoration.replace({ widget: new BulletWidget(LIST_GLYPHS[Math.min(depth, 2)]) }).range(mark.from, mark.to));
       }
@@ -148,7 +160,10 @@ const handlers = {
     const own = task ? [task] : item.getChildren("Paragraph");
     for (const r of own) {
       for (let n = cx.doc.lineAt(r.from).number; n <= cx.doc.lineAt(r.to).number; n++) {
-        cx.out.push(hangingIndent(col).range(cx.doc.line(n).from));
+        const line = cx.doc.line(n);
+        // quote marks in front of the item are hidden (zero width) unless that line is being edited
+        const hidden = cx.active.has(n) ? 0 : quotePrefix(line.text);
+        cx.out.push(hangingIndent(Math.max(0, col - hidden)).range(line.from));
       }
     }
   },

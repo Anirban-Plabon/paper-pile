@@ -65,27 +65,33 @@ html, body { overflow: hidden; }
 .pp-setext-underline { opacity: .3; font-size: .8em; }
 
 /* Lists, tasks, quotes, rules (tools/editor_src/livepreview.js) */
-.pp-bullet { display: inline-block; width: 1ch; text-align: center; color: var(--pp-muted); }
+.pp-bullet { display: inline-block; width: 1ch; text-align: center; text-indent: 0; color: var(--pp-muted); }
 .pp-list-num { color: var(--pp-muted); }
-.pp-task { display: inline-block; width: 2ch; text-align: center; cursor: pointer; }
-.pp-task .pp-box { display: inline-block; box-sizing: border-box; width: 1.05ch; height: 1.05ch; border: 1.5px solid var(--pp-muted); border-radius: 3px; vertical-align: -0.12em; }
+.pp-task { display: inline-block; width: 2ch; text-align: left; text-indent: 0; cursor: pointer; }
+.pp-task .pp-box { display: inline-block; box-sizing: border-box; width: 1.5ch; height: 1.5ch; border: 1.5px solid var(--pp-muted); border-radius: 3px; vertical-align: -0.2em; }
 .pp-task:hover .pp-box { border-color: #3b82f6; }
 .pp-task-checked .pp-box { background: #3b82f6; border-color: #3b82f6; position: relative; }
-.pp-task-checked .pp-box::after { content: ""; position: absolute; left: 22%; top: 2%; width: 28%; height: 56%; border: solid #fff; border-width: 0 1.5px 1.5px 0; transform: rotate(45deg); }
+.pp-task-checked .pp-box::after { content: ""; position: absolute; left: 30%; top: 8%; width: 28%; height: 58%; border: solid #fff; border-width: 0 2px 2px 0; transform: rotate(45deg); }
 .pp-task-done { text-decoration: line-through; color: var(--pp-muted); }
 /* `.pp-editor .cm-line` is needed to beat CodeMirror's own `.cm-line { padding }` rule. A quote's
-   content is pushed right by depth, one 3px bar per level is drawn at the normal text column. */
+   content is pushed right by its depth (`--pp-qpad`), one 3px bar per level is drawn at the normal
+   text column (`--pp-bars`). List lines add their hanging indent (`--pp-hang`) on top of that, so
+   bullets, numbers and checkboxes of a list in a quote sit inside the bar. */
 .pp-editor .cm-line.pp-quote { --pp-bar: #c3c8d0; color: var(--pp-muted); }
-.pp-editor .cm-line.pp-quote-1 { padding-left: calc(6px + 1.6ch); background: linear-gradient(var(--pp-bar), var(--pp-bar)) 6px 0 / 3px 100% no-repeat; }
-.pp-editor .cm-line.pp-quote-2 { padding-left: calc(6px + 3.2ch); background: linear-gradient(var(--pp-bar), var(--pp-bar)) 6px 0 / 3px 100% no-repeat, linear-gradient(var(--pp-bar), var(--pp-bar)) calc(6px + 1.6ch) 0 / 3px 100% no-repeat; }
-.pp-editor .cm-line.pp-quote-3 { padding-left: calc(6px + 4.8ch); background: linear-gradient(var(--pp-bar), var(--pp-bar)) 6px 0 / 3px 100% no-repeat, linear-gradient(var(--pp-bar), var(--pp-bar)) calc(6px + 1.6ch) 0 / 3px 100% no-repeat, linear-gradient(var(--pp-bar), var(--pp-bar)) calc(6px + 3.2ch) 0 / 3px 100% no-repeat; }
+.pp-editor .cm-line.pp-quote-1 { --pp-qpad: 1.6ch; --pp-bars: linear-gradient(var(--pp-bar), var(--pp-bar)) 6px 0 / 3px 100% no-repeat; }
+.pp-editor .cm-line.pp-quote-2 { --pp-qpad: 3.2ch; --pp-bars: linear-gradient(var(--pp-bar), var(--pp-bar)) 6px 0 / 3px 100% no-repeat, linear-gradient(var(--pp-bar), var(--pp-bar)) calc(6px + 1.6ch) 0 / 3px 100% no-repeat; }
+.pp-editor .cm-line.pp-quote-3 { --pp-qpad: 4.8ch; --pp-bars: linear-gradient(var(--pp-bar), var(--pp-bar)) 6px 0 / 3px 100% no-repeat, linear-gradient(var(--pp-bar), var(--pp-bar)) calc(6px + 1.6ch) 0 / 3px 100% no-repeat, linear-gradient(var(--pp-bar), var(--pp-bar)) calc(6px + 3.2ch) 0 / 3px 100% no-repeat; }
+.pp-editor .cm-line.pp-quote { background: var(--pp-bars); }
+.pp-editor .cm-line.pp-quote, .pp-editor .cm-line.pp-li { padding-left: calc(6px + var(--pp-qpad, 0px) + var(--pp-hang, 0px)); text-indent: calc(-1 * var(--pp-hang, 0px)); }
+/* a code block inside a quote keeps the bar and draws its card to the right of it */
+.pp-editor .cm-line.pp-quote.pp-codeblock { background: var(--pp-bars), linear-gradient(var(--pp-code-bg), var(--pp-code-bg)) calc(6px + var(--pp-qpad)) 0 / calc(100% - 6px - var(--pp-qpad)) 100% no-repeat; padding-left: calc(6px + var(--pp-qpad) + 12px); text-indent: 0; border-radius: 0; }
 .pp-link { color: #2563eb; text-decoration: underline; text-decoration-color: rgba(37, 99, 235, .4); text-underline-offset: 2px; }
 .pp-ctrl .pp-link[data-href] { cursor: pointer; }
 .pp-wikilink { color: #7c3aed; text-decoration: underline; text-decoration-color: rgba(124, 58, 237, .4); text-underline-offset: 2px; }
 .pp-ctrl .pp-wikilink[data-wiki-note] { cursor: pointer; }
 .pp-wikilink-missing { color: #b45309; text-decoration-style: dashed; text-decoration-color: rgba(180, 83, 9, .6); }
-.pp-image { display: inline-block; max-width: 100%; vertical-align: top; }
-.pp-image img { display: block; max-width: 100%; height: auto; border-radius: 4px; margin: 4px 0; }
+.pp-image { display: inline-block; max-width: 100%; vertical-align: middle; }
+.pp-image img { display: block; max-width: 100%; height: auto; border-radius: 4px; margin: 2px 0; }
 .pp-image-chip { display: inline-block; padding: 0 8px; border: 1px dashed var(--pp-border); border-radius: 4px; color: var(--pp-muted); font-size: .85em; }
 /* Code blocks and syntax colours. Token colours are variables so the dark theme can swap them. */
 .pp-editor { --pp-code-bg: #f3f4f6; --pp-tok-keyword: #cf222e; --pp-tok-string: #0a3069; --pp-tok-number: #0550ae; --pp-tok-comment: #6e7781; --pp-tok-type: #953800; --pp-tok-prop: #116329; --pp-tok-meta: #8250df; }
@@ -104,13 +110,13 @@ html, body { overflow: hidden; }
 .pp-codeblock .tok-meta, .pp-codeblock .tok-macroName, .pp-codeblock .tok-labelName { color: var(--pp-tok-meta); }
 
 /* Tables */
-.pp-table { overflow-x: auto; margin: 6px 0; cursor: text; }
+.pp-table { overflow-x: auto; margin: 6px 0 6px 6px; cursor: text; }
 .pp-table table { border-collapse: collapse; min-width: 50%; font-size: .95em; }
 .pp-table th, .pp-table td { padding: 4px 12px; border: 1px solid var(--pp-border); }
 .pp-table th { background: var(--pp-bg-side); font-weight: 600; }
 .pp-table code { background: var(--pp-code-bg, #f3f4f6); border-radius: 3px; padding: 0 3px; }
 .pp-fm-line { color: var(--pp-muted); font-size: .88em; }
-.pp-frontmatter { box-sizing: border-box; margin: 4px 0 10px; padding: 6px 10px; border: 1px solid var(--pp-border); border-radius: 6px; background: var(--pp-bg-side); font-size: .85em; color: var(--pp-muted); cursor: text; }
+.pp-frontmatter { box-sizing: border-box; margin: 4px 6px 10px; padding: 6px 10px; border: 1px solid var(--pp-border); border-radius: 6px; background: var(--pp-bg-side); font-size: .85em; color: var(--pp-muted); cursor: text; }
 .pp-fm-row { display: flex; gap: 12px; line-height: 1.6; }
 .pp-fm-key { flex: 0 0 9ch; font-weight: 600; opacity: .8; overflow: hidden; text-overflow: ellipsis; }
 .pp-fm-val { color: var(--pp-fg); overflow-wrap: anywhere; }
