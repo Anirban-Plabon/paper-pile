@@ -22,7 +22,18 @@ from typing import Any
 
 from nicegui import ui
 
+from paper_pile.core import commands_builtin  # noqa: F401  (registers the slash commands)
 from paper_pile.core.buffer import NoteBuffer, Outcome, content_hash, find_recoverable
+from paper_pile.core.command_actions import TextEdit, remove_range, resolve
+from paper_pile.core.commands import (
+    REGISTRY,
+    CommandContext,
+    OpenNote,
+    OpenPicker,
+    StreamInsert,
+    UnknownCommandError,
+    groups_json,
+)
 from paper_pile.core.events import EventBus
 from paper_pile.core.index import Index
 from paper_pile.core.links import (
@@ -37,6 +48,7 @@ from paper_pile.core.parser import find_heading
 from paper_pile.core.recovery import RecoveryEntry, RecoveryStore
 from paper_pile.core.rewrite import Edit, plan_rewrites
 from paper_pile.core.tabs import TabList
+from paper_pile.core.textpos import codepoint_index, utf16_index
 from paper_pile.core.vault import Vault, VaultError, is_plain_text
 from paper_pile.core.watcher import FsEvent
 from paper_pile.gui.components.backlinks import BacklinkItem, BacklinksPane
@@ -44,11 +56,6 @@ from paper_pile.gui.components.editor import Editor, Mode
 from paper_pile.gui.components.tabs import TabBar
 
 log = logging.getLogger("paper_pile.editor_pane")
-
-
-def _utf16(text: str, index: int) -> int:
-    """``index`` (code points) as a JavaScript string offset (UTF-16 units)."""
-    return len(text[:index].encode("utf-16-le")) // 2
 
 
 def _count(n: int, noun: str) -> str:
@@ -71,6 +78,8 @@ class EditorPane:
         native: bool = False,
         on_plain_changed: Callable[[bool], None] = lambda plain: None,
         index: Index | None = None,
+        get_recents: Callable[[], list[str]] = lambda: [],
+        on_command_used: Callable[[str], None] = lambda command_id: None,
     ) -> None:
         self.vault = vault
         self.bus = bus
@@ -85,6 +94,8 @@ class EditorPane:
         self._on_plain_changed = on_plain_changed
         self._plain_shown: bool | None = None
         self.index = index
+        self._get_recents = get_recents
+        self._on_command_used = on_command_used
         self._reindex_handle: asyncio.TimerHandle | None = None
         self._backlinks: BacklinksPane
         self._timer: asyncio.TimerHandle | None = None
@@ -118,7 +129,8 @@ class EditorPane:
                     link_target="python" if self._native else "window",
                     on_link=lambda e: self._on_link(e.args),
                     on_wikilink=lambda e: self._on_wikilink(e.args),
-                    on_slash=lambda e: self._on_slash(e.args),
+                    on_slash_query=lambda e: self._on_slash_query(e.args),
+                    on_slash_run=lambda e: self._spawn(self._on_slash_run(e.args)),
                     on_change=lambda e: self._on_change(e.args),
                     on_blur=lambda e: self._on_flush(e.args),
                     on_save=lambda e: self._on_flush(e.args),
@@ -307,9 +319,63 @@ class EditorPane:
         tab = self.tabs.active_tab
         return tab is not None and is_plain_text(tab.path)
 
-    def _on_slash(self, args: dict[str, Any]) -> None:
-        """`/` typed at a command position in a markdown note. The slash menu arrives in P4.2;
-        plain-text notes never send this event."""
+    def _on_slash_query(self, args: dict[str, Any]) -> None:
+        """The text after a typed ``/`` changed: answer with the commands that match it."""
+        path = self._active_path()
+        if path is None or args.get("docId") != self.tabs.active:
+            return
+        buffer = self.buffers[self.tabs.active]
+        ctx = CommandContext(path, buffer.text, 0, vault=self.vault)
+        groups = REGISTRY.search(str(args.get("q", "")), ctx, self._get_recents())
+        self._editor.set_slash_results(int(args.get("seq", 0)), groups_json(groups))
+
+    async def _on_slash_run(self, args: dict[str, Any]) -> None:
+        """A command was picked in the slash menu: run it and apply the resulting edit."""
+        tab_id = self.tabs.active
+        path = self._active_path()
+        if tab_id is None or path is None or args.get("docId") != tab_id:
+            return
+        text = await self._editor.get_text()  # the browser may hold keystrokes we have not seen
+        if text is None:
+            return
+        start = codepoint_index(text, int(args["from"]))
+        end = codepoint_index(text, int(args["to"]))
+        if text[start : start + 1] != "/" or end < start:
+            return  # the text moved on since the pick
+        ctx = CommandContext(path, text, start, vault=self.vault)
+        try:
+            action = REGISTRY.run(str(args["id"]), ctx)
+        except UnknownCommandError:
+            log.warning("slash menu asked for an unknown command %r", args.get("id"))
+            return
+        edit = resolve(action, text, start, end) or remove_range(start, end)
+        if not await self._apply_edit(tab_id, text, edit):
+            return  # a keystroke raced the round trip; the typed /query is left as it was
+        self._on_command_used(str(args["id"]))
+        if isinstance(action, OpenNote):
+            await self.open_link(action.path)
+        elif isinstance(action, OpenPicker | StreamInsert):
+            self._toast("This command is not available yet.")
+
+    async def _apply_edit(self, tab_id: int, before: str, edit: TextEdit) -> bool:
+        """Apply a command's edit to the note on screen as one undo step (buffer kept in step)."""
+        after = before
+        for change in sorted(edit.changes, key=lambda c: c.start, reverse=True):
+            after = after[: change.start] + change.insert + after[change.end :]
+        changes = [
+            {
+                "from": utf16_index(before, c.start),
+                "to": utf16_index(before, c.end),
+                "insert": c.insert,
+            }
+            for c in edit.changes
+        ]
+        cursor = utf16_index(after, edit.cursor)
+        if not await self._editor.apply_changes(tab_id, changes, before, cursor):
+            return False
+        self.buffers[tab_id].set_text(after)
+        self._schedule_save(AUTOSAVE_AFTER_CHANGE_S)
+        return True
 
     def _on_link(self, args: dict[str, Any]) -> None:
         """Ctrl/Cmd+click on a link. Web links open in the browser (here, in the native window;
@@ -719,7 +785,11 @@ class EditorPane:
     async def _rewrite_open(self, tab_id: int, before: str, edits: list[Edit], after: str) -> bool:
         """Apply a link rewrite to a note that is open in a tab (undo history kept)."""
         changes = [
-            {"from": _utf16(before, e.start), "to": _utf16(before, e.end), "insert": e.insert}
+            {
+                "from": utf16_index(before, e.start),
+                "to": utf16_index(before, e.end),
+                "insert": e.insert,
+            }
             for e in edits
         ]
         if not await self._editor.apply_changes(tab_id, changes, before):

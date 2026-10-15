@@ -10,6 +10,7 @@ from pathlib import Path
 
 from nicegui import ui
 
+from paper_pile.core.commands import push_recent
 from paper_pile.core.events import EventBus
 from paper_pile.core.index import Index
 from paper_pile.core.session import SessionState, load_session, save_session
@@ -131,8 +132,14 @@ class MainLayout:
             native=self.can_reveal,  # native window = this machine
             on_plain_changed=self._on_plain_changed,
             index=Index(Vault(self.vault)),
+            get_recents=lambda: self.state.recent_commands,
+            on_command_used=self._on_command_used,
         )
         self.editor_pane.build()
+
+    def _on_command_used(self, command_id: str) -> None:
+        self.state.recent_commands = push_recent(self.state.recent_commands, command_id)
+        self._save_soon()
 
     def _on_tabs_changed(self, paths: list[str], active: str | None) -> None:
         self.state.tabs = paths

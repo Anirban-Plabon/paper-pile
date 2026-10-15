@@ -1,8 +1,8 @@
 // paper-pile editor: CodeMirror 6 + markdown (GFM + inline math) + Live Preview.
 // JS is a thin layer: it renders and captures events. All logic lives in Python.
-import { defaultKeymap, history, historyKeymap, indentWithTab } from "@codemirror/commands";
+import { defaultKeymap, history, isolateHistory, historyKeymap, indentWithTab } from "@codemirror/commands";
 import { markdown, markdownLanguage } from "@codemirror/lang-markdown";
-import { HighlightStyle, syntaxHighlighting, syntaxTree } from "@codemirror/language";
+import { HighlightStyle, syntaxHighlighting } from "@codemirror/language";
 import { highlightSelectionMatches, searchKeymap } from "@codemirror/search";
 import { Compartment, EditorSelection, EditorState } from "@codemirror/state";
 import { EditorView, drawSelection, dropCursor, keymap } from "@codemirror/view";
@@ -13,6 +13,7 @@ import { refreshEffect } from "./reveal.js";
 import { codeLanguages } from "./codelang.js";
 import { editorContext } from "./context.js";
 import { editorExtensions } from "./grammar.js";
+import { closeSlash, setSlashResults, slashExtension } from "./slash.js";
 
 const CHANGE_DEBOUNCE_MS = 300;
 const RAW_PASTE_WINDOW_MS = 600;
@@ -23,8 +24,6 @@ function initialCaret(text) {
   const m = /^---[ \t]*\r?\n(?:[^\n]*\n)*?---[ \t]*(?:\r?\n|$)/.exec(text);
   return m ? Math.min(m[0].length, text.length) : 0;
 }
-
-const NO_SLASH_NODES = new Set(["FencedCode", "CodeBlock", "InlineCode", "URL", "CodeText"]);
 
 const sourceStyle = HighlightStyle.define([
   { tag: t.heading, color: "var(--pp-heading, inherit)", fontWeight: "bold" },
@@ -39,13 +38,6 @@ function externalUrl(href) {
   if (/[\s\x00-\x1f\x7f]/.test(href)) return null;
   if (/^www\./i.test(href)) href = "https://" + href;
   return /^(https?:\/\/[^/?#\s]+|mailto:\S+)/i.test(href) ? href : null;
-}
-
-function inNoSlashContext(state, pos) {
-  for (let n = syntaxTree(state).resolveInner(pos, -1); n; n = n.parent) {
-    if (NO_SLASH_NODES.has(n.name)) return true;
-  }
-  return false;
 }
 
 export function createEditor(
@@ -75,6 +67,7 @@ export function createEditor(
   // scroll anchor. A tab only ever gets its own state back, so Ctrl+Z cannot cross tabs.
   const parked = new Map();
   const park = () => {
+    view.dispatch({ effects: closeSlash() }); // an open "/" menu does not travel between tabs
     flush(); // report the outgoing tab's pending edit while docId still names it
     if (docId !== -1) parked.set(docId, view.state);
   };
@@ -155,16 +148,7 @@ export function createEditor(
           syntaxHighlighting(sourceStyle),
           syntaxHighlighting(classHighlighter), // `tok-*` classes inside code blocks; colours live in CSS
           modeSlot.of(modeExt(currentMode)),
-          EditorView.inputHandler.of((v, from, _to, text) => {
-            if (text !== "/") return false;
-            const line = v.state.doc.lineAt(from);
-            const before = v.state.sliceDoc(line.from, from);
-            if ((before !== "" && !/\s$/.test(before)) || inNoSlashContext(v.state, from)) return false;
-            queueMicrotask(() =>
-              emit("slash", { line: line.number, ch: from - line.from, coords: v.coordsAtPos(from) }),
-            );
-            return false; // let CodeMirror insert the "/"
-          }),
+          slashExtension({ emit, getDocId: () => docId }),
           EditorView.domEventHandlers({
             paste: handlePaste,
             // Ctrl/Cmd+click on a link opens it; a plain click only places the caret (to edit it).
@@ -279,10 +263,15 @@ export function createEditor(
     // are {from, to, insert} in UTF-16 offsets of `expected`, the text Python planned them on.
     // If the tab no longer holds exactly that text (a keystroke raced in) nothing is touched and
     // false is returned, so Python can leave that note alone instead of overwriting typing.
-    applyChanges(id, changes, expected) {
+    applyChanges(id, changes, expected, cursor = null) {
       if (id === docId) {
         if (view.state.doc.toString() !== expected) return false;
-        view.dispatch({ changes });
+        const spec = { changes, annotations: isolateHistory.of("full") }; // its own undo step
+        if (cursor !== null) {
+          spec.selection = { anchor: cursor }; // offset in the document after the changes
+          spec.scrollIntoView = true;
+        }
+        view.dispatch(spec);
         return true;
       }
       const state = parked.get(id);
@@ -290,6 +279,10 @@ export function createEditor(
       if (state.doc.toString() !== expected) return false;
       parked.set(id, state.update({ changes }).state);
       return true;
+    },
+    // Python's answer to a `slash_query` (the commands matching the typed text).
+    setSlashResults(seq, groups) {
+      setSlashResults(view, seq, groups);
     },
     // Wikilink targets that exist (normalised names), so links to missing notes can be styled.
     setKnownNotes(names) {

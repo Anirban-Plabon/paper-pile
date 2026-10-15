@@ -232,7 +232,8 @@ paper-pile --serve [path] [--port 8080]   # web mode, 127.0.0.1 only, prints URL
 - Trigger: typing `/` at line start or after whitespace. Not inside code blocks/inline code, not in URLs.
 - Notion-style popup at the caret: search field placeholder "Type to search", grouped sections, icon + label + optional subtitle/badge + right-aligned markdown hint, footer "Close menu · esc".
 - Fuzzy filter on name + aliases; empty groups hidden; recently used float to top (top 5, persisted).
-- Keys: ↑/↓, Enter apply, Esc close (keeps literal `/`), Backspace past `/` closes.
+- Keys: ↑/↓ (wrap), PageUp/Down, Enter or Tab apply, Esc close (keeps the literal `/`, does not reopen), Backspace past `/` closes; it also closes when the caret leaves the line, on blur/tab switch, and on a space after "No results". Applying is one undo step (Ctrl+Z restores the typed `/query`).
+- **Implemented (P4.2):** the menu is a CM6 tooltip (`tools/editor_src/slash.js`); the editor sends `slash_query`, Python answers with `groups_json`; on pick the editor sends `slash_run`, Python runs the command, turns its action into an exact edit (`core/command_actions.py`) and the editor applies it (`applyChanges`). Phase-1 *Basic blocks* commands live in `core/commands_builtin.py`.
 - Registry lives in `core/commands.py`:
 
 ```python

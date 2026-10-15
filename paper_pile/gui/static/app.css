@@ -182,3 +182,24 @@ html, body { overflow: hidden; }
 .pp-backlink-title { font-size: 13px; font-weight: 500; }
 .pp-backlink-path { font-size: 11px; margin-left: 8px; }
 .pp-backlink-snippet { font-size: 12px; opacity: .75; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
+
+/* slash menu (P4.2): a CM6 tooltip inside .pp-editor, so .pp-dark applies */
+.cm-tooltip.pp-slash-tooltip { border: none; background: transparent; z-index: 3000; }
+.pp-slash { width: 320px; display: flex; flex-direction: column; background: var(--pp-bg); color: var(--pp-fg); border: 1px solid var(--pp-border); border-radius: 8px; box-shadow: 0 8px 28px rgba(0, 0, 0, .2); font-family: Roboto, system-ui, sans-serif; font-size: 13px; overflow: hidden; }
+.pp-slash-header { padding: 8px 12px; border-bottom: 1px solid var(--pp-border); min-height: 18px; }
+.pp-slash-placeholder { color: var(--pp-muted); }
+.pp-slash-query { font-weight: 500; }
+.pp-slash-body { max-height: 340px; overflow-y: auto; padding: 4px; }
+.pp-slash-group { padding: 8px 8px 4px; font-size: 11px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; color: var(--pp-muted); }
+.pp-slash-item { display: flex; align-items: center; gap: 10px; padding: 5px 8px; border-radius: 6px; cursor: pointer; }
+.pp-slash-selected { background: rgba(59, 130, 246, .14); }
+.pp-slash-icon { width: 28px; height: 28px; flex: none; display: inline-flex; align-items: center; justify-content: center; border: 1px solid var(--pp-border); border-radius: 6px; background: var(--pp-bg-side); font-size: 18px; color: var(--pp-muted); }
+.pp-slash-text { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; }
+.pp-slash-title { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pp-slash-subtitle { font-size: 11px; color: var(--pp-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pp-slash-badge { flex: none; padding: 1px 6px; border-radius: 10px; font-size: 10px; background: rgba(59, 130, 246, .16); color: #2563eb; }
+.pp-slash-hint { flex: none; font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 12px; color: var(--pp-muted); }
+.pp-slash-empty { padding: 14px 10px; color: var(--pp-muted); }
+.pp-slash-footer { display: flex; align-items: center; gap: 6px; padding: 6px 12px; border-top: 1px solid var(--pp-border); font-size: 11px; color: var(--pp-muted); }
+.pp-slash-footer kbd { font-family: inherit; padding: 0 4px; border: 1px solid var(--pp-border); border-radius: 4px; }
+.pp-editor.pp-dark .pp-slash-badge { color: #93b4ff; }

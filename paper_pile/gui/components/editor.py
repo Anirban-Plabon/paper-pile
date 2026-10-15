@@ -2,8 +2,9 @@
 
 The browser owns the buffer. Python sets text or inserts at the cursor through explicit
 method calls (never reactive props, so a server push cannot clobber typing) and receives
-``change`` / ``blur`` / ``save`` / ``slash`` / ``paste`` events. Events about the text carry the
-``docId`` given to the last :meth:`set_text`, so a late event from an old note is detectable.
+``change`` / ``blur`` / ``save`` / ``slash_query`` / ``slash_run`` / ``paste`` events. Events
+about the text carry the ``docId`` given to the last :meth:`set_text`, so a late event from an
+old note is detectable.
 """
 
 from collections.abc import Callable
@@ -33,7 +34,8 @@ class Editor(
         on_change: Handler | None = None,
         on_blur: Handler | None = None,
         on_save: Handler | None = None,
-        on_slash: Handler | None = None,
+        on_slash_query: Handler | None = None,
+        on_slash_run: Handler | None = None,
         on_link: Handler | None = None,
         on_wikilink: Handler | None = None,
         on_paste: Handler | None = None,
@@ -50,8 +52,10 @@ class Editor(
             self.on("blur", on_blur)
         if on_save:
             self.on("save", on_save)
-        if on_slash:
-            self.on("slash", on_slash)
+        if on_slash_query:
+            self.on("slash_query", on_slash_query)
+        if on_slash_run:
+            self.on("slash_run", on_slash_run)
         if on_link:
             self.on("link", on_link)
         if on_wikilink:
@@ -87,14 +91,24 @@ class Editor(
         self.run_method("closeDoc", doc_id)
 
     async def apply_changes(
-        self, doc_id: int, changes: list[dict[str, int | str]], expected: str
+        self,
+        doc_id: int,
+        changes: list[dict[str, int | str]],
+        expected: str,
+        cursor: int | None = None,
     ) -> bool:
-        """Apply text edits to tab ``doc_id`` keeping its undo history. ``False`` means the tab
-        no longer held ``expected`` (or the browser did not answer) and nothing was changed."""
+        """Apply text edits to tab ``doc_id`` keeping its undo history, as one undo step.
+        ``cursor`` (a JavaScript offset in the text after the edits) moves the caret. ``False``
+        means the tab no longer held ``expected`` (or the browser did not answer): nothing
+        changed."""
         try:
-            return bool(await self.run_method("applyChanges", doc_id, changes, expected))
+            return bool(await self.run_method("applyChanges", doc_id, changes, expected, cursor))
         except TimeoutError:
             return False
+
+    def set_slash_results(self, seq: int, groups: list[dict[str, Any]]) -> None:
+        """The commands matching query number ``seq`` (see ``groups_json``)."""
+        self.run_method("setSlashResults", seq, groups)
 
     def set_known_notes(self, names: list[str]) -> None:
         """Names wikilinks may use for existing notes; other links get the "missing" look."""
