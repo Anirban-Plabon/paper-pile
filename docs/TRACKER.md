@@ -67,7 +67,7 @@ Legend: 🧠 = needs Opus (see PLAN §6 model guidance) · ⬜ todo · 🔄 in p
 |---|---|---|---|
 | P5.1 | assets.py + lifecycle | ✅ | `core/assets.py`; Vault rename/move/duplicate/delete take a note's images along |
 | P5.2 | Paste / drop / picker | ✅ | paste, drop and `/image` upload through `/_pp/upload`; orphan sweep on tab close |
-| P5.3 | Drag-resize | ⬜ | |
+| P5.3 | Drag-resize | 🔄 | |
 | P5.4 | Tree hide + vault-op integration | ⬜ | |
 
 ### P6 — Smart Paste

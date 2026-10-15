@@ -133,6 +133,7 @@ export function renderInline(state, cell) {
   return frag;
 }
 
+const MIN_IMAGE_WIDTH = 20;
 const REMOTE = /^([a-zA-Z][a-zA-Z0-9+.-]*:|\/\/)/;
 
 // `![alt|300](.note.assets/x.png)`. Only vault images are loaded (through Python's /_pp/asset
@@ -173,10 +174,42 @@ export class ImageWidget extends WidgetType {
       view.requestMeasure();
     });
     wrap.appendChild(img);
+    wrap.appendChild(this.handle(wrap, img, view));
     return wrap;
   }
-  ignoreEvent() {
-    return false;
+  // Drag the bottom-right corner to resize; only the `|width` number in the source changes
+  // (Python makes the edit: `image_resize`).
+  handle(wrap, img, view) {
+    const handle = document.createElement("span");
+    handle.className = "pp-image-handle";
+    handle.title = "Drag to resize";
+    handle.addEventListener("mousedown", (e) => {
+      if (e.button !== 0) return;
+      e.preventDefault();
+      e.stopPropagation();
+      const startX = e.clientX;
+      const startWidth = img.getBoundingClientRect().width;
+      const limit = Math.max(MIN_IMAGE_WIDTH, view.contentDOM.clientWidth - 24);
+      const widthAt = (x) => Math.round(Math.max(MIN_IMAGE_WIDTH, Math.min(limit, startWidth + x - startX)));
+      wrap.classList.add("pp-image-resizing");
+      const move = (ev) => {
+        img.style.width = `${widthAt(ev.clientX)}px`;
+      };
+      const up = (ev) => {
+        document.removeEventListener("mousemove", move, true);
+        document.removeEventListener("mouseup", up, true);
+        wrap.classList.remove("pp-image-resizing");
+        const width = widthAt(ev.clientX);
+        if (Math.abs(width - startWidth) < 2) return;
+        editorContext.emit("image_resize", { docId: editorContext.getDocId(), from: view.posAtDOM(wrap), width });
+      };
+      document.addEventListener("mousemove", move, true);
+      document.addEventListener("mouseup", up, true);
+    });
+    return handle;
+  }
+  ignoreEvent(event) {
+    return !!(event && event.target && event.target.closest && event.target.closest(".pp-image-handle"));
   }
 }
 

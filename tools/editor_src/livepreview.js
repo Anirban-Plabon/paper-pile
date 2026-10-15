@@ -231,7 +231,7 @@ const handlers = {
     const url = n.getChild("URL");
     if (marks.length < 3 || !url || touches(cx.state, node.from, node.to)) return;
     const altRaw = cx.doc.sliceString(marks[0].to, marks[1].from);
-    const sized = /^(.*?)\|(\d+)$/.exec(altRaw);
+    const sized = /^(.*?)\|\s*(\d+)\s*$/.exec(altRaw);
     const widget = new ImageWidget(cx.doc.sliceString(url.from, url.to), sized ? sized[1] : altRaw, sized ? Number(sized[2]) : null);
     cx.out.push(Decoration.replace({ widget }).range(node.from, node.to));
   },

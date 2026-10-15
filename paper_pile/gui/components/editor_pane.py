@@ -149,6 +149,7 @@ class EditorPane:
                     on_image_error=lambda e: self._toast(
                         str(e.args.get("message", "")), error=True
                     ),
+                    on_image_resize=lambda e: self._spawn(self._on_image_resize(e.args)),
                     image_upload_url="/_pp/upload",
                     on_change=lambda e: self._on_change(e.args),
                     on_blur=lambda e: self._on_flush(e.args),
@@ -486,6 +487,21 @@ class EditorPane:
         self._editor.insert_at_cursor(
             assets.image_markdown(ref, width if isinstance(width, int) else None)
         )
+
+    async def _on_image_resize(self, args: dict[str, Any]) -> None:
+        """The user dragged an image's corner: rewrite only the ``|width`` in its markdown."""
+        tab_id = self.tabs.active
+        if tab_id is None or args.get("docId") != tab_id:
+            return
+        text = await self._editor.get_text()
+        if text is None:
+            return
+        start = codepoint_index(text, int(args["from"]))
+        change = assets.set_width_edit(text, start, int(args["width"]))
+        if change is None:
+            return
+        edit = TextEdit((TextChange(change.start, change.end, change.insert),), change.start)
+        await self._apply_edit(tab_id, text, edit, move_caret=False)
 
     async def _on_table_op(self, args: dict[str, Any]) -> None:
         """The user edited a table (typed in a cell, added a row, ...): Python decides what the

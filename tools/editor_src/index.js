@@ -46,6 +46,8 @@ export function createEditor(
   { doc = "", mode = "live", theme = "light", emit = () => {}, imageUploadUrl = null, linkTarget = "python" } = {},
 ) {
   tablesRuntime({ emit, getDocId: () => docId });
+  editorContext.emit = emit;
+  editorContext.getDocId = () => docId;
   const modeSlot = new Compartment();
   const themeSlot = new Compartment();
   const modeExt = (m) => (m === "live" ? [livePreview, blocks, tableKeys] : []);

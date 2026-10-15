@@ -232,3 +232,9 @@ html, body { overflow: hidden; }
 .pp-tmenu-item:hover { background: rgba(59, 130, 246, .14); }
 .pp-tmenu-sep { height: 1px; margin: 4px 2px; background: var(--pp-border); }
 .pp-table-edit th { text-align: left; }
+
+/* image resize handle (P5.3) */
+.pp-image { position: relative; }
+.pp-image-handle { position: absolute; right: 2px; bottom: 6px; width: 14px; height: 14px; border-radius: 3px; background: rgba(59, 130, 246, .9); border: 2px solid #fff; box-sizing: border-box; cursor: nwse-resize; opacity: 0; transition: opacity .12s; }
+.pp-image:hover .pp-image-handle, .pp-image-resizing .pp-image-handle { opacity: 1; }
+.pp-image-resizing img { outline: 2px solid rgba(59, 130, 246, .6); }

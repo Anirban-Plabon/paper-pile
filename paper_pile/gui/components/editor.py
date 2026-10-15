@@ -39,6 +39,7 @@ class Editor(
         on_table_op: Handler | None = None,
         on_image_saved: Handler | None = None,
         on_image_error: Handler | None = None,
+        on_image_resize: Handler | None = None,
         on_link: Handler | None = None,
         on_wikilink: Handler | None = None,
         on_paste: Handler | None = None,
@@ -65,6 +66,8 @@ class Editor(
             self.on("image_saved", on_image_saved)
         if on_image_error:
             self.on("image_error", on_image_error)
+        if on_image_resize:
+            self.on("image_resize", on_image_resize)
         if on_link:
             self.on("link", on_link)
         if on_wikilink:
