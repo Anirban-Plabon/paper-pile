@@ -330,11 +330,17 @@ class Vault:
             raise NotFoundError(f"folder does not exist: {self._rel(d.parent)!r}")
         if s.is_dir() and d.resolve().is_relative_to(s.resolve()):
             raise InvalidPathError("cannot move a folder into itself")
+        was_note, old_rel = s.is_file(), self._rel(s)
         s.rename(d)
+        if was_note:
+            from paper_pile.core import assets
+
+            assets.move_assets(self, old_rel, self._rel(d))
         return self._rel(d)
 
     def duplicate(self, rel: str | PurePosixPath) -> str:
-        """Copy a note or folder next to itself as ``<name> copy[ N]``. Returns the copy's path."""
+        """Copy a note or folder next to itself as ``<name> copy[ N]``. Returns the copy's path.
+        A note's images go with it (its own copy of the assets folder)."""
         src = self.resolve(rel)
         if not src.exists():
             raise NotFoundError(f"no such path: {rel!r}")
@@ -343,21 +349,37 @@ class Vault:
             shutil.copytree(src, dst, symlinks=True)
         else:
             shutil.copy2(src, dst)
+            from paper_pile.core import assets
+
+            assets.duplicate_assets(self, self._rel(src), self._rel(dst))
         return self._rel(dst)
 
-    def delete(self, rel: str | PurePosixPath) -> str:
-        """Move a note or folder to ``.trash/<timestamp>/<original path>``. Returns that path."""
-        src = self.resolve(rel)
-        if not src.exists() and not src.is_symlink():
-            raise NotFoundError(f"no such path: {rel!r}")
-        relpath = self._rel(src)
-        stamp = datetime.now().strftime("%Y-%m-%dT%H-%M-%S-%f")
+    def trash_move(self, src: Path, relpath: str, stamp: str | None = None) -> str:
+        """Move ``src`` to ``.trash/<stamp>/<relpath>`` (nothing is ever unlinked); returns the
+        vault-relative trash path. Callers moving several things at once share one ``stamp``."""
+        stamp = stamp or datetime.now().strftime("%Y-%m-%dT%H-%M-%S-%f")
         dst = self.root / TRASH_DIR / stamp / relpath
         while dst.exists():  # same-microsecond collision: effectively never, but never overwrite
             dst = dst.with_name(dst.name + "_")
         dst.parent.mkdir(parents=True, exist_ok=True)
         src.rename(dst)
         return self._rel(dst)
+
+    def delete(self, rel: str | PurePosixPath) -> str:
+        """Move a note or folder to ``.trash/<timestamp>/<original path>``. Returns that path.
+        A note's images go to the trash with it."""
+        src = self.resolve(rel)
+        if not src.exists() and not src.is_symlink():
+            raise NotFoundError(f"no such path: {rel!r}")
+        relpath = self._rel(src)
+        stamp = datetime.now().strftime("%Y-%m-%dT%H-%M-%S-%f")
+        is_note = src.is_file()
+        trashed = self.trash_move(src, relpath, stamp)
+        if is_note:
+            from paper_pile.core import assets
+
+            assets.trash_assets(self, relpath, stamp)
+        return trashed
 
 
 def _free_copy_name(src: Path) -> Path:

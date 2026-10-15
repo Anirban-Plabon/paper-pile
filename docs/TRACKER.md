@@ -7,7 +7,7 @@ Legend: 🧠 = needs Opus (see PLAN §6 model guidance) · ⬜ todo · 🔄 in p
 
 ## Current focus
 - **Phase:** P4 — Slash menu
-- **Task:** P5.1 next (**P4 complete incl. P4.4**; **P3 complete**; **phases P0, P1 and P2 complete**)
+- **Task:** P5 images (P5.1 🔄 → P5.4) (**P4 complete incl. P4.4**; **P3 complete**; **phases P0, P1 and P2 complete**)
 - **Next up:** P5 images (P5.1 → P5.4), then P6 Smart Paste
 
 ## Open issues
@@ -65,7 +65,7 @@ Legend: 🧠 = needs Opus (see PLAN §6 model guidance) · ⬜ todo · 🔄 in p
 ### P5 — Images
 | ID | Task | Status | Notes |
 |---|---|---|---|
-| P5.1 | assets.py + lifecycle | ⬜ | |
+| P5.1 | assets.py + lifecycle | ✅ | `core/assets.py`; Vault rename/move/duplicate/delete take a note's images along |
 | P5.2 | Paste / drop / picker | ⬜ | |
 | P5.3 | Drag-resize | ⬜ | |
 | P5.4 | Tree hide + vault-op integration | ⬜ | |
@@ -189,6 +189,7 @@ Legend: 🧠 = needs Opus (see PLAN §6 model guidance) · ⬜ todo · 🔄 in p
 | 2026-10-15 | Tables while editing (user report: raw source looked broken): the table still reveals its markdown source when the caret is inside, but now a live rendered preview is shown above it (dashed separator) and updates as you type; empty cells keep their row height. In-cell editing of the rendered table remains out of scope (source is the editing surface); auto-aligning the source columns is not done | The raw ragged pipes were the only feedback while editing | user/claude |
 | 2026-10-15 | **Requirement change (user):** tables are edited directly in the rendered cells, not in the markdown source (supersedes the P2.4 decision "tables edited in source" and the interim live-preview fix). Added task P4.4. Design: all table rules in Python `core/tables.py` (parse/escape/format/ops); the widget (`tablewidget.js`) swaps a focused cell for an `<input>` showing its raw value, sends `table_op` events, and patches its DOM in place; the file text stays the single source of truth and is rewritten as a tidy aligned GFM table on each edit; source reveal stays as an escape hatch (caret arrowing into the table, Source mode) | User: "Editing directly in the rendered cells… need this." | user |
 | 2026-10-15 | P4.4 as built: every table rule is in `core/tables.py` (`parse_table`, `format_table` with display-width padding, `apply_op` for cell/insert_row/delete_row/move_row/insert_col/delete_col/align, `table_extent`). The widget (`tablewidget.js`) shows rendered cells; a focused cell becomes an `<input>` with its raw value (commit on Tab/Enter/blur/600 ms idle); keys: Tab/Shift+Tab, Enter, arrows (also from the text above/below into the table), Esc leaves, Ctrl+Z/Y; "+" strips and a right-click menu add/delete/move rows, add/delete columns, set alignment. Each edit sends only the table's START offset (`table_op {docId, from, op}`) and Python measures the table itself, because a length measured in the browser is stale as soon as an earlier edit is applied (found by fast-typing test); ops are serialised by an asyncio lock; a new last row is added optimistically in the DOM so fast typing never lands in the wrong cell, and `updateDOM` keeps unconfirmed rows for up to 4 s. The table is rewritten as tidy aligned GFM on every edit; `/table` now creates an already-tidy table and focuses its first body cell (`Insert.focus_cell`). Source markdown is visible in Source mode (Ctrl+E) or when the document caret is placed in the table (then the read-only preview is shown above it). Limits: single-line cells, no drag-and-drop | Typing in rendered cells without ever corrupting the note | claude |
+| 2026-10-15 | P5.1 assets: images are stored under `<dir>/.<stem>.assets/<12 hex of SHA-256>.<ext>`; the extension is the one the bytes really have (content sniffing: png, jpg, gif, webp, bmp, avif, svg), so a mislabelled or non-image file is refused; 25 MB cap; same picture twice = one file; default display width = natural width capped at 640 (read from the file header, no image library); references are plain markdown `![image\|W](.stem.assets/x.png)` with percent-encoding for spaces/unicode. Lifecycle is done by `Vault` ops (rename/move: folder follows, merge if it exists; delete: folder goes to the same `.trash/<stamp>/`; duplicate: own copy of the folder and the copy's references rewritten); the **references inside a renamed note** are rewritten by the P3.5 pipeline (`plan_rewrites` now also calls `assets.plan_ref_edits` for moved notes, so open notes are edited through the editor and stay undoable). **Deviation from PLAN §4.9:** the orphan sweep runs when a note is *closed* (and by explicit call), not on every save, because an image whose reference was just deleted must still be there when the user presses Ctrl+Z | Safety of user data (rule 4) | claude |
 
 ## Issues log
 <!-- YYYY-MM-DD · task · symptom → root cause → fix · (gotcha added? y/n) -->
@@ -255,3 +256,4 @@ Legend: 🧠 = needs Opus (see PLAN §6 model guidance) · ⬜ todo · 🔄 in p
 - 2026-10-15 · P4.3 · remaining non-AI slash commands + note/template picker (picker.py, templates.py, links.wikilink_to); 511 tests; 23 new browser checks (p43); **phase P4 complete**
 - 2026-10-15 · fix · live rendered table preview above the source while editing a table (blocks.js, app.css); 5 browser checks (tb)
 - 2026-10-15 · P4.4 · editable table cells: core/tables.py (ops, tidy formatting, table_extent), tablewidget.js (in-cell editing, keys, menu, + strips, optimistic rows), EditorPane._on_table_op; 555 tests; 28 + 5 browser checks (tc, tc5)
+- 2026-10-15 · P5.1 · core/assets.py (save, sniff, size, references, sweep, move/duplicate/trash, ref rewrite, width edit) + Vault integration + parser image_spans; 581 tests

@@ -94,11 +94,16 @@ def _plan_note(
     old_set: set[str],
     new_set: set[str],
 ) -> tuple[list[Edit], int]:
+    edits: list[Edit] = []
+    if src_old != src_new:
+        # the note's images folder is named after the note: a rename changes the paths
+        from paper_pile.core.assets import plan_ref_edits
+
+        edits.extend(plan_ref_edits(text, src_old, src_new))
     spans = link_spans(text)
     if not spans:
-        return [], 0
-    starts = _locate(text, spans)
-    edits: list[Edit] = []
+        return edits, 0
+    starts = locate_spans(text, spans)
     skipped = 0
     for span, start in zip(spans, starts, strict=True):
         wanted = _wanted_target(span, src_old, src_new, moves, old_set, new_set)
@@ -142,7 +147,7 @@ def _wanted_target(
 # ---- where a link is in the file -----------------------------------------------------------
 
 
-def _locate(text: str, spans: list[LinkSpan]) -> list[int | None]:
+def locate_spans(text: str, spans: list[LinkSpan]) -> list[int | None]:
     """Absolute offset of each link's source text in ``text``, or ``None`` when not certain.
 
     Per line, links are matched to the textual occurrences of their source in order if the counts
@@ -220,7 +225,7 @@ def _wiki_edit(
 
 
 def _md_edit(span: LinkSpan, start: int, src_new: str, target: str) -> Edit | None:
-    dest = _scan_destination(span.source)
+    dest = scan_destination(span.source)
     if dest is None:
         return None
     d_start, d_end, angle = dest
@@ -240,7 +245,7 @@ def _md_edit(span: LinkSpan, start: int, src_new: str, target: str) -> Edit | No
     return Edit(start + d_start, start + d_end, new + suffix)
 
 
-def _scan_destination(source: str) -> tuple[int, int, bool] | None:
+def scan_destination(source: str) -> tuple[int, int, bool] | None:
     """Where the destination of an inline link ``[label](dest "title")`` sits in ``source``:
     ``(start, end, in_angle_brackets)``, or ``None`` if the link has no inline destination."""
     i, depth = 1, 1

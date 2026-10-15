@@ -32,6 +32,7 @@ from markdown_it.common.utils import escapeHtml
 from markdown_it.renderer import RendererProtocol
 from markdown_it.rules_block import StateBlock
 from markdown_it.rules_inline import StateInline
+from markdown_it.rules_inline.image import image as _image_rule
 from markdown_it.rules_inline.link import link as _link_rule
 from markdown_it.token import Token
 from markdown_it.utils import EnvType, OptionsDict
@@ -64,6 +65,7 @@ def make_parser(*, breaks: bool = True) -> MarkdownIt:
     md.block.ruler.before("table", "front_matter", _front_matter_rule)
     md.inline.ruler.before("link", "wikilink", _wikilink_rule)
     md.inline.ruler.at("link", _located_link_rule)
+    md.inline.ruler.at("image", _located_image_rule)
     md.add_render_rule("wikilink", _render_wikilink)
     # let a `$$` block start right after a paragraph line (the plugin's own registration cannot)
     md.block.ruler.at("math_block", _interrupting_math_block(), {"alt": _PARAGRAPH_LIKE})
@@ -110,6 +112,18 @@ def _located_link_rule(state: StateInline, silent: bool) -> bool:
     if matched and not silent:
         for tok in state.tokens[mark:]:
             if tok.type == "link_open":
+                tok.meta = {"pos": start, "source": state.src[start : state.pos]}
+                break
+    return matched
+
+
+def _located_image_rule(state: StateInline, silent: bool) -> bool:
+    """markdown-it's ``image`` rule, remembering where the image sits in the inline text."""
+    start, mark = state.pos, len(state.tokens)
+    matched = _image_rule(state, silent)
+    if matched and not silent:
+        for tok in state.tokens[mark:]:
+            if tok.type == "image":
                 tok.meta = {"pos": start, "source": state.src[start : state.pos]}
                 break
     return matched
@@ -341,6 +355,34 @@ def link_spans(text: str) -> list[LinkSpan]:
                     raw,
                     first + content.count("\n", 0, pos),
                     source,
+                    pos - line_start,
+                    content[line_start : line_end if line_end >= 0 else len(content)],
+                )
+            )
+    return found
+
+
+def image_spans(text: str) -> list[LinkSpan]:
+    """Every ``![alt](src)`` image in ``text`` (``raw`` is its normalised ``src``), in order."""
+    found: list[LinkSpan] = []
+    for tok in _PARSER.parse(text):
+        if tok.type != "inline" or not tok.children:
+            continue
+        first = (tok.map[0] + 1) if tok.map else 1
+        content = tok.content
+        for child in tok.children:
+            meta = child.meta or {}
+            if child.type != "image" or "source" not in meta:
+                continue
+            pos = int(meta["pos"])
+            line_start = content.rfind("\n", 0, pos) + 1
+            line_end = content.find("\n", pos)
+            found.append(
+                LinkSpan(
+                    "image",
+                    str(child.attrGet("src") or ""),
+                    first + content.count("\n", 0, pos),
+                    str(meta["source"]),
                     pos - line_start,
                     content[line_start : line_end if line_end >= 0 else len(content)],
                 )
