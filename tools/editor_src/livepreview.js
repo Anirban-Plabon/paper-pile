@@ -215,8 +215,11 @@ const handlers = {
     const known = editorContext.known;
     const missing = known && target.note && !known.has(normNote(target.note));
     const cls = missing ? "pp-wikilink pp-wikilink-missing" : "pp-wikilink";
+    const editing = touches(cx.state, node.from, node.to);
+    // a link that is not being edited opens its note on a plain click (like a link on a web page)
+    if (!editing) attributes["data-wiki-open"] = "1";
     cx.out.push(Decoration.mark({ class: cls, attributes }).range(shownFrom, node.to - 2));
-    if (touches(cx.state, node.from, node.to)) return;
+    if (editing) return;
     cx.out.push(hide.range(node.from, shownFrom));
     cx.out.push(hide.range(node.to - 2, node.to));
   },

@@ -188,12 +188,15 @@ export function createEditor(
               uploadAll(files);
               return true;
             },
-            // Ctrl/Cmd+click on a link opens it; a plain click only places the caret (to edit it).
+            // Ctrl/Cmd+click on any link opens it. A plain click opens a note link that is not being edited
+            // (a web link's plain click only places the caret, to edit it).
             // This must be `mousedown`, not `click`: CodeMirror's own Ctrl+click handling adds a
             // selection, which un-hides the link's syntax and rebuilds its DOM before `click` fires.
             mousedown: (e) => {
-              if (!(e.ctrlKey || e.metaKey)) return false;
+              const ctrl = e.ctrlKey || e.metaKey;
               const wiki = e.target.closest ? e.target.closest("[data-wiki-note]") : null;
+              if (wiki && !ctrl && (e.button !== 0 || !wiki.hasAttribute("data-wiki-open"))) return false;
+              if (!ctrl && !wiki) return false;
               if (wiki) {
                 e.preventDefault();
                 emit("wikilink", {

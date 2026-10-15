@@ -88,6 +88,7 @@ html, body { overflow: hidden; }
 .pp-link { color: #2563eb; text-decoration: underline; text-decoration-color: rgba(37, 99, 235, .4); text-underline-offset: 2px; }
 .pp-ctrl .pp-link[data-href] { cursor: pointer; }
 .pp-wikilink { color: #7c3aed; text-decoration: underline; text-decoration-color: rgba(124, 58, 237, .4); text-underline-offset: 2px; }
+.pp-wikilink[data-wiki-open] { cursor: pointer; }
 .pp-ctrl .pp-wikilink[data-wiki-note] { cursor: pointer; }
 .pp-wikilink-missing { color: #b45309; text-decoration-style: dashed; text-decoration-color: rgba(180, 83, 9, .6); }
 .pp-image { display: inline-block; max-width: 100%; vertical-align: middle; }
@@ -244,3 +245,19 @@ html, body { overflow: hidden; }
 .pp-image-handle { position: absolute; right: 2px; bottom: 6px; width: 14px; height: 14px; border-radius: 3px; background: rgba(59, 130, 246, .9); border: 2px solid #fff; box-sizing: border-box; cursor: nwse-resize; opacity: 0; transition: opacity .12s; }
 .pp-image:hover .pp-image-handle, .pp-image-resizing .pp-image-handle { opacity: 1; }
 .pp-image-resizing img { outline: 2px solid rgba(59, 130, 246, .6); }
+
+/* embedded note: ![[note]] alone on a line */
+.pp-embed { margin: 6px 6px; border: 1px solid var(--pp-border); border-left: 3px solid #7c3aed; border-radius: 6px; background: var(--pp-bg-side); cursor: pointer; max-height: 340px; overflow-y: auto; }
+.pp-embed:hover { border-color: #7c3aed; }
+.pp-embed-title { padding: 5px 12px; font-size: 11px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; color: var(--pp-muted); border-bottom: 1px solid var(--pp-border); position: sticky; top: 0; background: var(--pp-bg-side); }
+.pp-embed-body { padding: 4px 12px 8px; font-size: .95em; line-height: 1.5; }
+.pp-embed-body h1, .pp-embed-body h2, .pp-embed-body h3 { margin: .6em 0 .3em; font-size: 1.2em; }
+.pp-embed-body p { margin: .4em 0; }
+.pp-embed-body ul, .pp-embed-body ol { margin: .3em 0; padding-left: 1.5em; }
+.pp-embed-body img { max-width: 100%; }
+.pp-embed-body a { color: inherit; text-decoration: underline; pointer-events: none; }
+.pp-embed-body a.wikilink { color: #7c3aed; pointer-events: auto; }
+.pp-embed-body blockquote { margin: .4em 0; padding-left: 10px; border-left: 3px solid var(--pp-border); color: var(--pp-muted); }
+.pp-embed-body pre, .pp-embed-body code { background: var(--pp-code-bg, #f3f4f6); border-radius: 4px; }
+.pp-embed-body pre { padding: 6px 10px; overflow-x: auto; }
+.pp-embed-missing .pp-embed-body { color: #b45309; }

@@ -6,7 +6,9 @@ import { Facet, StateField } from "@codemirror/state";
 import { Decoration, EditorView, WidgetType } from "@codemirror/view";
 import katex from "katex";
 import { touches } from "./reveal.js";
+import { EmbedWidget } from "./embedwidget.js";
 import { TablePreview, TableWidget } from "./tablewidget.js";
+import { parseWikilink } from "./wikilink.js";
 
 export const themeFacet = Facet.define({ combine: (v) => v[0] ?? "light" });
 
@@ -166,6 +168,14 @@ function candidates(state) {
   const tree = ensureSyntaxTree(state, doc.length, 50) ?? syntaxTree(state);
   tree.iterate({
     enter(node) {
+      if (node.name === "Paragraph") {
+        // a paragraph that is just `![[note]]` is an embed: the note's content, not a link
+        const line = doc.lineAt(node.from);
+        const m = line.to === node.to ? /^!\[\[([^\[\]\n]+)\]\]$/.exec(line.text.trim()) : null;
+        const target = m ? parseWikilink(m[1]) : null;
+        if (target && target.note) push(node, new EmbedWidget(target.note, target.heading));
+        return false;
+      }
       if (isInlineOnly(node.name)) return false;
       if (node.name === "Table") {
         const src = doc.sliceString(node.from, node.to);

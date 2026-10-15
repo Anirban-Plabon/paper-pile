@@ -6,6 +6,7 @@
 // heading. Code spans / fences are consumed by other rules first, so they never reach this one.
 import { tags as t } from "@lezer/highlight";
 
+const BANG = 33; // !
 const OPEN = 91; // [
 const CLOSE = 93; // ]
 const NEWLINE = 10;
@@ -21,6 +22,22 @@ export function parseWikilink(inner) {
   return note || heading ? { note, heading, alias } : null;
 }
 
+// `[[...]]` starting at `pos`: the end of the link, or -1
+function parseLink(cx, pos) {
+  if (cx.char(pos) !== OPEN || cx.char(pos + 1) !== OPEN) return -1;
+  for (let i = pos + 2; i < cx.end; i++) {
+    const c = cx.char(i);
+    if (c === NEWLINE || c === OPEN) return -1;
+    if (c !== CLOSE) continue;
+    if (cx.char(i + 1) !== CLOSE) return -1;
+    if (!parseWikilink(cx.slice(pos + 2, i))) return -1;
+    return cx.addElement(
+      cx.elt("WikiLink", pos, i + 2, [cx.elt("WikiLinkMark", pos, pos + 2), cx.elt("WikiLinkMark", i, i + 2)]),
+    );
+  }
+  return -1;
+}
+
 export const WikiLinkExt = {
   defineNodes: [
     { name: "WikiLink", style: t.link },
@@ -31,21 +48,12 @@ export const WikiLinkExt = {
       name: "WikiLink",
       before: "Link",
       parse(cx, next, pos) {
-        if (next !== OPEN || cx.char(pos + 1) !== OPEN) return -1;
-        for (let i = pos + 2; i < cx.end; i++) {
-          const c = cx.char(i);
-          if (c === NEWLINE || c === OPEN) return -1;
-          if (c !== CLOSE) continue;
-          if (cx.char(i + 1) !== CLOSE) return -1;
-          if (!parseWikilink(cx.slice(pos + 2, i))) return -1;
-          return cx.addElement(
-            cx.elt("WikiLink", pos, i + 2, [
-              cx.elt("WikiLinkMark", pos, pos + 2),
-              cx.elt("WikiLinkMark", i, i + 2),
-            ]),
-          );
+        // `![[note]]` (an embed): the `!` stays plain text, but the markdown Image rule must not
+        // get to swallow `![`, so the link is claimed here, one character later
+        if (next === BANG && cx.char(pos + 1) === OPEN && cx.char(pos + 2) === OPEN) {
+          return parseLink(cx, pos + 1);
         }
-        return -1;
+        return next === OPEN ? parseLink(cx, pos) : -1;
       },
     },
   ],

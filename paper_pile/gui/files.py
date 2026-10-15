@@ -11,7 +11,7 @@ from pathlib import Path
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import FileResponse, JSONResponse
 
-from paper_pile.core import assets
+from paper_pile.core import assets, embed
 from paper_pile.core.vault import Vault, VaultError
 
 UPLOAD_HEADER = "x-pp-upload"  # a custom header: a cross-site form post cannot set it
@@ -44,6 +44,24 @@ def make_asset_router(vault: Vault) -> APIRouter:
         except VaultError as exc:
             raise HTTPException(status_code=404, detail="not found") from exc
         return FileResponse(target, media_type=_media_type(target), headers=_headers(target))
+
+    @router.get("/_pp/embed")
+    def embedded(note: str, target: str, heading: str = "") -> JSONResponse:
+        """The content of ``![[target#heading]]`` written in ``note``, as safe HTML."""
+        try:
+            vault.resolve(note)
+        except VaultError as exc:
+            raise HTTPException(status_code=404, detail="not found") from exc
+        shown = embed.embed(vault, note, target, heading)
+        return JSONResponse(
+            {
+                "path": shown.path,
+                "title": shown.title,
+                "html": shown.html,
+                "message": shown.message,
+            },
+            headers={"Cache-Control": "no-store"},
+        )
 
     @router.post("/_pp/upload")
     async def upload(request: Request, note: str) -> JSONResponse:
