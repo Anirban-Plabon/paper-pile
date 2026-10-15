@@ -371,7 +371,7 @@ class EditorPane:
         end = codepoint_index(text, int(args["to"]))
         if text[start : start + 1] != "/" or end < start:
             return  # the text moved on since the pick
-        ctx = CommandContext(path, text, start, vault=self.vault, config=self._config)
+        ctx = CommandContext(path, text, start, vault=self.vault, config=self._config, end=end)
         try:
             action = REGISTRY.run(str(args["id"]), ctx)
         except UnknownCommandError:

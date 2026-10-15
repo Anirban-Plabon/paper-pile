@@ -13,6 +13,7 @@ import { refreshEffect } from "./reveal.js";
 import { codeLanguages } from "./codelang.js";
 import { editorContext } from "./context.js";
 import { editorExtensions } from "./grammar.js";
+import { listEditing } from "./listedit.js";
 import { closeSlash, setSlashResults, slashExtension } from "./slash.js";
 import { focusTableCell, tableKeys, tablesRuntime } from "./tablewidget.js";
 
@@ -167,7 +168,8 @@ export function createEditor(
     const kind = plain
       ? [EditorView.domEventHandlers({ blur: onBlur })]
       : [
-          markdown({ base: markdownLanguage, extensions: editorExtensions, codeLanguages }),
+          markdown({ base: markdownLanguage, extensions: editorExtensions, codeLanguages, addKeymap: false }),
+          listEditing,
           syntaxHighlighting(sourceStyle),
           syntaxHighlighting(classHighlighter), // `tok-*` classes inside code blocks; colours live in CSS
           modeSlot.of(modeExt(currentMode)),

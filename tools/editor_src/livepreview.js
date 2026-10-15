@@ -55,7 +55,7 @@ const CODE_ONLY = lineDeco("pp-codeblock pp-code-first pp-code-last");
 const FENCE_LINE = lineDeco("pp-fence-line");
 const CODE_LANG = mark("pp-code-lang");
 const QUOTE_LINE = [1, 2, 3].map((n) => lineDeco(`pp-quote pp-quote-${n}`));
-const LIST_GLYPHS = ["\u2022", "\u25E6", "\u25AA"]; // bullet, white bullet, small square by depth
+const LIST_GLYPHS = ["\u2022", "\u25E6", "\u25AA"]; // bullet, white bullet, small square, repeating with depth
 const LIST_NUM = mark("pp-list-num");
 const TASK_DONE = mark("pp-task-done");
 const numberPadded = (pad) => Decoration.mark({ class: "pp-list-num", attributes: { style: `margin-left:${pad}ch` } });
@@ -154,7 +154,7 @@ const handlers = {
         cx.out.push((pad ? numberPadded(pad) : LIST_NUM).range(mark.from, mark.to));
       }
       else if (!box && !raw) {
-        cx.out.push(Decoration.replace({ widget: new BulletWidget(LIST_GLYPHS[Math.min(depth, 2)]) }).range(mark.from, mark.to));
+        cx.out.push(Decoration.replace({ widget: new BulletWidget(LIST_GLYPHS[depth % LIST_GLYPHS.length]) }).range(mark.from, mark.to));
       }
     }
     const own = task ? [task] : item.getChildren("Paragraph");

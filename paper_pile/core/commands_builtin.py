@@ -20,6 +20,8 @@ from paper_pile.core.templates import DATE_FORMAT, TIME_FORMAT
 
 BASIC = "Basic blocks"
 
+_BLOCK_LINES = {"bullet", "numbered", "todo", "quote"}
+
 # (id, title, icon, hint, line prefix, aliases)
 _LINE_BLOCKS = [
     ("text", "Text", "notes", "", "", ("paragraph", "plain")),
@@ -39,7 +41,8 @@ def _line_block(
 ) -> None:
     @command(cid, title, group=BASIC, icon=icon, hint=hint, aliases=aliases)
     def run(ctx: CommandContext) -> Action:
-        return ReplaceLinePrefix(prefix)
+        # lists and quotes get an empty line after them, so they end and can be left
+        return ReplaceLinePrefix(prefix, blank_after=cid in _BLOCK_LINES)
 
 
 for _spec in _LINE_BLOCKS:
@@ -67,10 +70,26 @@ def divider(ctx: CommandContext) -> Action:
 
 def block(ctx: CommandContext, body: str, caret: int | None = None) -> Insert:
     """Insert a multi-line ``body`` as its own block: if the command was typed after other text on
-    the line, the block starts on a fresh line. ``caret`` is an offset into ``body``."""
+    the line, the block starts on a fresh line, and an empty line follows it (unless one does, or
+    the next line is part of the same quote), so the block can be left. ``caret`` is an offset
+    into ``body``."""
     line_start = ctx.text.rfind("\n", 0, ctx.cursor) + 1
     lead = "\n" if ctx.text[line_start : ctx.cursor].strip() else ""
-    return Insert(lead + body, len(lead) + (len(body) if caret is None else caret))
+    rest = ctx.text[ctx.end if ctx.end is not None else ctx.cursor :]
+    first_rest, _, below = rest.partition("\n")
+    following = below.split("\n", 1)[0]
+    gap = ""
+    if body.endswith("\n"):
+        # the block ends its own line; what is left of the typed line comes right after it, and
+        # a line break straight after the block is already the empty line we want
+        gap = "\n" if first_rest.strip() else ""
+    elif not rest:
+        gap = "\n"  # end of the note: leave a line below the block
+    elif not first_rest.strip() and following.strip():
+        same_quote = body.startswith(">") and following.lstrip().startswith(">")
+        gap = "" if same_quote else "\n"
+    text = lead + body + gap
+    return Insert(text, len(lead) + (len(body) if caret is None else caret))
 
 
 @command(

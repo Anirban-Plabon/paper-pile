@@ -19,7 +19,7 @@ def run(command_id: str, text: str, query: str, **kw: object) -> tuple[str, int]
     text and caret."""
     start = len(text)
     full = text + query
-    ctx = CommandContext("a.md", full, start, **kw)  # type: ignore[arg-type]
+    ctx = CommandContext("a.md", full, start, end=len(full), **kw)  # type: ignore[arg-type]
     action = REGISTRY.run(command_id, ctx)
     edit = resolve(action, full, start, len(full))
     assert edit is not None
@@ -78,7 +78,7 @@ def test_table_is_a_valid_tidy_3x3_table() -> None:
 
 def test_callout() -> None:
     text, caret = run("callout", "", "/callout")
-    assert text == "> **Note:** " and caret == len(text)
+    assert text == "> **Note:** \n" and caret == len(text) - 1  # an empty line below to escape to
     html = render_html(text)
     assert "<blockquote>" in html and "<strong>Note:</strong>" in html
 
@@ -154,3 +154,56 @@ def test_template_placeholders() -> None:
     assert out == "# Note\n2026-01-02 03:04 {{other}}"
     assert render_template("plain", title="x", now=now) == "plain"
     assert isinstance(Insert("x"), Insert)
+
+
+# ---- an empty line after lists, quotes and blocks ----------------------------------------------
+
+
+def typed(text: str, query: str) -> tuple[str, int, int]:
+    """``text`` with ``query`` typed where its ``|`` is: (full text, start, end)."""
+    i = text.index("|")
+    full = text[:i] + query + text[i + 1 :]
+    return full, i, i + len(query)
+
+
+def apply_command(command_id: str, template: str, query: str) -> str:
+    full, start, end = typed(template, query)
+    ctx = CommandContext("a.md", full, start, end=end)
+    action = REGISTRY.run(command_id, ctx)
+    edit = resolve(action, full, start, end)
+    assert edit is not None
+    out = full
+    for c in sorted(edit.changes, key=lambda c: c.start, reverse=True):
+        out = out[: c.start] + c.insert + out[c.end :]
+    return out
+
+
+@pytest.mark.parametrize("cid", ["bullet", "numbered", "todo", "quote"])
+def test_list_and_quote_commands_leave_an_empty_line_after(cid: str) -> None:
+    prefix = {"bullet": "- ", "numbered": "1. ", "todo": "- [ ] ", "quote": "> "}[cid]
+    # end of the note: a line below
+    assert apply_command(cid, "|", "/x") == prefix + "\n"
+    # text right below: separated by an empty line, so it is not swallowed
+    assert apply_command(cid, "|\nnext", "/x") == prefix + "\n\nnext"
+    # already an empty line: nothing added
+    assert apply_command(cid, "|\n\nnext", "/x") == prefix + "\n\nnext"
+    # the next line is part of the same kind of block: do not split it
+    assert apply_command(cid, "|\n- more", "/x") == prefix + "\n- more"
+    assert apply_command(cid, "|\n> more", "/x") == prefix + "\n> more"
+    assert apply_command(cid, "|\n   indented", "/x") == prefix + "\n   indented"
+
+
+def test_blocks_leave_an_empty_line_after() -> None:
+    assert apply_command("code", "|", "/c") == "```\n\n```\n"
+    assert apply_command("code", "|\ntext", "/c") == "```\n\n```\n\ntext"
+    assert apply_command("code", "|\n\ntext", "/c") == "```\n\n```\n\n\ntext"  # keeps yours
+    assert apply_command("math", "|\ntext", "/m") == "$$\n\n$$\n\ntext"
+    assert apply_command("table", "|\ntext", "/t").endswith("|\n\ntext")
+    assert apply_command("flowchart", "|\ntext", "/f").endswith("```\n\ntext")
+    assert apply_command("callout", "|", "/c") == "> **Note:** \n"
+    assert apply_command("callout", "|\ntext", "/c") == "> **Note:** \n\ntext"
+    assert apply_command("callout", "|\n> more", "/c") == "> **Note:** \n> more"
+
+
+def test_plain_heading_commands_add_no_extra_line() -> None:
+    assert apply_command("h1", "|\ntext", "/h") == "# \ntext"

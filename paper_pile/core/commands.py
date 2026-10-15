@@ -41,9 +41,12 @@ class Insert:
 
 @dataclass(frozen=True, slots=True)
 class ReplaceLinePrefix:
-    """Make the current line start with ``prefix`` instead of any heading/list/quote marker."""
+    """Make the current line start with ``prefix`` instead of any heading/list/quote marker.
+    ``blank_after``: also make sure an empty line follows (lists, quotes: so the block ends and
+    the next text is not swallowed by it)."""
 
     prefix: str
+    blank_after: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -84,6 +87,7 @@ class CommandContext:
     vault: Vault | None = None
     config: Config | None = None
     ai: Any = None  # the AI provider (P7); commands that need it check for None
+    end: int | None = None  # where the typed ``/query`` ends (``cursor`` is where it starts)
 
     @property
     def selected_text(self) -> str:

@@ -56,13 +56,15 @@ def resolve(action: Action, text: str, start: int, end: int) -> TextEdit | None:
     if isinstance(action, ReplaceSelection):
         return TextEdit((TextChange(start, end, action.text),), start + len(action.text))
     if isinstance(action, ReplaceLinePrefix):
-        return _replace_line_prefix(action.prefix, text, start, end)
+        return _replace_line_prefix(action.prefix, text, start, end, action.blank_after)
     if isinstance(action, OpenNote | OpenPicker | StreamInsert):
         return None
     raise TypeError(f"unknown action: {action!r}")
 
 
-def _replace_line_prefix(prefix: str, text: str, start: int, end: int) -> TextEdit:
+def _replace_line_prefix(
+    prefix: str, text: str, start: int, end: int, blank_after: bool = False
+) -> TextEdit:
     line_start = text.rfind("\n", 0, start) + 1
     line_end = text.find("\n", end)
     if line_end < 0:
@@ -79,6 +81,20 @@ def _replace_line_prefix(prefix: str, text: str, start: int, end: int) -> TextEd
         "" if old_marker.rstrip() == prefix.rstrip() and prefix else prefix
     )  # same again: toggle off
     new_line = line[:indent_len] + new_marker + rest
+    if blank_after and _needs_blank_after(text, line_end):
+        new_line += "\n"
     caret_in_rest = max(0, len(before) - indent_len - marker_len)
     cursor = line_start + indent_len + len(new_marker) + min(caret_in_rest, len(rest))
     return TextEdit((TextChange(line_start, line_end, new_line),), cursor)
+
+
+_CONTINUES = re.compile(r"^[ \t]*(?:[-*+]|\d{1,9}[.)]|>)(?:\s|$)|^[ \t]+\S")
+
+
+def _needs_blank_after(text: str, line_end: int) -> bool:
+    """Should an empty line be added after the line ending at ``line_end``? Yes at the end of the
+    note and before a line that is not itself part of a list or quote."""
+    if line_end >= len(text):
+        return True
+    next_line = text[line_end + 1 :].split("\n", 1)[0]
+    return bool(next_line.strip()) and not _CONTINUES.match(next_line)
