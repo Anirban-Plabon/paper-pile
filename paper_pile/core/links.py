@@ -159,3 +159,30 @@ def link_snippet(text: str, line: int, width: int = 140) -> str:
     raw = re.sub(r"^\s*(?:>\s*)*(?:[-*+]\s+(?:\[[ xX]\]\s+)?|\d+[.)]\s+|#{1,6}\s+)?", "", raw)
     clean = " ".join(raw.split())
     return clean if len(clean) <= width else clean[: width - 1].rstrip() + "…"
+
+
+def wikilink_forms(target: str, *, ext: bool = False) -> list[str]:
+    """Ways to write a wikilink to ``target``, shortest first: the bare name, then more and more
+    of its folder path, and last the exact vault path (``/folder/name``). ``ext`` keeps the file
+    extension."""
+    stem = _NOTE_EXT.sub("", target)
+    tail = target[len(stem) :] if ext else ""
+    parts = stem.split("/")
+    forms = ["/".join(parts[i:]) + tail for i in range(len(parts) - 1, -1, -1)]
+    return [*forms, "/" + stem + tail]
+
+
+def wikilink_to(target: str, source: str, paths: Collection[str]) -> str:
+    """The shortest name that, written in ``[[...]]`` inside ``source``, opens ``target`` and
+    names only that note, so the link keeps working if a same-named note is added elsewhere."""
+    forms = wikilink_forms(target)
+    path_list = list(paths)
+
+    def names_only_target(form: str) -> bool:
+        if form.startswith("/"):
+            return True  # an exact path
+        key = norm_name(form).strip("/")
+        return sum(1 for p in path_list if (n := norm_name(p)) == key or n.endswith("/" + key)) == 1
+
+    working = [f for f in forms if resolve_wikilink(f, source, path_list) == target]
+    return next((f for f in working if names_only_target(f)), working[0] if working else forms[-1])

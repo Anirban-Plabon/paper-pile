@@ -11,6 +11,7 @@ from pathlib import Path
 from nicegui import ui
 
 from paper_pile.core.commands import push_recent
+from paper_pile.core.config import Config
 from paper_pile.core.events import EventBus
 from paper_pile.core.index import Index
 from paper_pile.core.session import SessionState, load_session, save_session
@@ -132,6 +133,7 @@ class MainLayout:
             native=self.can_reveal,  # native window = this machine
             on_plain_changed=self._on_plain_changed,
             index=Index(Vault(self.vault)),
+            config=Config(vault=self.vault),
             get_recents=lambda: self.state.recent_commands,
             on_command_used=self._on_command_used,
         )

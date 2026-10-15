@@ -203,3 +203,10 @@ html, body { overflow: hidden; }
 .pp-slash-footer { display: flex; align-items: center; gap: 6px; padding: 6px 12px; border-top: 1px solid var(--pp-border); font-size: 11px; color: var(--pp-muted); }
 .pp-slash-footer kbd { font-family: inherit; padding: 0 4px; border: 1px solid var(--pp-border); border-radius: 4px; }
 .pp-editor.pp-dark .pp-slash-badge { color: #93b4ff; }
+
+/* note picker dialog (P4.3) */
+.pp-picker { width: 420px; max-width: 92vw; gap: 8px; }
+.pp-picker-list { width: 100%; max-height: 320px; overflow-y: auto; gap: 0; flex-wrap: nowrap; }
+.pp-picker-row { width: 100%; padding: 5px 8px; gap: 8px; border-radius: 6px; cursor: pointer; font-size: 13px; }
+.pp-picker-row:hover { background: rgba(128, 128, 128, .12); }
+.pp-picker-sel { background: rgba(59, 130, 246, .14); }

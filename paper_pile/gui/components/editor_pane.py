@@ -18,6 +18,7 @@ import logging
 import time
 import webbrowser
 from collections.abc import Awaitable, Callable
+from datetime import datetime
 from typing import Any
 
 from nicegui import ui
@@ -34,6 +35,7 @@ from paper_pile.core.commands import (
     UnknownCommandError,
     groups_json,
 )
+from paper_pile.core.config import Config
 from paper_pile.core.events import EventBus
 from paper_pile.core.index import Index
 from paper_pile.core.links import (
@@ -43,11 +45,14 @@ from paper_pile.core.links import (
     new_note_path,
     resolve_md_link,
     resolve_wikilink,
+    wikilink_to,
 )
 from paper_pile.core.parser import find_heading
+from paper_pile.core.picker import search_notes
 from paper_pile.core.recovery import RecoveryEntry, RecoveryStore
 from paper_pile.core.rewrite import Edit, plan_rewrites
 from paper_pile.core.tabs import TabList
+from paper_pile.core.templates import render_template
 from paper_pile.core.textpos import codepoint_index, utf16_index
 from paper_pile.core.vault import Vault, VaultError, is_plain_text
 from paper_pile.core.watcher import FsEvent
@@ -78,6 +83,7 @@ class EditorPane:
         native: bool = False,
         on_plain_changed: Callable[[bool], None] = lambda plain: None,
         index: Index | None = None,
+        config: Config | None = None,
         get_recents: Callable[[], list[str]] = lambda: [],
         on_command_used: Callable[[str], None] = lambda command_id: None,
     ) -> None:
@@ -94,6 +100,7 @@ class EditorPane:
         self._on_plain_changed = on_plain_changed
         self._plain_shown: bool | None = None
         self.index = index
+        self._config = config
         self._get_recents = get_recents
         self._on_command_used = on_command_used
         self._reindex_handle: asyncio.TimerHandle | None = None
@@ -325,7 +332,7 @@ class EditorPane:
         if path is None or args.get("docId") != self.tabs.active:
             return
         buffer = self.buffers[self.tabs.active]
-        ctx = CommandContext(path, buffer.text, 0, vault=self.vault)
+        ctx = CommandContext(path, buffer.text, 0, vault=self.vault, config=self._config)
         groups = REGISTRY.search(str(args.get("q", "")), ctx, self._get_recents())
         self._editor.set_slash_results(int(args.get("seq", 0)), groups_json(groups))
 
@@ -342,7 +349,7 @@ class EditorPane:
         end = codepoint_index(text, int(args["to"]))
         if text[start : start + 1] != "/" or end < start:
             return  # the text moved on since the pick
-        ctx = CommandContext(path, text, start, vault=self.vault)
+        ctx = CommandContext(path, text, start, vault=self.vault, config=self._config)
         try:
             action = REGISTRY.run(str(args["id"]), ctx)
         except UnknownCommandError:
@@ -354,8 +361,87 @@ class EditorPane:
         self._on_command_used(str(args["id"]))
         if isinstance(action, OpenNote):
             await self.open_link(action.path)
-        elif isinstance(action, OpenPicker | StreamInsert):
+        elif isinstance(action, OpenPicker):
+            self._open_picker(action, path)
+        elif isinstance(action, StreamInsert):
             self._toast("This command is not available yet.")
+
+    # ---- the note picker (link to note, embed note, templates) ---------------------------
+
+    def _open_picker(self, action: OpenPicker, source: str) -> None:
+        """Let the user pick a note; what is inserted depends on the command that asked."""
+        notes = list(self.vault.walk_notes())
+        title = "Insert template" if action.command_id == "template" else "Choose a note"
+        if action.command_id == "template":
+            folder = (
+                str(self._config.get("vault.templates_folder", "")).strip("/")
+                if self._config
+                else ""
+            )
+            notes = [n for n in notes if n.startswith(folder + "/")]
+        state = {"query": "", "selected": 0}
+        shown: list[str] = []
+        with self._host, ui.dialog() as dialog, ui.card().classes("pp-dialog pp-picker"):
+            ui.label(title).classes("pp-dialog-title")
+            field = ui.input(placeholder="Search notes…").props("outlined dense autofocus")
+            listing = ui.column().classes("pp-picker-list")
+
+            def render() -> None:
+                shown[:] = search_notes(state["query"], notes)
+                state["selected"] = min(state["selected"], max(0, len(shown) - 1))
+                listing.clear()
+                with listing:
+                    if not shown:
+                        ui.label("No notes found").classes("pp-muted")
+                    for i, path in enumerate(shown):
+                        folder_part, _, name = path.rpartition("/")
+                        row = ui.row().classes("pp-picker-row items-baseline no-wrap")
+                        if i == state["selected"]:
+                            row.classes("pp-picker-sel")
+                        with row:
+                            ui.label(name.rsplit(".", 1)[0])
+                            if folder_part:
+                                ui.label(folder_part).classes("pp-muted")
+                        row.on("click", lambda _e, p=path: choose(p))
+
+            def move(delta: int) -> None:
+                if shown:
+                    state["selected"] = (state["selected"] + delta) % len(shown)
+                    render()
+
+            def choose(path: str | None = None) -> None:
+                picked = path if path is not None else (shown[state["selected"]] if shown else None)
+                if picked is None:
+                    return
+                dialog.close()
+                self._insert_picked(action, source, picked)
+
+            def filter_changed(e: Any) -> None:
+                state["query"], state["selected"] = str(e.value or ""), 0
+                render()
+
+            field.on_value_change(filter_changed)
+            field.on("keydown.down.prevent", lambda _e: move(1))
+            field.on("keydown.up.prevent", lambda _e: move(-1))
+            field.on("keydown.enter.prevent", lambda _e: choose())
+            dialog.on("hide", lambda _e: self._editor.focus())
+            render()
+        dialog.open()
+
+    def _insert_picked(self, action: OpenPicker, source: str, picked: str) -> None:
+        notes = set(self.vault.walk_notes())
+        if action.command_id == "template":
+            try:
+                body = self.vault.read_text(picked)
+            except VaultError as exc:
+                self._toast(str(exc), error=True)
+                return
+            stem = source.rsplit("/", 1)[-1].rsplit(".", 1)[0]
+            text = render_template(body, title=stem, now=datetime.now())
+        else:
+            link = f"[[{wikilink_to(picked, source, notes)}]]"
+            text = "!" + link if action.command_id == "embed" else link
+        self._editor.insert_at_cursor(text)
 
     async def _apply_edit(self, tab_id: int, before: str, edit: TextEdit) -> bool:
         """Apply a command's edit to the note on screen as one undo step (buffer kept in step)."""

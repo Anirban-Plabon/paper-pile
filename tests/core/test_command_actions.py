@@ -136,9 +136,11 @@ def test_builtin_commands_are_registered_and_well_formed() -> None:
         "quote",
         "divider",
     } <= set(ids)
+    context = ctx("x\n/y", 4)
     for c in cmds:
         assert c.title and c.group and c.icon
-        assert REGISTRY.run(c.id, ctx("x\n/y", 4)) is not None
+        if c.available(context):  # e.g. templates need a templates folder
+            assert REGISTRY.run(c.id, context) is not None
 
 
 def test_builtin_groups_start_with_basic_blocks() -> None:

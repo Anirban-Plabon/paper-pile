@@ -7,8 +7,8 @@ Legend: 🧠 = needs Opus (see PLAN §6 model guidance) · ⬜ todo · 🔄 in p
 
 ## Current focus
 - **Phase:** P4 — Slash menu
-- **Task:** P4.3 next (P4.1, P4.2 ✅; **P3 complete**; **phases P0, P1 and P2 complete**)
-- **Next up:** P4.3 (remaining commands + note picker) → P5 images
+- **Task:** P5.1 next (**P4 complete**; **P3 complete**; **phases P0, P1 and P2 complete**)
+- **Next up:** P5 images (P5.1 → P5.4), then P6 Smart Paste
 
 ## Open issues
 <!-- - [ ] YYYY-MM-DD · task ID · what's blocking · what's needed -->
@@ -59,7 +59,7 @@ Legend: 🧠 = needs Opus (see PLAN §6 model guidance) · ⬜ todo · 🔄 in p
 |---|---|---|---|
 | P4.1 | Command registry | ✅ | `core/commands.py`; no commands registered yet (P4.3) |
 | P4.2 🧠 | Notion-style popup | ✅ | `tools/editor_src/slash.js` + Python glue; starter Basic-blocks commands pulled forward from P4.3 |
-| P4.3 | Phase-1 commands + note picker | ⬜ | |
+| P4.3 | Phase-1 commands + note picker | ✅ | Image command deferred to P5; embed inserts `![[note]]` (no embed rendering yet) |
 
 ### P5 — Images
 | ID | Task | Status | Notes |
@@ -184,6 +184,7 @@ Legend: 🧠 = needs Opus (see PLAN §6 model guidance) · ⬜ todo · 🔄 in p
 | 2026-10-14 | P3.5 limits: only in-app renames/moves rewrite (watcher-seen moves just move tabs); reference-style `[t][r]` / `[r]: x.md`, `\\|` inside table-cell wikilinks and links whose file position is not certain are reported as "could not be updated", never guessed; `.txt` notes have no links. Open notes are edited through the editor (undo history kept; a rewrite can be undone with Ctrl+Z) and saved by the normal autosave; if the tab's text changed meanwhile that note is skipped. Closed notes are rewritten atomically only if still as planned. Not transactional across files; failures are counted and toasted | Safety over completeness | claude |
 | 2026-10-15 | P4.1 registry: `CommandRegistry` + `@command` (default `REGISTRY`), frozen `Command` with optional `when` predicate (unavailable commands are hidden and refused), actions as frozen dataclasses (`Insert`, `ReplaceLinePrefix`, `ReplaceSelection`, `OpenNote`, `OpenPicker(kind, command_id)`, `StreamInsert`). Search: exact > prefix > word-start > substring > in-order letters (aliases −5, id also matched), no query → a "Recent" group (≤5, newest first, not repeated below) then groups in fixed order (Basic blocks, Code & math, Diagrams, Media, Links, Insert, AI), with a query → best first, ties to recent. Filtering stays in Python: the editor sends the query and renders `groups_json`. Recents persist in `session.json` (`recent_commands`, tolerant read) | Logic in Python, JS only renders (rule 6) | claude |
 | 2026-10-15 | P4.2 popup: a CM6 `showTooltip` driven by a StateField (position of the typed `/`, query = text up to the caret, results from Python); opens on a typed `/` after line start/whitespace outside `FencedCode`/`CodeBlock`/`InlineCode`/`URL`/`CodeText`; closes on Esc (the `/` stays and does not reopen), Backspace past `/`, caret leaving the line, newline, 40+ chars, blur, tab switch, or a space after "No results". Keys: ↑/↓ (wrap), PageUp/Down, Enter/Tab apply, Esc; mouse hover/click (mousedown, so focus stays). Python does all logic: `slash_query` → `REGISTRY.search` (only the latest query's answer is shown); `slash_run` → handler → `core/command_actions.resolve` → exact text edit (code-point offsets; `core/textpos` converts to JS UTF-16) → `applyChanges` as ONE isolated undo step (refused if the text moved meanwhile). `ReplaceLinePrefix` strips any leading markers and toggles off if the same marker is applied again. Divider adds a blank line under text so it never becomes a setext heading. Starter commands pulled forward from P4.3: text, h1–h4, bulleted/numbered/to-do, quote, divider. Note: typing `/` replaces a selection, so selection-based AI commands (P7) need another entry point | Keeps JS thin and every edit unit-testable | claude |
+| 2026-10-15 | P4.3 commands: Code & math (code block, math block, inline math), Diagrams (mermaid flowchart/sequence/gantt), Media (table 3×3), Links (link to note, embed note), Insert (date `YYYY-MM-DD`, time `HH:MM`, template when `vault.templates_folder` exists), Basic blocks + callout. Block commands start on a fresh line when typed after text. **Callout** is a plain quote with a bold `**Note:**` label (Obsidian `> [!note]` callouts render as odd link text in Live Preview). **Image** command moves to P5 (it needs the asset store). **Embed note** inserts `![[note]]` but embeds are not rendered yet. Note picker (`core/picker.search_notes`, a NiceGUI dialog: filter, ↑/↓, Enter, click, Esc) inserts `[[name]]` where `core/links.wikilink_to` picks the shortest name that opens the note AND names only that note (so the link survives a same-named note appearing elsewhere); templates substitute `{{date}}` `{{time}}` `{{title}}` (`core/templates`). `wikilink_forms` is now shared with the P3.5 rewriter. `EditorPane` now loads `Config` (read-only; settings UI is P8) | PLAN §4.8 list; keep links robust | claude |
 
 ## Issues log
 <!-- YYYY-MM-DD · task · symptom → root cause → fix · (gotcha added? y/n) -->
@@ -246,3 +247,4 @@ Legend: 🧠 = needs Opus (see PLAN §6 model guidance) · ⬜ todo · 🔄 in p
 - 2026-10-14 · P3.5 · rename-safe link rewriting (core/rewrite.py, parser.link_spans, Index.link_sources, applyChanges in the editor, EditorPane._rewrite_links); 452 tests incl. round-trip, idempotence and 25 randomized vaults; 15 browser checks (rename) + nav 18, gallery 101, plain 31, wiki 15, backlinks 11; **phase P3 complete**
 - 2026-10-15 · P4.1 · core/commands.py registry, fuzzy search, recents (+ session.recent_commands); 467 tests
 - 2026-10-15 · P4.2 · slash menu: slash.js popup, command_actions/textpos/commands_builtin (core), editor events + apply with isolated undo; 496 tests; 42 new browser checks (slash) + gallery 101, plain 31, wiki 15, nav 18, backlinks 11, rename 15; 4 native checks
+- 2026-10-15 · P4.3 · remaining non-AI slash commands + note/template picker (picker.py, templates.py, links.wikilink_to); 511 tests; 23 new browser checks (p43); **phase P4 complete**

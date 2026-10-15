@@ -1,16 +1,20 @@
 """The built-in slash commands. Importing this module registers them on the default registry.
 
-P4.2 ships the *Basic blocks* group; the rest of the phase-1 list (code/math, diagrams, media,
-links, insert, AI) arrives with P4.3 and later tasks. Icons are Material icon names.
+Groups: Basic blocks, Code & math, Diagrams, Media (table now; image with P5), Links, Insert.
+The AI group arrives with P7. Icons are Material icon names.
 """
+
+from datetime import datetime
 
 from paper_pile.core.commands import (
     Action,
     CommandContext,
     Insert,
+    OpenPicker,
     ReplaceLinePrefix,
     command,
 )
+from paper_pile.core.templates import DATE_FORMAT, TIME_FORMAT
 
 BASIC = "Basic blocks"
 
@@ -54,3 +58,179 @@ def divider(ctx: CommandContext) -> Action:
     line_start = ctx.text.rfind("\n", 0, ctx.cursor) + 1
     previous = ctx.text[: line_start - 1].rsplit("\n", 1)[-1] if line_start else ""
     return Insert("\n---\n" if previous.strip() else "---\n")
+
+
+# ---- blocks that need their own lines ---------------------------------------------------------
+
+
+def block(ctx: CommandContext, body: str, caret: int | None = None) -> Insert:
+    """Insert a multi-line ``body`` as its own block: if the command was typed after other text on
+    the line, the block starts on a fresh line. ``caret`` is an offset into ``body``."""
+    line_start = ctx.text.rfind("\n", 0, ctx.cursor) + 1
+    lead = "\n" if ctx.text[line_start : ctx.cursor].strip() else ""
+    return Insert(lead + body, len(lead) + (len(body) if caret is None else caret))
+
+
+@command(
+    "callout",
+    "Callout",
+    group=BASIC,
+    icon="info",
+    hint="> **",
+    aliases=("note", "info", "admonition"),
+)
+def callout(ctx: CommandContext) -> Action:
+    """A highlighted note. Plain quote + bold label, which Live Preview and every markdown
+    renderer show properly (``> [!note]`` callouts would show as odd link text here)."""
+    return block(ctx, "> **Note:** ")
+
+
+CODE = "Code & math"
+
+
+@command(
+    "code", "Code block", group=CODE, icon="code", hint="```", aliases=("snippet", "pre", "fence")
+)
+def code_block(ctx: CommandContext) -> Action:
+    return block(ctx, "```\n\n```\n", 4)
+
+
+@command(
+    "math",
+    "Math block",
+    group=CODE,
+    icon="functions",
+    hint="$$",
+    aliases=("latex", "equation", "formula"),
+)
+def math_block(ctx: CommandContext) -> Action:
+    return block(ctx, "$$\n\n$$\n", 3)
+
+
+@command(
+    "math-inline",
+    "Inline math",
+    group=CODE,
+    icon="superscript",
+    hint="$ $",
+    aliases=("latex", "equation"),
+)
+def math_inline(ctx: CommandContext) -> Action:
+    return Insert("$$", 1)
+
+
+DIAGRAMS = "Diagrams"
+
+_FLOWCHART = (
+    "flowchart TD\n    A[Start] --> B{Decision}\n    B -->|Yes| C[Do it]\n    B -->|No| D[Skip]\n"
+)
+_SEQUENCE = "sequenceDiagram\n    Alice->>Bob: Hello\n    Bob-->>Alice: Hi there\n"
+_GANTT = (
+    "gantt\n    title Plan\n    dateFormat YYYY-MM-DD\n    section Work\n"
+    "    First task :a1, 2026-01-01, 7d\n    Second task :after a1, 5d\n"
+)
+
+
+def _mermaid(cid: str, title: str, icon: str, source: str, aliases: tuple[str, ...]) -> None:
+    @command(cid, title, group=DIAGRAMS, icon=icon, hint="mermaid", aliases=aliases)
+    def run(ctx: CommandContext) -> Action:
+        return block(ctx, f"```mermaid\n{source}```\n")
+
+
+_mermaid("flowchart", "Flowchart", "account_tree", _FLOWCHART, ("mermaid", "diagram", "graph"))
+_mermaid("sequence", "Sequence diagram", "swap_horiz", _SEQUENCE, ("mermaid", "diagram", "uml"))
+_mermaid(
+    "gantt", "Gantt chart", "view_timeline", _GANTT, ("mermaid", "diagram", "schedule", "timeline")
+)
+
+
+@command(
+    "table",
+    "Table",
+    group="Media",
+    icon="table_chart",
+    subtitle="3 × 3",
+    hint="| |",
+    aliases=("grid", "spreadsheet"),
+)
+def table(ctx: CommandContext) -> Action:
+    body = "| Column 1 | Column 2 | Column 3 |\n| --- | --- | --- |\n|  |  |  |\n|  |  |  |\n"
+    return block(ctx, body, body.index("|  |") + 2)
+
+
+LINKS = "Links"
+
+
+@command(
+    "link",
+    "Link to note",
+    group=LINKS,
+    icon="link",
+    hint="[[ ]]",
+    aliases=("wikilink", "note", "reference"),
+)
+def link_to_note(ctx: CommandContext) -> Action:
+    return OpenPicker("note", "link")
+
+
+@command(
+    "embed",
+    "Embed note",
+    group=LINKS,
+    icon="note_add",
+    hint="![[ ]]",
+    aliases=("transclude", "include"),
+)
+def embed_note(ctx: CommandContext) -> Action:
+    return OpenPicker("note", "embed")
+
+
+INSERT = "Insert"
+
+
+def _now() -> datetime:
+    return datetime.now()
+
+
+@command(
+    "date",
+    "Date",
+    group=INSERT,
+    icon="event",
+    subtitle="Today",
+    hint="YYYY-MM-DD",
+    aliases=("today",),
+)
+def date_today(ctx: CommandContext) -> Action:
+    return Insert(_now().strftime(DATE_FORMAT))
+
+
+@command(
+    "time",
+    "Time",
+    group=INSERT,
+    icon="schedule",
+    subtitle="Now",
+    hint="HH:MM",
+    aliases=("now", "clock"),
+)
+def time_now(ctx: CommandContext) -> Action:
+    return Insert(_now().strftime(TIME_FORMAT))
+
+
+def _has_templates(ctx: CommandContext) -> bool:
+    folder = str(ctx.config.get("vault.templates_folder", "")) if ctx.config else ""
+    return bool(folder.strip().strip("/")) and ctx.vault is not None and ctx.vault.exists(folder)
+
+
+@command(
+    "template",
+    "Template",
+    group=INSERT,
+    icon="description",
+    subtitle="From your templates folder",
+    aliases=("snippet", "boilerplate"),
+    when=_has_templates,
+)
+def template(ctx: CommandContext) -> Action:
+    return OpenPicker("template", "template")

@@ -23,6 +23,7 @@ from paper_pile.core.links import (
     parse_wikilink,
     resolve_md_link,
     resolve_wikilink,
+    wikilink_forms,
 )
 from paper_pile.core.parser import LinkSpan, link_spans
 
@@ -196,10 +197,6 @@ def _make_edit(
     return _md_edit(span, start, src_new, target)
 
 
-def _strip_ext(path: str) -> str:
-    return path.rsplit(".", 1)[0] if path.lower().endswith((".md", ".txt")) else path
-
-
 def _wiki_edit(
     span: LinkSpan, start: int, src_new: str, target: str, new_set: set[str]
 ) -> Edit | None:
@@ -212,16 +209,13 @@ def _wiki_edit(
     lead = len(segment) - len(segment.lstrip())
     old_note = parsed.note
     with_ext = old_note.lower().endswith((".md", ".txt"))
-    parts = _strip_ext(target).split("/")
-    forms = ["/".join(parts[i:]) for i in range(len(parts) - 1, -1, -1)]
-    if "/" in old_note and len(forms) > 1:
-        forms = forms[1:]  # the author wrote a path: keep writing paths
-    forms.append("/" + "/".join(parts))  # last resort: the exact vault path
+    forms = wikilink_forms(target, ext=with_ext)
+    if "/" in old_note and len(forms) > 2:
+        forms = [*forms[1:-1], forms[-1]]  # the author wrote a path: keep writing paths
     for form in forms:
-        written = form + target[len(_strip_ext(target)) :] if with_ext else form
-        if resolve_wikilink(written, src_new, new_set) == target:
+        if resolve_wikilink(form, src_new, new_set) == target:
             begin = start + 2 + lead
-            return Edit(begin, begin + len(old_note), written)
+            return Edit(begin, begin + len(old_note), form)
     return None
 
 

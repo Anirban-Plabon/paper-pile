@@ -251,10 +251,10 @@ def h2(ctx: CommandContext) -> Action:
 
 | Group | Commands |
 |---|---|
-| Basic blocks | text, h1–h4, bulleted list, numbered list, todo, quote, divider, callout |
+| Basic blocks | text, h1–h4, bulleted list, numbered list, todo, quote, divider, callout (a quote with a bold `Note:` label) |
 | Code & math | code block, math block, inline math |
 | Diagrams | mermaid (flowchart), sequence, gantt |
-| Media | image (file picker), table (3×3) |
+| Media | image (file picker; added with P5), table (3×3) |
 | Links | link to note (note picker), embed note |
 | Insert | date, time, template (if templates folder set) |
 | AI | summarize, continue writing, explain selection, fix grammar, ask… |
