@@ -117,14 +117,15 @@ class FrontMatterWidget extends WidgetType {
 // A GFM table as a real <table>: column alignment from the delimiter row, inline markdown inside
 // the cells. Editing happens in the source (the table reveals while the caret is in it).
 class TableWidget extends WidgetType {
-  constructor(src, state, table) {
+  constructor(src, state, table, preview = false) {
     super();
     this.src = src;
     this.state = state;
     this.table = table; // SyntaxNode of this tree snapshot
+    this.preview = preview; // shown above the source while the table is being edited
   }
   eq(other) {
-    return other.src === this.src;
+    return other.src === this.src && other.preview === this.preview;
   }
   aligns() {
     const head = this.table.getChild("TableHeader");
@@ -141,7 +142,7 @@ class TableWidget extends WidgetType {
   }
   toDOM(view) {
     const wrap = document.createElement("div");
-    wrap.className = "pp-table";
+    wrap.className = this.preview ? "pp-table pp-table-preview" : "pp-table";
     const table = document.createElement("table");
     const aligns = this.aligns();
     const addRow = (parent, cells, tag) => {
@@ -165,7 +166,7 @@ class TableWidget extends WidgetType {
     for (const row of this.table.getChildren("TableRow")) addRow(body, row.getChildren("TableCell"), "td");
     table.appendChild(body);
     wrap.appendChild(table);
-    revealOnMouseDown(wrap, view);
+    if (!this.preview) revealOnMouseDown(wrap, view);
     return wrap;
   }
   ignoreEvent() {
@@ -218,15 +219,17 @@ function candidates(state) {
   const { doc } = state;
   const theme = state.facet(themeFacet);
   const out = [];
-  const push = (node, widget) => {
-    out.push({ from: doc.lineAt(node.from).from, to: doc.lineAt(node.to).to, widget });
+  // `editing`: a widget shown above the source while the selection touches the block
+  const push = (node, widget, editing = null) => {
+    out.push({ from: doc.lineAt(node.from).from, to: doc.lineAt(node.to).to, widget, editing });
   };
   const tree = ensureSyntaxTree(state, doc.length, 50) ?? syntaxTree(state);
   tree.iterate({
     enter(node) {
       if (isInlineOnly(node.name)) return false;
       if (node.name === "Table") {
-        push(node, new TableWidget(doc.sliceString(node.from, node.to), state, node.node));
+        const src = doc.sliceString(node.from, node.to);
+        push(node, new TableWidget(src, state, node.node), new TableWidget(src, state, node.node, true));
         return false; // its cells are rendered by the widget
       } else if (node.name === "FrontMatter") {
         const marks = node.node.getChildren("FrontMatterMark");
@@ -250,11 +253,13 @@ function candidates(state) {
   return out;
 }
 
-// The widgets to show now: every candidate the selection does not touch.
+// The widgets to show now: every candidate the selection does not touch. A table being edited
+// shows its source with a live rendered preview above it.
 function visible(items, state) {
   const out = [];
-  for (const { from, to, widget } of items) {
+  for (const { from, to, widget, editing } of items) {
     if (!touches(state, from, to)) out.push(Decoration.replace({ widget, block: true }).range(from, to));
+    else if (editing) out.push(Decoration.widget({ widget: editing, block: true, side: -1 }).range(from));
   }
   return Decoration.set(out, true);
 }

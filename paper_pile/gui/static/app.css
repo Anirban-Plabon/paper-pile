@@ -210,3 +210,7 @@ html, body { overflow: hidden; }
 .pp-picker-row { width: 100%; padding: 5px 8px; gap: 8px; border-radius: 6px; cursor: pointer; font-size: 13px; }
 .pp-picker-row:hover { background: rgba(128, 128, 128, .12); }
 .pp-picker-sel { background: rgba(59, 130, 246, .14); }
+
+/* a table being edited: live preview above its source */
+.pp-table-preview { margin: 4px 0 8px; padding-bottom: 8px; border-bottom: 1px dashed var(--pp-border); }
+.pp-table td:empty::before, .pp-table th:empty::before { content: "\00a0"; }
