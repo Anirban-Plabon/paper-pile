@@ -6,9 +6,9 @@
 Legend: 🧠 = needs Opus (see PLAN §6 model guidance) · ⬜ todo · 🔄 in progress · ✅ done · ⛔ blocked · ⏭️ skipped/deferred
 
 ## Current focus
-- **Phase:** P0 — Foundation
-- **Task:** P4.1 next (**P3 complete**; **phases P0, P1 and P2 complete**)
-- **Next up:** P4.1 → 🧠 P4.2 (slash menu), then P5 images
+- **Phase:** P4 — Slash menu
+- **Task:** P4.2 🧠 next (P4.1 ✅; **P3 complete**; **phases P0, P1 and P2 complete**)
+- **Next up:** 🧠 P4.2 (popup; plan mode) → P4.3 → P5 images
 
 ## Open issues
 <!-- - [ ] YYYY-MM-DD · task ID · what's blocking · what's needed -->
@@ -57,7 +57,7 @@ Legend: 🧠 = needs Opus (see PLAN §6 model guidance) · ⬜ todo · 🔄 in p
 ### P4 — Slash menu
 | ID | Task | Status | Notes |
 |---|---|---|---|
-| P4.1 | Command registry | ⬜ | |
+| P4.1 | Command registry | ✅ | `core/commands.py`; no commands registered yet (P4.3) |
 | P4.2 🧠 | Notion-style popup | ⬜ | |
 | P4.3 | Phase-1 commands + note picker | ⬜ | |
 
@@ -182,6 +182,7 @@ Legend: 🧠 = needs Opus (see PLAN §6 model guidance) · ⬜ todo · 🔄 in p
 | 2026-10-14 | Backlinks pane sits under the editor (collapsible, in-memory state, max ~190 px, 100 items); click opens the note at the link's line. Not yet persisted in session.json | Keep P3.4 small | claude |
 | 2026-10-14 | P3.5 invariant: after a rename/move every link keeps pointing at the note it pointed at. A link is edited only if resolving it from the source's new place no longer gives `moved(old target)`; only its target part is rewritten (alias, heading, `!`, title, `#fragment` untouched) in the shortest form that resolves correctly (bare name → trailing path → `/exact/path`; path-style links stay path-style; md links get a relative path). Idempotent and round-trip exact (tested). New rule: a wikilink starting with `/` is an exact vault path (needed to address a root note whose name is shared by a nearer note) | Never corrupt notes; the rule also covers links inside moved notes and links hijacked by a move | claude |
 | 2026-10-14 | P3.5 limits: only in-app renames/moves rewrite (watcher-seen moves just move tabs); reference-style `[t][r]` / `[r]: x.md`, `\\|` inside table-cell wikilinks and links whose file position is not certain are reported as "could not be updated", never guessed; `.txt` notes have no links. Open notes are edited through the editor (undo history kept; a rewrite can be undone with Ctrl+Z) and saved by the normal autosave; if the tab's text changed meanwhile that note is skipped. Closed notes are rewritten atomically only if still as planned. Not transactional across files; failures are counted and toasted | Safety over completeness | claude |
+| 2026-10-15 | P4.1 registry: `CommandRegistry` + `@command` (default `REGISTRY`), frozen `Command` with optional `when` predicate (unavailable commands are hidden and refused), actions as frozen dataclasses (`Insert`, `ReplaceLinePrefix`, `ReplaceSelection`, `OpenNote`, `OpenPicker(kind, command_id)`, `StreamInsert`). Search: exact > prefix > word-start > substring > in-order letters (aliases −5, id also matched), no query → a "Recent" group (≤5, newest first, not repeated below) then groups in fixed order (Basic blocks, Code & math, Diagrams, Media, Links, Insert, AI), with a query → best first, ties to recent. Filtering stays in Python: the editor sends the query and renders `groups_json`. Recents persist in `session.json` (`recent_commands`, tolerant read) | Logic in Python, JS only renders (rule 6) | claude |
 
 ## Issues log
 <!-- YYYY-MM-DD · task · symptom → root cause → fix · (gotcha added? y/n) -->
@@ -242,3 +243,4 @@ Legend: 🧠 = needs Opus (see PLAN §6 model guidance) · ⬜ todo · 🔄 in p
 - 2026-10-14 · P3.3 · link resolution + navigation + create-on-missing + missing-link style + heading jump (core/links.py, parser.headings, EditorPane, editor gotoLine/setKnownNotes); 409 tests; 18 new browser checks (nav) + 101 gallery + 31 plain + 15 wiki
 - 2026-10-14 · P3.4 · backlinks: Index.backlinks + link_snippet + BacklinksPane, index wired into EditorPane; 411 tests; 9 new browser checks (bl) + nav 18, gallery 101, plain 31, wiki 15
 - 2026-10-14 · P3.5 · rename-safe link rewriting (core/rewrite.py, parser.link_spans, Index.link_sources, applyChanges in the editor, EditorPane._rewrite_links); 452 tests incl. round-trip, idempotence and 25 randomized vaults; 15 browser checks (rename) + nav 18, gallery 101, plain 31, wiki 15, backlinks 11; **phase P3 complete**
+- 2026-10-15 · P4.1 · core/commands.py registry, fuzzy search, recents (+ session.recent_commands); 467 tests

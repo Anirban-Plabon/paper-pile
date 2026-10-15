@@ -59,6 +59,7 @@ class SessionState:
     pane_widths: dict[str, int] = field(default_factory=lambda: dict(DEFAULT_WIDTHS))
     panes_open: dict[str, bool] = field(default_factory=lambda: {p: True for p in PANES})
     mode: Mode = "live"
+    recent_commands: list[str] = field(default_factory=list)  # slash menu, newest first
 
 
 def _session_path(vault: Path) -> Path:
@@ -91,6 +92,9 @@ def load_session(vault: Path) -> SessionState:
             state.panes_open[pane] = opens[pane]
     if data.get("mode") in ("live", "source"):
         state.mode = data["mode"]
+    recent = data.get("recent_commands")
+    if isinstance(recent, list):
+        state.recent_commands = [r for r in recent if isinstance(r, str)][:5]
     return state
 
 
@@ -103,6 +107,7 @@ def save_session(vault: Path, state: SessionState) -> None:
         "pane_widths": state.pane_widths,
         "panes_open": state.panes_open,
         "mode": state.mode,
+        "recent_commands": state.recent_commands[:5],
     }
     try:
         path.parent.mkdir(exist_ok=True)
