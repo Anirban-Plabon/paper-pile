@@ -265,6 +265,7 @@ def h2(ctx: CommandContext) -> Action:
 - Reference inserted: `![image|<width>](.mamba.assets/a3f9c1d2e4b0.png)` — standard markdown path, width in alt (Obsidian convention).
 - Sources: clipboard paste, drag-drop, `/image` picker.
 - Resize: in live preview, drag image corner → rewrite only the `|<width>` number in the source.
+- **Implemented (P5):** `core/assets.py` (content-sniffed type, hash name, header-read size, default width = natural width capped at 640); upload route `POST /_pp/upload` (custom header + loopback origin + 25 MB cap); the orphan sweep runs when a note is closed (not on every save, so Ctrl+Z can still bring a deleted reference back); renames made outside the app do not move the folder.
 - Lifecycle (in `core/assets.py`, invoked by vault ops):
 
 | Event | Action |
