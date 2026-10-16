@@ -119,6 +119,7 @@ class ChatPane:
         self._chips: ui.column
         self._refs: ui.row
         self._strip: ui.row
+        self._preview: ui.column
         self._card: ui.column
         self._plus: ui.button
         self._upload: ui.upload
@@ -150,6 +151,7 @@ class ChatPane:
                     with self._strip:
                         self._refs = ui.row().classes("pp-chat-refs")
                         self._chips = ui.row().classes("pp-chat-chips")
+                        self._preview = ui.column().classes("pp-chat-preview")
                     self._input = (
                         ui.textarea(placeholder="Ask, or @ a note")
                         .props("borderless dense autogrow input-style='max-height: 220px'")
@@ -360,9 +362,11 @@ class ChatPane:
         with self._plus:
             # anchored to the whole card, so it opens above the text and not over it
             menu = ui.menu().props(
-                f'target="#c{self._card.id}" anchor="top left" self="bottom left" :offset="[0, 8]"'
+                f'no-parent-event target="#c{self._card.id}" anchor="top left" '
+                'self="bottom left" :offset="[0, 8]"'
             )
             menu.classes("pp-chat-menu")
+        self._plus.on_click(menu.toggle)  # only a click on the button opens it, never the card
         menu.on("before-show", lambda _e: self._build_menu(menu))
         menu.on("show", lambda _e: self._plus.props("icon=close"))
         menu.on("hide", lambda _e: self._plus.props("icon=add"))
@@ -458,32 +462,33 @@ class ChatPane:
 
     def _render_selections(self) -> None:
         self._chips.clear()
+        self._preview.clear()
+        self._preview.set_visibility(self._open is not None)
         self._sync_strip()
         with self._chips:
             for picked in self._selections:
-                with ui.column().classes("pp-chat-chip") as chip:
-                    with ui.row().classes("pp-chat-ref items-center no-wrap w-full"):
-                        ui.icon("format_quote").classes("pp-chat-ref-icon")
-                        text = f"[Selected text · {picked.size()}]"
-                        if picked.note:
-                            note = html.escape(picked.note)
-                            text = f'From <span class="pp-chat-ref-note">{note}</span>: {text}'
-                        label = ui.html(text, sanitize=False)
-                        label.classes("pp-chat-ref-text pp-chat-chip-text")
-                        label.tooltip("Show or hide the text")
-                        ui.button(
-                            icon="close",
-                            on_click=lambda _e=None, p=picked: self._remove_selection(p),
-                        ).props("flat round dense size=xs").tooltip("Remove")
-                    label.on("click", lambda _e=None, s=picked: self._toggle_chip(s))
-                    if picked is self._open:
-                        body = ui.html(
-                            render_html(source_view(picked.text.strip())), sanitize=False
-                        )
-                        body.classes("pp-msg-body pp-chat-chip-body")
-                        self._typeset(body)
+                row = ui.row().classes("pp-chat-ref pp-chat-chip items-center no-wrap")
                 if picked is self._open:
-                    chip.classes("pp-chat-chip-open")
+                    row.classes("pp-chat-chip-open")
+                with row:
+                    ui.icon("format_quote").classes("pp-chat-ref-icon")
+                    text = f"[Selected text · {picked.size()}]"
+                    if picked.note:
+                        note = html.escape(picked.note)
+                        text = f'From <span class="pp-chat-ref-note">{note}</span>: {text}'
+                    label = ui.html(text, sanitize=False)
+                    label.classes("pp-chat-ref-text pp-chat-chip-text")
+                    label.tooltip("Show or hide the text")
+                    label.on("click", lambda _e=None, s=picked: self._toggle_chip(s))
+                    ui.button(
+                        icon="close",
+                        on_click=lambda _e=None, p=picked: self._remove_selection(p),
+                    ).props("flat round dense size=xs").tooltip("Remove")
+        if self._open is not None:  # the unfolded text sits under all the chips, above the divider
+            with self._preview:
+                body = ui.html(render_html(source_view(self._open.text.strip())), sanitize=False)
+                body.classes("pp-msg-body pp-chat-chip-body")
+                self._typeset(body)
 
     def _toggle_chip(self, picked: Selection) -> None:
         """Only one chip is unfolded at a time; clicking it again (or elsewhere) folds it."""

@@ -362,9 +362,8 @@ html, body { overflow: hidden; }
 .pp-chat-strip { width: 100%; gap: 4px; padding: 4px 6px 6px; border-bottom: 1px solid var(--pp-border); }
 .pp-chat-refs, .pp-chat-chips { display: contents; }
 .pp-chat-ref { gap: 3px; padding: 1px 2px 1px 8px; max-width: 100%; background: rgba(127, 127, 127, .14); border-radius: 999px; font-size: 12px; }
-.pp-chat-chip { gap: 2px; max-width: 100%; }
-.pp-chat-chip-open { flex: 1 1 100%; }
-.pp-chat-chip-open .pp-chat-ref { border-radius: 14px; }
 .pp-chat-chip-text { cursor: pointer; flex: 1 1 auto; gap: 0; }
 .pp-chat-ref-note { color: rgb(var(--pp-accent-rgb)); font-weight: 500; }
-.pp-chat-chip-body { max-height: 200px; overflow: auto; width: 100%; padding: 4px 8px; border-top: 1px solid var(--pp-border); margin-top: 2px; }
+.pp-chat-chip-open { background: rgba(var(--pp-accent-rgb), .16); }
+.pp-chat-preview { width: 100%; gap: 0; }
+.pp-chat-chip-body { width: 100%; max-height: 200px; overflow: auto; padding: 4px 10px; border-radius: 12px; background: rgba(127, 127, 127, .08); }
