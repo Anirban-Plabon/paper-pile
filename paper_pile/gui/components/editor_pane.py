@@ -15,6 +15,7 @@ own note, never the one on screen.
 
 import asyncio
 import logging
+import os
 import time
 import webbrowser
 from collections.abc import Awaitable, Callable
@@ -51,6 +52,7 @@ from paper_pile.core.links import (
     wikilink_to,
 )
 from paper_pile.core.parser import find_heading
+from paper_pile.core.paste import smart_paste
 from paper_pile.core.picker import search_notes
 from paper_pile.core.recovery import RecoveryEntry, RecoveryStore
 from paper_pile.core.rewrite import Edit, plan_rewrites
@@ -145,6 +147,7 @@ class EditorPane:
                     on_slash_query=lambda e: self._on_slash_query(e.args),
                     on_slash_run=lambda e: self._spawn(self._on_slash_run(e.args)),
                     on_table_op=lambda e: self._spawn(self._on_table_op(e.args)),
+                    on_paste=lambda e: self._on_paste(e.args),
                     on_image_saved=lambda e: self._on_image_saved(e.args),
                     on_image_error=lambda e: self._toast(
                         str(e.args.get("message", "")), error=True
@@ -470,6 +473,32 @@ class EditorPane:
             link = f"[[{wikilink_to(picked, source, notes)}]]"
             text = "!" + link if action.command_id == "embed" else link
         self._editor.insert_at_cursor(text)
+
+    def _on_paste(self, args: dict[str, Any]) -> None:
+        """Text or HTML was pasted (Ctrl+Shift+V never gets here: that is a raw paste). With Smart
+        Paste on, math, code, tables and lists are turned into clean markdown."""
+        if self.tabs.active is None or args.get("kind") not in {"html", "text"}:
+            return
+        html, text = str(args.get("html") or ""), str(args.get("text") or "")
+        self._dump_paste(html, text)
+        enabled = bool(self._config.get("paste.smart_paste", True)) if self._config else True
+        converted = smart_paste(html, text) if enabled else text
+        if converted:
+            self._editor.insert_at_cursor(converted)
+
+    def _dump_paste(self, html: str, text: str) -> None:
+        """With ``PAPER_PILE_DUMP_PASTE=1`` keep what the clipboard held (for test fixtures)."""
+        if not os.environ.get("PAPER_PILE_DUMP_PASTE"):
+            return
+        folder = self.vault.root / ".paper-pile" / "paste-dumps"
+        try:
+            folder.mkdir(parents=True, exist_ok=True)
+            stamp = time.strftime("%Y%m%d-%H%M%S")
+            (folder / f"{stamp}.html").write_text(html, encoding="utf-8")
+            (folder / f"{stamp}.txt").write_text(text, encoding="utf-8")
+            log.info("clipboard saved to %s", folder / stamp)
+        except OSError:
+            log.exception("could not save the clipboard dump")
 
     def _on_image_saved(self, args: dict[str, Any]) -> None:
         """An image was pasted, dropped or picked and stored: insert its markdown at the caret."""

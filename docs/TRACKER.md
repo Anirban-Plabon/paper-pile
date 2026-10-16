@@ -7,7 +7,7 @@ Legend: 🧠 = needs Opus (see PLAN §6 model guidance) · ⬜ todo · 🔄 in p
 
 ## Current focus
 - **Phase:** P4 — Slash menu
-- **Task:** P6.1 next (**P5 complete**; P4 incl. P4.4; **P3 complete**; **phases P0, P1 and P2 complete**)
+- **Task:** P6 → P7 → P8 in progress (**P5 complete**; P4 incl. P4.4; **P3 complete**; **phases P0, P1 and P2 complete**)
 - **Next up:** P5 images (P5.1 → P5.4), then P6 Smart Paste
 
 ## Open issues
@@ -73,9 +73,9 @@ Legend: 🧠 = needs Opus (see PLAN §6 model guidance) · ⬜ todo · 🔄 in p
 ### P6 — Smart Paste
 | ID | Task | Status | Notes |
 |---|---|---|---|
-| P6.1 | Collect fixtures | ⬜ | needs user samples |
-| P6.2 | html_to_md + normalize | ⬜ | |
-| P6.3 | Wire in + raw paste + toggle | ⬜ | |
+| P6.1 | Collect fixtures | ✅ | 24 fixtures (4 sources × 6 cases) **reconstructed** from each chat page's markup shape (`tools/gen_paste_fixtures.py`), not captured; `PAPER_PILE_DUMP_PASTE=1` saves real clipboards to `.paper-pile/paste-dumps/` to replace them |
+| P6.2 | html_to_md + normalize | ✅ | `core/paste.py` (bs4 + markdownify) |
+| P6.3 | Wire in + raw paste + toggle | ✅ | `EditorPane._on_paste`; setting `paste.smart_paste` (UI in P8) |
 
 ### P7 — AI
 | ID | Task | Status | Notes |
@@ -197,6 +197,7 @@ Legend: 🧠 = needs Opus (see PLAN §6 model guidance) · ⬜ todo · 🔄 in p
 | 2026-10-15 | **Link vs embed (user report: neither opened a note):** `[[note]]` is a link; `![[note]]` shows the note's content inside this one. A plain click on a rendered link now opens the note in a tab (as on a web page; while the caret is inside the link it is being edited, so a click only places the caret; Ctrl/Cmd+click always opens). `![[note]]` / `![[note#heading]]` alone on a line becomes a read-only embed block: Python (`core/embed.py`, route `/_pp/embed`) finds the note like a click would, cuts the section under the heading if given, and renders it as safe HTML (raw HTML escaped, remote images dropped, images served from the embedded note's own assets folder, long notes cut at 30,000 characters); clicking the block (or a `[[link]]` inside it) opens that note; moving the caret into the line shows the `![[...]]` source. An embed in the middle of text stays a link. Grammar fix: the editor's Lezer grammar let the markdown Image rule swallow `![`, so `![[x]]` was not a wikilink there while the Python parser saw one; the wikilink parser now claims it (fixture cases `embed`, `embed_with_heading`, `bang_alone`). Not done: math/diagrams inside an embedded note are not rendered, and an embed does not refresh while its note is edited in another tab until the tab is shown again | User: "if I click on them they should be opened on note tab" | user/claude |
 | 2026-10-16 | Backlink snippets (user screenshot showed raw `**body**` and `[[Home]]`): the context line is now plain text — emphasis, code marks, brackets, URLs removed; a wikilink shows its alias or note name, a link its text, an image its alt text (size `|300` dropped) — with the linking text itself shown in bold purple, and long lines are cut around the link (`core/snippets.py`, `parser.plain_line`). Replaces `links.link_snippet` | Readability of the backlinks pane | user/claude |
 | 2026-10-16 | Backlinks pane simplified (user: too tall): one 22 px line per note — title, then the context with the link in bold purple; the path and line are in the tooltip; the list scrolls after about four entries (92 px); header 22 px. Also fixed: embedded notes showed large gaps (the editor's `pre-wrap` leaked into the embed's HTML) | Less vertical space | user/claude |
+| 2026-10-16 | P6 Smart Paste: `core/paste.py` — `html_to_md` (BeautifulSoup + a markdownify subclass): rendered math (KaTeX `annotation[application/x-tex]`, `data-math`, MathJax `script[type=math/tex]`) back to `$..$`/`$$..$$` with the visual duplicate dropped; `<pre>` blocks become fenced blocks (language from `language-*` class or the block's header label, longer fence if the code has ```), the header label/Copy buttons/citation chips/`banner`/`toolbar` elements are removed (junk is judged AFTER code/math were taken out, so a wrapper holding a code block is never dropped); tables, nested lists (tightened: no blank lines between items), task boxes, links, images, quotes, hr kept; `<br>` is a plain newline. `normalize` turns `\(..\)`/`\[..\]` into `$..$`/`$$..$$` outside code. `smart_paste` uses the HTML only when it has real structure, otherwise keeps the exact plain text (so code copied from an editor keeps its indentation). Ctrl+Shift+V stays a native paste; `paste.smart_paste = false` inserts the clipboard's plain text. **Honest limit:** fixtures are reconstructed from the known markup shapes of ChatGPT/Claude/Gemini/DeepSeek, so real clipboards may differ; use the dump variable to capture some and drop them in `tests/fixtures/paste/` (`<source>_<case>.html` + `.md`). Also: ruff would reformat the code inside fixture `.md` files, so `tests/fixtures` is excluded | PLAN §4.10 | claude |
 
 ## Issues log
 <!-- YYYY-MM-DD · task · symptom → root cause → fix · (gotcha added? y/n) -->
@@ -276,3 +277,4 @@ Legend: 🧠 = needs Opus (see PLAN §6 model guidance) · ⬜ todo · 🔄 in p
 - 2026-10-16 · fix · Index reopens after close (reconnected pages); 603 tests
 - 2026-10-16 · backlinks · plain-text snippets with the link highlighted; 608 tests
 - 2026-10-16 · embeds · `![[note]]` on a line of its own is an embed block even inside a multi-line paragraph (directly above or below other text); only an embed in the middle of a line's text stays a link; 16 browser checks (em)
+- 2026-10-16 · P6 · Smart Paste (core/paste.py, fixtures, wiring, dump); 647 tests; 9 browser checks (sp)
