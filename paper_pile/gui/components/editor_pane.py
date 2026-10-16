@@ -101,6 +101,8 @@ class EditorPane:
         get_provider: Callable[[], Provider | None] = lambda: None,
         user_name: Callable[[], str] = lambda: "",
         on_command_used: Callable[[str], None] = lambda command_id: None,
+        add_selection_to_chat: Callable[[str, str], None] = lambda text, path: None,
+        add_note_to_chat: Callable[[str], None] = lambda path: None,
     ) -> None:
         self.vault = vault
         self.bus = bus
@@ -124,6 +126,8 @@ class EditorPane:
         self._streams = 0
         self._table_lock = asyncio.Lock()  # table edits apply one after the other
         self._on_command_used = on_command_used
+        self._add_selection_to_chat = add_selection_to_chat
+        self._add_note_to_chat = add_note_to_chat
         self._reindex_handle: asyncio.TimerHandle | None = None
         self._backlinks: BacklinksPane
         self._timer: asyncio.TimerHandle | None = None
@@ -146,6 +150,7 @@ class EditorPane:
                 on_activate=self._activate,
                 on_close=lambda tab_id: self._spawn(self.close_tab(tab_id)),
                 on_move=self._move_tab,
+                on_add_to_chat=self._add_note_to_chat,
             )
             self._tabbar.build()
             self._banner = ui.row().classes("pp-banner items-center no-wrap")
@@ -163,6 +168,7 @@ class EditorPane:
                     on_table_op=lambda e: self._spawn(self._on_table_op(e.args)),
                     on_paste=lambda e: self._on_paste(e.args),
                     on_ai_selection=lambda e: self._on_ai_selection(e.args),
+                    on_add_to_chat=lambda e: self._on_add_to_chat(e.args),
                     on_image_saved=lambda e: self._on_image_saved(e.args),
                     on_image_error=lambda e: self._toast(
                         str(e.args.get("message", "")), error=True
@@ -612,6 +618,15 @@ class EditorPane:
             await self._apply_edit(tab_id, text, edit, move_caret=False)
 
     # ---- AI commands (slash menu, selection) ---------------------------------------------
+
+    def _on_add_to_chat(self, args: dict[str, Any]) -> None:
+        text = str(args.get("text", ""))
+        if text.strip():
+            self._add_selection_to_chat(text, self._active_path() or "")
+
+    def open_paths(self) -> list[str]:
+        """Paths of every open tab, in tab order."""
+        return [tab.path for tab in self.tabs.tabs]
 
     def _on_ai_selection(self, args: dict[str, Any]) -> None:
         """Ctrl+J: the editor reports what is selected before it opens the menu."""

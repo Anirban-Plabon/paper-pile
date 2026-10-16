@@ -22,11 +22,13 @@ class TabBar:
         on_activate: Callable[[int], None],
         on_close: Callable[[int], None],
         on_move: Callable[[int, int, bool], None],
+        on_add_to_chat: Callable[[str], None] = lambda path: None,
     ) -> None:
         self._tabs = tabs
         self._on_activate = on_activate
         self._on_close = on_close
         self._on_move = on_move
+        self._on_add_to_chat = on_add_to_chat
         self._bar: ui.element
         self._dots: dict[int, ui.label] = {}
 
@@ -58,6 +60,13 @@ class TabBar:
                     self._dots[tab.id] = dot
                     close = ui.icon("close").classes("pp-tab-close")
                     close.on("click.stop", lambda _e, i=tab.id: self._on_close(i))
+                    with (
+                        ui.context_menu(),
+                        ui.menu_item(
+                            "Add note to chat", lambda _e=None, p=tab.path: self._on_add_to_chat(p)
+                        ),
+                    ):
+                        pass
         self.set_unsaved(unsaved)
         self._bar.client.run_javascript(  # explicit client: we are often outside a page context
             "document.querySelector('.pp-tab-active')"

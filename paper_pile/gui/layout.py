@@ -102,6 +102,7 @@ class MainLayout:
         for pane in WIDTH_LIMITS:
             self._apply(pane)
         self.bus.subscribe("vault.created", lambda path: self._on_created())
+        self.bus.subscribe("tree.add_to_chat", lambda path: self._chat_add_note(path))
         self._follow_external_changes()
         if self.editor_pane is not None:  # reopen last session's tabs (after the status bar exists)
             self.editor_pane.start(list(self.state.tabs), self.state.active)
@@ -189,6 +190,7 @@ class MainLayout:
             insert_text=self.editor_pane.insert_text,
             on_health=self._on_ollama_health,
             user_name=lambda: self.profile.name if self.profile else "",
+            open_paths=lambda: self.editor_pane.open_paths() if self.editor_pane else [],
         )
         self.chat.build()
 
@@ -213,8 +215,24 @@ class MainLayout:
             get_provider=lambda: self.chat.provider if self.chat else None,
             user_name=lambda: self.profile.name if self.profile else "",
             on_command_used=self._on_command_used,
+            add_selection_to_chat=self._chat_add_selection,
+            add_note_to_chat=self._chat_add_note,
         )
         self.editor_pane.build()
+
+    def _chat_add_selection(self, text: str, path: str) -> None:
+        if self.chat is not None:
+            self.chat.add_selection(text, path)
+            self._open_chat()
+
+    def _chat_add_note(self, path: str) -> None:
+        if self.chat is not None:
+            self.chat.add_notes([path])
+            self._open_chat()
+
+    def _open_chat(self) -> None:
+        if not self.state.panes_open["right"]:
+            self.toggle("right")
 
     def _on_command_used(self, command_id: str) -> None:
         self.state.recent_commands = push_recent(self.state.recent_commands, command_id)

@@ -137,6 +137,8 @@ class FileTree:
                 folder = path if on_row else ""
                 self._item("New note", "note_add", lambda: self._new_note(folder))
                 self._item("New folder", "create_new_folder", lambda: self._new_folder(folder))
+            if on_row and not is_dir:
+                self._item("Add to chat", "chat", lambda: self._add_to_chat(path))
             if on_row:
                 self._item("Rename", "edit", lambda: self._rename(path))
                 self._item("Duplicate", "content_copy", lambda: self._duplicate(path))
@@ -147,6 +149,9 @@ class FileTree:
         y = max(0, min(int(args["y"]), int(args["vh"]) - MENU_H))
         self._menu.style(f"left: {x}px; top: {y}px")
         self._menu.classes("pp-ctxmenu-open")
+
+    async def _add_to_chat(self, path: str) -> None:
+        self.bus.publish("tree.add_to_chat", path=path)
 
     def _item(
         self, label: str, icon: str, action: Callable[[], Awaitable[None]], *, danger: bool = False

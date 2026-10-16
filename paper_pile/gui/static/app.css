@@ -336,3 +336,6 @@ html, body { overflow: hidden; }
 .pp-profile-btn { color: var(--pp-muted) !important; }
 .pp-profile-dialog { width: 360px; gap: 8px; }
 .pp-ask { width: 480px; max-width: 92vw; gap: 8px; }
+.cm-tooltip.pp-chatpop-tooltip { border: none; background: transparent; z-index: 3000; }
+.pp-chatpop button { font: 500 12px Roboto, system-ui, sans-serif; padding: 3px 10px; margin-top: 4px; cursor: pointer; background: var(--pp-bg); color: var(--pp-fg); border: 1px solid var(--pp-border); border-radius: 6px; box-shadow: 0 4px 14px rgba(0, 0, 0, .18); }
+.pp-chatpop button:hover { border-color: var(--pp-accent, var(--pp-border)); }

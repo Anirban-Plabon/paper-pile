@@ -55,11 +55,14 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     from paper_pile.gui import app  # imported late: keeps --help fast and core UI-free
 
-    if args.serve:
-        port = args.port or DEFAULT_PORT
-        token = secrets.token_urlsafe(16)
-        print(f"paper-pile serving {vault}\n  open: http://127.0.0.1:{port}/?token={token}")
-        app.run_serve(vault, port, token)
-    else:
-        app.run_native(vault)
+    try:
+        if args.serve:
+            port = args.port or DEFAULT_PORT
+            token = secrets.token_urlsafe(16)
+            print(f"paper-pile serving {vault}\n  open: http://127.0.0.1:{port}/?token={token}")
+            app.run_serve(vault, port, token)
+        else:
+            app.run_native(vault)
+    except KeyboardInterrupt:  # Ctrl+C in the terminal is a normal way to quit
+        return 130
     return 0

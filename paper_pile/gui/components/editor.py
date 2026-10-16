@@ -42,6 +42,7 @@ class Editor(
         on_image_error: Handler | None = None,
         on_image_resize: Handler | None = None,
         on_ai_selection: Handler | None = None,
+        on_add_to_chat: Handler | None = None,
         on_link: Handler | None = None,
         on_wikilink: Handler | None = None,
         on_paste: Handler | None = None,
@@ -73,6 +74,8 @@ class Editor(
             self.on("image_resize", on_image_resize)
         if on_ai_selection:
             self.on("ai_selection", on_ai_selection)
+        if on_add_to_chat:
+            self.on("add_to_chat", on_add_to_chat)
         if on_link:
             self.on("link", on_link)
         if on_wikilink:

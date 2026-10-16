@@ -59,6 +59,7 @@ class ChatPane:
         insert_text: Callable[[str], None],
         on_health: Callable[[Health], None] = lambda health: None,
         user_name: Callable[[], str] = lambda: "",
+        open_paths: Callable[[], list[str]] = lambda: [],
     ) -> None:
         self.vault = vault
         self.config = config
@@ -67,6 +68,7 @@ class ChatPane:
         self._insert = insert_text
         self._on_health = on_health
         self._user_name = user_name
+        self._open_paths = open_paths
         self.provider: Provider = make_provider(config)
         self.history: list[Turn] = []
         self.health = Health(False, "Checking Ollama…")
@@ -114,6 +116,9 @@ class ChatPane:
                     ui.switch("Include open tabs", on_change=self._tabs_changed).props(
                         "dense size=xs"
                     )
+                    ui.button("Add all tabs", icon="tab", on_click=self.add_all_tabs).props(
+                        "flat dense no-caps size=sm"
+                    ).tooltip("Mention every open note in the message")
                     self._status = ui.label("").classes("pp-muted pp-chat-ctx")
                 with ui.row().classes("items-end no-wrap w-full"):
                     self._input = (
@@ -225,6 +230,45 @@ class ChatPane:
     def _insert_reply(self, text: str) -> None:
         self._insert(text.strip() + "\n")
         ui.notify("Inserted into the note", timeout=1500, position="bottom")
+
+    # ---- adding things to the message ----------------------------------------------------
+
+    def _append(self, text: str) -> None:
+        value = self._input.value or ""
+        sep = "" if not value or value.endswith(("\n", " ")) else "\n"
+        self._input.set_value(value + sep + text)
+        self._js(f"document.querySelector('#c{self._input.id} textarea')?.focus()")
+
+    def add_notes(self, paths: list[str]) -> None:
+        """Mention notes in the message (``@[[name]]``); ones already mentioned are skipped."""
+        known = set(self.vault.walk_notes())
+        current = self._input.value or ""
+        mentions = []
+        for path in paths:
+            if path not in known:
+                continue
+            mention = f"@[[{wikilink_to(path, '', known)}]]"
+            if mention not in current and mention not in mentions:
+                mentions.append(mention)
+        if mentions:
+            self._append(" ".join(mentions) + " ")
+        else:
+            ui.notify("Already in the message", timeout=1200, position="bottom")
+
+    def add_all_tabs(self) -> None:
+        paths = self._open_paths()
+        if paths:
+            self.add_notes(paths)
+        else:
+            ui.notify("No open notes", timeout=1200, position="bottom")
+
+    def add_selection(self, text: str, path: str) -> None:
+        """Quote the selected text in the message, with the note it came from."""
+        quoted = "\n".join(f"> {line}" if line else ">" for line in text.strip().splitlines())
+        source = (
+            f"From [[{wikilink_to(path, '', set(self.vault.walk_notes()))}]]:\n" if path else ""
+        )
+        self._append(f"{source}{quoted}\n\n")
 
     # ---- @ mentions ----------------------------------------------------------------------
 
