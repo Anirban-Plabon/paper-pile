@@ -16,6 +16,7 @@ import { editorExtensions } from "./grammar.js";
 import { listEditing } from "./listedit.js";
 import { closeSlash, setSlashResults, slashExtension } from "./slash.js";
 import { focusTableCell, tableKeys, tablesRuntime } from "./tablewidget.js";
+import { typeset } from "./typeset.js";
 
 const CHANGE_DEBOUNCE_MS = 300;
 const RAW_PASTE_WINDOW_MS = 600;
@@ -41,6 +42,9 @@ function externalUrl(href) {
   if (/^www\./i.test(href)) href = "https://" + href;
   return /^(https?:\/\/[^/?#\s]+|mailto:\S+)/i.test(href) ? href : null;
 }
+
+// Chat replies are typeset by the same code as the editor's widgets (KaTeX, Mermaid).
+if (typeof window !== "undefined") window.ppTypeset = (el, theme) => typeset(el, theme || "light");
 
 export function createEditor(
   parent,
@@ -319,6 +323,11 @@ export function createEditor(
       if (state.doc.toString() !== expected) return false;
       parked.set(id, state.update({ changes }).state);
       return true;
+    },
+    // The selected text (for the AI): {from, to, text} in UTF-16 offsets, from == to when empty.
+    getSelection() {
+      const r = view.state.selection.main;
+      return { from: r.from, to: r.to, text: view.state.sliceDoc(r.from, r.to), docId };
     },
     // Put the cursor in a table cell (row 0 is the header). `from` is the table's start offset.
     focusTableCell(row, col, from = null) {

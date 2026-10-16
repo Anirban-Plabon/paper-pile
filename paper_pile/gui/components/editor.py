@@ -118,6 +118,15 @@ class Editor(
         except TimeoutError:
             return False
 
+    async def get_selection(self) -> tuple[str, int, int] | None:
+        """The selected text and its JavaScript offsets ``(text, from, to)``; ``None`` if the
+        browser did not answer. An empty selection gives ``("", n, n)``."""
+        try:
+            sel = await self.run_method("getSelection")
+        except TimeoutError:
+            return None
+        return (str(sel["text"]), int(sel["from"]), int(sel["to"])) if sel else None
+
     def pick_image(self) -> None:
         """Open the browser's file chooser; the chosen images are uploaded and reported back as
         ``image_saved`` events."""

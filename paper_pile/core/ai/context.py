@@ -42,6 +42,16 @@ _HEADINGS: dict[Kind, str] = {
 _MENTION = re.compile(r"@\[\[([^\[\]\n]+)\]\]|(?<![\w@])@([^\s@\[\]]+)")
 
 
+@dataclass(slots=True)
+class EditorSnapshot:
+    """What the AI features need to know about the editor right now."""
+
+    path: str | None = None
+    text: str = ""
+    selection: str = ""
+    tabs: list[tuple[str, str]] = field(default_factory=list)
+
+
 class BacklinkSource(Protocol):
     def backlinks(self, target: str) -> Sequence[object]: ...
 

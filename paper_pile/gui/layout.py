@@ -10,6 +10,7 @@ from pathlib import Path
 
 from nicegui import ui
 
+from paper_pile.core.ai.provider import Health
 from paper_pile.core.commands import push_recent
 from paper_pile.core.config import Config
 from paper_pile.core.events import EventBus
@@ -18,7 +19,7 @@ from paper_pile.core.session import SessionState, load_session, save_session
 from paper_pile.core.vault import Vault
 from paper_pile.core.watcher import TOPIC as FS_CHANGED
 from paper_pile.core.watcher import FsEvent
-from paper_pile.gui.components.chat import chat_panel
+from paper_pile.gui.components.chat import ChatPane
 from paper_pile.gui.components.editor_pane import EditorPane
 from paper_pile.gui.components.statusbar import StatusBar, status_bar
 from paper_pile.gui.components.tree import FileTree
@@ -54,6 +55,9 @@ class MainLayout:
         self.tree: FileTree | None = None
         self.editor_pane: EditorPane | None = None
         self._fs_bus = fs_bus
+        self.config = Config(vault=vault)
+        self.index = Index(Vault(vault))
+        self.chat: ChatPane | None = None
         self.state: SessionState = load_session(vault)
         for pane in WIDTH_LIMITS:
             self.state.pane_widths[pane] = clamp_width(pane, self.state.pane_widths[pane])
@@ -74,7 +78,7 @@ class MainLayout:
                 with inner.before:
                     self._center_pane()
                 with inner.after:
-                    chat_panel()
+                    self._chat_pane()
                 self._status = status_bar(
                     lambda: self.toggle("left"),
                     lambda: self.toggle("right"),
@@ -122,6 +126,23 @@ class MainLayout:
             self.tree.build()
             # below the tree: reserved for the profile block (P8.3)
 
+    def _chat_pane(self) -> None:
+        assert self.editor_pane is not None
+        self.chat = ChatPane(
+            Vault(self.vault),
+            self.config,
+            self.index,
+            snapshot=self.editor_pane.ai_snapshot,
+            insert_text=self.editor_pane.insert_text,
+            on_health=self._on_ollama_health,
+        )
+        self.chat.build()
+
+    def _on_ollama_health(self, health: Health) -> None:
+        if self._status is not None:
+            tip = "Ollama is running" if health.ok and not health.message else health.message
+            self._status.set_ollama(health.ok, tip or "Ollama")
+
     def _center_pane(self) -> None:
         self.editor_pane = EditorPane(
             Vault(self.vault),
@@ -132,8 +153,8 @@ class MainLayout:
             on_mode_changed=self._on_mode_changed,
             native=self.can_reveal,  # native window = this machine
             on_plain_changed=self._on_plain_changed,
-            index=Index(Vault(self.vault)),
-            config=Config(vault=self.vault),
+            index=self.index,
+            config=self.config,
             get_recents=lambda: self.state.recent_commands,
             on_command_used=self._on_command_used,
         )

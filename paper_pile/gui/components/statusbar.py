@@ -12,6 +12,8 @@ class StatusBar:
     right_toggle: ui.button
     save_label: ui.label
     mode_label: ui.label
+    ollama_dot: ui.label
+    ollama_tip: ui.tooltip
 
     def set_mode(self, mode: str, plain: bool = False) -> None:
         """Show Live/Source, or "Plain text" (not toggleable) while a .txt note is active."""
@@ -22,6 +24,13 @@ class StatusBar:
             self.mode_label.classes("pp-mode-plain")
         else:
             self.mode_label.classes(remove="pp-mode-plain")
+
+    def set_ollama(self, ok: bool, text: str) -> None:
+        """Green dot when Ollama can be reached, grey otherwise; the tooltip says why."""
+        self.ollama_dot.classes(
+            add="pp-dot-on" if ok else "pp-dot-off", remove="pp-dot-off" if ok else "pp-dot-on"
+        )
+        self.ollama_tip.set_text(text)
 
     def set_save_state(self, text: str, *, error: bool = False) -> None:
         self.save_label.set_text(text)
@@ -49,10 +58,12 @@ def status_bar(
         mode_label.on("click", lambda _e: on_toggle_mode())
         ui.label("0 words · Ln 1, Col 1").classes("pp-muted")
         save = ui.label("Ready").classes("pp-muted pp-save")
-        ui.label("●").classes("pp-dot pp-dot-off").tooltip("Ollama status")
+        dot = ui.label("●").classes("pp-dot pp-dot-off")
+        with dot:
+            tip = ui.tooltip("Ollama status")
         right = (
             ui.button(icon="chat_bubble_outline", on_click=on_toggle_right)
             .props("flat dense size=sm")
             .tooltip("Toggle AI chat (Ctrl+L)")
         )
-    return StatusBar(left, right, save, mode_label)
+    return StatusBar(left, right, save, mode_label, dot, tip)

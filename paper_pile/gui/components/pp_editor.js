@@ -52,6 +52,9 @@ export default {
     async applyChanges(docId, changes, expected, cursor) {
       return (await this.ready).applyChanges(docId, changes, expected, cursor ?? null);
     },
+    async getSelection() {
+      return (await this.ready).getSelection();
+    },
     async focusTableCell(row, col, from) {
       (await this.ready).focusTableCell(row, col, from ?? null);
     },

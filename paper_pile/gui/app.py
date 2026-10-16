@@ -46,6 +46,7 @@ def _build_pages(vault: Path, *, native: bool) -> None:
         ui.add_head_html(f'<link rel="stylesheet" href="{STATIC_URL}/app.css">')
         ui.add_head_html(f'<script src="{STATIC_URL}/tree.js" defer></script>')
         ui.add_head_html(f'<script src="{STATIC_URL}/tabs.js" defer></script>')
+        ui.add_head_html(f'<script src="{STATIC_URL}/chat.js" defer></script>')
         # "reveal" only makes sense on this machine
         layout = MainLayout(vault, can_reveal=native, fs_bus=fs_bus)
         layout.build()

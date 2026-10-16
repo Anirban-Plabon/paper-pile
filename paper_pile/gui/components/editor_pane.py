@@ -28,6 +28,7 @@ from paper_pile.core import (
     assets,
     commands_builtin,  # noqa: F401  (registers the slash commands)
 )
+from paper_pile.core.ai.context import EditorSnapshot
 from paper_pile.core.buffer import NoteBuffer, Outcome, content_hash, find_recoverable
 from paper_pile.core.command_actions import TextChange, TextEdit, remove_range, resolve
 from paper_pile.core.commands import (
@@ -499,6 +500,22 @@ class EditorPane:
             log.info("clipboard saved to %s", folder / stamp)
         except OSError:
             log.exception("could not save the clipboard dump")
+
+    async def ai_snapshot(self) -> EditorSnapshot:
+        """The open note, the selected text and the open tabs, as the AI features need them."""
+        path = self._active_path()
+        if path is None:
+            return EditorSnapshot()
+        fresh = await self._editor.get_text()
+        text = fresh if fresh is not None else self.buffers[self.tabs.active or 0].text
+        picked = await self._editor.get_selection()
+        tabs = [(b.path, b.text) for b in self.buffers.values()]
+        return EditorSnapshot(path, text, picked[0] if picked else "", tabs)
+
+    def insert_text(self, text: str) -> None:
+        """Put ``text`` at the caret of the note on screen (replacing a selection)."""
+        if self.tabs.active is not None:
+            self._editor.insert_at_cursor(text)
 
     def _on_image_saved(self, args: dict[str, Any]) -> None:
         """An image was pasted, dropped or picked and stored: insert its markdown at the caret."""
