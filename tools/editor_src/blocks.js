@@ -169,11 +169,14 @@ function candidates(state) {
   tree.iterate({
     enter(node) {
       if (node.name === "Paragraph") {
-        // a paragraph that is just `![[note]]` is an embed: the note's content, not a link
-        const line = doc.lineAt(node.from);
-        const m = line.to === node.to ? /^!\[\[([^\[\]\n]+)\]\]$/.exec(line.text.trim()) : null;
-        const target = m ? parseWikilink(m[1]) : null;
-        if (target && target.note) push(node, new EmbedWidget(target.note, target.heading));
+        // a line of its own that is just `![[note]]` is an embed (the note's content, not a link),
+        // also inside a paragraph of several lines
+        for (let n = doc.lineAt(node.from).number; n <= doc.lineAt(node.to).number; n++) {
+          const line = doc.line(n);
+          const m = /^!\[\[([^\[\]\n]+)\]\]$/.exec(line.text.trim());
+          const target = m ? parseWikilink(m[1]) : null;
+          if (target && target.note) out.push({ from: line.from, to: line.to, widget: new EmbedWidget(target.note, target.heading), editing: null });
+        }
         return false;
       }
       if (isInlineOnly(node.name)) return false;

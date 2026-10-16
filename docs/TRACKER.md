@@ -275,3 +275,4 @@ Legend: 🧠 = needs Opus (see PLAN §6 model guidance) · ⬜ todo · 🔄 in p
 - 2026-10-15 · links · plain click opens [[note]] links; ![[note]] renders an embed block (core/embed.py, /_pp/embed, embedwidget.js); wikilink grammar fix for `![[`; 599 tests; 14 browser checks (em)
 - 2026-10-16 · fix · Index reopens after close (reconnected pages); 603 tests
 - 2026-10-16 · backlinks · plain-text snippets with the link highlighted; 608 tests
+- 2026-10-16 · embeds · `![[note]]` on a line of its own is an embed block even inside a multi-line paragraph (directly above or below other text); only an embed in the middle of a line's text stays a link; 16 browser checks (em)
