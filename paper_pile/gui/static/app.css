@@ -87,7 +87,7 @@ html, body { overflow: hidden; }
 .pp-setext-underline { opacity: .3; font-size: .8em; }
 
 /* Lists, tasks, quotes, rules (tools/editor_src/livepreview.js) */
-.pp-bullet { display: inline-block; width: 1ch; text-align: center; text-indent: 0; color: var(--pp-muted); }
+.pp-bullet { display: inline-block; width: 1ch; text-align: center; text-indent: 0; color: var(--pp-accent); }
 .pp-list-num { color: var(--pp-muted); }
 .pp-task { display: inline-block; width: 2ch; text-align: left; text-indent: 0; cursor: pointer; }
 .pp-task .pp-box { display: inline-block; box-sizing: border-box; width: 1.5ch; height: 1.5ch; border: 1.5px solid var(--pp-muted); border-radius: 3px; vertical-align: -0.2em; }
@@ -143,7 +143,7 @@ html, body { overflow: hidden; }
 .pp-fm-row { display: flex; gap: 12px; line-height: 1.6; }
 .pp-fm-key { flex: 0 0 9ch; font-weight: 600; opacity: .8; overflow: hidden; text-overflow: ellipsis; }
 .pp-fm-val { color: var(--pp-fg); overflow-wrap: anywhere; }
-.pp-hr { display: block; height: 0; margin: 0.55em 0; border-top: 1px solid var(--pp-border); }
+.pp-hr { display: block; height: 0; margin: 0.55em 0; border-top: 1px solid rgba(var(--pp-accent-rgb), .45); }
 .pp-mode-toggle { cursor: pointer; user-select: none; padding: 0 4px; border-radius: 3px; }
 .pp-mode-toggle:hover { background: rgba(127, 127, 127, .18); }
 .pp-mode-toggle.pp-mode-plain { cursor: default; }
@@ -179,19 +179,19 @@ html, body { overflow: hidden; }
 .pp-editor.pp-dark .pp-wikilink { color: #b79cff; text-decoration-color: rgba(183, 156, 255, .45); }
 .pp-editor.pp-dark .pp-wikilink-missing { color: #e0a458; text-decoration-color: rgba(224, 164, 88, .6); }
 .pp-editor.pp-dark .cm-line.pp-quote { --pp-bar: #4b5160; }
-.pp-editor.pp-dark .pp-code { background: rgba(255, 255, 255, .09); }
+.pp-editor.pp-dark .pp-code { background: rgba(var(--pp-accent-rgb), .2); }
 .pp-editor.pp-dark .pp-image img { opacity: .92; }
 .pp-editor.pp-dark .cm-cursor { border-left-color: #ddd; }
 
 /* Live Preview marks (tools/editor_src/livepreview.js) */
 .pp-h { font-weight: 700; }
-.pp-h1 { font-size: 1.7em; }
+.pp-h1 { font-size: 1.7em; padding-bottom: .18em; margin-bottom: .25em; border-bottom: 1px solid rgba(var(--pp-accent-rgb), .55); }
 .pp-h2 { font-size: 1.4em; }
 .pp-h3 { font-size: 1.2em; }
 .pp-strong { font-weight: 700; }
 .pp-em { font-style: italic; }
 .pp-strike { text-decoration: line-through; }
-.pp-code { font-family: monospace; background: #8882; border-radius: 3px; }
+.pp-code { font-family: monospace; color: var(--pp-accent); background: rgba(var(--pp-accent-rgb), .12); border-radius: 5px; padding: 2px 7px; margin: 0 1px; }
 
 /* Block widgets (tools/editor_src/blocks.js) */
 .pp-math-block, .pp-mermaid { text-align: center; padding: 8px 0; cursor: text; }
@@ -367,3 +367,28 @@ html, body { overflow: hidden; }
 .pp-chat-chip-open { background: rgba(var(--pp-accent-rgb), .16); }
 .pp-chat-preview { width: 100%; gap: 0; }
 .pp-chat-chip-body { width: 100%; max-height: 200px; overflow: auto; padding: 4px 10px; border-radius: 12px; background: rgba(127, 127, 127, .08); }
+
+/* callouts: a quote that opens with a bold label gets a tinted box; its text is untouched */
+.pp-editor .cm-line.pp-quote.pp-callout { --pp-bar: var(--pp-accent); background-color: rgba(var(--pp-accent-rgb), .13); }
+/* copy button on code, math and diagram blocks */
+.pp-editor .cm-line.pp-code-first { position: relative; padding-right: 44px; }
+.pp-blockcopy-wrap { position: absolute; top: 3px; right: 6px; z-index: 2; }
+.pp-math-block, .pp-mermaid { position: relative; }
+.pp-math-block .pp-blockcopy, .pp-mermaid .pp-blockcopy { position: absolute; top: 4px; right: 4px; }
+.pp-blockcopy { display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 24px; padding: 0; cursor: pointer; color: var(--pp-muted); background: var(--pp-bg); border: 1px solid var(--pp-border); border-radius: 6px; opacity: .55; transition: opacity .12s, color .12s; }
+.pp-blockcopy:hover, .pp-code-first:hover .pp-blockcopy, .pp-math-block:hover .pp-blockcopy, .pp-mermaid:hover .pp-blockcopy { opacity: 1; color: var(--pp-accent); border-color: rgba(var(--pp-accent-rgb), .5); }
+.pp-blockcopy-done { color: var(--pp-accent) !important; opacity: 1; }
+/* the text selection follows the theme colour too */
+.pp-editor .cm-selectionBackground, .pp-editor .cm-focused .cm-selectionBackground { background: rgba(var(--pp-accent-rgb), .28) !important; }
+/* callout types: a label such as Tip / Warning / Danger changes the box colour */
+.pp-editor .cm-line.pp-quote.pp-callout-ok { --pp-bar: #22a06b; background-color: rgba(34, 160, 107, .14); }
+.pp-editor .cm-line.pp-quote.pp-callout-warn { --pp-bar: #d9822b; background-color: rgba(217, 130, 43, .15); }
+.pp-editor .cm-line.pp-quote.pp-callout-bad { --pp-bar: #d64545; background-color: rgba(214, 69, 69, .13); }
+/* heading folding */
+.pp-editor .cm-line.pp-h { position: relative; }
+.pp-fold { position: absolute; left: -1.25em; top: 50%; transform: translateY(-50%); font-size: .7em; line-height: 1; color: var(--pp-muted); cursor: pointer; opacity: 0; user-select: none; padding: 2px; }
+.pp-h:hover .pp-fold, .pp-fold-folded { opacity: 1; }
+.pp-fold:hover { color: var(--pp-accent); }
+.pp-fold-placeholder { margin-left: .5em; padding: 0 6px; border-radius: 4px; color: var(--pp-accent); background: rgba(var(--pp-accent-rgb), .14); cursor: pointer; }
+.pp-fold::before { content: "\25BE"; }
+.pp-fold-folded::before { content: "\25B8"; }

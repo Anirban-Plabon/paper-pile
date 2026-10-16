@@ -64,6 +64,7 @@ from paper_pile.core.tables import apply_op, table_extent
 from paper_pile.core.tabs import TabList
 from paper_pile.core.templates import render_template
 from paper_pile.core.textpos import codepoint_index, utf16_index
+from paper_pile.core.titles import note_name, retitle_edit, with_title
 from paper_pile.core.vault import Vault, VaultError, is_plain_text
 from paper_pile.core.watcher import FsEvent
 from paper_pile.gui.components.backlinks import BacklinkItem, BacklinksPane
@@ -103,6 +104,7 @@ class EditorPane:
         on_command_used: Callable[[str], None] = lambda command_id: None,
         selection_changed: Callable[[str, str], None] = lambda text, path: None,
         add_note_to_chat: Callable[[str], None] = lambda path: None,
+        block_to_chat: Callable[[str, str, str, str], None] = lambda kind, lang, text, path: None,
     ) -> None:
         self.vault = vault
         self.bus = bus
@@ -128,6 +130,7 @@ class EditorPane:
         self._on_command_used = on_command_used
         self._selection_changed = selection_changed
         self._add_note_to_chat = add_note_to_chat
+        self._block_to_chat = block_to_chat
         self._reindex_handle: asyncio.TimerHandle | None = None
         self._backlinks: BacklinksPane
         self._timer: asyncio.TimerHandle | None = None
@@ -169,6 +172,7 @@ class EditorPane:
                     on_paste=lambda e: self._on_paste(e.args),
                     on_ai_selection=lambda e: self._on_ai_selection(e.args),
                     on_selection=lambda e: self._on_selection(e.args),
+                    on_block_to_chat=lambda e: self._on_block_to_chat(e.args),
                     on_image_saved=lambda e: self._on_image_saved(e.args),
                     on_image_error=lambda e: self._toast(
                         str(e.args.get("message", "")), error=True
@@ -249,6 +253,11 @@ class EditorPane:
         except VaultError as exc:
             self._toast(str(exc), error=True)  # the tabs that are open stay as they are
             return
+        auto_title = self._config.get("editor.auto_title", True) if self._config else True
+        if auto_title and recovered is None and path.lower().endswith(".md"):
+            titled = with_title(buffer.text, note_name(path))  # the note's name as its title
+            if titled is not None:
+                buffer.set_text(titled)  # dirty: the autosave below writes it
         tab, _ = self.tabs.open(path)
         self.buffers[tab.id] = buffer
         if activate:
@@ -623,6 +632,17 @@ class EditorPane:
         """The selection settled: the chat attaches it (an empty one removes the attachment)."""
         if args.get("docId") == self.tabs.active:
             self._selection_changed(str(args.get("text", "")), self._active_path() or "")
+
+    def _on_block_to_chat(self, args: dict[str, Any]) -> None:
+        """The copy button of a code / math / diagram block: attach the block to the chat."""
+        text = str(args.get("text", ""))
+        if text.strip() and args.get("docId") == self.tabs.active:
+            self._block_to_chat(
+                str(args.get("kind", "code")),
+                str(args.get("lang", "")),
+                text,
+                self._active_path() or "",
+            )
 
     def open_paths(self) -> list[str]:
         """Paths of every open tab, in tab order."""
@@ -1136,7 +1156,40 @@ class EditorPane:
         """The tree renamed or moved something: tabs follow it, and links are repaired.
         (Renames seen by the watcher only move tabs: outside changes are left alone.)"""
         self._on_renamed(old, new)
-        self._spawn(self._rewrite_links(old, new))
+        self._spawn(self._after_rename(old, new))
+
+    async def _after_rename(self, old: str, new: str) -> None:
+        await self._rewrite_links(old, new)
+        await self._retitle(old, new)
+
+    async def _retitle(self, old: str, new: str) -> None:
+        """A renamed note's title follows its name, unless the user wrote another title."""
+        if self._config is not None and not self._config.get("editor.auto_title", True):
+            return
+        for was, now in self._moves(old, new).items():
+            if not now.lower().endswith(".md") or note_name(was) == note_name(now):
+                continue
+            open_tab = next((t for t in self.tabs.tabs if t.path == now), None)
+            if open_tab is not None and open_tab.id in self.buffers:
+                if open_tab.id == self.tabs.active:
+                    fresh = await self._editor.get_text()
+                    if fresh is not None:
+                        self.buffers[open_tab.id].set_text(fresh)
+                before = self.buffers[open_tab.id].text.replace("\r\n", "\n")
+                edit = retitle_edit(before, note_name(was), note_name(now))
+                if edit is not None:
+                    after = before[: edit.start] + edit.insert + before[edit.end :]
+                    await self._rewrite_open(open_tab.id, before, [edit], after)
+                continue
+            try:
+                before = self.vault.read_text(now)
+            except VaultError:
+                continue
+            edit = retitle_edit(before, note_name(was), note_name(now))
+            if edit is not None:
+                self._rewrite_closed(
+                    now, before, before[: edit.start] + edit.insert + before[edit.end :]
+                )
 
     async def _rewrite_links(self, old: str, new: str) -> None:
         """Keep every link pointing at the note it pointed at (rules: ``core/rewrite.py``)."""

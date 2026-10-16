@@ -218,12 +218,17 @@ class MainLayout:
             on_command_used=self._on_command_used,
             selection_changed=self._chat_selection,
             add_note_to_chat=self._chat_add_note,
+            block_to_chat=self._chat_block,
         )
         self.editor_pane.build()
 
     def _chat_selection(self, text: str, path: str) -> None:
         if self.chat is not None:
             self.chat.set_selection(text, path)
+
+    def _chat_block(self, kind: str, lang: str, text: str, path: str) -> None:
+        if self.chat is not None:
+            self.chat.set_block(kind, lang, text, path)
 
     def _active_path(self) -> str | None:
         tab = self.editor_pane.tabs.active_tab if self.editor_pane else None

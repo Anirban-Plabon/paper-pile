@@ -65,6 +65,12 @@ SECTIONS: dict[str, tuple[Setting, ...]] = {
         Setting("editor.word_wrap", "Wrap long lines", "bool"),
         Setting("editor.tab_size", "Tab size", "choice", ("2", "3", "4", "8")),
         Setting("editor.spell_check", "Check spelling", "bool"),
+        Setting(
+            "editor.auto_title",
+            "Title property from the note name",
+            "bool",
+            help="Writes title: <name> into a note's properties on open; a rename updates it",
+        ),
         Setting("editor.default_mode", "Mode for a vault opened the first time", "choice", MODES),
     ),
     "Vault": (

@@ -13,6 +13,8 @@ import { refreshEffect } from "./reveal.js";
 import { codeLanguages } from "./codelang.js";
 import { editorContext } from "./context.js";
 import { editorExtensions } from "./grammar.js";
+import { autoBrackets, autoClose } from "./autoclose.js";
+import { headingFolding } from "./fold.js";
 import { listEditing } from "./listedit.js";
 import { selectionSync } from "./selectionsync.js";
 import { closeSlash, setSlashResults, slashExtension } from "./slash.js";
@@ -189,6 +191,9 @@ export function createEditor(
       : [
           markdown({ base: markdownLanguage, extensions: editorExtensions, codeLanguages, addKeymap: false }),
           listEditing,
+          autoClose,
+          autoBrackets,
+          headingFolding,
           syntaxHighlighting(sourceStyle),
           syntaxHighlighting(classHighlighter), // `tok-*` classes inside code blocks; colours live in CSS
           modeSlot.of(modeExt(currentMode)),

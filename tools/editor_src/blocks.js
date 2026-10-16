@@ -2,10 +2,10 @@
 // CM6 only allows block / line-spanning replace decorations from a StateField, so these
 // live apart from the inline ViewPlugin in livepreview.js. Render-only: no logic here.
 import { ensureSyntaxTree, syntaxTree } from "@codemirror/language";
-import { Facet, StateField } from "@codemirror/state";
+import { Facet, StateEffect, StateField } from "@codemirror/state";
 import { Decoration, EditorView, WidgetType } from "@codemirror/view";
 import katex from "katex";
-import { touches } from "./reveal.js";
+import { copyButton } from "./blockactions.js";
 import { EmbedWidget } from "./embedwidget.js";
 import { TablePreview, TableWidget } from "./tablewidget.js";
 import { parseWikilink } from "./wikilink.js";
@@ -63,6 +63,7 @@ class DisplayMathWidget extends WidgetType {
     const el = document.createElement("div");
     el.className = "pp-math-block";
     el.innerHTML = katex.renderToString(this.src, { displayMode: true, throwOnError: false });
+    el.appendChild(copyButton("math", "", this.src));
     revealOnMouseDown(el, view);
     return el;
   }
@@ -131,18 +132,25 @@ class MermaidWidget extends WidgetType {
   toDOM(view) {
     const el = document.createElement("div");
     el.className = "pp-mermaid";
-    el.textContent = "Rendering diagram…";
-    renderMermaid(this.src, this.theme).then(
-      (svg) => {
-        el.textContent = "";
-        el.innerHTML = svg;
-        view.requestMeasure();
-      },
-      (err) => {
-        showError(el, `Mermaid: ${String(err?.message ?? err).split("\n")[0]}`);
-        view.requestMeasure();
-      },
-    );
+    const body = document.createElement("div");
+    el.appendChild(body);
+    el.appendChild(copyButton("diagram", "mermaid", this.src));
+    const cached = svgCache.get(`${this.theme}\0${this.src}`);
+    if (cached) {
+      body.innerHTML = cached; // no "Rendering…" flash when a known diagram comes back
+    } else {
+      body.textContent = "Rendering diagram…";
+      renderMermaid(this.src, this.theme).then(
+        (svg) => {
+          body.innerHTML = svg;
+          view.requestMeasure();
+        },
+        (err) => {
+          showError(body, `Mermaid: ${String(err?.message ?? err).split("\n")[0]}`);
+          view.requestMeasure();
+        },
+      );
+    }
     revealOnMouseDown(el, view);
     return el;
   }
@@ -206,12 +214,45 @@ function candidates(state) {
   return out;
 }
 
-// The widgets to show now: every candidate the selection does not touch. A table being edited
+// Does the selection reveal this block's source? A caret on the block (edges count) or a selection
+// inside it does. A selection that only passes over the block, or contains it, leaves it drawn:
+// dragging across a diagram must not swap it for its source under the pointer (that moved the
+// layout while selecting and made the selection flicker).
+function reveals(state, from, to) {
+  for (const r of state.selection.ranges) {
+    if (r.empty ? r.from <= to && r.from >= from : r.from >= from && r.to <= to) return true;
+  }
+  return false;
+}
+
+// While the mouse button is held (a drag-selection) the set of drawn blocks stays as it was;
+// the final selection is applied once on release.
+const dragging = StateEffect.define();
+const dragField = StateField.define({
+  create: () => false,
+  update: (v, tr) => tr.effects.reduce((acc, e) => (e.is(dragging) ? e.value : acc), v),
+});
+const dragTracking = EditorView.domEventHandlers({
+  mousedown: (e, view) => {
+    if (e.button !== 0) return false;
+    view.dispatch({ effects: dragging.of(true) });
+    const end = () => {
+      window.removeEventListener("mouseup", end, true);
+      window.removeEventListener("blur", end, true);
+      view.dispatch({ effects: dragging.of(false) });
+    };
+    window.addEventListener("mouseup", end, true);
+    window.addEventListener("blur", end, true);
+    return false;
+  },
+});
+
+// The widgets to show now: every candidate the selection does not reveal. A table being edited
 // shows its source with a live rendered preview above it.
 function visible(items, state) {
   const out = [];
   for (const { from, to, widget, editing } of items) {
-    if (!touches(state, from, to)) out.push(Decoration.replace({ widget, block: true }).range(from, to));
+    if (!reveals(state, from, to)) out.push(Decoration.replace({ widget, block: true }).range(from, to));
     else if (editing) out.push(Decoration.widget({ widget: editing, block: true, side: -1 }).range(from));
   }
   return Decoration.set(out, true);
@@ -225,7 +266,10 @@ const blockField = StateField.define({
     if (tr.docChanged || tr.reconfigured || syntaxTree(tr.startState) !== syntaxTree(tr.state)) {
       return derive(candidates(tr.state), tr.state);
     }
-    if (!tr.state.selection.eq(tr.startState.selection)) {
+    const held = tr.state.field(dragField, false);
+    const released = tr.startState.field(dragField, false) && !held;
+    if (held) return value;
+    if (released || !tr.state.selection.eq(tr.startState.selection)) {
       return { items: value.items, set: visible(value.items, tr.state) };
     }
     return value;
@@ -233,4 +277,4 @@ const blockField = StateField.define({
   provide: (f) => EditorView.decorations.from(f, (v) => v.set),
 });
 
-export const blocks = [blockField];
+export const blocks = [dragField, dragTracking, blockField];

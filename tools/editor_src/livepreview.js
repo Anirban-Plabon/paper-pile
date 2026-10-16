@@ -11,6 +11,8 @@ import { Decoration, ViewPlugin } from "@codemirror/view";
 import { editorContext, normNote } from "./context.js";
 import { parseWikilink } from "./wikilink.js";
 import { activeLines, refreshEffect, touches } from "./reveal.js";
+import { CodeCopyWidget } from "./blockactions.js";
+import { FoldToggle, foldEffects, foldState } from "./fold.js";
 import { BulletWidget, CheckboxWidget, HrWidget, ImageWidget, MathWidget } from "./widgets.js";
 
 const hide = Decoration.replace({});
@@ -54,6 +56,17 @@ const CODE_LAST = lineDeco("pp-codeblock pp-code-last");
 const CODE_ONLY = lineDeco("pp-codeblock pp-code-first pp-code-last");
 const FENCE_LINE = lineDeco("pp-fence-line");
 const CODE_LANG = mark("pp-code-lang");
+const CALLOUT_TYPES = {
+  tip: "ok", success: "ok", done: "ok", hint: "ok",
+  warning: "warn", caution: "warn", attention: "warn", important: "warn",
+  danger: "bad", error: "bad", bug: "bad", failure: "bad",
+};
+const CALLOUT_LINE = {
+  "": lineDeco("pp-callout"),
+  ok: lineDeco("pp-callout pp-callout-ok"),
+  warn: lineDeco("pp-callout pp-callout-warn"),
+  bad: lineDeco("pp-callout pp-callout-bad"),
+};
 const QUOTE_LINE = [1, 2, 3].map((n) => lineDeco(`pp-quote pp-quote-${n}`));
 const LIST_GLYPHS = ["\u2022", "\u25E6", "\u25AA"]; // bullet, white bullet, small square, repeating with depth
 const LIST_NUM = mark("pp-list-num");
@@ -92,6 +105,10 @@ const handlers = {
       (cx, node) => {
         const line = cx.doc.lineAt(node.from);
         cx.out.push(HEADING_LINE[level - 1].range(line.from));
+        const fold = foldState(cx.state, line);
+        if (fold) {
+          cx.out.push(Decoration.widget({ widget: new FoldToggle(line.from, fold.folded), side: -1 }).range(line.from));
+        }
         if (cx.active.has(line.number)) return;
         for (const m of node.node.getChildren("HeaderMark")) {
           const space = cx.doc.sliceString(m.to, m.to + 1) === " " ? 1 : 0;
@@ -165,6 +182,19 @@ const handlers = {
         const hidden = cx.active.has(n) ? 0 : quotePrefix(line.text);
         cx.out.push(hangingIndent(Math.max(0, col - hidden)).range(line.from));
       }
+    }
+  },
+
+  // A quote that opens with a bold label (`> **Note:** ...`, what /callout inserts) is a callout:
+  // the box is tinted in the theme colour; the text is untouched.
+  Blockquote: (cx, node) => {
+    if (node.node.parent?.name === "Blockquote") return;
+    const first = cx.doc.lineAt(node.from);
+    const label = /^\s*>\s*\*\*([^*\n]+?):?\*\*/.exec(first.text);
+    if (!label) return;
+    const deco = CALLOUT_LINE[CALLOUT_TYPES[label[1].trim().toLowerCase()] ?? ""];
+    for (let n = first.number; n <= cx.doc.lineAt(node.to).number; n++) {
+      cx.out.push(deco.range(cx.doc.line(n).from));
     }
   },
 
@@ -267,6 +297,12 @@ const handlers = {
       const deco = first === last ? CODE_ONLY : n === first ? CODE_FIRST : n === last ? CODE_LAST : CODE_LINE;
       cx.out.push(deco.range(cx.doc.line(n).from));
     }
+    const code = node.node.getChild("CodeText");
+    if (code) {
+      const text = cx.doc.sliceString(code.from, code.to);
+      const widget = new CodeCopyWidget(lang === "mermaid" ? "diagram" : "code", lang, text);
+      cx.out.push(Decoration.widget({ widget, side: -1 }).range(cx.doc.line(first).from));
+    }
     if (raw) return;
     const marks = node.node.getChildren("CodeMark");
     if (marks.length) cx.out.push(hide.range(marks[0].from, marks[0].to));
@@ -335,7 +371,9 @@ export const livePreview = ViewPlugin.fromClass(
       this.decorations = build(view);
     }
     update(u) {
-      const refresh = u.transactions.some((tr) => tr.effects.some((e) => e.is(refreshEffect)));
+      const refresh = u.transactions.some((tr) =>
+        tr.effects.some((e) => e.is(refreshEffect) || e.is(foldEffects.foldEffect) || e.is(foldEffects.unfoldEffect)),
+      );
       if (refresh || u.docChanged || u.selectionSet || u.viewportChanged || syntaxTree(u.startState) !== syntaxTree(u.state)) {
         this.decorations = build(u.view);
       }

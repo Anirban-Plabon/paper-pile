@@ -57,8 +57,12 @@ class Selection:
     text: str
     label: str  # "From [[a]]" (or "Selected text" without a note)
     note: str = ""  # the note it came from, shown in the theme colour
+    kind: str = "Selected text"  # or "Code block", "Math block", "Diagram"
+    detail: str = ""  # replaces the size when set (a block's text includes its fences)
 
     def size(self) -> str:
+        if self.detail:
+            return self.detail
         lines = len(self.text.strip().splitlines())
         return f"{lines} lines" if lines > 1 else f"{len(self.text.strip())} chars"
 
@@ -453,6 +457,28 @@ class ChatPane:
             self._selections.append(picked)
             self._render_selections()
 
+    def set_block(self, kind: str, lang: str, text: str, path: str) -> None:
+        """Attach a code / math / diagram block (its copy button) like a selection."""
+        body = text.strip("\n")
+        if kind == "math":
+            fenced, label = f"$$\n{body}\n$$", "Math block"
+        elif kind == "diagram":
+            fenced, label = f"```mermaid\n{body}\n```", "Diagram"
+        else:
+            fenced, label = f"```{lang}\n{body}\n```", "Code block"
+        n = len(body.splitlines()) or 1
+        name = wikilink_to(path, "", set(self.vault.walk_notes())) if path else ""
+        picked = Selection(
+            fenced,
+            f"From [[{name}]]" if name else label,
+            name,
+            label,
+            f"{n} line{'s' if n != 1 else ''}",
+        )
+        if picked not in self._selections:
+            self._selections.append(picked)
+            self._render_selections()
+
     def _remove_selection(self, picked: Selection) -> None:
         if picked in self._selections:
             self._selections.remove(picked)
@@ -472,7 +498,7 @@ class ChatPane:
                     row.classes("pp-chat-chip-open")
                 with row:
                     ui.icon("format_quote").classes("pp-chat-ref-icon")
-                    text = f"[Selected text · {picked.size()}]"
+                    text = f"[{picked.kind} · {picked.size()}]"
                     if picked.note:
                         note = html.escape(picked.note)
                         text = f'From <span class="pp-chat-ref-note">{note}</span>: {text}'
@@ -558,7 +584,7 @@ class ChatPane:
         known = set(self.vault.walk_notes())
         names = [wikilink_to(p, "", known) for p in notes if p in known]
         label = "\n".join(
-            [f"{p.label}: [Pasted text]" for p in picked]
+            [f"{p.label}: [{p.kind}]" for p in picked]
             + [f"[[{n}]]" for n in names]
             + [f"{f.name}: [File]" for f in files]
         )

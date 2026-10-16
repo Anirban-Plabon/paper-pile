@@ -33,6 +33,7 @@ DEFAULTS: dict[str, Any] = {
         "tab_size": 4,
         "spell_check": False,
         "default_mode": "live",
+        "auto_title": True,
     },
     "vault": {"templates_folder": "", "daily_notes_folder": ""},
     "ai": {
