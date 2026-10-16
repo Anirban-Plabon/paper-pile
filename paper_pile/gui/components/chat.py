@@ -148,14 +148,15 @@ class ChatPane:
                     with self._strip:
                         self._refs = ui.row().classes("pp-chat-refs")
                         self._chips = ui.row().classes("pp-chat-chips")
+                    self._input = (
+                        ui.textarea(placeholder="Ask, or @ a note")
+                        .props("borderless dense autogrow input-style='max-height: 220px'")
+                        .classes("pp-chat-input")
+                    )
+                    self._input.on_value_change(lambda e: self._update_mentions(e.value or ""))
                     with ui.row().classes("pp-chat-row items-center no-wrap w-full"):
                         self._plus_button()
-                        self._input = (
-                            ui.textarea(placeholder="Ask, or @ a note")
-                            .props("borderless dense autogrow input-style='max-height: 160px'")
-                            .classes("pp-chat-input")
-                        )
-                        self._input.on_value_change(lambda e: self._update_mentions(e.value or ""))
+                        ui.space()
                         self._model = (
                             ui.select(
                                 {},

@@ -341,10 +341,13 @@ html, body { overflow: hidden; }
 /* composer: one rounded card */
 .pp-chat-card { width: 100%; gap: 4px; padding: 6px; background: var(--pp-bg); border: 1px solid var(--pp-border); border-radius: 26px; box-shadow: 0 1px 4px rgba(0, 0, 0, .08); }
 .pp-chat-card:focus-within { border-color: rgba(var(--pp-accent-rgb), .6); }
-.pp-chat-row { gap: 4px; }
+.pp-chat-row { gap: 4px; padding: 0 2px 0 0; }
 .pp-chat-plus.q-btn { width: 34px; height: 34px; flex: none; background: rgba(127, 127, 127, .16); color: var(--pp-fg); }
-.pp-chat-input { flex: 1 1 auto; min-width: 0; font-size: 13px; }
-.pp-chat-input .q-field__control { padding: 0 4px; }
+.pp-chat-input { width: 100%; font-size: 13.5px; }
+.pp-chat-input .q-field__control { padding: 0 12px; min-height: 0; }
+.pp-chat-input .q-field__native { padding: 8px 0 4px; line-height: 1.5; scrollbar-width: thin; }
+.pp-chat-input .q-field__native::placeholder { line-height: 1.5; }
+.pp-chat-input .q-field__control:before, .pp-chat-input .q-field__control:after { display: none; }
 .pp-chat-model { flex: none; max-width: 110px; font-size: 12px; }
 .pp-chat-send.q-btn { width: 34px; height: 34px; flex: none; background: var(--pp-accent) !important; color: #fff; }
 .pp-chat-ref-icon { font-size: 15px; color: var(--pp-muted); }
