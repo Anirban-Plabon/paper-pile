@@ -519,3 +519,12 @@ def test_assets_are_still_invisible_to_every_other_vault_operation(vault: Vault)
 )
 def test_is_plain_text(name: str, plain: bool) -> None:
     assert is_plain_text(name) is plain
+
+
+def test_folders_lists_visible_folders_only(tmp_path) -> None:
+    from paper_pile.core.vault import Vault
+
+    for rel in ("a", "a/b", "Zed", ".hidden", ".paper-pile/x", "a/.trash"):
+        (tmp_path / rel).mkdir(parents=True)
+    (tmp_path / "note.md").write_text("x")
+    assert Vault(tmp_path).folders() == ["a", "a/b", "Zed"]

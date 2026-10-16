@@ -62,12 +62,12 @@ export function createEditor(
   const modeSlot = new Compartment();
   const optionsSlot = new Compartment();
   // word wrap, tab size, spell check (Settings): applied to every open note
-  let currentOptions = { wordWrap: true, tabSize: 4, spellCheck: false, ...options };
+  let currentOptions = { wordWrap: true, tabSize: 4, spellCheck: false, lang: "en", ...options };
   const optionsExt = (o) => [
     o.wordWrap ? EditorView.lineWrapping : [],
     EditorState.tabSize.of(o.tabSize),
     indentUnit.of(" ".repeat(o.tabSize)),
-    EditorView.contentAttributes.of({ spellcheck: o.spellCheck ? "true" : "false" }),
+    EditorView.contentAttributes.of({ spellcheck: o.spellCheck ? "true" : "false", lang: o.lang || "en" }),
   ];
   const themeSlot = new Compartment();
   const modeExt = (m) => (m === "live" ? [livePreview, blocks, tableKeys] : []);

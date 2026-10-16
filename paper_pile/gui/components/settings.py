@@ -9,15 +9,18 @@ and saved at once — to the global ``config.toml`` or, with "This vault", to th
 
 import logging
 from collections.abc import Callable
+from pathlib import Path
 from typing import Any
 
 from nicegui import ui
 
+from paper_pile import __version__
 from paper_pile.core.config import Config, Scope
 from paper_pile.core.settings import (
     ACCENTS,
     ALL,
-    FONT_FAMILIES,
+    FONTS,
+    LANGUAGES,
     SECTIONS,
     Setting,
     parse_value,
@@ -27,7 +30,8 @@ from paper_pile.core.settings import (
 
 log = logging.getLogger("paper_pile.settings")
 
-SECTION_ICONS = {  # Font Awesome (outline where the free set has one)
+SECTION_ICONS = {
+    "General": "fa-regular fa-compass",  # Font Awesome (outline where the free set has one)
     "Appearance": "fa-regular fa-sun",
     "Editor": "fa-regular fa-pen-to-square",
     "Vault": "fa-regular fa-folder-open",
@@ -50,11 +54,15 @@ class SettingsPane:
         on_applied: Callable[[set[str]], None],
         models: Callable[[], list[str]] = lambda: [],
         on_close: Callable[[], None] = lambda: None,
+        vault_root: Path | None = None,
+        folders: Callable[[], list[str]] = lambda: [],
     ) -> None:
         self.config = config
         self._on_applied = on_applied
         self._models = models
         self._close = on_close
+        self._vault_root = vault_root
+        self._folders = folders
         self.scope: Scope = "global"
         self.page = next(iter(SECTIONS))
         self.query = ""
@@ -140,8 +148,28 @@ class SettingsPane:
                     self._row(setting, values[setting.key])
                 return
             self._title.set_text(self.page)
+            group = None
+            if self.page == "General":
+                self._group("Version")
+                self._info("paper-pile", f"Version {__version__}")
             for setting in SECTIONS[self.page]:
+                if setting.group != group:
+                    group = setting.group
+                    if group:
+                        self._group(group)
+                    if group == "Vault" and self._vault_root is not None:
+                        self._info(self._vault_root.name or "Vault", str(self._vault_root))
                 self._row(setting, values[setting.key])
+
+    def _group(self, title: str) -> None:
+        ui.label(title).classes("pp-set-group")
+
+    def _info(self, label: str, value: str) -> None:
+        """A read-only row (the version, where the vault is)."""
+        with ui.row().classes("pp-set-row no-wrap items-center"):
+            with ui.column().classes("pp-set-text"):
+                ui.label(label).classes("pp-set-label")
+            ui.label(value).classes("pp-set-info").tooltip(value)
 
     # ---- one row ---------------------------------------------------------------------------
 
@@ -164,7 +192,7 @@ class SettingsPane:
         if setting.kind == "bool":
             ui.switch(value=bool(current), on_change=lambda e: commit(e.value))
         elif setting.key == "appearance.accent":
-            self._swatches(setting, str(current))
+            self._accent_picker(setting, str(current))
         elif setting.key in _SEGMENTED:
             icons = THEME_ICONS if setting.key == "appearance.theme" else {}
             self._segmented(
@@ -172,19 +200,32 @@ class SettingsPane:
                 str(current),
                 commit,
             )
+        elif setting.key == "general.language":
+            ui.select(LANGUAGES, value=str(current), on_change=lambda e: commit(e.value)).props(
+                "dense outlined options-dense popup-content-class=pp-set-popup"
+            ).classes("pp-set-field")
         elif setting.kind == "choice":
             ui.select(
                 list(setting.choices), value=str(current), on_change=lambda e: commit(e.value)
-            ).props("dense outlined options-dense").classes("pp-set-field")
+            ).props("dense outlined options-dense popup-content-class=pp-set-popup").classes(
+                "pp-set-field"
+            )
         elif setting.key == "editor.font_family":
-            options = [*FONT_FAMILIES] if current in FONT_FAMILIES else [current, *FONT_FAMILIES]
+            self._font_picker(setting, str(current))
+        elif setting.key.endswith("_folder"):
+            folders = self._folders()
+            options = folders if not current or current in folders else [current, *folders]
             ui.select(
                 options,
-                value=current,
+                value=current or None,
                 with_input=True,
                 new_value_mode="add-unique",
-                on_change=lambda e: commit(e.value),
-            ).props("dense outlined options-dense").classes("pp-set-field")
+                clearable=True,
+                on_change=lambda e: commit(e.value or ""),
+            ).props(
+                "dense outlined options-dense hide-dropdown-icon popup-content-class=pp-set-popup"
+                f' placeholder="{setting.placeholder or "None"}"'
+            ).classes("pp-set-field")
         elif setting.key == "ai.model":
             names = self._models()
             options = names if current in names or not current else [current, *names]
@@ -194,7 +235,9 @@ class SettingsPane:
                 with_input=True,
                 new_value_mode="add-unique",
                 on_change=lambda e: commit(e.value),
-            ).props("dense outlined options-dense").classes("pp-set-field")
+            ).props("dense outlined options-dense popup-content-class=pp-set-popup").classes(
+                "pp-set-field"
+            )
         else:
             field = (
                 ui.input(value=str(current), placeholder=setting.placeholder)
@@ -237,25 +280,81 @@ class SettingsPane:
                 item.on("click", lambda _e, k=key: pick(k))
                 items[key] = item
 
-    def _swatches(self, setting: Setting, current: str) -> None:
-        buttons: dict[str, ui.button] = {}
+    def _accent_picker(self, setting: Setting, current: str) -> None:
+        """The accent as one button (dot + name); its popup holds the colours."""
+        with ui.button(on_click=lambda: None).props("flat no-caps dense").classes("pp-pick") as btn:
+            dot = ui.element("span").classes("pp-dot").style(f"background:{ACCENTS[current][0]}")
+            name = ui.label(current.capitalize())
+            ui.icon("fa-solid fa-chevron-down").classes("pp-pick-chev")
+            menu = ui.menu().props('anchor="bottom right" self="top right"')
+            menu.classes("pp-set-popup")
+            with menu, ui.row().classes("pp-swatchgrid"):
+                for key, (light, _dark) in ACCENTS.items():
+                    item = ui.button().props("round flat dense")
+                    item.classes("pp-swatch").style(f"background:{light}")
+                    item.tooltip(key.capitalize())
+                    if key == current:
+                        item.classes("pp-swatch-on")
+                    item.on(
+                        "click",
+                        lambda _e, k=key, m=menu: self._accent_chosen(setting, k, dot, name, m),
+                    )
+        del btn
 
-        def pick(name: str) -> None:
-            for key, button in buttons.items():
-                if key == name:
-                    button.classes("pp-swatch-on")
-                else:
-                    button.classes(remove="pp-swatch-on")
-            self._commit(setting, name)
+    def _accent_chosen(
+        self, setting: Setting, key: str, dot: ui.element, name: ui.label, menu: ui.menu
+    ) -> None:
+        menu.close()
+        dot.style(f"background:{ACCENTS[key][0]}")
+        name.set_text(key.capitalize())
+        self._commit(setting, key)
 
-        with ui.row().classes("pp-swatches"):
-            for name, (light, _dark) in ACCENTS.items():
-                button = ui.button(on_click=lambda _e, n=name: pick(n))
-                button.props("round flat dense").classes("pp-swatch").style(f"background:{light}")
-                button.tooltip(name)
-                if name == current:
-                    button.classes("pp-swatch-on")
-                buttons[name] = button
+    def _font_picker(self, setting: Setting, current: str) -> None:
+        """The font as one button (its name, drawn in that font); the popup lists the fonts, each
+        in its own face, and a "Custom" line for any other CSS font list."""
+        known = {css: label for label, css in FONTS}
+        shown = known.get(current, "Custom")
+        with ui.button().props("flat no-caps dense").classes("pp-pick pp-pick-font") as btn:
+            label = ui.label(shown).style(f"font-family:{current}")
+            ui.icon("fa-solid fa-chevron-down").classes("pp-pick-chev")
+            with (
+                ui.menu()
+                .props('anchor="bottom right" self="top right"')
+                .classes("pp-set-popup pp-fontmenu") as menu
+            ):
+                for name, css in FONTS:
+                    with ui.menu_item(
+                        on_click=lambda _e=None, c=css, n=name: self._font_chosen(
+                            setting, c, n, label
+                        )
+                    ).classes("pp-fontitem"):
+                        ui.label(name).style(f"font-family:{css}").classes("pp-fontname")
+                        ui.label("Aa 123").style(f"font-family:{css}").classes("pp-fontsample")
+                        if css == current:
+                            ui.icon("fa-solid fa-check").classes("pp-menu-check")
+                ui.separator()
+                custom = (
+                    ui.input(
+                        value="" if current in known else current,
+                        placeholder="Custom CSS font list, then Enter",
+                    )
+                    .props("dense borderless")
+                    .classes("pp-fontcustom")
+                )
+
+                def apply_custom() -> None:
+                    value = (custom.value or "").strip()
+                    if value and self._check(setting, value):
+                        self._font_chosen(setting, value, "Custom", label)
+                        menu.close()
+
+                custom.on("keydown.enter", lambda _e: apply_custom())
+        del btn
+
+    def _font_chosen(self, setting: Setting, css: str, name: str, label: ui.label) -> None:
+        label.set_text(name)
+        label.style(f"font-family:{css}")
+        self._commit(setting, css)
 
     # ---- validation and saving -------------------------------------------------------------
 

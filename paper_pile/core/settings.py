@@ -5,6 +5,7 @@ from a hand-edited ``config.toml``) goes through :func:`parse_value`, so an inva
 made-up theme can never reach the app. No UI here.
 """
 
+import re
 from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any, Literal
@@ -25,12 +26,30 @@ ACCENTS: dict[str, tuple[str, str]] = {
 THEMES = ("light", "dark", "system")
 DENSITIES = ("comfortable", "compact")
 MODES = ("live", "source")
-FONT_FAMILIES = (
-    "monospace",
-    "ui-monospace, 'JetBrains Mono', Menlo, Consolas, monospace",
-    "system-ui, sans-serif",
-    "Georgia, 'Times New Roman', serif",
+# editor fonts: (name shown, CSS font-family); any other CSS list can be typed in
+FONTS: tuple[tuple[str, str], ...] = (
+    ("Monospace", "monospace"),
+    ("Code", "ui-monospace, 'JetBrains Mono', Menlo, Consolas, monospace"),
+    ("Sans", "system-ui, sans-serif"),
+    ("Humanist", "'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif"),
+    ("Serif", "Georgia, 'Times New Roman', serif"),
+    ("Book", "'Iowan Old Style', 'Palatino Linotype', Palatino, Georgia, serif"),
 )
+FONT_FAMILIES = tuple(css for _name, css in FONTS)
+# writing languages: code -> name (spell checking, and the language the AI answers in)
+LANGUAGES: dict[str, str] = {
+    "en": "English",
+    "bn": "বাংলা (Bengali)",
+    "es": "Español",
+    "fr": "Français",
+    "de": "Deutsch",
+    "pt": "Português",
+    "it": "Italiano",
+    "hi": "हिन्दी (Hindi)",
+    "ar": "العربية (Arabic)",
+    "zh": "中文 (Chinese)",
+    "ja": "日本語 (Japanese)",
+}
 
 
 @dataclass(frozen=True, slots=True)
@@ -43,6 +62,7 @@ class Setting:
     maximum: float | None = None
     help: str = ""
     placeholder: str = ""
+    group: str = ""  # a heading shown above it inside its section
 
 
 @dataclass(frozen=True, slots=True)
@@ -53,6 +73,39 @@ class Parsed:
 
 
 SECTIONS: dict[str, tuple[Setting, ...]] = {
+    "General": (
+        Setting(
+            "general.language",
+            "Writing language",
+            "choice",
+            tuple(LANGUAGES),
+            help="Spell checking and the language the AI answers in (the interface is English)",
+            group="Language",
+        ),
+        Setting(
+            "paste.smart_paste",
+            "Smart Paste",
+            "bool",
+            help="Clean markdown from copied web pages and AI chats",
+            group="Paste",
+        ),
+        Setting(
+            "vault.templates_folder",
+            "Templates folder",
+            "text",
+            placeholder="e.g. Templates",
+            help="Notes in it are offered by /template",
+            group="Vault",
+        ),
+        Setting(
+            "vault.daily_notes_folder",
+            "Daily notes folder",
+            "text",
+            placeholder="e.g. Daily",
+            help="Where daily notes are created",
+            group="Vault",
+        ),
+    ),
     "Appearance": (
         Setting("appearance.theme", "Theme", "choice", THEMES, help="System follows your desktop"),
         Setting(
@@ -121,22 +174,6 @@ SECTIONS: dict[str, tuple[Setting, ...]] = {
             help="Live preview or plain source, for a vault opened the first time",
         ),
     ),
-    "Vault": (
-        Setting(
-            "vault.templates_folder",
-            "Templates folder",
-            "text",
-            placeholder="e.g. Templates",
-            help="Notes in it are offered by /template",
-        ),
-        Setting(
-            "vault.daily_notes_folder",
-            "Daily notes folder",
-            "text",
-            placeholder="e.g. Daily",
-            help="Where daily notes are created",
-        ),
-    ),
     "AI": (
         Setting(
             "ai.host",
@@ -162,14 +199,6 @@ SECTIONS: dict[str, tuple[Setting, ...]] = {
             help="How much of your notes the model may see per message",
         ),
     ),
-    "Paste": (
-        Setting(
-            "paste.smart_paste",
-            "Smart Paste",
-            "bool",
-            help="Clean markdown from copied web pages and AI chats",
-        ),
-    ),
 }
 
 ALL: dict[str, Setting] = {s.key: s for group in SECTIONS.values() for s in group}
@@ -183,7 +212,9 @@ def search_settings(query: str) -> list[Setting]:
     found: list[Setting] = []
     for section, group in SECTIONS.items():
         for setting in group:
-            haystack = f"{section} {setting.label} {setting.help} {setting.key}".lower()
+            haystack = (
+                f"{section} {setting.group} {setting.label} {setting.help} {setting.key}".lower()
+            )
             if all(w in haystack for w in words):
                 found.append(setting)
     return found
@@ -275,6 +306,15 @@ def sanitized(values: Mapping[str, Any]) -> dict[str, Any]:
         parsed = parse_value(setting, get_nested(values, key))
         out[key] = parsed.value if parsed.ok else get_nested(DEFAULTS, key)
     return out
+
+
+def language_name(code: str) -> str:
+    """The English name of a writing language, for prompts ("Bengali"); "" for English."""
+    if code in {"", "en"}:
+        return ""
+    shown = LANGUAGES.get(code, "")
+    m = re.search(r"\((.+)\)", shown)
+    return m.group(1) if m else shown
 
 
 def accent_colors(name: str) -> tuple[str, str]:

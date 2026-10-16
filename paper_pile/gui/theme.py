@@ -42,6 +42,7 @@ def editor_options(config: Config | None) -> dict[str, Any]:
         "wordWrap": v["editor.word_wrap"],
         "tabSize": v["editor.tab_size"],
         "spellCheck": v["editor.spell_check"],
+        "lang": v["general.language"],
     }
 
 

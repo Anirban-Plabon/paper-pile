@@ -40,6 +40,7 @@ from paper_pile.core.index import Index
 from paper_pile.core.links import wikilink_to
 from paper_pile.core.parser import render_html
 from paper_pile.core.picker import search_notes
+from paper_pile.core.settings import language_name
 from paper_pile.core.vault import Vault
 
 log = logging.getLogger("paper_pile.chat")
@@ -189,6 +190,10 @@ class ChatPane:
         background_tasks.create(self.check_health())
 
     # ---- provider state ------------------------------------------------------------------
+
+    def _language(self) -> str:
+        code = str(self.config.get("general.language", "en")) if self.config else "en"
+        return language_name(code)
 
     def refresh_names(self) -> None:
         """The profile name changed: show it on the user's messages."""
@@ -640,7 +645,7 @@ class ChatPane:
     def _messages(self, context: Context, question: str) -> list[ChatMessage]:
         past = [t for t in self.history[:-2] if not t.error and t.text.strip()][-HISTORY_TURNS:]
         return [
-            ChatMessage("system", context.system_prompt(self._user_name())),
+            ChatMessage("system", context.system_prompt(self._user_name(), self._language())),
             *(ChatMessage("user" if t.role == "user" else "assistant", t.text) for t in past),
             ChatMessage("user", question),
         ]

@@ -26,7 +26,7 @@ def test_every_setting_has_a_default_that_is_valid() -> None:
 
 
 def test_sections_cover_the_spec() -> None:
-    assert list(SECTIONS) == ["Appearance", "Editor", "Vault", "AI", "Paste"]
+    assert list(SECTIONS) == ["General", "Appearance", "Editor", "AI"]
     keys = set(ALL)
     assert {"appearance.theme", "appearance.accent", "appearance.density"} <= keys
     assert {
@@ -151,3 +151,16 @@ def test_search_finds_by_name_help_and_section() -> None:
     assert {s.key for s in search_settings("paste")} >= {"paste.smart_paste"}
     assert search_settings("") == [] and search_settings("zzzz") == []
     assert [s.key for s in search_settings("theme dark")] == []  # every word must match
+
+
+def test_language_is_a_known_code_and_defaults_to_english() -> None:
+    from paper_pile.core.settings import ALL, LANGUAGES, parse_value, sanitized
+
+    assert parse_value(ALL["general.language"], "bn").ok
+    assert not parse_value(ALL["general.language"], "klingon").ok
+    assert sanitized({})["general.language"] == "en" and "en" in LANGUAGES
+
+
+def test_general_groups_language_paste_and_vault() -> None:
+    groups = [s.group for s in SECTIONS["General"]]
+    assert groups == ["Language", "Paste", "Vault", "Vault"]

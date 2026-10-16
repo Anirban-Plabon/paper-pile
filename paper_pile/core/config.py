@@ -35,6 +35,7 @@ DEFAULTS: dict[str, Any] = {
         "default_mode": "live",
         "auto_title": True,
     },
+    "general": {"language": "en"},
     "vault": {"templates_folder": "", "daily_notes_folder": ""},
     "ai": {
         "host": "http://localhost:11434",

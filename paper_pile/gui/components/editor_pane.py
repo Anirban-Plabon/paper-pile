@@ -59,6 +59,7 @@ from paper_pile.core.paste import smart_paste
 from paper_pile.core.picker import search_notes
 from paper_pile.core.recovery import RecoveryEntry, RecoveryStore
 from paper_pile.core.rewrite import Edit, plan_rewrites
+from paper_pile.core.settings import language_name
 from paper_pile.core.snippets import Snippet, link_snippet
 from paper_pile.core.tables import apply_op, table_extent
 from paper_pile.core.tabs import TabList
@@ -568,6 +569,10 @@ class EditorPane:
         tabs = [(b.path, b.text) for b in self.buffers.values()]
         return EditorSnapshot(path, text, picked[0] if picked else "", tabs)
 
+    def _language(self) -> str:
+        code = str(self._config.get("general.language", "en")) if self._config else "en"
+        return language_name(code)
+
     def insert_text(self, text: str) -> None:
         """Put ``text`` at the caret of the note on screen (replacing a selection)."""
         if self.tabs.active is not None:
@@ -731,7 +736,9 @@ class EditorPane:
             "comments about what you did, and no code block around the answer."
         )
         messages = [
-            ChatMessage("system", context.system_prompt(self._user_name()) + rules),
+            ChatMessage(
+                "system", context.system_prompt(self._user_name(), self._language()) + rules
+            ),
             ChatMessage("user", user),
         ]
         self._streams += 1

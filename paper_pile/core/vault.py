@@ -200,6 +200,17 @@ class Vault:
                     continue
                 yield self._rel(path)
 
+    def folders(self) -> list[str]:
+        """Every visible folder of the vault as a relative path (hidden folders are skipped)."""
+        found: list[str] = []
+        for dirpath, dirnames, _files in os.walk(self.root):
+            dirnames[:] = sorted(d for d in dirnames if not d.startswith("."))
+            for name in dirnames:
+                path = Path(dirpath) / name
+                if not (path.is_symlink() and not self._inside(path)):
+                    found.append(self._rel(path))
+        return sorted(found, key=str.lower)
+
     def exists(self, rel: str | PurePosixPath) -> bool:
         """True if ``rel`` is an existing note or folder inside the visible vault."""
         try:

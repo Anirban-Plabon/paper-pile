@@ -186,7 +186,7 @@ html, body { overflow: hidden; }
 .pp-recovery-row { gap: 8px; }
 .pp-recovery-path { font-size: 13px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; }
 .pp-editor .cm-editor { height: 100%; }
-.pp-editor .cm-scroller { overflow: auto; }
+.pp-editor .cm-scroller { overflow: auto; font-family: inherit; line-height: inherit; }
 /* Dark editor: everything inside the editor reads the --pp-* variables, so redefining them here
    re-colours links, quotes, tables, front matter, borders... P8.1 will drive these from a theme. */
 .pp-editor.pp-dark { color-scheme: dark; }
@@ -438,3 +438,18 @@ html, body { overflow: hidden; }
 .pp-seg-item:hover { color: var(--pp-fg); }
 .pp-seg-on, .pp-seg-on:hover { background: var(--pp-bg); color: var(--pp-fg); box-shadow: 0 1px 3px rgba(0, 0, 0, .15); }
 .pp-seg-icon { font-size: 14px; }
+.pp-set-group { width: 100%; padding: 18px 0 2px; font-size: 13px; font-weight: 600; color: var(--pp-fg); }
+.pp-set-group:first-child { padding-top: 6px; }
+.pp-set-info { max-width: 260px; font-size: 13px; color: var(--pp-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* one-button pickers with a popup: accent colour and font */
+.pp-pick.q-btn { gap: 8px; padding: 5px 10px 5px 12px; border: 1px solid var(--pp-border); border-radius: 10px; font-size: 13px; font-weight: 400; color: var(--pp-fg); }
+.pp-pick-chev { font-size: 10px; color: var(--pp-muted); margin-left: 4px; }
+.pp-dot { display: inline-block; width: 16px; height: 16px; border-radius: 50%; box-shadow: inset 0 0 0 1px rgba(0, 0, 0, .15); }
+.pp-set-popup { background: var(--pp-bg); color: var(--pp-fg); border: 1px solid var(--pp-border); border-radius: 12px; box-shadow: 0 8px 28px rgba(0, 0, 0, .2); padding: 6px; }
+.pp-set-popup .q-item { border-radius: 8px; min-height: 34px; font-size: 13px; }
+.pp-swatchgrid { display: grid; grid-template-columns: repeat(4, 28px); gap: 10px; padding: 6px; }
+.pp-fontmenu { min-width: 250px; }
+.pp-fontitem { gap: 10px; }
+.pp-fontname { flex: 1 1 auto; font-size: 14px; }
+.pp-fontsample { font-size: 13px; color: var(--pp-muted); }
+.pp-fontcustom { padding: 0 10px; font-size: 12.5px; }

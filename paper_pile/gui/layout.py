@@ -75,6 +75,8 @@ class MainLayout:
             self._settings_applied,
             models=self._known_models,
             on_close=self._close_settings,
+            vault_root=self.vault,
+            folders=Vault(self.vault).folders,
         )
         for pane in WIDTH_LIMITS:
             self.state.pane_widths[pane] = clamp_width(pane, self.state.pane_widths[pane])
@@ -193,7 +195,8 @@ class MainLayout:
             self.theme.apply()
         if (
             self.editor_pane is not None
-            and {"editor.word_wrap", "editor.tab_size", "editor.spell_check"} & changed
+            and {"editor.word_wrap", "editor.tab_size", "editor.spell_check", "general.language"}
+            & changed
         ):
             self.editor_pane.set_options(editor_options(self.config))
         if self.chat is not None and any(k.startswith("ai.") for k in changed):
