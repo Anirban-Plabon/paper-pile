@@ -95,7 +95,7 @@ class FileTree:
             else:
                 ui.element("span").classes(
                     "pp-ico pp-ico-chev"
-                )  # keeps notes aligned with folder names
+                )  # aligns notes
                 ui.icon("fa-regular fa-file-lines").classes("pp-ico pp-ico-note")
             ui.label(entry.name).classes("pp-tree-name")
         self._rows[entry.path] = row
