@@ -360,8 +360,15 @@ html, body { overflow: hidden; }
 /* composer: one rounded card */
 .pp-chat-card { width: 100%; gap: 4px; padding: 6px; background: var(--pp-bg); border: 1px solid var(--pp-border); border-radius: 26px; box-shadow: 0 1px 4px rgba(0, 0, 0, .08); }
 .pp-chat-card:focus-within { border-color: rgba(var(--pp-accent-rgb), .6); }
-.pp-chat-row { gap: 4px; padding: 2px 4px 2px 6px; }
-.pp-chat-input { flex: 1 1 auto; min-width: 0; font-size: 13.5px; }
+.pp-chat-row { display: grid; grid-template-columns: auto minmax(0, 1fr) auto auto; grid-template-areas: "plus input model send"; align-items: center; gap: 4px; padding: 0 4px 0 6px; }
+.pp-chat-row > .pp-chat-plus { grid-area: plus; }
+.pp-chat-row > .pp-chat-input { grid-area: input; }
+.pp-chat-row > .pp-chat-model { grid-area: model; }
+.pp-chat-row > .pp-chat-send { grid-area: send; }
+/* long or multi-line text: it takes the full width, the buttons go on their own line below */
+.pp-chat-multi .pp-chat-row { grid-template-areas: "input input input input" "plus . model send"; row-gap: 2px; align-items: end; }
+.pp-chat-multi .pp-chat-input .q-field__control { padding: 0 8px; }
+.pp-chat-input { min-width: 0; font-size: 13.5px; }
 .pp-chat-input .q-field__control { padding: 0 6px; min-height: 0; }
 .pp-chat-input .q-field__native { padding: 6px 0; line-height: 1.5; scrollbar-width: thin; }
 .pp-chat-input .q-field__native::placeholder { line-height: 1.5; }

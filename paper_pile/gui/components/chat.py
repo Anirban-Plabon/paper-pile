@@ -544,6 +544,10 @@ class ChatPane:
             add="pp-chat-send-ready" if value.strip() else "",
             remove="" if value.strip() else "pp-chat-send-ready",
         )
+        if not value:  # cleared (sent): back to one line; typing is handled in chat.js
+            ui.run_javascript(
+                f"document.getElementById('c{self._card.id}')?.classList.remove('pp-chat-multi')"
+            )
         self._update_mentions(value)
 
     def _update_mentions(self, value: str) -> None:
