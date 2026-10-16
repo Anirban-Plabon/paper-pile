@@ -1,4 +1,5 @@
-"""The right pane: a tab strip (AI chat, and Settings while it is open) over the active view.
+"""The right pane: a tab strip (AI chat, Calendar, and Settings while it is open) over the
+active view.
 
 Settings is a tab, not a dialog: it opens here, can be closed with its cross like an editor tab,
 and keeps the chat (and its attachments) alive underneath. Icons are Font Awesome (vendored).
@@ -9,6 +10,7 @@ from collections.abc import Callable
 from nicegui import ui
 
 CHAT_ICON = "fa-regular fa-comments"
+CALENDAR_ICON = "fa-regular fa-calendar"
 SETTINGS_ICON = "fa-solid fa-gear"  # Font Awesome Free has no outline gear
 CLOSE_ICON = "fa-regular fa-circle-xmark"
 
@@ -18,20 +20,24 @@ class RightPane:
         self,
         on_open_settings: Callable[[ui.column], None],
         on_wide: Callable[[bool], None] = lambda wide: None,
+        on_show_calendar: Callable[[], None] = lambda: None,
     ) -> None:
         self._open_settings_into = on_open_settings
         self._on_wide = on_wide
+        self._on_show_calendar = on_show_calendar
         self._settings_open = False
         self._active = "chat"
         self._bar: ui.row
         self.chat_host: ui.column
+        self.calendar_host: ui.column
         self.settings_host: ui.column
 
     def build(self) -> None:
-        """Create the strip and the two hosts; the caller fills ``chat_host`` right after."""
+        """Create the strip and the hosts; the caller fills ``chat_host`` and ``calendar_host``."""
         with ui.column().classes("pp-pane pp-right"):
             self._bar = ui.row().classes("pp-rtabbar pp-right-tabs no-wrap items-stretch")
             self.chat_host = ui.column().classes("pp-right-body pp-grow")
+            self.calendar_host = ui.column().classes("pp-right-body pp-grow")
             self.settings_host = ui.column().classes("pp-right-body pp-grow")
         self._render()
 
@@ -42,8 +48,10 @@ class RightPane:
         return self._settings_open
 
     def show(self, name: str) -> None:
-        self._active = name if name == "chat" or self._settings_open else "chat"
+        self._active = name if name != "settings" or self._settings_open else "chat"
         self._render()
+        if self._active == "calendar":
+            self._on_show_calendar()
 
     def open_settings(self) -> None:
         """Open (or rebuild) the Settings tab and show it."""
@@ -64,10 +72,12 @@ class RightPane:
     def _render(self) -> None:
         self._on_wide(self._active == "settings")  # Settings gets a wide pane
         self.chat_host.set_visibility(self._active == "chat")
+        self.calendar_host.set_visibility(self._active == "calendar")
         self.settings_host.set_visibility(self._active == "settings")
         self._bar.clear()
         with self._bar:
             self._tab("chat", "AI chat", CHAT_ICON, closable=False)
+            self._tab("calendar", "Calendar", CALENDAR_ICON, closable=False)
             if self._settings_open:
                 self._tab("settings", "Settings", SETTINGS_ICON, closable=True)
 

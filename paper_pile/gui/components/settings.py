@@ -56,6 +56,7 @@ class SettingsPane:
         on_close: Callable[[], None] = lambda: None,
         vault_root: Path | None = None,
         folders: Callable[[], list[str]] = lambda: [],
+        notes: Callable[[], list[str]] = lambda: [],
     ) -> None:
         self.config = config
         self._on_applied = on_applied
@@ -63,6 +64,7 @@ class SettingsPane:
         self._close = on_close
         self._vault_root = vault_root
         self._folders = folders
+        self._notes = notes
         self.scope: Scope = "global"
         self.page = next(iter(SECTIONS))
         self.query = ""
@@ -212,6 +214,19 @@ class SettingsPane:
             )
         elif setting.key == "editor.font_family":
             self._font_picker(setting, str(current))
+        elif setting.key == "vault.daily_notes_template":
+            notes = self._notes()
+            options = notes if not current or current in notes else [current, *notes]
+            ui.select(
+                options,
+                value=current or None,
+                with_input=True,
+                clearable=True,
+                on_change=lambda e: commit(e.value or ""),
+            ).props(
+                "dense outlined options-dense hide-dropdown-icon popup-content-class=pp-set-popup"
+                f' placeholder="{setting.placeholder or "None"}"'
+            ).classes("pp-set-field")
         elif setting.key.endswith("_folder"):
             folders = self._folders()
             options = folders if not current or current in folders else [current, *folders]

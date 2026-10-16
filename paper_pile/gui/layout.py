@@ -6,6 +6,7 @@ A pane keeps its last width while collapsed, so re-opening restores it.
 
 import asyncio
 import logging
+from datetime import date, datetime
 from pathlib import Path
 
 from nicegui import ui
@@ -13,12 +14,14 @@ from nicegui import ui
 from paper_pile.core.ai.provider import Health
 from paper_pile.core.commands import push_recent
 from paper_pile.core.config import Config
+from paper_pile.core.daily import DEFAULT_FORMAT, daily_relpath, new_daily_text
 from paper_pile.core.events import EventBus
 from paper_pile.core.index import Index
 from paper_pile.core.session import SessionState, load_session, save_session
-from paper_pile.core.vault import Vault
+from paper_pile.core.vault import Vault, VaultError
 from paper_pile.core.watcher import TOPIC as FS_CHANGED
 from paper_pile.core.watcher import FsEvent
+from paper_pile.gui.components.calendar import CalendarPane
 from paper_pile.gui.components.chat import ChatPane
 from paper_pile.gui.components.editor_pane import EditorPane
 from paper_pile.gui.components.profile import ProfileBlock
@@ -69,6 +72,7 @@ class MainLayout:
             self.state.mode = "source" if mode == "source" else "live"
         self.theme = ThemeController(self.config, self._on_dark)
         self.right: RightPane | None = None
+        self.calendar: CalendarPane | None = None
         self._settings_wide = False  # the right pane is widened for Settings (not remembered)
         self.settings = SettingsPane(
             self.config,
@@ -77,6 +81,7 @@ class MainLayout:
             on_close=self._close_settings,
             vault_root=self.vault,
             folders=Vault(self.vault).folders,
+            notes=lambda: sorted(Vault(self.vault).walk_notes(), key=str.lower),
         )
         for pane in WIDTH_LIMITS:
             self.state.pane_widths[pane] = clamp_width(pane, self.state.pane_widths[pane])
@@ -123,10 +128,12 @@ class MainLayout:
     def _on_created(self) -> None:
         if self.tree is not None:
             self.tree.refresh()
+        self._refresh_calendar()
 
     def _on_external(self, events: list[FsEvent]) -> None:
         if self.tree is not None:
             self.tree.refresh()
+        self._refresh_calendar()
         if self.editor_pane is not None:
             self.editor_pane.on_external(events)
 
@@ -177,6 +184,27 @@ class MainLayout:
         if self.state.panes_open["right"]:
             self._apply("right")
 
+    def _refresh_calendar(self) -> None:
+        if self.calendar is not None:
+            self.calendar.refresh()
+
+    def _open_daily(self, day: date) -> None:
+        """A click on a calendar day: open that day's note, creating it from the template."""
+        vault = Vault(self.vault)
+        folder = str(self.config.get("vault.daily_notes_folder", ""))
+        fmt = str(self.config.get("vault.daily_notes_format", DEFAULT_FORMAT))
+        path = daily_relpath(day, folder, fmt)
+        if not vault.exists(path):
+            template = str(self.config.get("vault.daily_notes_template", ""))
+            text = new_daily_text(vault, template, day, datetime.now(), fmt)
+            try:
+                vault.create_note(path, text)
+            except VaultError as exc:
+                ui.notify(str(exc), type="negative")
+                return
+            self.bus.publish("vault.created", path=path)
+        self.bus.publish("tree.open", path=path)
+
     def _close_settings(self) -> None:
         if self.right is not None:
             self.right.close_settings()
@@ -203,12 +231,23 @@ class MainLayout:
             self.chat.reload_provider()
         if self.profile is not None:
             self.profile.refresh()
+        if any(k.startswith("vault.daily_notes") for k in changed):
+            self._refresh_calendar()
 
     def _right_pane(self) -> None:
-        self.right = RightPane(self.settings.open, self._settings_wide_mode)
+        self.right = RightPane(self.settings.open, self._settings_wide_mode, self._refresh_calendar)
         self.right.build()
         with self.right.chat_host:
             self._chat_pane()
+        self.calendar = CalendarPane(
+            Vault(self.vault),
+            self.config,
+            self._open_daily,
+            active_path=self._active_path,
+            open_settings=self.open_settings,
+        )
+        with self.right.calendar_host:
+            self.calendar.build()
 
     def _chat_pane(self) -> None:
         assert self.editor_pane is not None
@@ -281,6 +320,7 @@ class MainLayout:
         self.state.tabs = paths
         self.state.active = active
         self._save_soon(immediately=True)
+        self._refresh_calendar()
 
     def _on_mode_changed(self, mode: str) -> None:
         self.state.mode = mode  # type: ignore[assignment]

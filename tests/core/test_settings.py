@@ -163,4 +163,14 @@ def test_language_is_a_known_code_and_defaults_to_english() -> None:
 
 def test_general_groups_language_paste_and_vault() -> None:
     groups = [s.group for s in SECTIONS["General"]]
-    assert groups == ["Language", "Paste", "Vault", "Vault"]
+    assert groups == ["Language", "Paste", "Vault", "Daily notes", "Daily notes", "Daily notes"]
+
+
+def test_daily_note_settings_are_checked() -> None:
+    from paper_pile.core.settings import ALL, parse_value
+
+    fmt, tpl = ALL["vault.daily_notes_format"], ALL["vault.daily_notes_template"]
+    assert parse_value(fmt, "YYYY/MM/YYYY-MM-DD").ok
+    assert not parse_value(fmt, "YYYY-MM").ok and not parse_value(fmt, "").ok
+    assert parse_value(tpl, "Templates/Daily.md").value == "Templates/Daily.md"
+    assert parse_value(tpl, "").value == "" and not parse_value(tpl, "../x.md").ok

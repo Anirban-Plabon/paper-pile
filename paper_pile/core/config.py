@@ -36,7 +36,12 @@ DEFAULTS: dict[str, Any] = {
         "auto_title": True,
     },
     "general": {"language": "en"},
-    "vault": {"templates_folder": "", "daily_notes_folder": ""},
+    "vault": {
+        "templates_folder": "",
+        "daily_notes_folder": "",
+        "daily_notes_format": "YYYY-MM-DD",
+        "daily_notes_template": "",
+    },
     "ai": {
         "host": "http://localhost:11434",
         "model": "gemma4:12b",

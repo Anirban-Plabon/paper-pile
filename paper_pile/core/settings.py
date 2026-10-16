@@ -99,11 +99,27 @@ SECTIONS: dict[str, tuple[Setting, ...]] = {
         ),
         Setting(
             "vault.daily_notes_folder",
-            "Daily notes folder",
+            "New daily notes go in",
             "text",
             placeholder="e.g. Daily",
-            help="Where daily notes are created",
-            group="Vault",
+            help="The folder the calendar creates daily notes in",
+            group="Daily notes",
+        ),
+        Setting(
+            "vault.daily_notes_format",
+            "Date format",
+            "text",
+            placeholder="YYYY-MM-DD",
+            help="Names the note: YYYY MM DD ddd dddd MMM MMMM [text]; a / makes subfolders",
+            group="Daily notes",
+        ),
+        Setting(
+            "vault.daily_notes_template",
+            "Template",
+            "text",
+            placeholder="None",
+            help="A note copied into each new daily note; {{date}} {{date:dddd}} {{title}} work",
+            group="Daily notes",
         ),
     ),
     "Appearance": (
@@ -262,6 +278,19 @@ def parse_value(setting: Setting, raw: Any) -> Parsed:
         if not text.lower().startswith(("http://", "https://")) or " " in text:
             return Parsed(False, error="Start with http:// or https://")
         return Parsed(True, text.rstrip("/"))
+    if setting.key == "vault.daily_notes_format":
+        from paper_pile.core.daily import format_problem
+
+        problem = format_problem(text)
+        return Parsed(False, error=problem) if problem else Parsed(True, text)
+    if setting.key == "vault.daily_notes_template":
+        path = text.strip("/")
+        if (
+            any(part in {"", ".", ".."} or part.startswith(".") for part in path.split("/"))
+            and path
+        ):
+            return Parsed(False, error="A note inside the vault")
+        return Parsed(True, path)
     if setting.key.endswith("_folder"):
         folder = text.strip("/")
         if (
