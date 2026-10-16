@@ -9,6 +9,7 @@ not running the pane says so and everything else keeps working.
 """
 
 import asyncio
+import html
 import json
 import logging
 import re
@@ -54,7 +55,8 @@ class Selection:
     """Text selected in the editor, attached to the next message."""
 
     text: str
-    label: str  # "From [[a]]"
+    label: str  # "From [[a]]" (or "Selected text" without a note)
+    note: str = ""  # the note it came from, shown in the theme colour
 
     def size(self) -> str:
         lines = len(self.text.strip().splitlines())
@@ -116,6 +118,7 @@ class ChatPane:
         self._mentions: ui.column
         self._chips: ui.column
         self._refs: ui.row
+        self._strip: ui.row
         self._plus: ui.button
         self._upload: ui.upload
         self._client: Client
@@ -140,10 +143,11 @@ class ChatPane:
                 self._mentions = ui.column().classes("pp-chat-mentions")
                 self._mentions.set_visibility(False)
                 with ui.column().classes("pp-chat-card"):
-                    self._refs = ui.row().classes("pp-chat-refs")
-                    self._refs.set_visibility(False)
-                    self._chips = ui.column().classes("pp-chat-chips")
-                    self._chips.set_visibility(False)
+                    self._strip = ui.row().classes("pp-chat-strip")  # all chips, above a divider
+                    self._strip.set_visibility(False)
+                    with self._strip:
+                        self._refs = ui.row().classes("pp-chat-refs")
+                        self._chips = ui.row().classes("pp-chat-chips")
                     with ui.row().classes("pp-chat-row items-center no-wrap w-full"):
                         self._plus_button()
                         self._input = (
@@ -316,7 +320,7 @@ class ChatPane:
     def _render_refs(self) -> None:
         """Chips for notes, files and the include-all-tabs switch (selections have their own)."""
         self._refs.clear()
-        self._refs.set_visibility(bool(self._notes or self._files or self._include_tabs))
+        self._sync_strip()
         with self._refs:
             if self._include_tabs:
                 n = len(self._open_paths())
@@ -328,11 +332,17 @@ class ChatPane:
                 label = f"{ref.name} · {ref.size()}"
                 self._ref_chip("attach_file", label, lambda r=ref: self._remove_file(r))
 
+    def _sync_strip(self) -> None:
+        """The chip strip (and the divider under it) shows only while something is attached."""
+        self._strip.set_visibility(
+            bool(self._selections or self._notes or self._files or self._include_tabs)
+        )
+
     def _ref_chip(self, icon: str, label: str, remove: Callable[[], None], tip: str = "") -> None:
         row = ui.row().classes("pp-chat-ref items-center no-wrap")
         with row:
             ui.icon(icon).classes("pp-chat-ref-icon")
-            ui.label(label).classes("pp-chat-ref-text")
+            ui.label(label).classes("pp-chat-ref-text" + (" pp-chat-ref-note" if tip else ""))
             ui.button(icon="close", on_click=lambda _e=None: remove()).props(
                 "flat round dense size=xs"
             ).tooltip("Remove")
@@ -428,7 +438,7 @@ class ChatPane:
         if not text.strip():
             return
         name = wikilink_to(path, "", set(self.vault.walk_notes())) if path else ""
-        picked = Selection(text, f"From [[{name}]]" if name else "Selected text")
+        picked = Selection(text, f"From [[{name}]]" if name else "Selected text", name)
         if picked not in self._selections:
             self._selections.append(picked)
             self._render_selections()
@@ -442,13 +452,19 @@ class ChatPane:
 
     def _render_selections(self) -> None:
         self._chips.clear()
-        self._chips.set_visibility(bool(self._selections))
+        self._sync_strip()
         with self._chips:
             for picked in self._selections:
                 with ui.column().classes("pp-chat-chip") as chip:
-                    with ui.row().classes("items-center no-wrap w-full"):
-                        label = ui.label(f"{picked.label}: [Pasted text · {picked.size()}]")
-                        label.classes("pp-chat-chip-text").tooltip("Show or hide the text")
+                    with ui.row().classes("pp-chat-ref items-center no-wrap w-full"):
+                        ui.icon("format_quote").classes("pp-chat-ref-icon")
+                        text = f"[Selected text · {picked.size()}]"
+                        if picked.note:
+                            note = html.escape(picked.note)
+                            text = f'From <span class="pp-chat-ref-note">{note}</span>: {text}'
+                        label = ui.html(text, sanitize=False)
+                        label.classes("pp-chat-ref-text pp-chat-chip-text")
+                        label.tooltip("Show or hide the text")
                         ui.button(
                             icon="close",
                             on_click=lambda _e=None, p=picked: self._remove_selection(p),
