@@ -178,3 +178,13 @@ def test_link_sources(tmp_path: Path) -> None:
     ix.sync()
     assert ix.link_sources({"target"}) == {"a.md", "b.md"}
     assert ix.link_sources({"nothing"}) == set() and ix.link_sources(set()) == set()
+
+
+def test_a_closed_index_reopens_when_used_again(vault: Vault) -> None:
+    ix = Index(vault)
+    ix.sync()
+    ix.close()
+    ix.close()  # closing twice is harmless
+    assert ix.paths() == ["a.md", "b.md", "dir/c.txt"]  # a page that came back keeps working
+    assert ix.backlinks("b.md")[0].src == "a.md"
+    assert ix.update_note("a.md")

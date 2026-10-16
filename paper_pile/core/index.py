@@ -110,7 +110,7 @@ class Index:
         self.vault = vault
         self.db_path = vault.root / META_DIR / "index.db"
         self._lock = threading.RLock()
-        self._db = self._open()
+        self._conn: sqlite3.Connection | None = self._open()
 
     # ---- lifecycle -------------------------------------------------------------------------
 
@@ -146,16 +146,27 @@ class Index:
         for suffix in ("", "-wal", "-shm", "-journal"):
             Path(str(self.db_path) + suffix).unlink(missing_ok=True)
 
+    @property
+    def _db(self) -> sqlite3.Connection:
+        """The connection, reopened on demand: a page that lost its websocket may come back and
+        use the same index after :meth:`close` was called."""
+        if self._conn is None:
+            self._conn = self._open()
+        return self._conn
+
     def close(self) -> None:
         with self._lock:
-            self._db.close()
+            if self._conn is not None:
+                self._conn.close()
+                self._conn = None
 
     def rebuild(self) -> SyncResult:
         """Drop everything and index the vault again."""
         with self._lock:
             self._db.close()
+            self._conn = None
             self._delete_files()
-            self._db = self._open()
+            self._conn = self._open()
         return self.sync()
 
     # ---- writing ---------------------------------------------------------------------------
