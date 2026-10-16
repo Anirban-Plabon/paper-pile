@@ -119,6 +119,7 @@ class ChatPane:
         self._chips: ui.column
         self._refs: ui.row
         self._strip: ui.row
+        self._card: ui.column
         self._plus: ui.button
         self._upload: ui.upload
         self._client: Client
@@ -142,7 +143,8 @@ class ChatPane:
             with ui.column().classes("pp-chat-compose"):
                 self._mentions = ui.column().classes("pp-chat-mentions")
                 self._mentions.set_visibility(False)
-                with ui.column().classes("pp-chat-card"):
+                with ui.column().classes("pp-chat-card") as card:
+                    self._card = card
                     self._strip = ui.row().classes("pp-chat-strip")  # all chips, above a divider
                     self._strip.set_visibility(False)
                     with self._strip:
@@ -356,7 +358,10 @@ class ChatPane:
         self._plus = ui.button(icon="add").props("round flat dense aria-label='Add context'")
         self._plus.classes("pp-chat-plus")
         with self._plus:
-            menu = ui.menu().props('anchor="top left" self="bottom left" :offset="[0, 8]"')
+            # anchored to the whole card, so it opens above the text and not over it
+            menu = ui.menu().props(
+                f'target="#c{self._card.id}" anchor="top left" self="bottom left" :offset="[0, 8]"'
+            )
             menu.classes("pp-chat-menu")
         menu.on("before-show", lambda _e: self._build_menu(menu))
         menu.on("show", lambda _e: self._plus.props("icon=close"))
