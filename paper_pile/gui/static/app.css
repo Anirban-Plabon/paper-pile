@@ -339,6 +339,10 @@ html, body { overflow: hidden; }
 .pp-chat-chips { width: 100%; gap: 4px; }
 .pp-chat-chip { width: 100%; gap: 2px; padding: 2px 4px 2px 8px; background: var(--pp-hover, rgba(127,127,127,.12)); border: 1px solid var(--pp-border); border-radius: 6px; }
 .pp-chat-chip-text { cursor: pointer; }
-.pp-chat-chip-body { width: 100%; max-height: 120px; overflow: auto; white-space: pre-wrap; font-size: 12px; color: var(--pp-muted); padding: 2px 0 4px; }
+.pp-chat-chip-body { max-height: 200px; overflow: auto; border-top: 1px solid var(--pp-border); margin-top: 2px; }
 .pp-chat-chip-text { flex: 1; min-width: 0; font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .pp-msg-attach { font-size: 12px; }
+.pp-msg-body ul { list-style: disc; } .pp-msg-body ul ul { list-style: circle; } .pp-msg-body ol { list-style: decimal; }
+.pp-msg-body li { margin: .1em 0; } .pp-msg-body li > p { margin: 0; }
+.pp-msg-body blockquote { margin: .3em 0; padding-left: 8px; border-left: 3px solid var(--pp-border); color: var(--pp-muted); }
+.pp-msg-body h1, .pp-msg-body h2, .pp-msg-body h3 { font-size: 1.05em; font-weight: 600; margin: .5em 0 .2em; }

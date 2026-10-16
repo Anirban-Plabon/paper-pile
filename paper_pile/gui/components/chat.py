@@ -92,6 +92,7 @@ class ChatPane:
         self._task: asyncio.Task[None] | None = None
         self._include_tabs = False
         self._selections: list[Selection] = []
+        self._open: Selection | None = None  # the chip whose text is unfolded
         self.models: list[str] = []
         # widgets
         self._log: ui.column
@@ -152,6 +153,7 @@ class ChatPane:
                         "flat round dense"
                     )
         ui.on("pp_chat_send", lambda _e: self._enter_pressed())
+        ui.on("pp_chip_close", lambda _e: self._close_chip())
         ui.on("pp_open_url", lambda e: self._open_url(e.args))
         ui.timer(HEALTH_EVERY_S, lambda: background_tasks.create(self.check_health()))
         background_tasks.create(self.check_health())
@@ -299,6 +301,8 @@ class ChatPane:
     def _remove_selection(self, picked: Selection) -> None:
         if picked in self._selections:
             self._selections.remove(picked)
+            if picked is self._open:
+                self._open = None
             self._render_selections()
 
     def _render_selections(self) -> None:
@@ -306,7 +310,7 @@ class ChatPane:
         self._chips.set_visibility(bool(self._selections))
         with self._chips:
             for picked in self._selections:
-                with ui.column().classes("pp-chat-chip"):
+                with ui.column().classes("pp-chat-chip") as chip:
                     with ui.row().classes("items-center no-wrap w-full"):
                         label = ui.label(f"{picked.label}: [Pasted text · {picked.size()}]")
                         label.classes("pp-chat-chip-text").tooltip("Show or hide the text")
@@ -314,9 +318,23 @@ class ChatPane:
                             icon="close",
                             on_click=lambda _e=None, p=picked: self._remove_selection(p),
                         ).props("flat round dense size=xs").tooltip("Remove")
-                    body = ui.label(picked.text.strip()).classes("pp-chat-chip-body")
-                    body.set_visibility(False)
-                    label.on("click", lambda _e=None, b=body: b.set_visibility(not b.visible))
+                    label.on("click", lambda _e=None, s=picked: self._toggle_chip(s))
+                    if picked is self._open:
+                        body = ui.html(render_html(picked.text.strip()), sanitize=False)
+                        body.classes("pp-msg-body pp-chat-chip-body")
+                        self._typeset(body)
+                if picked is self._open:
+                    chip.classes("pp-chat-chip-open")
+
+    def _toggle_chip(self, picked: Selection) -> None:
+        """Only one chip is unfolded at a time; clicking it again (or elsewhere) folds it."""
+        self._open = None if picked is self._open else picked
+        self._render_selections()
+
+    def _close_chip(self) -> None:
+        if self._open is not None:
+            self._open = None
+            self._render_selections()
 
     # ---- @ mentions ----------------------------------------------------------------------
 
@@ -368,7 +386,7 @@ class ChatPane:
             return
         self._input.set_value("")
         self._mentions.set_visibility(False)
-        picked, self._selections = self._selections, []
+        picked, self._selections, self._open = self._selections, [], None
         self._render_selections()
         label = "\n".join(f"{p.label}: [Pasted text]" for p in picked)
         attached = "\n\n".join(f"{p.label}:\n{p.text.strip()}" for p in picked)

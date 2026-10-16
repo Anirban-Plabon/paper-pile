@@ -10,3 +10,8 @@ window.ppChatScroll = function (id) {
   const el = document.getElementById(id);
   if (el) el.scrollTop = el.scrollHeight;
 };
+// A click anywhere outside the attached-selection chips folds the open one.
+document.addEventListener('mousedown', function (e) {
+  if (e.target && e.target.closest && e.target.closest('.pp-chat-chips')) return;
+  if (document.querySelector('.pp-chat-chip-open')) emitEvent('pp_chip_close', {});
+}, true);
