@@ -80,7 +80,7 @@ Legend: 🧠 = needs Opus (see PLAN §6 model guidance) · ⬜ todo · 🔄 in p
 ### P7 — AI
 | ID | Task | Status | Notes |
 |---|---|---|---|
-| P7.1 | Provider + Ollama + health | ⬜ | |
+| P7.1 | Provider + Ollama + health | 🔄 | |
 | P7.2 | Chat pane | ⬜ | |
 | P7.3 | Context builder + @note | ⬜ | |
 | P7.4 | AI slash commands | ⬜ | |
