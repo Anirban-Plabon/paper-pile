@@ -156,6 +156,7 @@ class MainLayout:
             index=self.index,
             config=self.config,
             get_recents=lambda: self.state.recent_commands,
+            get_provider=lambda: self.chat.provider if self.chat else None,
             on_command_used=self._on_command_used,
         )
         self.editor_pane.build()

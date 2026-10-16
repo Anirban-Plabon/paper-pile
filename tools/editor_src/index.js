@@ -16,6 +16,7 @@ import { editorExtensions } from "./grammar.js";
 import { listEditing } from "./listedit.js";
 import { closeSlash, setSlashResults, slashExtension } from "./slash.js";
 import { focusTableCell, tableKeys, tablesRuntime } from "./tablewidget.js";
+import { streamAppend, streamBegin, streamEnd, streamField } from "./stream.js";
 import { typeset } from "./typeset.js";
 
 const CHANGE_DEBOUNCE_MS = 300;
@@ -135,7 +136,9 @@ export function createEditor(
     if (plain) plainDocs.add(id);
     else plainDocs.delete(id);
     const common = [
-      history(),
+      // all the pieces of one AI answer belong to one undo step (the first one is isolated, see stream.js)
+      history({ joinToEvent: (tr, adjacent) => (tr.isUserEvent("input.type.ai") && !tr.annotation(isolateHistory)) || adjacent }),
+      streamField,
       drawSelection(),
       dropCursor(),
       highlightSelectionMatches(),
@@ -323,6 +326,17 @@ export function createEditor(
       if (state.doc.toString() !== expected) return false;
       parked.set(id, state.update({ changes }).state);
       return true;
+    },
+    // An AI answer typed into the note at `pos` as it arrives (see stream.js).
+    streamBegin(id, pos) {
+      streamBegin(view, id, pos, docId);
+    },
+    streamAppend(id, text) {
+      return streamAppend(view, id, text, docId);
+    },
+    streamEnd(id) {
+      streamEnd(view, id);
+      flush();
     },
     // The selected text (for the AI): {from, to, text} in UTF-16 offsets, from == to when empty.
     getSelection() {

@@ -114,7 +114,7 @@ def test_template_only_when_a_templates_folder_is_set(tmp_path: Path) -> None:
 
 def test_every_phase1_group_is_present_in_order() -> None:
     names = [g.name for g in REGISTRY.search("")]
-    assert names == ["Basic blocks", "Code & math", "Diagrams", "Media", "Links", "Insert"]
+    assert names == ["Basic blocks", "Code & math", "Diagrams", "Media", "Links", "Insert", "AI"]
     ids = {c.id for c in REGISTRY.all()}
     assert {"callout", "code", "math", "math-inline", "flowchart", "sequence", "gantt"} <= ids
     assert {"image", "table", "link", "embed", "date", "time", "template"} <= ids
@@ -207,3 +207,32 @@ def test_blocks_leave_an_empty_line_after() -> None:
 
 def test_plain_heading_commands_add_no_extra_line() -> None:
     assert apply_command("h1", "|\ntext", "/h") == "# \ntext"
+
+
+# ---- AI commands --------------------------------------------------------------------------------
+
+
+def test_ai_commands_exist_and_need_a_selection_only_where_it_makes_sense() -> None:
+    from paper_pile.core.commands import StreamInsert
+
+    without = CommandContext("a.md", "text", 0)
+    with_sel = CommandContext("a.md", "some text", 0, selection=(0, 4))
+    ids_without = {c.id for c in REGISTRY.all(without)}
+    ids_with = {c.id for c in REGISTRY.all(with_sel)}
+    assert {"ai-summarize", "ai-continue", "ai-ask"} <= ids_without
+    assert "ai-explain" not in ids_without and "ai-fix" not in ids_without
+    assert {"ai-explain", "ai-fix"} <= ids_with
+    fix = REGISTRY.run("ai-fix", with_sel)
+    assert isinstance(fix, StreamInsert) and fix.replace_selection and fix.source == "selection"
+    ask = REGISTRY.run("ai-ask", without)
+    assert isinstance(ask, StreamInsert) and ask.ask
+    cont = REGISTRY.run("ai-continue", without)
+    assert isinstance(cont, StreamInsert) and cont.source == "before" and not cont.replace_selection
+    assert resolve(cont, "x/c", 0, 1) is None  # not a text edit: the editor streams the answer
+
+
+def test_ai_commands_are_found_by_their_names() -> None:
+    first = lambda q: REGISTRY.search(q)[0].commands[0].id  # noqa: E731
+    assert first("summar") == "ai-summarize" and first("tldr") == "ai-summarize"
+    assert first("continue") == "ai-continue"
+    assert [c.badge for c in REGISTRY.search("ask")[0].commands][:1] == ["AI"]

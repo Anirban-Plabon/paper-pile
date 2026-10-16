@@ -28,7 +28,9 @@ from paper_pile.core import (
     assets,
     commands_builtin,  # noqa: F401  (registers the slash commands)
 )
-from paper_pile.core.ai.context import EditorSnapshot
+from paper_pile.core.ai.context import EditorSnapshot, build_context
+from paper_pile.core.ai.factory import chat_model
+from paper_pile.core.ai.provider import ChatMessage, Provider, ProviderError
 from paper_pile.core.buffer import NoteBuffer, Outcome, content_hash, find_recoverable
 from paper_pile.core.command_actions import TextChange, TextEdit, remove_range, resolve
 from paper_pile.core.commands import (
@@ -75,6 +77,8 @@ def _count(n: int, noun: str) -> str:
     return f"{n} {noun}{'' if n == 1 else 's'}"
 
 
+AI_SELECTION_TTL_S = 300.0  # how long a Ctrl+J selection stays usable
+STREAM_FLUSH_S = 0.06  # how often streamed text is written into the editor
 AUTOSAVE_AFTER_CHANGE_S = 0.7  # on top of the editor's own 0.3 s debounce: ~1 s in total
 RETRY_AFTER_FAILURE_S = 5.0
 
@@ -93,6 +97,8 @@ class EditorPane:
         index: Index | None = None,
         config: Config | None = None,
         get_recents: Callable[[], list[str]] = lambda: [],
+        get_provider: Callable[[], Provider | None] = lambda: None,
+        user_name: Callable[[], str] = lambda: "",
         on_command_used: Callable[[str], None] = lambda command_id: None,
     ) -> None:
         self.vault = vault
@@ -110,6 +116,10 @@ class EditorPane:
         self.index = index
         self._config = config
         self._get_recents = get_recents
+        self._get_provider = get_provider
+        self._user_name = user_name
+        self._ai_selection: dict[str, Any] | None = None  # set by Ctrl+J in the editor
+        self._streams = 0
         self._table_lock = asyncio.Lock()  # table edits apply one after the other
         self._on_command_used = on_command_used
         self._reindex_handle: asyncio.TimerHandle | None = None
@@ -149,6 +159,7 @@ class EditorPane:
                     on_slash_run=lambda e: self._spawn(self._on_slash_run(e.args)),
                     on_table_op=lambda e: self._spawn(self._on_table_op(e.args)),
                     on_paste=lambda e: self._on_paste(e.args),
+                    on_ai_selection=lambda e: self._on_ai_selection(e.args),
                     on_image_saved=lambda e: self._on_image_saved(e.args),
                     on_image_error=lambda e: self._toast(
                         str(e.args.get("message", "")), error=True
@@ -358,7 +369,22 @@ class EditorPane:
         if path is None or args.get("docId") != self.tabs.active:
             return
         buffer = self.buffers[self.tabs.active]
-        ctx = CommandContext(path, buffer.text, 0, vault=self.vault, config=self._config)
+        sel = self._ai_selection
+        selected = (
+            sel is not None
+            and sel["docId"] == args.get("docId")
+            and sel["to"] == args.get("from")
+            and time.monotonic() - sel["at"] < AI_SELECTION_TTL_S
+            and sel["to"] > sel["from"]
+        )
+        ctx = CommandContext(
+            path,
+            buffer.text,
+            0,
+            selection=(int(sel["from"]), int(sel["to"])) if selected and sel else None,
+            vault=self.vault,
+            config=self._config,
+        )
         groups = REGISTRY.search(str(args.get("q", "")), ctx, self._get_recents())
         self._editor.set_slash_results(int(args.get("seq", 0)), groups_json(groups))
 
@@ -375,7 +401,10 @@ class EditorPane:
         end = codepoint_index(text, int(args["to"]))
         if text[start : start + 1] != "/" or end < start:
             return  # the text moved on since the pick
-        ctx = CommandContext(path, text, start, vault=self.vault, config=self._config, end=end)
+        selection = self._selection_for(text, start)
+        ctx = CommandContext(
+            path, text, start, selection=selection, vault=self.vault, config=self._config, end=end
+        )
         try:
             action = REGISTRY.run(str(args["id"]), ctx)
         except UnknownCommandError:
@@ -396,7 +425,7 @@ class EditorPane:
         elif isinstance(action, OpenPicker):
             self._open_picker(action, path)
         elif isinstance(action, StreamInsert):
-            self._toast("This command is not available yet.")
+            await self._run_stream(action, tab_id, text, start, end, selection)
 
     # ---- the note picker (link to note, embed note, templates) ---------------------------
 
@@ -569,6 +598,148 @@ class EditorPane:
                 return
             edit = TextEdit((TextChange(start, end, result.text),), start)
             await self._apply_edit(tab_id, text, edit, move_caret=False)
+
+    # ---- AI commands (slash menu, selection) ---------------------------------------------
+
+    def _on_ai_selection(self, args: dict[str, Any]) -> None:
+        """Ctrl+J: the editor reports what is selected before it opens the menu."""
+        self._ai_selection = {
+            "docId": args.get("docId"),
+            "from": int(args.get("from", 0)),
+            "to": int(args.get("to", 0)),
+            "text": str(args.get("text", "")),
+            "at": time.monotonic(),
+        }
+
+    def _selection_for(self, text: str, start: int) -> tuple[int, int] | None:
+        """The text selected before Ctrl+J, if the ``/`` just typed sits right after it."""
+        sel = self._ai_selection
+        if sel is None or sel["docId"] != self.tabs.active or not sel["text"]:
+            return None
+        if time.monotonic() - sel["at"] > AI_SELECTION_TTL_S:
+            return None
+        a, b = codepoint_index(text, sel["from"]), codepoint_index(text, sel["to"])
+        return (a, b) if b == start and text[a:b] == sel["text"] else None
+
+    async def _ask_dialog(self) -> str | None:
+        """Ask what to ask the AI; ``None`` if cancelled."""
+        with self._host, ui.dialog() as dialog, ui.card().classes("pp-dialog pp-ask"):
+            ui.label("Ask the AI").classes("pp-dialog-title")
+            ui.label("It sees this note. The answer is written at the caret.").classes("pp-muted")
+            box = ui.textarea(placeholder="What should it write?").props(
+                "outlined autofocus autogrow"
+            )
+            box.classes("w-full")
+            with ui.row().classes("justify-end w-full"):
+                ui.button("Cancel", on_click=lambda: dialog.submit(None)).props("flat no-caps")
+                ask = ui.button("Ask", on_click=lambda: dialog.submit((box.value or "").strip()))
+                ask.props("no-caps")
+            box.on("keydown.ctrl.enter", lambda _e: dialog.submit((box.value or "").strip()))
+        dialog.open()
+        answer = await dialog
+        return str(answer) if answer else None
+
+    async def _run_stream(
+        self,
+        spec: StreamInsert,
+        tab_id: int,
+        text: str,
+        anchor: int,
+        end: int,
+        selection: tuple[int, int] | None,
+    ) -> None:
+        """Run an AI command: ask the model and write its answer into the note as it arrives."""
+        provider = self._get_provider()
+        path = self._active_path()
+        if provider is None or path is None:
+            self._toast("AI is not available.", error=True)
+            return
+        question = ""
+        if spec.ask:
+            asked = await self._ask_dialog()
+            if not asked:
+                return
+            question = asked
+        # the "/query" was removed already: the note is now `text` without text[anchor:end]
+        selected = text[selection[0] : selection[1]] if selection else ""
+        body_text = text[:anchor] + text[end:]
+        source = spec.source if spec.source != "auto" else ("selection" if selected else "note")
+        part = {"selection": selected, "before": body_text[max(0, anchor - 4000) : anchor]}.get(
+            source, ""
+        )
+        context = build_context(
+            self.vault,
+            current_path=path,
+            current_text=body_text,
+            selection=selected if source == "selection" else "",
+            index=self.index,
+            budget=int(self._config.get("ai.context_budget", 6000)) if self._config else 6000,
+        )
+        task_text = question or spec.instruction
+        user = task_text + (f"\n\nText:\n{part}" if part else "")
+        rules = (
+            ""
+            if spec.ask
+            else "\n\nReply with only the text to put into the note: no introduction, no "
+            "comments about what you did, and no code block around the answer."
+        )
+        messages = [
+            ChatMessage("system", context.system_prompt(self._user_name()) + rules),
+            ChatMessage("user", user),
+        ]
+        self._streams += 1
+        stream_id = self._streams
+        task = asyncio.current_task()
+        finished = False
+
+        def stop() -> None:
+            if not finished and task is not None:
+                task.cancel()
+
+        with self._host:
+            note = ui.notification(
+                "AI is writing…", spinner=True, timeout=None, close_button="Stop", on_dismiss=stop
+            )
+        collected = ""
+        pending = ""
+        last = time.monotonic()
+        live = not spec.replace_selection
+        try:
+            if live:
+                await self._editor.stream_begin(stream_id, utf16_index(body_text, anchor))
+                if spec.lead and not await self._editor.stream_append(stream_id, spec.lead):
+                    return
+            async for piece in provider.chat(messages, model=chat_model(provider, self._config)):
+                collected += piece
+                pending += piece
+                if live and time.monotonic() - last >= STREAM_FLUSH_S:
+                    if not await self._editor.stream_append(stream_id, pending):
+                        return  # another note was opened: the answer stops here
+                    pending, last = "", time.monotonic()
+            if live and pending:
+                await self._editor.stream_append(stream_id, pending)
+            elif spec.replace_selection and selection:
+                await self._replace_selection(tab_id, selected, collected.strip("\n"), selection[0])
+        except ProviderError as exc:
+            self._toast(str(exc), error=True)
+        finally:
+            finished = True
+            note.dismiss()
+            if live:
+                self._editor.stream_end(stream_id)
+
+    async def _replace_selection(self, tab_id: int, original: str, result: str, start: int) -> None:
+        """Replace the selected text by the AI's version, as one undo step."""
+        if not result.strip():
+            return
+        text = await self._editor.get_text()
+        if text is None or text[start : start + len(original)] != original:
+            self._toast(
+                "The text changed while the AI was writing; nothing was replaced.", error=True
+            )
+            return
+        edit = TextEdit((TextChange(start, start + len(original), result),), start + len(result))
+        await self._apply_edit(tab_id, text, edit)
 
     async def _apply_edit(
         self, tab_id: int, before: str, edit: TextEdit, *, move_caret: bool = True

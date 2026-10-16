@@ -11,9 +11,9 @@ editor sends the chosen id, Python returns an action, and the editor applies it.
 """
 
 import logging
-from collections.abc import AsyncIterator, Callable, Iterable, Sequence
+from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, Literal
 
 from paper_pile.core.config import Config
 from paper_pile.core.vault import Vault
@@ -70,9 +70,20 @@ class OpenPicker:
 
 @dataclass(frozen=True, slots=True)
 class StreamInsert:
-    """Insert text as it arrives (AI commands)."""
+    """An AI command: the model's answer is written into the note as it arrives.
 
-    chunks: Callable[[], AsyncIterator[str]]
+    ``instruction`` is what the model is asked to do; ``source`` says which text goes with it
+    (``selection``, the whole ``note``, the text ``before`` the caret, ``auto`` = the selection if
+    there is one, else the note). ``replace_selection``: the answer replaces the selection
+    (applied once, when complete); otherwise it is typed at the caret. ``ask``: first ask the user
+    for a question. ``lead`` is written before the answer.
+    """
+
+    instruction: str
+    source: Literal["selection", "note", "before", "auto"] = "auto"
+    replace_selection: bool = False
+    ask: bool = False
+    lead: str = ""
 
 
 Action = Insert | ReplaceLinePrefix | ReplaceSelection | OpenNote | OpenPicker | StreamInsert

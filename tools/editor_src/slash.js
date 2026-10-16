@@ -28,6 +28,7 @@ function triggers(state, pos) {
 }
 
 const closeEffect = StateEffect.define();
+const forceOpenEffect = StateEffect.define(); // position of a "/" that opens the menu regardless of the trigger rule
 const resultsEffect = StateEffect.define(); // {groups}
 const moveEffect = StateEffect.define(); // {delta} or {to}
 
@@ -39,7 +40,13 @@ const slashField = StateField.define({
     let v = value;
     let from = v ? (tr.docChanged ? tr.changes.mapPos(v.from, -1) : v.from) : -1;
     for (const e of tr.effects) if (e.is(closeEffect)) v = null;
-    if (tr.docChanged && tr.isUserEvent("input.type")) {
+    for (const e of tr.effects) {
+      if (e.is(forceOpenEffect)) {
+        v = { from: e.value, query: "", groups: [], items: [], selected: 0, hasResults: false };
+        from = e.value; // already in the new document's coordinates
+      }
+    }
+    if (tr.docChanged && tr.isUserEvent("input.type") && !tr.isUserEvent("input.type.ai")) {
       let at = null;
       tr.changes.iterChanges((fa, ta, fb, _tb, inserted) => {
         if (fa === ta && inserted.length === 1 && inserted.sliceString(0) === "/") at = fb;
@@ -173,8 +180,26 @@ const move = (delta, wrap) => (view) => {
   return true;
 };
 
+// Ctrl+J / Alt+/: open the menu keeping the selection (typing "/" would replace it). Python is told
+// which text was selected; the AI commands that work on a selection read it from there.
+function openOnSelection(view) {
+  const { state } = view;
+  if (state.selection.ranges.length !== 1) return false;
+  const sel = state.selection.main;
+  emitRef("ai_selection", { docId: docIdRef(), from: sel.from, to: sel.to, text: state.sliceDoc(sel.from, sel.to) });
+  view.dispatch({
+    changes: { from: sel.to, insert: "/" },
+    selection: { anchor: sel.to + 1 },
+    effects: forceOpenEffect.of(sel.to),
+    userEvent: "input.type",
+  });
+  return true;
+}
+
 const slashKeys = Prec.highest(
   keymap.of([
+    { key: "Mod-j", run: openOnSelection },
+    { key: "Alt-/", run: openOnSelection },
     { key: "ArrowDown", run: move(1, true) },
     { key: "ArrowUp", run: move(-1, true) },
     { key: "PageDown", run: move(PAGE, false) },
@@ -201,7 +226,7 @@ const queryPlugin = ViewPlugin.fromClass(
       if (this.last && this.last.from === v.from && this.last.query === v.query) return;
       this.last = { from: v.from, query: v.query };
       this.seq += 1;
-      emitRef("slash_query", { docId: docIdRef(), q: v.query, seq: this.seq });
+      emitRef("slash_query", { docId: docIdRef(), q: v.query, seq: this.seq, from: v.from });
     }
   },
 );

@@ -13,6 +13,7 @@ from paper_pile.core.commands import (
     Insert,
     OpenPicker,
     ReplaceLinePrefix,
+    StreamInsert,
     command,
 )
 from paper_pile.core.tables import Table, format_table
@@ -272,3 +273,93 @@ def _has_templates(ctx: CommandContext) -> bool:
 )
 def template(ctx: CommandContext) -> Action:
     return OpenPicker("template", "template")
+
+
+# ---- AI (streamed into the note; see EditorPane._run_stream) ----------------------------------
+
+AI = "AI"
+_has_selection = lambda ctx: bool(ctx.selection)  # noqa: E731
+
+
+@command(
+    "ai-summarize",
+    "Summarize",
+    group=AI,
+    icon="summarize",
+    subtitle="The selection, or the whole note",
+    badge="AI",
+    aliases=("summary", "tldr", "shorten"),
+)
+def ai_summarize(ctx: CommandContext) -> Action:
+    return StreamInsert(
+        "Summarize the text below concisely: a short paragraph, or a few bullet points if it "
+        "has several parts. Keep the language of the text.",
+        source="auto",
+    )
+
+
+@command(
+    "ai-continue",
+    "Continue writing",
+    group=AI,
+    icon="edit_note",
+    subtitle="From where the caret is",
+    badge="AI",
+    aliases=("continue", "write more", "extend", "autocomplete"),
+)
+def ai_continue(ctx: CommandContext) -> Action:
+    return StreamInsert(
+        "Continue writing from exactly where the text below ends. Match its language, tone and "
+        "markdown formatting. Write only the continuation.",
+        source="before",
+    )
+
+
+@command(
+    "ai-explain",
+    "Explain selection",
+    group=AI,
+    icon="psychology",
+    subtitle="Select text, then press Ctrl+J",
+    badge="AI",
+    aliases=("explain", "what does this mean"),
+    when=_has_selection,
+)
+def ai_explain(ctx: CommandContext) -> Action:
+    return StreamInsert(
+        "Explain the text below clearly and briefly, for someone who knows the subject less well.",
+        source="selection",
+        lead="\n\n",
+    )
+
+
+@command(
+    "ai-fix",
+    "Fix grammar",
+    group=AI,
+    icon="spellcheck",
+    subtitle="Replaces the selection",
+    badge="AI",
+    aliases=("grammar", "proofread", "spelling", "correct"),
+    when=_has_selection,
+)
+def ai_fix(ctx: CommandContext) -> Action:
+    return StreamInsert(
+        "Fix the grammar, spelling and punctuation of the text below. Keep its meaning, tone, "
+        "language and markdown formatting. Write only the corrected text.",
+        source="selection",
+        replace_selection=True,
+    )
+
+
+@command(
+    "ai-ask",
+    "Ask…",
+    group=AI,
+    icon="question_answer",
+    subtitle="Ask the AI about this note",
+    badge="AI",
+    aliases=("question", "ask ai", "prompt", "write"),
+)
+def ai_ask(ctx: CommandContext) -> Action:
+    return StreamInsert("", source="auto", ask=True)

@@ -40,6 +40,7 @@ class Editor(
         on_image_saved: Handler | None = None,
         on_image_error: Handler | None = None,
         on_image_resize: Handler | None = None,
+        on_ai_selection: Handler | None = None,
         on_link: Handler | None = None,
         on_wikilink: Handler | None = None,
         on_paste: Handler | None = None,
@@ -68,6 +69,8 @@ class Editor(
             self.on("image_error", on_image_error)
         if on_image_resize:
             self.on("image_resize", on_image_resize)
+        if on_ai_selection:
+            self.on("ai_selection", on_ai_selection)
         if on_link:
             self.on("link", on_link)
         if on_wikilink:
@@ -117,6 +120,24 @@ class Editor(
             return bool(await self.run_method("applyChanges", doc_id, changes, expected, cursor))
         except TimeoutError:
             return False
+
+    async def stream_begin(self, stream_id: int, pos: int) -> None:
+        """Start typing an AI answer at JavaScript offset ``pos`` of the note on screen. Returns
+        once the editor has set it up, so a following :meth:`stream_append` finds it."""
+        try:
+            await self.run_method("streamBegin", stream_id, pos)
+        except TimeoutError:
+            return
+
+    async def stream_append(self, stream_id: int, text: str) -> bool:
+        """Type ``text`` into the stream; ``False`` means the stream is gone (other note shown)."""
+        try:
+            return bool(await self.run_method("streamAppend", stream_id, text))
+        except TimeoutError:
+            return False
+
+    def stream_end(self, stream_id: int) -> None:
+        self.run_method("streamEnd", stream_id)
 
     async def get_selection(self) -> tuple[str, int, int] | None:
         """The selected text and its JavaScript offsets ``(text, from, to)``; ``None`` if the

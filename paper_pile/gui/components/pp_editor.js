@@ -52,6 +52,16 @@ export default {
     async applyChanges(docId, changes, expected, cursor) {
       return (await this.ready).applyChanges(docId, changes, expected, cursor ?? null);
     },
+    async streamBegin(id, pos) {
+      (await this.ready).streamBegin(id, pos);
+      return true;
+    },
+    async streamAppend(id, text) {
+      return (await this.ready).streamAppend(id, text);
+    },
+    async streamEnd(id) {
+      (await this.ready).streamEnd(id);
+    },
     async getSelection() {
       return (await this.ready).getSelection();
     },
