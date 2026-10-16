@@ -21,8 +21,11 @@ from paper_pile.core.watcher import TOPIC as FS_CHANGED
 from paper_pile.core.watcher import FsEvent
 from paper_pile.gui.components.chat import ChatPane
 from paper_pile.gui.components.editor_pane import EditorPane
+from paper_pile.gui.components.profile import ProfileBlock
+from paper_pile.gui.components.settings import SettingsDialog
 from paper_pile.gui.components.statusbar import StatusBar, status_bar
 from paper_pile.gui.components.tree import FileTree
+from paper_pile.gui.theme import ThemeController, editor_options
 
 log = logging.getLogger("paper_pile.layout")
 
@@ -58,7 +61,17 @@ class MainLayout:
         self.config = Config(vault=vault)
         self.index = Index(Vault(vault))
         self.chat: ChatPane | None = None
+        self.profile: ProfileBlock | None = None
         self.state: SessionState = load_session(vault)
+        if not (vault / ".paper-pile" / "session.json").exists():  # a vault opened the first time
+            mode = self.config.get("editor.default_mode", "live")
+            self.state.mode = "source" if mode == "source" else "live"
+        self.theme = ThemeController(self.config, self._on_dark)
+        self.settings = SettingsDialog(
+            self.config,
+            self._settings_applied,
+            models=self._known_models,
+        )
         for pane in WIDTH_LIMITS:
             self.state.pane_widths[pane] = clamp_width(pane, self.state.pane_widths[pane])
         self._splitters: dict[str, PaneSplitter] = {}
@@ -68,6 +81,7 @@ class MainLayout:
     # ---- building ------------------------------------------------------------------------
 
     def build(self) -> None:
+        self.theme.install()
         with ui.element("div").classes("pp-root"):
             outer = self._make_splitter("left", reverse=False)
             with outer.before:
@@ -117,14 +131,53 @@ class MainLayout:
         return splitter
 
     def _left_pane(self) -> None:
-        with (
-            ui.column().classes("pp-pane pp-left"),
-            ui.column().classes("pp-pane-body pp-left-body"),
+        with ui.column().classes("pp-pane pp-left"):
+            with ui.column().classes("pp-pane-body pp-left-body"):
+                ui.label("Files").classes("pp-pane-title").tooltip(str(self.vault))
+                self.tree = FileTree(Vault(self.vault), self.bus, can_reveal=self.can_reveal)
+                self.tree.build()
+            self.profile = ProfileBlock(
+                self.config,
+                open_settings=self.open_settings,
+                toggle_theme=self.theme.toggle,
+                on_changed=self._profile_changed,
+            )
+            self.profile.build()
+
+    def _profile_changed(self) -> None:
+        """The name or picture changed (the chat shows the name)."""
+        if self.chat is not None:
+            self.chat.refresh_names()
+
+    # ---- settings, theme, profile -----------------------------------------------------------
+
+    def _known_models(self) -> list[str]:
+        return list(self.chat.models) if self.chat else []
+
+    def open_settings(self) -> None:
+        self.settings.open()
+
+    def _on_dark(self, dark: bool) -> None:
+        """The page reports whether it is dark now: the editor (and its diagrams) follow."""
+        if self.editor_pane is not None:
+            self.editor_pane.set_theme("dark" if dark else "light")
+        if self.profile is not None:
+            self.profile.show_dark(dark)
+
+    def _settings_applied(self, changed: set[str]) -> None:
+        """Settings were saved: show what can be shown right away."""
+        look = ("appearance.", "editor.font_", "editor.line_height")
+        if any(k.startswith(look) for k in changed):
+            self.theme.apply()
+        if (
+            self.editor_pane is not None
+            and {"editor.word_wrap", "editor.tab_size", "editor.spell_check"} & changed
         ):
-            ui.label("Files").classes("pp-pane-title").tooltip(str(self.vault))
-            self.tree = FileTree(Vault(self.vault), self.bus, can_reveal=self.can_reveal)
-            self.tree.build()
-            # below the tree: reserved for the profile block (P8.3)
+            self.editor_pane.set_options(editor_options(self.config))
+        if self.chat is not None and any(k.startswith("ai.") for k in changed):
+            self.chat.reload_provider()
+        if self.profile is not None:
+            self.profile.refresh()
 
     def _chat_pane(self) -> None:
         assert self.editor_pane is not None
@@ -135,6 +188,7 @@ class MainLayout:
             snapshot=self.editor_pane.ai_snapshot,
             insert_text=self.editor_pane.insert_text,
             on_health=self._on_ollama_health,
+            user_name=lambda: self.profile.name if self.profile else "",
         )
         self.chat.build()
 
@@ -157,6 +211,7 @@ class MainLayout:
             config=self.config,
             get_recents=lambda: self.state.recent_commands,
             get_provider=lambda: self.chat.provider if self.chat else None,
+            user_name=lambda: self.profile.name if self.profile else "",
             on_command_used=self._on_command_used,
         )
         self.editor_pane.build()

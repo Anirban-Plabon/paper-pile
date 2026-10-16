@@ -291,6 +291,7 @@ On paste into the editor:
    - Never touch content inside fenced code or inline code.
 4. Ctrl+Shift+V → raw paste, no conversion.
 5. Setting: Smart Paste on/off (default **on**).
+- **Implemented (P6):** `core/paste.py` (BeautifulSoup + a markdownify subclass; math extracted before anything else, code blocks next, then the page's interface elements are dropped); `EditorPane._on_paste`; fixtures are reconstructed from each chat page's markup shape (`tools/gen_paste_fixtures.py`), real captures can be added with `PAPER_PILE_DUMP_PASTE=1`.
 - Test fixtures: real clipboard HTML captured from ChatGPT, Claude, Gemini, DeepSeek in `tests/fixtures/paste/<source>_<case>.html` + expected `.md`. Cases: inline math, display math, code block, table, nested list, mixed.
 
 ### 4.11 AI (Ollama)
@@ -309,6 +310,7 @@ On paste into the editor:
 - Chat history kept per session (in memory) in phase 1.
 - AI slash commands use the same provider + context builder and stream into the editor at the cursor (`StreamInsert`).
 - Vault-wide RAG (embeddings + `sqlite-vec`): **not phase 1**.
+- **Implemented (P7):** `core/ai/{provider,ollama,fake,factory,context}.py`, `gui/components/chat.py`. AI slash commands: Summarize, Continue writing, Explain selection, Fix grammar (replaces the selection once complete), Ask… (dialog); selection-based ones are reached with **Ctrl+J / Alt+/** (typing `/` would replace the selection). Answers stream into the note and are one undo step; Stop in the notice.
 
 ### 4.12 Settings, theme, profile
 - Bottom-left of left pane: avatar + name, ⚙️ settings, ☀️/🌙 quick theme toggle.
@@ -325,6 +327,7 @@ On paste into the editor:
 
 - Storage: global `~/.config/paper-pile/config.toml` (via platformdirs), per-vault overrides `<vault>/.paper-pile/vault.toml`. Load order: defaults → global → vault.
 - Theming via CSS variables; editor + preview + mermaid + chat all follow theme (Mermaid theme switches to `dark`).
+- **Implemented (P8):** schema/validation in `core/settings.py`, dialog `gui/components/settings.py` ("Save for: All vaults / This vault", Restore defaults), theme `static/theme.js` + `gui/theme.py`, profile `gui/components/profile.py` + `core/profile.py`. **Ctrl+,** opens the settings.
 
 ### 4.13 Navigation & status
 - Ctrl+P command palette (all commands incl. settings actions), Ctrl+O quick switcher (fuzzy note open), Ctrl+Shift+F vault search (FTS5, results with snippets).

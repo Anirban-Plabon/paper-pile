@@ -2,7 +2,7 @@
 // JS is a thin layer: it renders and captures events. All logic lives in Python.
 import { defaultKeymap, history, isolateHistory, historyKeymap, indentWithTab } from "@codemirror/commands";
 import { markdown, markdownLanguage } from "@codemirror/lang-markdown";
-import { HighlightStyle, syntaxHighlighting } from "@codemirror/language";
+import { HighlightStyle, indentUnit, syntaxHighlighting } from "@codemirror/language";
 import { highlightSelectionMatches, searchKeymap } from "@codemirror/search";
 import { Compartment, EditorSelection, EditorState } from "@codemirror/state";
 import { EditorView, drawSelection, dropCursor, keymap } from "@codemirror/view";
@@ -45,16 +45,27 @@ function externalUrl(href) {
 }
 
 // Chat replies are typeset by the same code as the editor's widgets (KaTeX, Mermaid).
-if (typeof window !== "undefined") window.ppTypeset = (el, theme) => typeset(el, theme || "light");
+if (typeof window !== "undefined") {
+  window.ppTypeset = (el, theme) => typeset(el, theme || (window.ppIsDark ? "dark" : "light"));
+}
 
 export function createEditor(
   parent,
-  { doc = "", mode = "live", theme = "light", emit = () => {}, imageUploadUrl = null, linkTarget = "python" } = {},
+  { doc = "", mode = "live", theme = "light", emit = () => {}, imageUploadUrl = null, linkTarget = "python", options = {} } = {},
 ) {
   tablesRuntime({ emit, getDocId: () => docId });
   editorContext.emit = emit;
   editorContext.getDocId = () => docId;
   const modeSlot = new Compartment();
+  const optionsSlot = new Compartment();
+  // word wrap, tab size, spell check (Settings): applied to every open note
+  let currentOptions = { wordWrap: true, tabSize: 4, spellCheck: false, ...options };
+  const optionsExt = (o) => [
+    o.wordWrap ? EditorView.lineWrapping : [],
+    EditorState.tabSize.of(o.tabSize),
+    indentUnit.of(" ".repeat(o.tabSize)),
+    EditorView.contentAttributes.of({ spellcheck: o.spellCheck ? "true" : "false" }),
+  ];
   const themeSlot = new Compartment();
   const modeExt = (m) => (m === "live" ? [livePreview, blocks, tableKeys] : []);
   parent.classList.toggle("pp-dark", theme === "dark");
@@ -143,7 +154,7 @@ export function createEditor(
       dropCursor(),
       highlightSelectionMatches(),
       EditorState.allowMultipleSelections.of(true),
-      EditorView.lineWrapping,
+      optionsSlot.of(optionsExt(currentOptions)),
       keymap.of([
         {
           key: "Mod-s",
@@ -271,7 +282,10 @@ export function createEditor(
       if (state) {
         parked.delete(id);
         // mode/theme may have changed while this tab was parked (plain text has no mode)
-        const effects = [themeSlot.reconfigure(themeFacet.of(currentTheme))];
+        const effects = [
+          themeSlot.reconfigure(themeFacet.of(currentTheme)),
+          optionsSlot.reconfigure(optionsExt(currentOptions)),
+        ];
         if (!plainDocs.has(id)) effects.push(modeSlot.reconfigure(modeExt(currentMode)));
         state = state.update({ effects }).state;
       } else {
@@ -369,6 +383,10 @@ export function createEditor(
     insertAtCursor(text) {
       view.dispatch(view.state.replaceSelection(text), { userEvent: "input.paste", scrollIntoView: true });
       flush();
+    },
+    setOptions(o) {
+      currentOptions = { ...currentOptions, ...o };
+      view.dispatch({ effects: optionsSlot.reconfigure(optionsExt(currentOptions)) });
     },
     setMode(m) {
       currentMode = m;

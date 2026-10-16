@@ -63,6 +63,7 @@ def _build_pages(vault: Path, *, native: bool) -> None:
                 "ctrl+shift+tab": lambda: layout.cycle_tabs(-1),
                 "alt+pagedown": lambda: layout.cycle_tabs(1),
                 "alt+pageup": lambda: layout.cycle_tabs(-1),
+                "ctrl+,": layout.open_settings,
             }
         )
 

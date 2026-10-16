@@ -69,6 +69,7 @@ from paper_pile.core.watcher import FsEvent
 from paper_pile.gui.components.backlinks import BacklinkItem, BacklinksPane
 from paper_pile.gui.components.editor import Editor, Mode
 from paper_pile.gui.components.tabs import TabBar
+from paper_pile.gui.theme import editor_options
 
 log = logging.getLogger("paper_pile.editor_pane")
 
@@ -113,6 +114,7 @@ class EditorPane:
         self._native = native  # native window: Python opens links; web mode: the page does
         self._on_plain_changed = on_plain_changed
         self._plain_shown: bool | None = None
+        self.theme_name = "light"
         self.index = index
         self._config = config
         self._get_recents = get_recents
@@ -153,6 +155,7 @@ class EditorPane:
                 self._editor = Editor(
                     mode=self.mode,
                     link_target="python" if self._native else "window",
+                    options=editor_options(self._config),
                     on_link=lambda e: self._on_link(e.args),
                     on_wikilink=lambda e: self._on_wikilink(e.args),
                     on_slash_query=lambda e: self._on_slash_query(e.args),
@@ -275,6 +278,15 @@ class EditorPane:
         self.refresh_backlinks()
         self._refresh()
         self._notify_tabs()
+
+    def set_theme(self, name: str) -> None:
+        """``"light"`` or ``"dark"``: the editor, its code colours and diagrams follow."""
+        if name in {"light", "dark"}:
+            self.theme_name = name
+            self._editor.set_theme("dark" if name == "dark" else "light")
+
+    def set_options(self, options: dict[str, Any]) -> None:
+        self._editor.set_options(options)
 
     def toggle_mode(self) -> None:
         """Live Preview <-> Source. Same text and undo history; only the rendering changes."""

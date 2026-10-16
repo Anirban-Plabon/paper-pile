@@ -72,7 +72,7 @@ class ChatPane:
         self.health = Health(False, "Checking Ollama…")
         self._task: asyncio.Task[None] | None = None
         self._include_tabs = False
-        self._models: list[str] = []
+        self.models: list[str] = []
         # widgets
         self._log: ui.column
         self._input: ui.textarea
@@ -132,6 +132,10 @@ class ChatPane:
 
     # ---- provider state ------------------------------------------------------------------
 
+    def refresh_names(self) -> None:
+        """The profile name changed: show it on the user's messages."""
+        self._render_log()
+
     def reload_provider(self) -> None:
         """The AI settings changed (host / model): build the provider again."""
         self.provider = make_provider(self.config)
@@ -140,12 +144,10 @@ class ChatPane:
     async def check_health(self) -> None:
         health = await self.provider.health()
         self.health = health
-        self._models = list(health.models)
+        self.models = list(health.models)
         current = chat_model(self.provider, self.config)
         options = (
-            self._models
-            if current in self._models or not self._models
-            else [current, *self._models]
+            self.models if current in self.models or not self.models else [current, *self.models]
         )
         self._model.set_options(options, value=current if options else None)
         self._banner.set_visibility(not health.ok or bool(health.message))

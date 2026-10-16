@@ -12,6 +12,7 @@ from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import FileResponse, JSONResponse
 
 from paper_pile.core import assets, embed
+from paper_pile.core.profile import avatar_path
 from paper_pile.core.vault import Vault, VaultError
 
 UPLOAD_HEADER = "x-pp-upload"  # a custom header: a cross-site form post cannot set it
@@ -62,6 +63,14 @@ def make_asset_router(vault: Vault) -> APIRouter:
             },
             headers={"Cache-Control": "no-store"},
         )
+
+    @router.get("/_pp/avatar")
+    def avatar(name: str) -> FileResponse:
+        """The profile picture (only ``avatar.<ext>`` from the user's config folder)."""
+        path = avatar_path(name)
+        if path is None:
+            raise HTTPException(status_code=404, detail="not found")
+        return FileResponse(path, media_type=_media_type(path), headers=_headers(path))
 
     @router.post("/_pp/upload")
     async def upload(request: Request, note: str) -> JSONResponse:

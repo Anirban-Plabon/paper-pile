@@ -10,6 +10,7 @@ export default {
     theme: { type: String, default: "light" },
     imageUploadUrl: { type: String, default: null },
     linkTarget: { type: String, default: "python" },
+    options: { type: Object, default: () => ({}) },
   },
   data() {
     return {
@@ -26,6 +27,7 @@ export default {
       theme: this.theme,
       imageUploadUrl: this.imageUploadUrl,
       linkTarget: this.linkTarget,
+      options: this.options,
       emit: (name, payload) => this.$emit(name, payload),
     });
     this.resolveReady(this.api);
@@ -79,6 +81,9 @@ export default {
     },
     async insertAtCursor(text) {
       (await this.ready).insertAtCursor(text);
+    },
+    async setOptions(options) {
+      (await this.ready).setOptions(options);
     },
     async setMode(mode) {
       (await this.ready).setMode(mode);

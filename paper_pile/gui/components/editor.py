@@ -31,6 +31,7 @@ class Editor(
         theme: Theme = "light",
         image_upload_url: str | None = None,
         link_target: Literal["window", "python"] = "python",
+        options: dict[str, Any] | None = None,
         on_change: Handler | None = None,
         on_blur: Handler | None = None,
         on_save: Handler | None = None,
@@ -51,6 +52,7 @@ class Editor(
         self._props["theme"] = theme
         self._props["imageUploadUrl"] = image_upload_url
         self._props["linkTarget"] = link_target  # "window": open in the page (web mode)
+        self._props["options"] = options or {}
         if on_change:
             self.on("change", on_change)
         if on_blur:
@@ -172,6 +174,10 @@ class Editor(
 
     def insert_at_cursor(self, text: str) -> None:
         self.run_method("insertAtCursor", text)
+
+    def set_options(self, options: dict[str, Any]) -> None:
+        """``wordWrap`` / ``tabSize`` / ``spellCheck`` for every open note (Settings)."""
+        self.run_method("setOptions", options)
 
     def set_mode(self, mode: Mode) -> None:
         self.run_method("setMode", mode)

@@ -133,6 +133,25 @@ class Config:
             node = child
         node[leaf] = value
 
+    def unset(self, key: str, scope: Scope = "global") -> None:
+        """Remove ``key`` from one layer (it falls back to the layer below); empty tables go too."""
+        *parents, leaf = key.split(".")
+        chain: list[dict[str, Any]] = [self._layers[scope]]
+        for part in parents:
+            child = chain[-1].get(part)
+            if not isinstance(child, dict):
+                return
+            chain.append(child)
+        chain[-1].pop(leaf, None)
+        for part, node in zip(reversed(parents), reversed(chain[1:]), strict=True):
+            if node:
+                break
+            chain[chain.index(node) - 1].pop(part, None)
+
+    def layer(self, scope: Scope) -> dict[str, Any]:
+        """What one layer holds on its own (a copy)."""
+        return copy.deepcopy(self._layers[scope])
+
     def save(self, scope: Scope = "global") -> None:
         path = self._paths[scope]
         if path is None:
