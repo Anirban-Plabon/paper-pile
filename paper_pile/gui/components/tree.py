@@ -91,7 +91,7 @@ class FileTree:
                     else "fa-solid fa-chevron-right"
                 )
                 ui.icon(chevron).classes("pp-ico")
-                ui.icon("fa-solid fa-folder").classes("pp-ico pp-ico-folder")
+                ui.icon("fa-regular fa-folder").classes("pp-ico pp-ico-folder")
             else:
                 ui.element("span").classes("pp-ico")  # keeps notes aligned with folder names
                 ui.icon("fa-regular fa-file-lines").classes("pp-ico pp-ico-note")

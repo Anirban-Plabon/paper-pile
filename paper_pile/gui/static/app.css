@@ -362,14 +362,16 @@ html, body { overflow: hidden; }
 .pp-chat-card { width: 100%; gap: 4px; padding: 6px; background: var(--pp-bg); border: 1px solid var(--pp-border); border-radius: 26px; box-shadow: 0 1px 4px rgba(0, 0, 0, .08); }
 .pp-chat-card:focus-within { border-color: rgba(var(--pp-accent-rgb), .6); }
 .pp-chat-row { gap: 4px; padding: 0 2px 0 0; }
-.pp-chat-plus.q-btn { width: 34px; height: 34px; flex: none; background: rgba(127, 127, 127, .16); color: var(--pp-fg); }
+.pp-chat-plus.q-btn { width: 28px; height: 28px; min-height: 0; flex: none; font-size: 12px; background: transparent; color: var(--pp-muted); }
+.pp-chat-plus.q-btn:hover { background: rgba(127, 127, 127, .16); color: var(--pp-fg); }
 .pp-chat-input { width: 100%; font-size: 13.5px; }
 .pp-chat-input .q-field__control { padding: 0 12px; min-height: 0; }
 .pp-chat-input .q-field__native { padding: 8px 0 4px; line-height: 1.5; scrollbar-width: thin; }
 .pp-chat-input .q-field__native::placeholder { line-height: 1.5; }
 .pp-chat-input .q-field__control:before, .pp-chat-input .q-field__control:after { display: none; }
 .pp-chat-model { flex: none; max-width: 110px; font-size: 12px; }
-.pp-chat-send.q-btn { width: 34px; height: 34px; flex: none; background: var(--pp-accent) !important; color: var(--pp-on-accent); }
+.pp-chat-send.q-btn { width: 28px; height: 28px; min-height: 0; flex: none; font-size: 12px; background: transparent !important; color: var(--pp-accent); }
+.pp-chat-send.q-btn:hover { background: rgba(var(--pp-accent-rgb), .14) !important; }
 .pp-chat-ref-icon { font-size: 15px; color: var(--pp-muted); }
 .pp-chat-ref-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .pp-chat-menu { min-width: 260px; max-width: 320px; background: var(--pp-bg); color: var(--pp-fg); border: 1px solid var(--pp-border); border-radius: 14px; box-shadow: 0 8px 28px rgba(0, 0, 0, .2); padding: 4px; }
@@ -500,3 +502,10 @@ html, body { overflow: hidden; }
 .pp-cal-foot { width: 100%; gap: 6px; margin-top: 6px; padding-top: 8px; border-top: 1px solid var(--pp-border); font-size: 11px; flex-wrap: wrap; }
 .pp-cal-link { color: var(--pp-accent); cursor: pointer; }
 .pp-cal-link:hover { text-decoration: underline; }
+
+/* message action icons: small and muted, like every other icon */
+.pp-msg-actions .q-btn { color: var(--pp-muted); font-size: 10px; }
+.pp-msg-actions .q-btn:hover { color: var(--pp-fg); }
+/* any Quasar widget still using the primary colour follows the accent */
+.text-primary { color: var(--pp-accent) !important; }
+.bg-primary { background: var(--pp-accent) !important; }

@@ -155,6 +155,7 @@ class MainLayout:
                 open_settings=self.open_settings,
                 toggle_theme=self.theme.toggle,
                 on_changed=self._profile_changed,
+                vault_name=self.vault.name,
             )
             self.profile.build()
 

@@ -25,7 +25,9 @@ class ProfileBlock:
         open_settings: Callable[[], None],
         toggle_theme: Callable[[], None],
         on_changed: Callable[[], None] = lambda: None,
+        vault_name: str = "",
     ) -> None:
+        self._vault_name = vault_name
         self.config = config
         self._open_settings = open_settings
         self._toggle_theme = toggle_theme
@@ -56,7 +58,7 @@ class ProfileBlock:
     def refresh(self) -> None:
         """Show the current name and picture."""
         name = self.name
-        self._name.set_text(name or "Set your name")
+        self._name.set_text(name or self._vault_name or "Set your name")
         self._name.classes(
             add="pp-muted" if not name else "", remove="" if not name else "pp-muted"
         )
