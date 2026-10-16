@@ -22,7 +22,8 @@ from paper_pile.core.watcher import FsEvent
 from paper_pile.gui.components.chat import ChatPane
 from paper_pile.gui.components.editor_pane import EditorPane
 from paper_pile.gui.components.profile import ProfileBlock
-from paper_pile.gui.components.settings import SettingsDialog
+from paper_pile.gui.components.right_pane import RightPane
+from paper_pile.gui.components.settings import SettingsPane
 from paper_pile.gui.components.statusbar import StatusBar, status_bar
 from paper_pile.gui.components.tree import FileTree
 from paper_pile.gui.theme import ThemeController, editor_options
@@ -67,10 +68,12 @@ class MainLayout:
             mode = self.config.get("editor.default_mode", "live")
             self.state.mode = "source" if mode == "source" else "live"
         self.theme = ThemeController(self.config, self._on_dark)
-        self.settings = SettingsDialog(
+        self.right: RightPane | None = None
+        self.settings = SettingsPane(
             self.config,
             self._settings_applied,
             models=self._known_models,
+            on_close=self._close_settings,
         )
         for pane in WIDTH_LIMITS:
             self.state.pane_widths[pane] = clamp_width(pane, self.state.pane_widths[pane])
@@ -92,7 +95,7 @@ class MainLayout:
                 with inner.before:
                     self._center_pane()
                 with inner.after:
-                    self._chat_pane()
+                    self._right_pane()
                 self._status = status_bar(
                     lambda: self.toggle("left"),
                     lambda: self.toggle("right"),
@@ -156,7 +159,15 @@ class MainLayout:
         return list(self.chat.models) if self.chat else []
 
     def open_settings(self) -> None:
-        self.settings.open()
+        """Settings is a tab of the right pane: open the pane if it is folded away, then the tab."""
+        if not self.state.panes_open["right"]:
+            self.toggle("right")
+        if self.right is not None:
+            self.right.open_settings()
+
+    def _close_settings(self) -> None:
+        if self.right is not None:
+            self.right.close_settings()
 
     def _on_dark(self, dark: bool) -> None:
         """The page reports whether it is dark now: the editor (and its diagrams) follow."""
@@ -179,6 +190,12 @@ class MainLayout:
             self.chat.reload_provider()
         if self.profile is not None:
             self.profile.refresh()
+
+    def _right_pane(self) -> None:
+        self.right = RightPane(self.settings.open)
+        self.right.build()
+        with self.right.chat_host:
+            self._chat_pane()
 
     def _chat_pane(self) -> None:
         assert self.editor_pane is not None

@@ -134,8 +134,6 @@ class ChatPane:
     def build(self) -> None:
         self._client = ui.context.client
         with ui.column().classes("pp-pane pp-chat"):
-            with ui.row().classes("pp-chat-head items-center no-wrap"):
-                ui.label("AI chat").classes("pp-pane-title")
             self._banner = ui.row().classes("pp-chat-banner items-center no-wrap")
             with self._banner:
                 self._banner_text = ui.label("").classes("pp-chat-banner-text")

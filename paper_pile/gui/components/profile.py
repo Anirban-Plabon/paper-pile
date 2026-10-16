@@ -45,10 +45,10 @@ class ProfileBlock:
                 self._name = ui.label("").classes("pp-profile-name")
             who.on("click", lambda _e: self._open_dialog())
             ui.space()
-            self._theme_button = ui.button(icon="dark_mode", on_click=self._toggle_theme)
+            self._theme_button = ui.button(icon="fa-regular fa-moon", on_click=self._toggle_theme)
             self._theme_button.props("flat round dense size=sm").classes("pp-profile-btn")
             self._theme_button.tooltip("Light / dark")
-            settings = ui.button(icon="settings", on_click=self._open_settings)
+            settings = ui.button(icon="fa-solid fa-gear", on_click=self._open_settings)
             settings.props("flat round dense size=sm").classes("pp-profile-btn")
             settings.tooltip("Settings (Ctrl+,)")
         self.refresh()
@@ -72,7 +72,8 @@ class ProfileBlock:
                 ui.label(initials(name)).classes("pp-avatar-initials")
 
     def show_dark(self, dark: bool) -> None:
-        self._theme_button.props(f"icon={'light_mode' if dark else 'dark_mode'}")
+        icon = "fa-regular fa-sun" if dark else "fa-regular fa-moon"
+        self._theme_button.props(f'icon="{icon}"')  # quoted: the name contains a space
 
     # ---- the profile dialog ----------------------------------------------------------------
 

@@ -151,19 +151,33 @@ html, body { overflow: hidden; }
 
 /* Tab bar (paper_pile/gui/components/tabs.py, static/tabs.js) */
 .pp-tabbar { width: 100%; height: var(--pp-tab-h); flex-shrink: 0; gap: 0; overflow-x: auto; overflow-y: hidden; background: var(--pp-bg-side); border-bottom: 1px solid var(--pp-border); }
+.pp-rtabbar { width: 100%; height: var(--pp-tab-h); flex-shrink: 0; gap: 0; overflow-x: auto; overflow-y: hidden; background: var(--pp-bg-side); border-bottom: 1px solid var(--pp-border); }
 .pp-tabbar::-webkit-scrollbar { height: 4px; }
+.pp-rtabbar::-webkit-scrollbar { height: 4px; }
 .pp-tab { display: flex; align-items: center; gap: 6px; flex-shrink: 0; max-width: 220px; padding: 0 8px 0 12px; border-right: 1px solid var(--pp-border); cursor: pointer; user-select: none; color: var(--pp-muted); font-size: 13px; position: relative; }
+.pp-rtab { display: flex; align-items: center; gap: 6px; flex-shrink: 0; max-width: 220px; padding: 0 8px 0 12px; border-right: 1px solid var(--pp-border); cursor: pointer; user-select: none; color: var(--pp-muted); font-size: 13px; position: relative; }
 .pp-tab:hover { background: rgba(127, 127, 127, .10); }
+.pp-rtab:hover { background: rgba(127, 127, 127, .10); }
 .pp-tab-active { background: var(--pp-bg); color: var(--pp-fg); box-shadow: inset 0 2px 0 var(--pp-accent); }
+.pp-rtab-active { background: var(--pp-bg); color: var(--pp-fg); box-shadow: inset 0 2px 0 var(--pp-accent); }
 .pp-tab > * { pointer-events: none; }
+.pp-rtab > * { pointer-events: none; }
 .pp-tab .pp-tab-close { pointer-events: auto; }
+.pp-rtab .pp-rtab-close { pointer-events: auto; }
 .pp-tab-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pp-rtab-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .pp-tab-hint { font-size: 11px; opacity: .6; white-space: nowrap; }
+.pp-rtab-hint { font-size: 11px; opacity: .6; white-space: nowrap; }
 .pp-tab-dot { display: none; font-size: 10px; color: var(--pp-muted); }
+.pp-rtab-dot { display: none; font-size: 10px; color: var(--pp-muted); }
 .pp-tab-dirty { display: inline; }
+.pp-rtab-dirty { display: inline; }
 .pp-tab-close { font-size: 15px; border-radius: 3px; opacity: 0; padding: 1px; }
+.pp-rtab-close { font-size: 15px; border-radius: 3px; opacity: 0; padding: 1px; }
 .pp-tab:hover .pp-tab-close, .pp-tab-active .pp-tab-close { opacity: .7; }
+.pp-rtab:hover .pp-rtab-close, .pp-rtab-active .pp-rtab-close { opacity: .7; }
 .pp-tab .pp-tab-close:hover { opacity: 1; background: rgba(127, 127, 127, .25); }
+.pp-rtab .pp-rtab-close:hover { opacity: 1; background: rgba(127, 127, 127, .25); }
 .pp-tab-dirty ~ .pp-tab-close { margin-left: -2px; }
 .pp-tab-drop-before { box-shadow: inset 3px 0 0 var(--pp-accent); }
 .pp-tab-drop-after { box-shadow: inset -3px 0 0 var(--pp-accent); }
@@ -284,7 +298,6 @@ html, body { overflow: hidden; }
 
 /* AI chat (P7.2) */
 .pp-chat { gap: 0; }
-.pp-chat-head { width: 100%; padding: 6px 12px 2px; gap: 6px; flex: none; }
 .pp-chat-banner { width: 100%; flex: none; padding: 5px 12px; gap: 8px; background: #fff4e5; border-bottom: 1px solid #f0c36d; color: #5c3b00; font-size: 12px; }
 .pp-chat-banner-text { flex: 1 1 auto; }
 .pp-chat-log { flex: 1 1 0; min-height: 0; width: 100%; overflow-y: auto; padding: 8px 12px; gap: 10px; flex-wrap: nowrap; }
@@ -312,15 +325,9 @@ html, body { overflow: hidden; }
 .pp-chat-mention:hover { background: rgba(var(--pp-accent-rgb), .12); }
 
 /* settings dialog, profile block (P8) */
-.pp-settings { width: 760px; max-width: 94vw; gap: 10px; }
-.pp-settings-body { gap: 0; min-height: 340px; align-items: stretch; }
-.pp-settings-tabs { width: 130px; flex: none; border-right: 1px solid var(--pp-border); }
-.pp-settings-panels { flex: 1 1 auto; min-width: 0; height: 340px; overflow-y: auto; }
-.pp-settings-panel { display: flex; flex-direction: column; gap: 12px; padding: 4px 14px; }
 .pp-set-row { gap: 3px; width: 100%; }
 .pp-set-label { font-size: 12px; font-weight: 600; }
 .pp-set-error { font-size: 12px; color: #c0392b; }
-.pp-settings-foot { padding-top: 4px; border-top: 1px solid var(--pp-border); }
 .pp-swatches { gap: 8px; }
 .pp-swatch.q-btn { width: 24px; height: 24px; min-width: 24px; min-height: 24px; padding: 0; border-radius: 50%; box-shadow: inset 0 0 0 2px rgba(255, 255, 255, .6); }
 .pp-swatch-on { outline: 2px solid var(--pp-fg); outline-offset: 2px; }
@@ -392,3 +399,17 @@ html, body { overflow: hidden; }
 .pp-fold-placeholder { margin-left: .5em; padding: 0 6px; border-radius: 4px; color: var(--pp-accent); background: rgba(var(--pp-accent-rgb), .14); cursor: pointer; }
 .pp-fold::before { content: "\25BE"; }
 .pp-fold-folded::before { content: "\25B8"; }
+
+/* right pane: tab strip + views; settings lives here as a tab */
+.pp-right { background: var(--pp-bg-side); }
+.pp-right-body { width: 100%; padding: 0; gap: 0; min-height: 0; flex-wrap: nowrap; overflow: hidden; }
+.pp-right-body > .pp-chat { flex: 1 1 0; min-height: 0; }
+.pp-rtab-icon { font-size: 13px; width: 15px; text-align: center; }
+.pp-right-tabs .pp-rtab-close { font-size: 14px; }
+.pp-settings { width: 100%; height: 100%; gap: 0; flex-wrap: nowrap; overflow: hidden; }
+.pp-settings-head { padding: 8px 12px; gap: 8px; border-bottom: 1px solid var(--pp-border); flex: none; }
+.pp-settings-scroll { flex: 1 1 0; min-height: 0; width: 100%; overflow-y: auto; padding: 4px 14px 12px; gap: 12px; flex-wrap: nowrap; }
+.pp-settings-foot { flex: none; padding: 8px 12px; gap: 4px; border-top: 1px solid var(--pp-border); }
+.pp-set-section { gap: 8px; margin-top: 10px; padding-bottom: 4px; border-bottom: 1px solid var(--pp-border); width: 100%; }
+.pp-set-section-icon { font-size: 13px; width: 16px; text-align: center; color: var(--pp-accent); }
+.pp-set-section-title { font-size: 12px; font-weight: 600; letter-spacing: .05em; text-transform: uppercase; color: var(--pp-muted); }
