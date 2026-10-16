@@ -9,6 +9,15 @@
     return cfg.theme === 'dark' || (cfg.theme === 'system' && media.matches);
   }
 
+  // white text on a dark accent, near-black on a light one (WCAG relative luminance)
+  function onAccent(hex) {
+    const c = [1, 3, 5].map(function (i) {
+      const v = parseInt(hex.slice(i, i + 2), 16) / 255;
+      return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4);
+    });
+    return 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2] > 0.5 ? '#1f2328' : '#fff';
+  }
+
   function apply(cfg) {
     current = cfg;
     const dark = isDark(cfg);
@@ -19,6 +28,7 @@
     body.classList.toggle('pp-compact', cfg.density === 'compact');
     root.style.setProperty('--pp-accent', dark ? cfg.accentDark : cfg.accentLight);
     root.style.setProperty('--pp-accent-rgb', dark ? cfg.accentDarkRgb : cfg.accentLightRgb);
+    root.style.setProperty('--pp-on-accent', onAccent(dark ? cfg.accentDark : cfg.accentLight));
     root.style.setProperty('--pp-editor-font', cfg.fontFamily);
     root.style.setProperty('--pp-editor-size', cfg.fontSize + 'px');
     root.style.setProperty('--pp-editor-lh', String(cfg.lineHeight));

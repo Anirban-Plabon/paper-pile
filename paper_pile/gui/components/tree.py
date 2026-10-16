@@ -85,12 +85,16 @@ class FileTree:
         row.style(f"padding-left: {BASE_PAD_PX + depth * INDENT_PX}px")
         with row:
             if entry.is_dir:
-                chevron = "expand_more" if entry.path in self._expanded else "chevron_right"
+                chevron = (
+                    "fa-solid fa-chevron-down"
+                    if entry.path in self._expanded
+                    else "fa-solid fa-chevron-right"
+                )
                 ui.icon(chevron).classes("pp-ico")
-                ui.icon("folder").classes("pp-ico pp-ico-folder")
+                ui.icon("fa-solid fa-folder").classes("pp-ico pp-ico-folder")
             else:
                 ui.element("span").classes("pp-ico")  # keeps notes aligned with folder names
-                ui.icon("description").classes("pp-ico pp-ico-note")
+                ui.icon("fa-regular fa-file-lines").classes("pp-ico pp-ico-note")
             ui.label(entry.name).classes("pp-tree-name")
         self._rows[entry.path] = row
 
@@ -135,16 +139,26 @@ class FileTree:
         with self._menu:
             if is_dir:
                 folder = path if on_row else ""
-                self._item("New note", "note_add", lambda: self._new_note(folder))
-                self._item("New folder", "create_new_folder", lambda: self._new_folder(folder))
+                self._item(
+                    "New note", "fa-solid fa-file-circle-plus", lambda: self._new_note(folder)
+                )
+                self._item(
+                    "New folder", "fa-solid fa-folder-plus", lambda: self._new_folder(folder)
+                )
             if on_row and not is_dir:
-                self._item("Add to chat", "chat", lambda: self._add_to_chat(path))
+                self._item("Add to chat", "fa-regular fa-comments", lambda: self._add_to_chat(path))
             if on_row:
-                self._item("Rename", "edit", lambda: self._rename(path))
-                self._item("Duplicate", "content_copy", lambda: self._duplicate(path))
-                self._item("Delete", "delete", lambda: self._delete(path), danger=True)
+                self._item("Rename", "fa-regular fa-pen-to-square", lambda: self._rename(path))
+                self._item("Duplicate", "fa-regular fa-copy", lambda: self._duplicate(path))
+                self._item(
+                    "Delete", "fa-regular fa-trash-can", lambda: self._delete(path), danger=True
+                )
                 if self.can_reveal:
-                    self._item("Reveal in file manager", "folder_open", lambda: self._reveal(path))
+                    self._item(
+                        "Reveal in file manager",
+                        "fa-regular fa-folder-open",
+                        lambda: self._reveal(path),
+                    )
         x = max(0, min(int(args["x"]), int(args["vw"]) - MENU_W))
         y = max(0, min(int(args["y"]), int(args["vh"]) - MENU_H))
         self._menu.style(f"left: {x}px; top: {y}px")

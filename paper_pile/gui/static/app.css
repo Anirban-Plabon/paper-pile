@@ -11,6 +11,16 @@
   --pp-dot-on: #2da44e;
   --pp-accent: #3b82f6;
   --pp-accent-rgb: 59, 130, 246;
+  --pp-on-accent: #fff;
+  --pp-folder: #c9a227;
+  --pp-danger: #c0392b;
+  --pp-wiki: #7c3aed;
+  --pp-wiki-rgb: 124, 58, 237;
+  --pp-warn: #b45309;
+  --pp-warn-rgb: 180, 83, 9;
+  --pp-banner-bg: #fff4e5;
+  --pp-banner-border: #f0c36d;
+  --pp-banner-fg: #5c3b00;
   --pp-editor-font: monospace;
   --pp-editor-size: 15px;
   --pp-editor-lh: 1.6;
@@ -27,6 +37,15 @@ body.body--dark {
   --pp-muted: #8b929c;
   --pp-dot-off: #5b616b;
   --pp-dot-on: #3fb950;
+  --pp-folder: #e0b84a;
+  --pp-danger: #f26b5b;
+  --pp-wiki: #b79cff;
+  --pp-wiki-rgb: 183, 156, 255;
+  --pp-warn: #e0a458;
+  --pp-warn-rgb: 224, 164, 88;
+  --pp-banner-bg: #3a2e14;
+  --pp-banner-border: #7a5c1e;
+  --pp-banner-fg: #f1d9a0;
 }
 /* Compact density */
 body.pp-compact { --pp-row-h: 20px; --pp-tab-h: 28px; --pp-bar-h: 22px; }
@@ -63,7 +82,7 @@ html, body { overflow: hidden; }
 .pp-tree-row:hover { background: rgba(127, 127, 127, .12); }
 .pp-tree-selected, .pp-tree-selected:hover { background: rgba(var(--pp-accent-rgb), .18); }
 .pp-ico { font-size: 16px; width: 16px; flex-shrink: 0; color: var(--pp-muted); }
-.pp-ico-folder { color: #c9a227; }
+.pp-ico-folder { color: var(--pp-folder); }
 .pp-tree-name { overflow: hidden; text-overflow: ellipsis; font-size: 13px; pointer-events: none; }
 .pp-tree-row > * { pointer-events: none; }
 .pp-tree-empty { padding: 6px 12px; }
@@ -72,8 +91,8 @@ html, body { overflow: hidden; }
 .pp-ctxmenu { display: none; position: fixed; z-index: 3000; min-width: 190px; padding: 4px; gap: 0; background: var(--pp-bg); border: 1px solid var(--pp-border); border-radius: 6px; box-shadow: 0 6px 20px rgba(0, 0, 0, .18); }
 .pp-ctxmenu-open { display: flex; }
 .pp-ctxmenu .pp-ctx-item.q-btn { width: 100%; justify-content: flex-start; font-size: 13px; font-weight: 400; color: var(--pp-fg) !important; }
-.pp-ctxmenu .pp-ctx-item .q-icon { color: var(--pp-muted); font-size: 18px; }
-.pp-ctxmenu .pp-ctx-danger.q-btn, .pp-ctxmenu .pp-ctx-danger .q-icon { color: #c0392b !important; }
+.pp-ctxmenu .pp-ctx-item .q-icon { color: var(--pp-muted); font-size: 15px; }
+.pp-ctxmenu .pp-ctx-danger.q-btn, .pp-ctxmenu .pp-ctx-danger .q-icon { color: var(--pp-danger) !important; }
 .pp-dialog { min-width: 320px; gap: 12px; }
 .pp-dialog-title { font-size: 14px; font-weight: 600; }
 
@@ -81,9 +100,9 @@ html, body { overflow: hidden; }
 .pp-editor { font-family: var(--pp-editor-font); font-size: var(--pp-editor-size); line-height: var(--pp-editor-lh); background: var(--pp-bg); color: var(--pp-fg); }
 .pp-editor .cm-content { padding: 16px 28px; }
 .pp-editor .cm-editor.cm-focused { outline: none; }
-.pp-banner { width: 100%; flex-shrink: 0; gap: 10px; padding: 5px 12px; background: #fff4e5; border-bottom: 1px solid #f0c36d; color: #5c3b00; font-size: 13px; }
+.pp-banner { width: 100%; flex-shrink: 0; gap: 10px; padding: 5px 12px; background: var(--pp-banner-bg); border-bottom: 1px solid var(--pp-banner-border); color: var(--pp-banner-fg); font-size: 13px; }
 .pp-banner-text { flex: 1 1 auto; }
-.pp-save-error { color: #c0392b; }
+.pp-save-error { color: var(--pp-danger); }
 .pp-setext-underline { opacity: .3; font-size: .8em; }
 
 /* Lists, tasks, quotes, rules (tools/editor_src/livepreview.js) */
@@ -93,7 +112,7 @@ html, body { overflow: hidden; }
 .pp-task .pp-box { display: inline-block; box-sizing: border-box; width: 1.5ch; height: 1.5ch; border: 1.5px solid var(--pp-muted); border-radius: 3px; vertical-align: -0.2em; }
 .pp-task:hover .pp-box { border-color: var(--pp-accent); }
 .pp-task-checked .pp-box { background: var(--pp-accent); border-color: var(--pp-accent); position: relative; }
-.pp-task-checked .pp-box::after { content: ""; position: absolute; left: 30%; top: 8%; width: 28%; height: 58%; border: solid #fff; border-width: 0 2px 2px 0; transform: rotate(45deg); }
+.pp-task-checked .pp-box::after { content: ""; position: absolute; left: 30%; top: 8%; width: 28%; height: 58%; border: solid var(--pp-on-accent); border-width: 0 2px 2px 0; transform: rotate(45deg); }
 .pp-task-done { text-decoration: line-through; color: var(--pp-muted); }
 /* `.pp-editor .cm-line` is needed to beat CodeMirror's own `.cm-line { padding }` rule. A quote's
    content is pushed right by its depth (`--pp-qpad`), one 3px bar per level is drawn at the normal
@@ -109,10 +128,10 @@ html, body { overflow: hidden; }
 .pp-editor .cm-line.pp-quote.pp-codeblock { background: var(--pp-bars), linear-gradient(var(--pp-code-bg), var(--pp-code-bg)) calc(6px + var(--pp-qpad)) 0 / calc(100% - 6px - var(--pp-qpad)) 100% no-repeat; padding-left: calc(6px + var(--pp-qpad) + 12px); text-indent: 0; border-radius: 0; }
 .pp-link { color: var(--pp-accent); text-decoration: underline; text-decoration-color: rgba(var(--pp-accent-rgb), .4); text-underline-offset: 2px; }
 .pp-ctrl .pp-link[data-href] { cursor: pointer; }
-.pp-wikilink { color: #7c3aed; text-decoration: underline; text-decoration-color: rgba(124, 58, 237, .4); text-underline-offset: 2px; }
+.pp-wikilink { color: var(--pp-wiki); text-decoration: underline; text-decoration-color: rgba(var(--pp-wiki-rgb), .4); text-underline-offset: 2px; }
 .pp-wikilink[data-wiki-open] { cursor: pointer; }
 .pp-ctrl .pp-wikilink[data-wiki-note] { cursor: pointer; }
-.pp-wikilink-missing { color: #b45309; text-decoration-style: dashed; text-decoration-color: rgba(180, 83, 9, .6); }
+.pp-wikilink-missing { color: var(--pp-warn); text-decoration-style: dashed; text-decoration-color: rgba(var(--pp-warn-rgb), .6); }
 .pp-image { display: inline-block; max-width: 100%; vertical-align: middle; }
 .pp-image img { display: block; max-width: 100%; height: auto; border-radius: 4px; margin: 2px 0; }
 .pp-image-chip { display: inline-block; padding: 0 8px; border: 1px dashed var(--pp-border); border-radius: 4px; color: var(--pp-muted); font-size: .85em; }
@@ -190,8 +209,6 @@ html, body { overflow: hidden; }
 /* Dark editor: everything inside the editor reads the --pp-* variables, so redefining them here
    re-colours links, quotes, tables, front matter, borders... P8.1 will drive these from a theme. */
 .pp-editor.pp-dark { color-scheme: dark; }
-.pp-editor.pp-dark .pp-wikilink { color: #b79cff; text-decoration-color: rgba(183, 156, 255, .45); }
-.pp-editor.pp-dark .pp-wikilink-missing { color: #e0a458; text-decoration-color: rgba(224, 164, 88, .6); }
 .pp-editor.pp-dark .cm-line.pp-quote { --pp-bar: #4b5160; }
 .pp-editor.pp-dark .pp-code { background: rgba(var(--pp-accent-rgb), .2); }
 .pp-editor.pp-dark .pp-image img { opacity: .92; }
@@ -210,7 +227,7 @@ html, body { overflow: hidden; }
 /* Block widgets (tools/editor_src/blocks.js) */
 .pp-math-block, .pp-mermaid { text-align: center; padding: 8px 0; cursor: text; }
 .pp-mermaid svg { max-width: 100%; height: auto; }
-.pp-render-error { color: #c0392b; font: 12px monospace; white-space: pre-wrap; padding: 8px 0; }
+.pp-render-error { color: var(--pp-danger); font: 12px monospace; white-space: pre-wrap; padding: 8px 0; }
 
 /* backlinks pane (P3.4) */
 .pp-backlinks { width: 100%; flex-shrink: 0; gap: 0; border-top: 1px solid var(--pp-border, rgba(128, 128, 128, .25)); }
@@ -274,13 +291,13 @@ html, body { overflow: hidden; }
 
 /* image resize handle (P5.3) */
 .pp-image { position: relative; }
-.pp-image-handle { position: absolute; right: 2px; bottom: 6px; width: 14px; height: 14px; border-radius: 3px; background: rgba(var(--pp-accent-rgb), .9); border: 2px solid #fff; box-sizing: border-box; cursor: nwse-resize; opacity: 0; transition: opacity .12s; }
+.pp-image-handle { position: absolute; right: 2px; bottom: 6px; width: 14px; height: 14px; border-radius: 3px; background: rgba(var(--pp-accent-rgb), .9); border: 2px solid var(--pp-bg); box-sizing: border-box; cursor: nwse-resize; opacity: 0; transition: opacity .12s; }
 .pp-image:hover .pp-image-handle, .pp-image-resizing .pp-image-handle { opacity: 1; }
 .pp-image-resizing img { outline: 2px solid rgba(var(--pp-accent-rgb), .6); }
 
 /* embedded note: ![[note]] alone on a line */
-.pp-embed { margin: 6px 6px; border: 1px solid var(--pp-border); border-left: 3px solid #7c3aed; border-radius: 6px; background: var(--pp-bg-side); cursor: pointer; max-height: 340px; overflow-y: auto; }
-.pp-embed:hover { border-color: #7c3aed; }
+.pp-embed { margin: 6px 6px; border: 1px solid var(--pp-border); border-left: 3px solid var(--pp-wiki); border-radius: 6px; background: var(--pp-bg-side); cursor: pointer; max-height: 340px; overflow-y: auto; }
+.pp-embed:hover { border-color: var(--pp-wiki); }
 .pp-embed-title { padding: 5px 12px; font-size: 11px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; color: var(--pp-muted); border-bottom: 1px solid var(--pp-border); position: sticky; top: 0; background: var(--pp-bg-side); }
 .pp-embed-body { padding: 4px 12px 8px; font-size: .95em; line-height: 1.5; }
 .pp-embed-body h1, .pp-embed-body h2, .pp-embed-body h3 { margin: .6em 0 .3em; font-size: 1.2em; }
@@ -288,17 +305,17 @@ html, body { overflow: hidden; }
 .pp-embed-body ul, .pp-embed-body ol { margin: .3em 0; padding-left: 1.5em; }
 .pp-embed-body img { max-width: 100%; }
 .pp-embed-body a { color: inherit; text-decoration: underline; pointer-events: none; }
-.pp-embed-body a.wikilink { color: #7c3aed; pointer-events: auto; }
+.pp-embed-body a.wikilink { color: var(--pp-wiki); pointer-events: auto; }
 .pp-embed-body blockquote { margin: .4em 0; padding-left: 10px; border-left: 3px solid var(--pp-border); color: var(--pp-muted); }
 .pp-embed-body pre, .pp-embed-body code { background: var(--pp-code-bg, #f3f4f6); border-radius: 4px; }
 .pp-embed-body pre { padding: 6px 10px; overflow-x: auto; }
-.pp-embed-missing .pp-embed-body { color: #b45309; }
-.pp-backlink-snippet b { font-weight: 600; color: #7c3aed; }
+.pp-embed-missing .pp-embed-body { color: var(--pp-warn); }
+.pp-backlink-snippet b { font-weight: 600; color: var(--pp-wiki); }
 .pp-embed-body { white-space: normal; }
 
 /* AI chat (P7.2) */
 .pp-chat { gap: 0; }
-.pp-chat-banner { width: 100%; flex: none; padding: 5px 12px; gap: 8px; background: #fff4e5; border-bottom: 1px solid #f0c36d; color: #5c3b00; font-size: 12px; }
+.pp-chat-banner { width: 100%; flex: none; padding: 5px 12px; gap: 8px; background: var(--pp-banner-bg); border-bottom: 1px solid var(--pp-banner-border); color: var(--pp-banner-fg); font-size: 12px; }
 .pp-chat-banner-text { flex: 1 1 auto; }
 .pp-chat-log { flex: 1 1 0; min-height: 0; width: 100%; overflow-y: auto; padding: 8px 12px; gap: 10px; flex-wrap: nowrap; }
 .pp-chat-empty { padding-top: 6px; }
@@ -315,7 +332,7 @@ html, body { overflow: hidden; }
 .pp-msg-body ul, .pp-msg-body ol { margin: .3em 0; padding-left: 1.4em; }
 .pp-msg-body a { color: var(--pp-accent); text-decoration: underline; cursor: pointer; }
 .pp-chat-diagram { overflow-x: auto; }
-.pp-msg-error .pp-msg-body { color: #b45309; }
+.pp-msg-error .pp-msg-body { color: var(--pp-warn); }
 .pp-msg-ctx { font-size: 11px; }
 .pp-msg-actions { gap: 0; opacity: .6; }
 .pp-msg:hover .pp-msg-actions { opacity: 1; }
@@ -330,7 +347,7 @@ html, body { overflow: hidden; }
 .pp-profile { width: 100%; flex: none; gap: 4px; padding: 6px 8px 6px 12px; border-top: 1px solid var(--pp-border); }
 .pp-profile-who { gap: 8px; cursor: pointer; min-width: 0; flex: 1 1 auto; }
 .pp-profile-name { font-size: 13px; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.pp-avatar { width: 28px; height: 28px; flex: none; border-radius: 50%; background: var(--pp-accent) center / cover no-repeat; display: flex; align-items: center; justify-content: center; color: #fff; }
+.pp-avatar { width: 28px; height: 28px; flex: none; border-radius: 50%; background: var(--pp-accent) center / cover no-repeat; display: flex; align-items: center; justify-content: center; color: var(--pp-on-accent); }
 .pp-avatar-initials { font-size: 11px; font-weight: 700; letter-spacing: .02em; }
 .pp-profile-btn { color: var(--pp-muted) !important; }
 .pp-profile-dialog { width: 360px; gap: 8px; }
@@ -352,7 +369,7 @@ html, body { overflow: hidden; }
 .pp-chat-input .q-field__native::placeholder { line-height: 1.5; }
 .pp-chat-input .q-field__control:before, .pp-chat-input .q-field__control:after { display: none; }
 .pp-chat-model { flex: none; max-width: 110px; font-size: 12px; }
-.pp-chat-send.q-btn { width: 34px; height: 34px; flex: none; background: var(--pp-accent) !important; color: #fff; }
+.pp-chat-send.q-btn { width: 34px; height: 34px; flex: none; background: var(--pp-accent) !important; color: var(--pp-on-accent); }
 .pp-chat-ref-icon { font-size: 15px; color: var(--pp-muted); }
 .pp-chat-ref-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .pp-chat-menu { min-width: 260px; max-width: 320px; background: var(--pp-bg); color: var(--pp-fg); border: 1px solid var(--pp-border); border-radius: 14px; box-shadow: 0 8px 28px rgba(0, 0, 0, .2); padding: 4px; }
@@ -400,7 +417,7 @@ html, body { overflow: hidden; }
 .pp-right { background: var(--pp-bg-side); }
 .pp-right-body { width: 100%; padding: 0; gap: 0; min-height: 0; flex-wrap: nowrap; overflow: hidden; }
 .pp-right-body > .pp-chat { flex: 1 1 0; min-height: 0; }
-.pp-rtab-icon { font-size: 13px; width: 15px; text-align: center; }
+.pp-rtab-icon { color: inherit; font-size: 13px; width: 15px; text-align: center; }
 .pp-right-tabs .pp-rtab-close { font-size: 14px; }
 
 /* settings: two columns (section list | rows of "name + help ... control") */
@@ -427,7 +444,7 @@ html, body { overflow: hidden; }
 .pp-set-text { flex: 1 1 auto; min-width: 0; gap: 2px; }
 .pp-set-label { font-size: 14px; }
 .pp-set-help { font-size: 12.5px; color: var(--pp-muted); line-height: 1.35; }
-.pp-set-error { font-size: 12px; color: #c0392b; }
+.pp-set-error { font-size: 12px; color: var(--pp-danger); }
 .pp-set-control { flex: none; }
 .pp-set-field { width: 200px; font-size: 13px; }
 .pp-set-field .q-field__control { border-radius: 10px; }
@@ -437,14 +454,14 @@ html, body { overflow: hidden; }
 .pp-seg-item { gap: 6px; padding: 5px 13px; border-radius: 9px; cursor: pointer; font-size: 13px; color: var(--pp-muted); user-select: none; }
 .pp-seg-item:hover { color: var(--pp-fg); }
 .pp-seg-on, .pp-seg-on:hover { background: var(--pp-bg); color: var(--pp-fg); box-shadow: 0 1px 3px rgba(0, 0, 0, .15); }
-.pp-seg-icon { font-size: 14px; }
+.pp-seg-icon { font-size: 14px; color: inherit; }
 .pp-set-group { width: 100%; padding: 18px 0 2px; font-size: 13px; font-weight: 600; color: var(--pp-fg); }
 .pp-set-group:first-child { padding-top: 6px; }
 .pp-set-info { max-width: 260px; font-size: 13px; color: var(--pp-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 /* one-button pickers with a popup: accent colour and font */
 .pp-pick.q-btn { gap: 8px; padding: 5px 10px 5px 12px; border: 1px solid var(--pp-border); border-radius: 10px; font-size: 13px; font-weight: 400; color: var(--pp-fg); }
 .pp-pick-chev { font-size: 10px; color: var(--pp-muted); margin-left: 4px; }
-.pp-dot { display: inline-block; width: 16px; height: 16px; border-radius: 50%; box-shadow: inset 0 0 0 1px rgba(0, 0, 0, .15); }
+.pp-swatch-dot { display: inline-block; width: 16px; height: 16px; border-radius: 50%; box-shadow: inset 0 0 0 1px rgba(0, 0, 0, .15); }
 .pp-set-popup { background: var(--pp-bg); color: var(--pp-fg); border: 1px solid var(--pp-border); border-radius: 12px; box-shadow: 0 8px 28px rgba(0, 0, 0, .2); padding: 6px; }
 .pp-set-popup .q-item { border-radius: 8px; min-height: 34px; font-size: 13px; }
 .pp-swatchgrid { display: grid; grid-template-columns: repeat(4, 28px); gap: 10px; padding: 6px; }
@@ -474,7 +491,7 @@ html, body { overflow: hidden; }
 .pp-cal-out .pp-cal-num { opacity: .35; }
 .pp-cal-today .pp-cal-num { color: var(--pp-accent); font-weight: 700; }
 .pp-cal-sel, .pp-cal-sel:hover { background: var(--pp-accent); }
-.pp-cal-sel .pp-cal-num { color: #fff; font-weight: 600; }
+.pp-cal-sel .pp-cal-num { color: var(--pp-on-accent); font-weight: 600; }
 .pp-cal-sel .pp-cal-dot { background: rgba(255, 255, 255, .85); }
 .pp-cal-sel .pp-cal-dot-open { background: transparent; border-color: rgba(255, 255, 255, .85); }
 .pp-cal-dots { gap: 2px; height: 5px; }

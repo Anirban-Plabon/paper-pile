@@ -32,7 +32,7 @@ class BacklinksPane:
         self._root = ui.column().classes("pp-backlinks")
         with self._root:
             with ui.row().classes("pp-backlinks-head items-center no-wrap") as head:
-                self._icon = ui.icon("expand_more").classes("pp-muted")
+                self._icon = ui.icon("fa-solid fa-chevron-down").classes("pp-muted")
                 self._title = ui.label("Backlinks").classes("pp-backlinks-title")
             head.on("click", lambda _e: self.toggle())
             self._body = ui.column().classes("pp-backlinks-body")
@@ -51,7 +51,9 @@ class BacklinksPane:
     def _render(self) -> None:
         count = len(self._items)
         self._title.set_text(f"Backlinks ({count})" if count else "Backlinks")
-        self._icon.props(f"name={'expand_more' if self._open else 'chevron_right'}")
+        self._icon.props(
+            f'name="{"fa-solid fa-chevron-down" if self._open else "fa-solid fa-chevron-right"}"'
+        )
         self._body.set_visibility(self._open)
         self._body.clear()
         with self._body:

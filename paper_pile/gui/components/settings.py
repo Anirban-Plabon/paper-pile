@@ -298,7 +298,11 @@ class SettingsPane:
     def _accent_picker(self, setting: Setting, current: str) -> None:
         """The accent as one button (dot + name); its popup holds the colours."""
         with ui.button(on_click=lambda: None).props("flat no-caps dense").classes("pp-pick") as btn:
-            dot = ui.element("span").classes("pp-dot").style(f"background:{ACCENTS[current][0]}")
+            dot = (
+                ui.element("span")
+                .classes("pp-swatch-dot")
+                .style(f"background:{ACCENTS[current][0]}")
+            )
             name = ui.label(current.capitalize())
             ui.icon("fa-solid fa-chevron-down").classes("pp-pick-chev")
             menu = ui.menu().props('anchor="bottom right" self="top right"')

@@ -58,7 +58,7 @@ class TabBar:
                         ui.label(hint).classes("pp-tab-hint")
                     dot = ui.label("●").classes("pp-tab-dot")
                     self._dots[tab.id] = dot
-                    close = ui.icon("close").classes("pp-tab-close")
+                    close = ui.icon("fa-solid fa-xmark").classes("pp-tab-close")
                     close.on("click.stop", lambda _e, i=tab.id: self._on_close(i))
                     with (
                         ui.context_menu(),

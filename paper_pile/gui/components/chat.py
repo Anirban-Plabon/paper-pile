@@ -174,7 +174,9 @@ class ChatPane:
                             .classes("pp-chat-model")
                             .tooltip("Model")
                         )
-                        self._send = ui.button(icon="arrow_upward", on_click=self.send_or_stop)
+                        self._send = ui.button(
+                            icon="fa-solid fa-arrow-up", on_click=self.send_or_stop
+                        )
                         self._send.props("round unelevated dense").classes("pp-chat-send")
                 self._upload = ui.upload(
                     on_upload=self._file_uploaded,
@@ -272,10 +274,11 @@ class ChatPane:
             if not turn.error and turn.text.strip():
                 with ui.row().classes("pp-msg-actions items-center"):
                     ui.button(
-                        icon="content_copy", on_click=lambda t=turn: self._copy(t.text)
+                        icon="fa-regular fa-copy", on_click=lambda t=turn: self._copy(t.text)
                     ).props("flat dense size=xs").tooltip("Copy")
                     ui.button(
-                        icon="note_add", on_click=lambda t=turn: self._insert_reply(t.text)
+                        icon="fa-solid fa-file-circle-plus",
+                        on_click=lambda t=turn: self._insert_reply(t.text),
                     ).props("flat dense size=xs").tooltip("Insert into note")
             self._typeset(body)
         return body
@@ -355,7 +358,7 @@ class ChatPane:
         with row:
             ui.icon(icon).classes("pp-chat-ref-icon")
             ui.label(label).classes("pp-chat-ref-text" + (" pp-chat-ref-note" if tip else ""))
-            ui.button(icon="close", on_click=lambda _e=None: remove()).props(
+            ui.button(icon="fa-solid fa-xmark", on_click=lambda _e=None: remove()).props(
                 "flat round dense size=xs"
             ).tooltip("Remove")
         if tip:
@@ -364,7 +367,9 @@ class ChatPane:
     # ---- the + menu ----------------------------------------------------------------------
 
     def _plus_button(self) -> None:
-        self._plus = ui.button(icon="add").props("round flat dense aria-label='Add context'")
+        self._plus = ui.button(icon="fa-solid fa-plus").props(
+            "round flat dense aria-label='Add context'"
+        )
         self._plus.classes("pp-chat-plus")
         with self._plus:
             # anchored to the whole card, so it opens above the text and not over it
@@ -375,8 +380,8 @@ class ChatPane:
             menu.classes("pp-chat-menu")
         self._plus.on_click(menu.toggle)  # only a click on the button opens it, never the card
         menu.on("before-show", lambda _e: self._build_menu(menu))
-        menu.on("show", lambda _e: self._plus.props("icon=close"))
-        menu.on("hide", lambda _e: self._plus.props("icon=add"))
+        menu.on("show", lambda _e: self._plus.props('icon="fa-solid fa-xmark"'))
+        menu.on("hide", lambda _e: self._plus.props('icon="fa-solid fa-plus"'))
 
     def _build_menu(self, menu: ui.menu) -> None:
         menu.clear()
@@ -386,27 +391,27 @@ class ChatPane:
             for path in paths:
                 title = path.rsplit("/", 1)[-1].rsplit(".", 1)[0]
                 with ui.menu_item(on_click=lambda _e=None, p=path: self.add_notes([p])):
-                    ui.icon("description").classes("pp-menu-icon")
+                    ui.icon("fa-regular fa-file-lines").classes("pp-menu-icon")
                     ui.label(title).classes("pp-menu-title")
                     if path == active:
-                        ui.icon("check_circle_outline").classes("pp-menu-check")
+                        ui.icon("fa-regular fa-circle-check").classes("pp-menu-check")
             with ui.menu_item(auto_close=False):
-                ui.icon("more_horiz").classes("pp-menu-icon")
+                ui.icon("fa-solid fa-ellipsis").classes("pp-menu-icon")
                 ui.label("Add more notes").classes("pp-menu-title")
-                ui.icon("chevron_right").classes("pp-menu-check")
+                ui.icon("fa-solid fa-chevron-right").classes("pp-menu-check")
                 self._more_notes_menu(menu)
             ui.separator()
             with ui.menu_item(
                 on_click=lambda _e=None: background_tasks.create(self._from_screen())
             ):
-                ui.icon("select_all").classes("pp-menu-icon")
+                ui.icon("fa-regular fa-square").classes("pp-menu-icon")
                 ui.label("Select from screen").classes("pp-menu-title")
             with ui.menu_item(on_click=lambda _e=None: self._upload.run_method("pickFiles")):
-                ui.icon("attach_file").classes("pp-menu-icon")
+                ui.icon("fa-solid fa-paperclip").classes("pp-menu-icon")
                 ui.label("Upload files").classes("pp-menu-title")
             ui.separator()
             with ui.menu_item(auto_close=False):
-                ui.icon("tab").classes("pp-menu-icon")
+                ui.icon("fa-regular fa-window-restore").classes("pp-menu-icon")
                 ui.label("Include open tabs").classes("pp-menu-title")
                 ui.switch(
                     value=self._include_tabs, on_change=lambda e: self._set_include_tabs(e.value)
@@ -500,7 +505,7 @@ class ChatPane:
                 if picked is self._open:
                     row.classes("pp-chat-chip-open")
                 with row:
-                    ui.icon("format_quote").classes("pp-chat-ref-icon")
+                    ui.icon("fa-solid fa-quote-left").classes("pp-chat-ref-icon")
                     text = f"[{picked.kind} · {picked.size()}]"
                     if picked.note:
                         note = html.escape(picked.note)
@@ -510,7 +515,7 @@ class ChatPane:
                     label.tooltip("Show or hide the text")
                     label.on("click", lambda _e=None, s=picked: self._toggle_chip(s))
                     ui.button(
-                        icon="close",
+                        icon="fa-solid fa-xmark",
                         on_click=lambda _e=None, p=picked: self._remove_selection(p),
                     ).props("flat round dense size=xs").tooltip("Remove")
         if self._open is not None:  # the unfolded text sits under all the chips, above the divider
@@ -597,7 +602,7 @@ class ChatPane:
         )
         self.history.append(Turn("user", text, label))
         self._task = background_tasks.create(self._answer(text, attached, names))
-        self._send.props("icon=stop")
+        self._send.props('icon="fa-solid fa-stop"')
 
     async def _answer(
         self, question: str, attached: str = "", notes: list[str] | None = None
@@ -631,7 +636,7 @@ class ChatPane:
             self._fail(reply, "Something went wrong; see the log.")
         finally:
             self._task = None
-            self._send.props("icon=arrow_upward")
+            self._send.props('icon="fa-solid fa-arrow-up"')
             self._render_log()
 
     def _fail(self, reply: Turn, message: str, *, unavailable: bool = False) -> None:

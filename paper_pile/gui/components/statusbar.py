@@ -48,7 +48,7 @@ def status_bar(
 ) -> StatusBar:
     with ui.row().classes("pp-statusbar items-center no-wrap"):
         left = (
-            ui.button(icon="menu", on_click=on_toggle_left)
+            ui.button(icon="fa-solid fa-bars", on_click=on_toggle_left)
             .props("flat dense size=sm")
             .tooltip("Toggle file tree (Ctrl+B)")
         )
@@ -62,7 +62,7 @@ def status_bar(
         with dot:
             tip = ui.tooltip("Ollama status")
         right = (
-            ui.button(icon="chat_bubble_outline", on_click=on_toggle_right)
+            ui.button(icon="fa-regular fa-comment", on_click=on_toggle_right)
             .props("flat dense size=sm")
             .tooltip("Toggle AI chat (Ctrl+L)")
         )
