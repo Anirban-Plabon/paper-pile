@@ -225,3 +225,28 @@ def build_context(
             if text is not None:
                 b.add("linked", path, path, text)
     return b.context
+
+
+_FENCE = re.compile(r"^(\s*)(`{3,}|~{3,})\s*(\w*)")
+_IMAGE = re.compile(r"!\[\[[^\[\]\n]+\]\]|!\[[^\[\]\n]*\]\([^()\n]*\)")
+
+
+def source_view(text: str) -> str:
+    """Markdown for showing a selection in the chat: text renders as in a note, but graphics
+    (images, embeds, diagrams) stay as code so nothing is drawn or fetched."""
+    out: list[str] = []
+    fence: str | None = None
+    for line in text.splitlines():
+        m = _FENCE.match(line)
+        if fence is None and m:
+            fence = m.group(2)[0] * 3
+            lang = m.group(3).lower()
+            out.append(f"{m.group(1)}{m.group(2)}{'text' if lang == 'mermaid' else lang}")
+        elif fence is not None and m and m.group(2).startswith(fence) and not m.group(3):
+            fence = None
+            out.append(line)
+        elif fence is not None:
+            out.append(line)
+        else:
+            out.append(_IMAGE.sub(lambda i: f"`{i.group(0)}`", line))
+    return "\n".join(out)

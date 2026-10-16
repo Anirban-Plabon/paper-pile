@@ -17,7 +17,13 @@ from dataclasses import dataclass
 
 from nicegui import Client, background_tasks, ui
 
-from paper_pile.core.ai.context import Context, EditorSnapshot, build_context, extract_mentions
+from paper_pile.core.ai.context import (
+    Context,
+    EditorSnapshot,
+    build_context,
+    extract_mentions,
+    source_view,
+)
 from paper_pile.core.ai.factory import chat_model, make_provider
 from paper_pile.core.ai.provider import (
     ChatMessage,
@@ -320,7 +326,9 @@ class ChatPane:
                         ).props("flat round dense size=xs").tooltip("Remove")
                     label.on("click", lambda _e=None, s=picked: self._toggle_chip(s))
                     if picked is self._open:
-                        body = ui.html(render_html(picked.text.strip()), sanitize=False)
+                        body = ui.html(
+                            render_html(source_view(picked.text.strip())), sanitize=False
+                        )
                         body.classes("pp-msg-body pp-chat-chip-body")
                         self._typeset(body)
                 if picked is self._open:

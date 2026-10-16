@@ -155,3 +155,15 @@ def test_unreadable_linked_notes_are_skipped(vault: Vault) -> None:
     vault.resolve("Out.md").write_bytes(b"\xff\xfe not utf8")
     ctx = build_context(vault, current_path="cur.md", current_text=vault.read_text("cur.md"))
     assert [p.path for p in ctx.of("linked")] == ["sub/other.md"]
+
+
+def test_source_view_keeps_graphics_as_code() -> None:
+    from paper_pile.core.ai.context import source_view
+
+    text = "- a\n![pic](x.png) and ![[Note]]\n```mermaid\ngraph TD\n```\n"
+    text += "```python\nprint('![z](q.png)')\n```"
+    out = source_view(text)
+    assert "`![pic](x.png)`" in out and "`![[Note]]`" in out
+    assert "```text\ngraph TD" in out and "```mermaid" not in out
+    assert "print('![z](q.png)')" in out and "`![z](q.png)`" not in out
+    assert out.startswith("- a")
