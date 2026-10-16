@@ -1,10 +1,11 @@
 """Right pane: AI chat (PLAN §4.11).
 
-A model picker, streamed replies rendered as markdown (math and diagrams typeset), Stop, Copy and
-*Insert into note* per reply, an ``@`` picker to mention notes, and a switch to include the open
-tabs. What the model sees is built by :mod:`paper_pile.core.ai.context`; the provider is
-:mod:`paper_pile.core.ai`. If Ollama is not running the pane says so and everything else keeps
-working.
+Streamed replies rendered as markdown (math and diagrams typeset), Stop, Copy and *Insert into
+note* per reply. The composer is one rounded card: attachment chips (selections, notes, text
+files), a ``+`` menu (open tabs, other notes, the editor's selection, upload, include all open
+tabs), the input with its ``@`` picker, the model picker and Send. What the model sees is built
+by :mod:`paper_pile.core.ai.context`; the provider is :mod:`paper_pile.core.ai`. If Ollama is
+not running the pane says so and everything else keeps working.
 """
 
 import asyncio
@@ -17,6 +18,7 @@ from dataclasses import dataclass
 
 from nicegui import Client, background_tasks, ui
 
+from paper_pile.core.ai.attachments import AttachmentError, FileRef, read_text_file
 from paper_pile.core.ai.context import (
     Context,
     EditorSnapshot,
@@ -83,6 +85,7 @@ class ChatPane:
         on_health: Callable[[Health], None] = lambda health: None,
         user_name: Callable[[], str] = lambda: "",
         open_paths: Callable[[], list[str]] = lambda: [],
+        active_path: Callable[[], str | None] = lambda: None,
     ) -> None:
         self.vault = vault
         self.config = config
@@ -92,6 +95,7 @@ class ChatPane:
         self._on_health = on_health
         self._user_name = user_name
         self._open_paths = open_paths
+        self._active_path = active_path
         self.provider: Provider = make_provider(config)
         self.history: list[Turn] = []
         self.health = Health(False, "Checking Ollama…")
@@ -99,6 +103,8 @@ class ChatPane:
         self._include_tabs = False
         self._selections: list[Selection] = []
         self._open: Selection | None = None  # the chip whose text is unfolded
+        self._notes: list[str] = []  # notes added from the + menu (paths)
+        self._files: list[FileRef] = []
         self.models: list[str] = []
         # widgets
         self._log: ui.column
@@ -108,8 +114,10 @@ class ChatPane:
         self._banner_text: ui.label
         self._model: ui.select
         self._mentions: ui.column
-        self._status: ui.label
         self._chips: ui.column
+        self._refs: ui.row
+        self._plus: ui.button
+        self._upload: ui.upload
         self._client: Client
 
     # ---- building ------------------------------------------------------------------------
@@ -119,13 +127,6 @@ class ChatPane:
         with ui.column().classes("pp-pane pp-chat"):
             with ui.row().classes("pp-chat-head items-center no-wrap"):
                 ui.label("AI chat").classes("pp-pane-title")
-                ui.space()
-                self._model = (
-                    ui.select([], value=None, on_change=lambda e: self._model_changed(e.value))
-                    .props("dense borderless options-dense")
-                    .classes("pp-chat-model")
-                    .tooltip("Model")
-                )
             self._banner = ui.row().classes("pp-chat-banner items-center no-wrap")
             with self._banner:
                 self._banner_text = ui.label("").classes("pp-chat-banner-text")
@@ -138,26 +139,38 @@ class ChatPane:
             with ui.column().classes("pp-chat-compose"):
                 self._mentions = ui.column().classes("pp-chat-mentions")
                 self._mentions.set_visibility(False)
-                with ui.row().classes("pp-chat-options items-center"):
-                    ui.switch("Include open tabs", on_change=self._tabs_changed).props(
-                        "dense size=xs"
-                    )
-                    ui.button("Add all tabs", icon="tab", on_click=self.add_all_tabs).props(
-                        "flat dense no-caps size=sm"
-                    ).tooltip("Mention every open note in the message")
-                    self._status = ui.label("").classes("pp-muted pp-chat-ctx")
-                self._chips = ui.column().classes("pp-chat-chips")
-                self._chips.set_visibility(False)
-                with ui.row().classes("items-end no-wrap w-full"):
-                    self._input = (
-                        ui.textarea(placeholder="Ask about your notes…  (@ to mention a note)")
-                        .props("outlined dense autogrow input-style='max-height: 160px'")
-                        .classes("pp-chat-input")
-                    )
-                    self._input.on_value_change(lambda e: self._update_mentions(e.value or ""))
-                    self._send = ui.button(icon="send", on_click=self.send_or_stop).props(
-                        "flat round dense"
-                    )
+                with ui.column().classes("pp-chat-card"):
+                    self._refs = ui.row().classes("pp-chat-refs")
+                    self._refs.set_visibility(False)
+                    self._chips = ui.column().classes("pp-chat-chips")
+                    self._chips.set_visibility(False)
+                    with ui.row().classes("pp-chat-row items-center no-wrap w-full"):
+                        self._plus_button()
+                        self._input = (
+                            ui.textarea(placeholder="Ask, or @ a note")
+                            .props("borderless dense autogrow input-style='max-height: 160px'")
+                            .classes("pp-chat-input")
+                        )
+                        self._input.on_value_change(lambda e: self._update_mentions(e.value or ""))
+                        self._model = (
+                            ui.select(
+                                {},
+                                value=None,
+                                on_change=lambda e: self._model_changed(e.value),
+                            )
+                            .props("dense borderless options-dense behavior=menu")
+                            .classes("pp-chat-model")
+                            .tooltip("Model")
+                        )
+                        self._send = ui.button(icon="arrow_upward", on_click=self.send_or_stop)
+                        self._send.props("round unelevated dense").classes("pp-chat-send")
+                self._upload = ui.upload(
+                    on_upload=self._file_uploaded,
+                    auto_upload=True,
+                    multiple=True,
+                    max_file_size=200 * 1024,
+                    on_rejected=lambda: ui.notify("Files must be at most 200 KB.", type="warning"),
+                ).classes("hidden")
         ui.on("pp_chat_send", lambda _e: self._enter_pressed())
         ui.on("pp_chip_close", lambda _e: self._close_chip())
         ui.on("pp_open_url", lambda e: self._open_url(e.args))
@@ -183,7 +196,9 @@ class ChatPane:
         options = (
             self.models if current in self.models or not self.models else [current, *self.models]
         )
-        self._model.set_options(options, value=current if options else None)
+        short = {m: m.split(":")[0] for m in options}
+        shown = {m: (short[m] if list(short.values()).count(short[m]) == 1 else m) for m in options}
+        self._model.set_options(shown, value=current if options else None)
         self._banner.set_visibility(not health.ok or bool(health.message))
         self._banner_text.set_text(health.message)
         self._on_health(health)
@@ -201,8 +216,9 @@ class ChatPane:
         self.config.set("ai.model", value, "global")
         self.config.save("global")
 
-    def _tabs_changed(self, e: object) -> None:
-        self._include_tabs = bool(getattr(e, "value", False))
+    def _set_include_tabs(self, on: bool) -> None:
+        self._include_tabs = on
+        self._render_refs()
 
     def _open_url(self, url: object) -> None:
         import webbrowser
@@ -264,34 +280,147 @@ class ChatPane:
 
     # ---- adding things to the message ----------------------------------------------------
 
-    def _append(self, text: str) -> None:
-        value = self._input.value or ""
-        sep = "" if not value or value.endswith(("\n", " ")) else "\n"
-        self._input.set_value(value + sep + text)
-        self._js(f"document.querySelector('#c{self._input.id} textarea')?.focus()")
-
     def add_notes(self, paths: list[str]) -> None:
-        """Mention notes in the message (``@[[name]]``); ones already mentioned are skipped."""
+        """Attach notes as chips; their text goes to the model with the next message."""
         known = set(self.vault.walk_notes())
-        current = self._input.value or ""
-        mentions = []
-        for path in paths:
-            if path not in known:
-                continue
-            mention = f"@[[{wikilink_to(path, '', known)}]]"
-            if mention not in current and mention not in mentions:
-                mentions.append(mention)
-        if mentions:
-            self._append(" ".join(mentions) + " ")
+        added = [p for p in paths if p in known and p not in self._notes]
+        if added:
+            self._notes.extend(added)
+            self._render_refs()
         else:
-            ui.notify("Already in the message", timeout=1200, position="bottom")
+            ui.notify("Already attached", timeout=1200, position="bottom")
 
-    def add_all_tabs(self) -> None:
+    def _remove_note(self, path: str) -> None:
+        if path in self._notes:
+            self._notes.remove(path)
+            self._render_refs()
+
+    async def _file_uploaded(self, e: object) -> None:
+        file = getattr(e, "file", None)
+        if file is None:
+            return
+        try:
+            ref = read_text_file(file.name, await file.read())
+        except AttachmentError as exc:
+            ui.notify(str(exc), type="warning")
+            return
+        if ref not in self._files:
+            self._files.append(ref)
+            self._render_refs()
+
+    def _remove_file(self, ref: FileRef) -> None:
+        if ref in self._files:
+            self._files.remove(ref)
+            self._render_refs()
+
+    def _render_refs(self) -> None:
+        """Chips for notes, files and the include-all-tabs switch (selections have their own)."""
+        self._refs.clear()
+        self._refs.set_visibility(bool(self._notes or self._files or self._include_tabs))
+        with self._refs:
+            if self._include_tabs:
+                n = len(self._open_paths())
+                self._ref_chip("tab", f"All open tabs ({n})", lambda: self._set_include_tabs(False))
+            for path in self._notes:
+                name = path.rsplit("/", 1)[-1].rsplit(".", 1)[0]
+                self._ref_chip("description", name, lambda p=path: self._remove_note(p), path)
+            for ref in self._files:
+                label = f"{ref.name} · {ref.size()}"
+                self._ref_chip("attach_file", label, lambda r=ref: self._remove_file(r))
+
+    def _ref_chip(self, icon: str, label: str, remove: Callable[[], None], tip: str = "") -> None:
+        row = ui.row().classes("pp-chat-ref items-center no-wrap")
+        with row:
+            ui.icon(icon).classes("pp-chat-ref-icon")
+            ui.label(label).classes("pp-chat-ref-text")
+            ui.button(icon="close", on_click=lambda _e=None: remove()).props(
+                "flat round dense size=xs"
+            ).tooltip("Remove")
+        if tip:
+            row.tooltip(tip)
+
+    # ---- the + menu ----------------------------------------------------------------------
+
+    def _plus_button(self) -> None:
+        self._plus = ui.button(icon="add").props("round flat dense aria-label='Add context'")
+        self._plus.classes("pp-chat-plus")
+        with self._plus:
+            menu = ui.menu().props('anchor="top left" self="bottom left" :offset="[0, 8]"')
+            menu.classes("pp-chat-menu")
+        menu.on("before-show", lambda _e: self._build_menu(menu))
+        menu.on("show", lambda _e: self._plus.props("icon=close"))
+        menu.on("hide", lambda _e: self._plus.props("icon=add"))
+
+    def _build_menu(self, menu: ui.menu) -> None:
+        menu.clear()
+        active = self._active_path()
         paths = self._open_paths()
-        if paths:
-            self.add_notes(paths)
-        else:
-            ui.notify("No open notes", timeout=1200, position="bottom")
+        with menu:
+            for path in paths:
+                title = path.rsplit("/", 1)[-1].rsplit(".", 1)[0]
+                with ui.menu_item(on_click=lambda _e=None, p=path: self.add_notes([p])):
+                    ui.icon("description").classes("pp-menu-icon")
+                    ui.label(title).classes("pp-menu-title")
+                    if path == active:
+                        ui.icon("check_circle_outline").classes("pp-menu-check")
+            with ui.menu_item(auto_close=False):
+                ui.icon("more_horiz").classes("pp-menu-icon")
+                ui.label("Add more notes").classes("pp-menu-title")
+                ui.icon("chevron_right").classes("pp-menu-check")
+                self._more_notes_menu(menu)
+            ui.separator()
+            with ui.menu_item(
+                on_click=lambda _e=None: background_tasks.create(self._from_screen())
+            ):
+                ui.icon("select_all").classes("pp-menu-icon")
+                ui.label("Select from screen").classes("pp-menu-title")
+            with ui.menu_item(on_click=lambda _e=None: self._upload.run_method("pickFiles")):
+                ui.icon("attach_file").classes("pp-menu-icon")
+                ui.label("Upload files").classes("pp-menu-title")
+            ui.separator()
+            with ui.menu_item(auto_close=False):
+                ui.icon("tab").classes("pp-menu-icon")
+                ui.label("Include open tabs").classes("pp-menu-title")
+                ui.switch(
+                    value=self._include_tabs, on_change=lambda e: self._set_include_tabs(e.value)
+                ).props("dense")
+
+    def _more_notes_menu(self, root: ui.menu) -> None:
+        with ui.menu().props('anchor="top end" self="top start"').classes("pp-chat-menu"):
+            results = ui.column().classes("pp-chat-more")
+
+            def pick(path: str) -> None:
+                self.add_notes([path])
+                root.close()
+
+            def fill(query: str) -> None:
+                results.clear()
+                with results:
+                    for path in search_notes(query, self.vault.walk_notes(), limit=8):
+                        title = path.rsplit("/", 1)[-1].rsplit(".", 1)[0]
+                        with ui.menu_item(on_click=lambda _e=None, p=path: pick(p)):
+                            ui.label(title).classes("pp-menu-title")
+                            folder = path.rpartition("/")[0]
+                            if folder:
+                                ui.label(folder).classes("pp-muted")
+
+            ui.input(placeholder="Search notes", on_change=lambda e: fill(e.value or "")).props(
+                "dense borderless autofocus"
+            ).classes("pp-chat-more-search")
+            fill("")
+
+    def _spawn(self, coro: Awaitable[None]) -> None:
+        background_tasks.create(coro)
+
+    async def _from_screen(self) -> None:
+        """Attach what is selected in the note, or tell the user to select something."""
+        snap = await self._snapshot()
+        if snap.selection.strip():
+            self.set_selection(snap.selection, snap.path or "")
+            return
+        with self._client:  # a background task has no UI context of its own
+            ui.notify("Select text in a note: it is attached automatically", timeout=2500)
+        self._js("document.querySelector('.cm-content')?.focus()")
 
     def set_selection(self, text: str, path: str) -> None:
         """Attach text selected in the editor. Attachments stay until removed with their cross;
@@ -395,14 +524,28 @@ class ChatPane:
         self._input.set_value("")
         self._mentions.set_visibility(False)
         picked, self._selections, self._open = self._selections, [], None
+        notes, self._notes = self._notes, []
+        files, self._files = self._files, []
         self._render_selections()
-        label = "\n".join(f"{p.label}: [Pasted text]" for p in picked)
-        attached = "\n\n".join(f"{p.label}:\n{p.text.strip()}" for p in picked)
+        self._render_refs()
+        known = set(self.vault.walk_notes())
+        names = [wikilink_to(p, "", known) for p in notes if p in known]
+        label = "\n".join(
+            [f"{p.label}: [Pasted text]" for p in picked]
+            + [f"[[{n}]]" for n in names]
+            + [f"{f.name}: [File]" for f in files]
+        )
+        attached = "\n\n".join(
+            [f"{p.label}:\n{p.text.strip()}" for p in picked]
+            + [f"File {f.name}:\n{f.text.strip()}" for f in files]
+        )
         self.history.append(Turn("user", text, label))
-        self._task = background_tasks.create(self._answer(text, attached))
+        self._task = background_tasks.create(self._answer(text, attached, names))
         self._send.props("icon=stop")
 
-    async def _answer(self, question: str, attached: str = "") -> None:
+    async def _answer(
+        self, question: str, attached: str = "", notes: list[str] | None = None
+    ) -> None:
         reply = Turn("assistant", "")
         self.history.append(reply)
         self._render_log()
@@ -415,14 +558,13 @@ class ChatPane:
                 current_path=snap.path,
                 current_text=snap.text,
                 selection=attached or snap.selection,
-                mentions=extract_mentions(question),
+                mentions=[*extract_mentions(question), *(notes or [])],
                 open_tabs=snap.tabs,
                 include_tabs=self._include_tabs,
                 index=self.index,
                 budget=budget,
             )
             reply.summary = context.summary()
-            self._status.set_text(context.summary())
             await self._stream(reply, body, self._messages(context, question))
         except asyncio.CancelledError:
             reply.text = (reply.text + "\n\n*(stopped)*").strip()
@@ -433,7 +575,7 @@ class ChatPane:
             self._fail(reply, "Something went wrong; see the log.")
         finally:
             self._task = None
-            self._send.props("icon=send")
+            self._send.props("icon=arrow_upward")
             self._render_log()
 
     def _fail(self, reply: Turn, message: str, *, unavailable: bool = False) -> None:

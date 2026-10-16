@@ -298,7 +298,7 @@ On paste into the editor:
 - `Provider` protocol: `chat(messages, stream) -> AsyncIterator[str]`, `embed(texts)`, `models()`, `health()`.
 - `OllamaProvider`: host from config (default `http://localhost:11434`).
 - Startup health check; status bar dot (green/red). If down → friendly banner in chat pane ("Ollama isn't running — start it with `ollama serve`"), app still fully usable.
-- Model picker in chat header, populated from `models()`.
+- Composer (changed by the user, 2026-10-16): one rounded card holding attachment chips, a `+` menu, the input, the model picker (populated from `models()`, short name) and a round Send button. The `+` menu lists the open tabs (check on the current one; a click attaches the note as a chip), "Add more notes" (search), "Select from screen" (attaches the editor's selection, or hints to select), "Upload files" (text files up to 200 KB, read in memory, never saved) and an "Include open tabs" switch (shown as an "All open tabs (N)" chip). Editor selections attach themselves as chips (one unfolded at a time, graphics shown as code, removed only by ×). The old options row (switch + "Add all tabs") and the context summary line are gone.
 - **Context building** (`core/ai/context.py`), filled in order until the token budget (configurable, default 6000 tokens; rough estimate chars/4):
   1. Selection (if any)
   2. Current note

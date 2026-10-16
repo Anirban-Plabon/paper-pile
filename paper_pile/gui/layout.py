@@ -191,6 +191,7 @@ class MainLayout:
             on_health=self._on_ollama_health,
             user_name=lambda: self.profile.name if self.profile else "",
             open_paths=lambda: self.editor_pane.open_paths() if self.editor_pane else [],
+            active_path=self._active_path,
         )
         self.chat.build()
 
@@ -223,6 +224,10 @@ class MainLayout:
     def _chat_selection(self, text: str, path: str) -> None:
         if self.chat is not None:
             self.chat.set_selection(text, path)
+
+    def _active_path(self) -> str | None:
+        tab = self.editor_pane.tabs.active_tab if self.editor_pane else None
+        return tab.path if tab else None
 
     def _chat_add_note(self, path: str) -> None:
         if self.chat is not None:
