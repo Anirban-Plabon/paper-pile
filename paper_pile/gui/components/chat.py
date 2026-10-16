@@ -91,7 +91,7 @@ class ChatPane:
         self.health = Health(False, "Checking Ollama…")
         self._task: asyncio.Task[None] | None = None
         self._include_tabs = False
-        self._selection: Selection | None = None
+        self._selections: list[Selection] = []
         self.models: list[str] = []
         # widgets
         self._log: ui.column
@@ -102,7 +102,7 @@ class ChatPane:
         self._model: ui.select
         self._mentions: ui.column
         self._status: ui.label
-        self._chip: ui.row
+        self._chips: ui.column
         self._client: Client
 
     # ---- building ------------------------------------------------------------------------
@@ -139,8 +139,8 @@ class ChatPane:
                         "flat dense no-caps size=sm"
                     ).tooltip("Mention every open note in the message")
                     self._status = ui.label("").classes("pp-muted pp-chat-ctx")
-                self._chip = ui.row().classes("pp-chat-chip items-center no-wrap")
-                self._chip.set_visibility(False)
+                self._chips = ui.column().classes("pp-chat-chips")
+                self._chips.set_visibility(False)
                 with ui.row().classes("items-end no-wrap w-full"):
                     self._input = (
                         ui.textarea(placeholder="Ask about your notes…  (@ to mention a note)")
@@ -286,26 +286,37 @@ class ChatPane:
             ui.notify("No open notes", timeout=1200, position="bottom")
 
     def set_selection(self, text: str, path: str) -> None:
-        """Attach the text selected in the editor (shown as one line; empty removes it)."""
+        """Attach text selected in the editor. Attachments stay until removed with their cross;
+        an empty selection (the user clicked away) changes nothing."""
         if not text.strip():
-            self._selection = None
-        else:
-            name = wikilink_to(path, "", set(self.vault.walk_notes())) if path else ""
-            self._selection = Selection(text, f"From [[{name}]]" if name else "Selected text")
-        self._render_selection()
-
-    def _render_selection(self) -> None:
-        self._chip.clear()
-        sel = self._selection
-        self._chip.set_visibility(sel is not None)
-        if sel is None:
             return
-        with self._chip:
-            ui.label(f"{sel.label}: [Pasted text · {sel.size()}]").classes("pp-chat-chip-text")
-            ui.button(icon="close", on_click=lambda: self.set_selection("", "")).props(
-                "flat round dense size=xs"
-            ).tooltip("Remove")
-        self._chip.tooltip(sel.preview())
+        name = wikilink_to(path, "", set(self.vault.walk_notes())) if path else ""
+        picked = Selection(text, f"From [[{name}]]" if name else "Selected text")
+        if picked not in self._selections:
+            self._selections.append(picked)
+            self._render_selections()
+
+    def _remove_selection(self, picked: Selection) -> None:
+        if picked in self._selections:
+            self._selections.remove(picked)
+            self._render_selections()
+
+    def _render_selections(self) -> None:
+        self._chips.clear()
+        self._chips.set_visibility(bool(self._selections))
+        with self._chips:
+            for picked in self._selections:
+                with ui.column().classes("pp-chat-chip"):
+                    with ui.row().classes("items-center no-wrap w-full"):
+                        label = ui.label(f"{picked.label}: [Pasted text · {picked.size()}]")
+                        label.classes("pp-chat-chip-text").tooltip("Show or hide the text")
+                        ui.button(
+                            icon="close",
+                            on_click=lambda _e=None, p=picked: self._remove_selection(p),
+                        ).props("flat round dense size=xs").tooltip("Remove")
+                    body = ui.label(picked.text.strip()).classes("pp-chat-chip-body")
+                    body.set_visibility(False)
+                    label.on("click", lambda _e=None, b=body: b.set_visibility(not b.visible))
 
     # ---- @ mentions ----------------------------------------------------------------------
 
@@ -357,10 +368,12 @@ class ChatPane:
             return
         self._input.set_value("")
         self._mentions.set_visibility(False)
-        picked, self._selection = self._selection, None
-        self._render_selection()
-        self.history.append(Turn("user", text, f"{picked.label}: [Pasted text]" if picked else ""))
-        self._task = background_tasks.create(self._answer(text, picked.text if picked else ""))
+        picked, self._selections = self._selections, []
+        self._render_selections()
+        label = "\n".join(f"{p.label}: [Pasted text]" for p in picked)
+        attached = "\n\n".join(f"{p.label}:\n{p.text.strip()}" for p in picked)
+        self.history.append(Turn("user", text, label))
+        self._task = background_tasks.create(self._answer(text, attached))
         self._send.props("icon=stop")
 
     async def _answer(self, question: str, attached: str = "") -> None:

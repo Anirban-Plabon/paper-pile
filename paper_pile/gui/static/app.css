@@ -336,6 +336,9 @@ html, body { overflow: hidden; }
 .pp-profile-btn { color: var(--pp-muted) !important; }
 .pp-profile-dialog { width: 360px; gap: 8px; }
 .pp-ask { width: 480px; max-width: 92vw; gap: 8px; }
-.pp-chat-chip { width: 100%; gap: 4px; padding: 2px 4px 2px 8px; background: var(--pp-hover, rgba(127,127,127,.12)); border: 1px solid var(--pp-border); border-radius: 6px; }
+.pp-chat-chips { width: 100%; gap: 4px; }
+.pp-chat-chip { width: 100%; gap: 2px; padding: 2px 4px 2px 8px; background: var(--pp-hover, rgba(127,127,127,.12)); border: 1px solid var(--pp-border); border-radius: 6px; }
+.pp-chat-chip-text { cursor: pointer; }
+.pp-chat-chip-body { width: 100%; max-height: 120px; overflow: auto; white-space: pre-wrap; font-size: 12px; color: var(--pp-muted); padding: 2px 0 4px; }
 .pp-chat-chip-text { flex: 1; min-width: 0; font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .pp-msg-attach { font-size: 12px; }
