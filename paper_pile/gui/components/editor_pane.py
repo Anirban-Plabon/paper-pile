@@ -101,7 +101,7 @@ class EditorPane:
         get_provider: Callable[[], Provider | None] = lambda: None,
         user_name: Callable[[], str] = lambda: "",
         on_command_used: Callable[[str], None] = lambda command_id: None,
-        add_selection_to_chat: Callable[[str, str], None] = lambda text, path: None,
+        selection_changed: Callable[[str, str], None] = lambda text, path: None,
         add_note_to_chat: Callable[[str], None] = lambda path: None,
     ) -> None:
         self.vault = vault
@@ -126,7 +126,7 @@ class EditorPane:
         self._streams = 0
         self._table_lock = asyncio.Lock()  # table edits apply one after the other
         self._on_command_used = on_command_used
-        self._add_selection_to_chat = add_selection_to_chat
+        self._selection_changed = selection_changed
         self._add_note_to_chat = add_note_to_chat
         self._reindex_handle: asyncio.TimerHandle | None = None
         self._backlinks: BacklinksPane
@@ -168,7 +168,7 @@ class EditorPane:
                     on_table_op=lambda e: self._spawn(self._on_table_op(e.args)),
                     on_paste=lambda e: self._on_paste(e.args),
                     on_ai_selection=lambda e: self._on_ai_selection(e.args),
-                    on_add_to_chat=lambda e: self._on_add_to_chat(e.args),
+                    on_selection=lambda e: self._on_selection(e.args),
                     on_image_saved=lambda e: self._on_image_saved(e.args),
                     on_image_error=lambda e: self._toast(
                         str(e.args.get("message", "")), error=True
@@ -619,10 +619,10 @@ class EditorPane:
 
     # ---- AI commands (slash menu, selection) ---------------------------------------------
 
-    def _on_add_to_chat(self, args: dict[str, Any]) -> None:
-        text = str(args.get("text", ""))
-        if text.strip():
-            self._add_selection_to_chat(text, self._active_path() or "")
+    def _on_selection(self, args: dict[str, Any]) -> None:
+        """The selection settled: the chat attaches it (an empty one removes the attachment)."""
+        if args.get("docId") == self.tabs.active:
+            self._selection_changed(str(args.get("text", "")), self._active_path() or "")
 
     def open_paths(self) -> list[str]:
         """Paths of every open tab, in tab order."""

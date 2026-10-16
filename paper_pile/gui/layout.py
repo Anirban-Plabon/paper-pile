@@ -215,15 +215,14 @@ class MainLayout:
             get_provider=lambda: self.chat.provider if self.chat else None,
             user_name=lambda: self.profile.name if self.profile else "",
             on_command_used=self._on_command_used,
-            add_selection_to_chat=self._chat_add_selection,
+            selection_changed=self._chat_selection,
             add_note_to_chat=self._chat_add_note,
         )
         self.editor_pane.build()
 
-    def _chat_add_selection(self, text: str, path: str) -> None:
+    def _chat_selection(self, text: str, path: str) -> None:
         if self.chat is not None:
-            self.chat.add_selection(text, path)
-            self._open_chat()
+            self.chat.set_selection(text, path)
 
     def _chat_add_note(self, path: str) -> None:
         if self.chat is not None:

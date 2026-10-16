@@ -14,7 +14,7 @@ import { codeLanguages } from "./codelang.js";
 import { editorContext } from "./context.js";
 import { editorExtensions } from "./grammar.js";
 import { listEditing } from "./listedit.js";
-import { chatPopup } from "./chatpopup.js";
+import { selectionSync } from "./selectionsync.js";
 import { closeSlash, setSlashResults, slashExtension } from "./slash.js";
 import { focusTableCell, tableKeys, tablesRuntime } from "./tablewidget.js";
 import { streamAppend, streamBegin, streamEnd, streamField } from "./stream.js";
@@ -193,7 +193,7 @@ export function createEditor(
           syntaxHighlighting(classHighlighter), // `tok-*` classes inside code blocks; colours live in CSS
           modeSlot.of(modeExt(currentMode)),
           slashExtension({ emit, getDocId: () => docId }),
-          chatPopup({ emit, getDocId: () => docId }),
+          selectionSync({ emit, getDocId: () => docId }),
           EditorView.domEventHandlers({
             paste: handlePaste,
             // dropping image files puts them where they were dropped

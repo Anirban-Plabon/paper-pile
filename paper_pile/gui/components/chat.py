@@ -41,10 +41,27 @@ HEALTH_EVERY_S = 30.0
 _MENTION_TAIL = re.compile(r"@([^\s@\[\]]*)$")
 
 
+@dataclass(frozen=True, slots=True)
+class Selection:
+    """Text selected in the editor, attached to the next message."""
+
+    text: str
+    label: str  # "From [[a]]"
+
+    def size(self) -> str:
+        lines = len(self.text.strip().splitlines())
+        return f"{lines} lines" if lines > 1 else f"{len(self.text.strip())} chars"
+
+    def preview(self, limit: int = 300) -> str:
+        t = self.text.strip()
+        return t if len(t) <= limit else t[:limit] + "…"
+
+
 @dataclass(slots=True)
 class Turn:
     role: str  # "user" | "assistant"
     text: str
+    attachment: str = ""  # the one-line label of an attached selection
     summary: str = ""  # what context an assistant reply was given
     error: bool = False
 
@@ -74,6 +91,7 @@ class ChatPane:
         self.health = Health(False, "Checking Ollama…")
         self._task: asyncio.Task[None] | None = None
         self._include_tabs = False
+        self._selection: Selection | None = None
         self.models: list[str] = []
         # widgets
         self._log: ui.column
@@ -84,6 +102,7 @@ class ChatPane:
         self._model: ui.select
         self._mentions: ui.column
         self._status: ui.label
+        self._chip: ui.row
         self._client: Client
 
     # ---- building ------------------------------------------------------------------------
@@ -120,6 +139,8 @@ class ChatPane:
                         "flat dense no-caps size=sm"
                     ).tooltip("Mention every open note in the message")
                     self._status = ui.label("").classes("pp-muted pp-chat-ctx")
+                self._chip = ui.row().classes("pp-chat-chip items-center no-wrap")
+                self._chip.set_visibility(False)
                 with ui.row().classes("items-end no-wrap w-full"):
                     self._input = (
                         ui.textarea(placeholder="Ask about your notes…  (@ to mention a note)")
@@ -199,6 +220,8 @@ class ChatPane:
         if turn.role == "user":
             with ui.column().classes("pp-msg pp-msg-user"):
                 ui.label(self._user_name() or "You").classes("pp-msg-who")
+                if turn.attachment:
+                    ui.label(turn.attachment).classes("pp-muted pp-msg-attach")
                 ui.label(turn.text).classes("pp-msg-text")
             return None
         with ui.column().classes("pp-msg pp-msg-ai" + (" pp-msg-error" if turn.error else "")):
@@ -262,13 +285,27 @@ class ChatPane:
         else:
             ui.notify("No open notes", timeout=1200, position="bottom")
 
-    def add_selection(self, text: str, path: str) -> None:
-        """Quote the selected text in the message, with the note it came from."""
-        quoted = "\n".join(f"> {line}" if line else ">" for line in text.strip().splitlines())
-        source = (
-            f"From [[{wikilink_to(path, '', set(self.vault.walk_notes()))}]]:\n" if path else ""
-        )
-        self._append(f"{source}{quoted}\n\n")
+    def set_selection(self, text: str, path: str) -> None:
+        """Attach the text selected in the editor (shown as one line; empty removes it)."""
+        if not text.strip():
+            self._selection = None
+        else:
+            name = wikilink_to(path, "", set(self.vault.walk_notes())) if path else ""
+            self._selection = Selection(text, f"From [[{name}]]" if name else "Selected text")
+        self._render_selection()
+
+    def _render_selection(self) -> None:
+        self._chip.clear()
+        sel = self._selection
+        self._chip.set_visibility(sel is not None)
+        if sel is None:
+            return
+        with self._chip:
+            ui.label(f"{sel.label}: [Pasted text · {sel.size()}]").classes("pp-chat-chip-text")
+            ui.button(icon="close", on_click=lambda: self.set_selection("", "")).props(
+                "flat round dense size=xs"
+            ).tooltip("Remove")
+        self._chip.tooltip(sel.preview())
 
     # ---- @ mentions ----------------------------------------------------------------------
 
@@ -320,11 +357,13 @@ class ChatPane:
             return
         self._input.set_value("")
         self._mentions.set_visibility(False)
-        self.history.append(Turn("user", text))
-        self._task = background_tasks.create(self._answer(text))
+        picked, self._selection = self._selection, None
+        self._render_selection()
+        self.history.append(Turn("user", text, f"{picked.label}: [Pasted text]" if picked else ""))
+        self._task = background_tasks.create(self._answer(text, picked.text if picked else ""))
         self._send.props("icon=stop")
 
-    async def _answer(self, question: str) -> None:
+    async def _answer(self, question: str, attached: str = "") -> None:
         reply = Turn("assistant", "")
         self.history.append(reply)
         self._render_log()
@@ -336,7 +375,7 @@ class ChatPane:
                 self.vault,
                 current_path=snap.path,
                 current_text=snap.text,
-                selection=snap.selection,
+                selection=attached or snap.selection,
                 mentions=extract_mentions(question),
                 open_tabs=snap.tabs,
                 include_tabs=self._include_tabs,
