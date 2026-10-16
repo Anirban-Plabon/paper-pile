@@ -302,3 +302,4 @@ Legend: 🧠 = needs Opus (see PLAN §6 model guidance) · ⬜ todo · 🔄 in p
 - 2026-10-16 · Calendar · Calendar tab, daily notes with date format and template, `{{date:FORMAT}}` in templates; 777 tests; cal1 (+19 checks) and full browser regression green except the known p43/em flakes
 
 - 2026-10-16 · Icon theming · colour tokens, on-accent contrast, Font Awesome icons in Python-side UI; 777 tests; browser regression not re-run- 2026-10-16 · Accent fix · Quasar primary now follows the accent (--q-primary + .text-primary/.bg-primary), small bare chat icons, outlined folder icon, vault name in the profile placeholder; 777 tests; not checked in a browser
+- 2026-10-16 · Tree icons · folder icon uses the accent, smaller chevron aligned with the name; 777 tests

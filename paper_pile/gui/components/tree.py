@@ -90,10 +90,12 @@ class FileTree:
                     if entry.path in self._expanded
                     else "fa-solid fa-chevron-right"
                 )
-                ui.icon(chevron).classes("pp-ico")
+                ui.icon(chevron).classes("pp-ico pp-ico-chev")
                 ui.icon("fa-regular fa-folder").classes("pp-ico pp-ico-folder")
             else:
-                ui.element("span").classes("pp-ico")  # keeps notes aligned with folder names
+                ui.element("span").classes(
+                    "pp-ico pp-ico-chev"
+                )  # keeps notes aligned with folder names
                 ui.icon("fa-regular fa-file-lines").classes("pp-ico pp-ico-note")
             ui.label(entry.name).classes("pp-tree-name")
         self._rows[entry.path] = row

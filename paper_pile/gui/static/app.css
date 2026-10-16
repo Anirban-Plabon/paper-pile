@@ -12,7 +12,6 @@
   --pp-accent: #3b82f6;
   --pp-accent-rgb: 59, 130, 246;
   --pp-on-accent: #fff;
-  --pp-folder: #c9a227;
   --pp-danger: #c0392b;
   --pp-wiki: #7c3aed;
   --pp-wiki-rgb: 124, 58, 237;
@@ -37,7 +36,6 @@ body.body--dark {
   --pp-muted: #8b929c;
   --pp-dot-off: #5b616b;
   --pp-dot-on: #3fb950;
-  --pp-folder: #e0b84a;
   --pp-danger: #f26b5b;
   --pp-wiki: #b79cff;
   --pp-wiki-rgb: 183, 156, 255;
@@ -82,7 +80,8 @@ html, body { overflow: hidden; }
 .pp-tree-row:hover { background: rgba(127, 127, 127, .12); }
 .pp-tree-selected, .pp-tree-selected:hover { background: rgba(var(--pp-accent-rgb), .18); }
 .pp-ico { font-size: 16px; width: 16px; flex-shrink: 0; color: var(--pp-muted); }
-.pp-ico-folder { color: var(--pp-folder); }
+.pp-ico-folder { color: var(--pp-accent); }
+.pp-ico-chev { font-size: 9px; width: 10px; margin-right: -2px; }
 .pp-tree-name { overflow: hidden; text-overflow: ellipsis; font-size: 13px; pointer-events: none; }
 .pp-tree-row > * { pointer-events: none; }
 .pp-tree-empty { padding: 6px 12px; }
