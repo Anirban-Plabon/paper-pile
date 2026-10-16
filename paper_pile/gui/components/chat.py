@@ -119,7 +119,12 @@ class ChatPane:
         self._send: ui.button
         self._banner: ui.row
         self._banner_text: ui.label
-        self._model: ui.select
+        self._model: ui.button
+        self._model_label: ui.label
+        self._model_chev: ui.icon
+        self._model_menu: ui.menu
+        self._model_names: dict[str, str] = {}  # model -> what the button shows
+        self._model_details: dict[str, str] = {}
         self._mentions: ui.column
         self._chips: ui.column
         self._refs: ui.row
@@ -164,19 +169,7 @@ class ChatPane:
                             .classes("pp-chat-input")
                         )
                         self._input.on_value_change(lambda e: self._input_changed(e.value or ""))
-                        self._model = (
-                            ui.select(
-                                {},
-                                value=None,
-                                on_change=lambda e: self._model_changed(e.value),
-                            )
-                            .props(
-                                "dense borderless options-dense behavior=menu "
-                                'dropdown-icon="fa-solid fa-chevron-down"'
-                            )
-                            .classes("pp-chat-model")
-                            .tooltip("Model")
-                        )
+                        self._model_button()
                         self._send = ui.button(
                             icon="fa-solid fa-arrow-up", on_click=self.send_or_stop, color=None
                         )
@@ -218,8 +211,11 @@ class ChatPane:
             self.models if current in self.models or not self.models else [current, *self.models]
         )
         short = {m: m.split(":")[0] for m in options}
-        shown = {m: (short[m] if list(short.values()).count(short[m]) == 1 else m) for m in options}
-        self._model.set_options(shown, value=current if options else None)
+        self._model_names = {
+            m: (short[m] if list(short.values()).count(short[m]) == 1 else m) for m in options
+        }
+        self._model_details = dict(health.details)
+        self._show_model()
         self._banner.set_visibility(not health.ok or bool(health.message))
         self._banner_text.set_text(health.message)
         self._on_health(health)
@@ -231,11 +227,59 @@ class ChatPane:
     def _retry(self) -> None:
         background_tasks.create(self.check_health())
 
+    # ---- the model menu -------------------------------------------------------------------
+
+    def _model_button(self) -> None:
+        self._model = ui.button(color=None).props("flat no-caps dense").classes("pp-chat-model")
+        with self._model:
+            self._model_label = ui.label("").classes("pp-chat-model-name")
+            self._model_chev = ui.icon("fa-solid fa-chevron-down").classes("pp-chat-model-chev")
+            self._model_menu = ui.menu().props(
+                'anchor="top right" self="bottom right" :offset="[0, 8]"'
+            )
+            self._model_menu.classes("pp-model-menu")
+        self._model_menu.on("before-show", lambda _e: self._build_model_menu())
+        for event, icon, open_ in (("show", "up", True), ("hide", "down", False)):
+            self._model_menu.on(event, lambda _e, i=icon, o=open_: self._model_open(i, o))
+        self._model.tooltip("Model")
+
+    def _model_open(self, chevron: str, is_open: bool) -> None:
+        self._model_chev.props(f'name="fa-solid fa-chevron-{chevron}"')
+        self._model.classes(
+            add="pp-chat-model-open" if is_open else "",
+            remove="" if is_open else "pp-chat-model-open",
+        )
+
+    def _show_model(self) -> None:
+        current = chat_model(self.provider, self.config)
+        self._model_label.set_text(self._model_names.get(current, current) or "No model")
+
+    def _build_model_menu(self) -> None:
+        current = chat_model(self.provider, self.config)
+        self._model_menu.clear()
+        with self._model_menu:
+            if not self._model_names:
+                ui.label("No models installed").classes("pp-model-empty")
+            for model, name in self._model_names.items():
+                item = ui.item(on_click=lambda m=model: self._model_changed(m))
+                with item.classes("pp-model-item"):
+                    with ui.column().classes("pp-model-text"):
+                        ui.label(name).classes("pp-model-name")
+                        # size and family from Ollama; else at least the tag the button hides
+                        tag = model.split(":", 1)[1] if ":" in model else ""
+                        detail = self._model_details.get(model, "") or tag
+                        if detail:
+                            ui.label(detail).classes("pp-model-detail")
+                    if model == current:
+                        ui.icon("fa-solid fa-check").classes("pp-model-check")
+
     def _model_changed(self, value: str | None) -> None:
+        self._model_menu.close()
         if not value or self.config is None or value == self.config.get("ai.model"):
             return
         self.config.set("ai.model", value, "global")
         self.config.save("global")
+        self._show_model()
 
     def _set_include_tabs(self, on: bool) -> None:
         self._include_tabs = on

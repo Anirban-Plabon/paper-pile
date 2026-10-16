@@ -373,10 +373,6 @@ html, body { overflow: hidden; }
 .pp-chat-input .q-field__native { padding: 6px 0; line-height: 1.5; scrollbar-width: thin; }
 .pp-chat-input .q-field__native::placeholder { line-height: 1.5; }
 .pp-chat-input .q-field__control:before, .pp-chat-input .q-field__control:after { display: none; }
-.pp-chat-model { flex: none; max-width: 120px; font-size: 13px; }
-.pp-chat-model .q-field__control, .pp-chat-model .q-field__native { min-height: 34px; color: var(--pp-fg); }
-.pp-chat-model .q-field__append { padding-left: 4px; }
-.pp-chat-model .q-select__dropdown-icon { font-size: 10px; color: var(--pp-fg); }
 .pp-chat-ref-icon { font-size: 15px; color: var(--pp-muted); }
 .pp-chat-ref-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .pp-chat-menu { min-width: 260px; max-width: 320px; background: var(--pp-bg); color: var(--pp-fg); border: 1px solid var(--pp-border); border-radius: 14px; box-shadow: 0 8px 28px rgba(0, 0, 0, .2); padding: 4px; }
@@ -523,3 +519,18 @@ html, body { overflow: hidden; }
 .pp-chat-send.pp-chat-send-ready.q-btn, .pp-chat-send.q-btn:hover { background: var(--pp-accent); color: var(--pp-on-accent); }
 .pp-chat-plus.q-btn .q-icon { font-size: 15px; }
 .pp-chat-send.q-btn .q-icon { font-size: 13px; }
+
+/* model picker: a pill button and a roomy menu above it (name, details, check) */
+.pp-chat-model.q-btn { flex: none; max-width: 160px; height: 34px; min-height: 0; padding: 0 12px; border-radius: 17px; font-size: 13.5px; font-weight: 400; color: var(--pp-fg); }
+.pp-chat-model.q-btn .q-btn__content { gap: 8px; flex-wrap: nowrap; }
+.pp-chat-model.q-btn:hover, .pp-chat-model-open.q-btn { background: rgba(127, 127, 127, .14); }
+.pp-chat-model-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pp-chat-model-chev { font-size: 10px; }
+.pp-model-menu { min-width: 260px; max-width: 340px; padding: 8px 0; background: var(--pp-bg); color: var(--pp-fg); border: 1px solid var(--pp-border); border-radius: 18px; box-shadow: 0 8px 28px rgba(0, 0, 0, .18); }
+.pp-model-item.q-item { min-height: 0; padding: 9px 20px; gap: 16px; align-items: center; }
+.pp-model-item.q-item:hover { background: rgba(127, 127, 127, .10); }
+.pp-model-text { flex: 1 1 auto; min-width: 0; gap: 2px; }
+.pp-model-name { font-size: 14px; }
+.pp-model-detail { font-size: 12.5px; color: var(--pp-muted); }
+.pp-model-check { flex: none; font-size: 13px; color: var(--pp-fg); }
+.pp-model-empty { padding: 9px 20px; color: var(--pp-muted); }

@@ -22,6 +22,7 @@ class Health:
     ok: bool
     message: str = ""  # what to tell the user when not ok
     models: list[str] = field(default_factory=list)
+    details: dict[str, str] = field(default_factory=dict)  # model -> "9B · gemma3 · 5.4 GB"
 
 
 class ProviderError(Exception):

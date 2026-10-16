@@ -5,7 +5,7 @@ import httpx
 import pytest
 
 from paper_pile.core.ai.fake import FakeProvider
-from paper_pile.core.ai.ollama import NOT_RUNNING, OllamaProvider
+from paper_pile.core.ai.ollama import NOT_RUNNING, OllamaProvider, describe_model
 from paper_pile.core.ai.provider import (
     ChatMessage,
     ModelNotFoundError,
@@ -107,6 +107,22 @@ async def test_models_and_health() -> None:
     assert await p.models() == ["alpha:7b", "zeta:1b"]
     h = await p.health()
     assert h.ok and h.models == ["alpha:7b", "zeta:1b"] and h.message == ""
+
+
+async def test_health_describes_each_model() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        model = {"model": "g:9b", "size": 5_400_000_000}
+        model["details"] = {"parameter_size": "9B", "family": "gemma3"}  # type: ignore[assignment]
+        return httpx.Response(200, json={"models": [model, {"model": "bare"}]})
+
+    h = await provider(handler).health()
+    assert h.details == {"g:9b": "9B · gemma3 · 5.4 GB", "bare": ""}
+
+
+def test_describe_model_leaves_out_what_is_missing() -> None:
+    assert describe_model("9B", "gemma3", 5_400_000_000) == "9B · gemma3 · 5.4 GB"
+    assert describe_model(None, "llama", None) == "llama"
+    assert describe_model(None, None, None) == ""
 
 
 async def test_health_never_raises() -> None:

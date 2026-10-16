@@ -307,3 +307,4 @@ Legend: 🧠 = needs Opus (see PLAN §6 model guidance) · ⬜ todo · 🔄 in p
 - 2026-10-16 · Chat composer · + and send are small accent-outlined circles aligned with the input text; 777 tests
 
 - 2026-10-16 · Chat composer v2 · one row (+ · input · model ⌄ · send), send is a round accent button (faint until there is text), `--q-primary` also set on <body> so Quasar widgets follow the accent, cache-busting static URLs; 777 tests; checked in headless Chrome with a red accent- 2026-10-16 · Chat composer v3 · one line while the text fits; longer or multi-line text takes the full width above the buttons (chat.js measures, `pp-chat-multi`); 777 tests; checked in headless Chrome (empty / short / long)
+- 2026-10-16 · Model menu · chat model picker is a pill button with a menu (name, size · family · disk size from Ollama, check on the current one); `Health.details` + `describe_model`; 779 tests; checked in headless Chrome against the real Ollama models

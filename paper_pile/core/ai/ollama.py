@@ -23,6 +23,14 @@ NOT_RUNNING = "Ollama isn't running — start it with `ollama serve`."
 HEALTH_TIMEOUT_S = 3.0
 
 
+def describe_model(parameter_size: str | None, family: str | None, size: int | None) -> str:
+    """``"9B · gemma3 · 5.4 GB"`` from whatever Ollama reports (parts it lacks are left out)."""
+    parts = [p for p in (parameter_size, family) if p]
+    if size:
+        parts.append(f"{size / 1e9:.1f} GB")
+    return " · ".join(parts)
+
+
 class OllamaProvider:
     def __init__(
         self,
@@ -69,20 +77,31 @@ class OllamaProvider:
     # ---- state -----------------------------------------------------------------------------
 
     async def models(self) -> list[str]:
+        return sorted(await self._listing())
+
+    async def _listing(self) -> dict[str, str]:
+        """Installed models and a one-line description of each."""
         try:
             listing = await self._probe.list()
         except Exception as exc:
             raise self._friendly(exc, "") from exc
-        return sorted(m.model for m in listing.models if m.model)
+        out: dict[str, str] = {}
+        for m in listing.models:
+            if m.model:
+                d = m.details
+                out[m.model] = describe_model(
+                    d.parameter_size if d else None, d.family if d else None, m.size
+                )
+        return out
 
     async def health(self) -> Health:
         try:
-            names = await self.models()
+            listing = await self._listing()
         except ProviderError as exc:
             return Health(False, str(exc))
-        if not names:
+        if not listing:
             return Health(True, "Ollama is running but has no models: `ollama pull gemma4:12b`", [])
-        return Health(True, "", names)
+        return Health(True, "", sorted(listing), listing)
 
     # ---- errors ----------------------------------------------------------------------------
 
