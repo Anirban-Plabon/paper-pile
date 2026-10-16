@@ -303,3 +303,4 @@ Legend: 🧠 = needs Opus (see PLAN §6 model guidance) · ⬜ todo · 🔄 in p
 
 - 2026-10-16 · Icon theming · colour tokens, on-accent contrast, Font Awesome icons in Python-side UI; 777 tests; browser regression not re-run- 2026-10-16 · Accent fix · Quasar primary now follows the accent (--q-primary + .text-primary/.bg-primary), small bare chat icons, outlined folder icon, vault name in the profile placeholder; 777 tests; not checked in a browser
 - 2026-10-16 · Tree icons · folder icon uses the accent, smaller chevron aligned with the name; 777 tests
+- 2026-10-16 · Chat composer · + and send are small accent-outlined circles aligned with the input text; 777 tests
