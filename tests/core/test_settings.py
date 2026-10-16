@@ -141,3 +141,13 @@ def test_config_unset_and_layers(tmp_path: Path) -> None:
     assert cfg.layer("global") == {"editor": {"font_size": 18}}
     cfg.save("global")
     assert Config(global_path=tmp_path / "g.toml", vault=tmp_path).get("editor.font_size") == 18
+
+
+def test_search_finds_by_name_help_and_section() -> None:
+    from paper_pile.core.settings import search_settings
+
+    assert [s.key for s in search_settings("font size")] == ["editor.font_size"]
+    assert "ai.host" in [s.key for s in search_settings("ollama")]
+    assert {s.key for s in search_settings("paste")} >= {"paste.smart_paste"}
+    assert search_settings("") == [] and search_settings("zzzz") == []
+    assert [s.key for s in search_settings("theme dark")] == []  # every word must match

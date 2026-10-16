@@ -55,23 +55,71 @@ class Parsed:
 SECTIONS: dict[str, tuple[Setting, ...]] = {
     "Appearance": (
         Setting("appearance.theme", "Theme", "choice", THEMES, help="System follows your desktop"),
-        Setting("appearance.accent", "Accent colour", "choice", tuple(ACCENTS)),
-        Setting("appearance.density", "Density", "choice", DENSITIES),
+        Setting(
+            "appearance.accent",
+            "Accent colour",
+            "choice",
+            tuple(ACCENTS),
+            help="Used for links, bullets, callouts and highlights",
+        ),
+        Setting(
+            "appearance.density",
+            "Density",
+            "choice",
+            DENSITIES,
+            help="How much space the interface uses",
+        ),
     ),
     "Editor": (
         Setting("editor.font_family", "Font family", "text", help="Any CSS font-family list"),
-        Setting("editor.font_size", "Font size (px)", "int", minimum=8, maximum=40),
-        Setting("editor.line_height", "Line height", "float", minimum=1.0, maximum=3.0),
-        Setting("editor.word_wrap", "Wrap long lines", "bool"),
-        Setting("editor.tab_size", "Tab size", "choice", ("2", "3", "4", "8")),
-        Setting("editor.spell_check", "Check spelling", "bool"),
+        Setting(
+            "editor.font_size",
+            "Font size (px)",
+            "int",
+            minimum=8,
+            maximum=40,
+            help="Text size in the editor",
+        ),
+        Setting(
+            "editor.line_height",
+            "Line height",
+            "float",
+            minimum=1.0,
+            maximum=3.0,
+            help="Space between lines, as a multiple of the text size",
+        ),
+        Setting(
+            "editor.word_wrap",
+            "Wrap long lines",
+            "bool",
+            help="Break long lines instead of scrolling sideways",
+        ),
+        Setting(
+            "editor.tab_size",
+            "Tab size",
+            "choice",
+            ("2", "3", "4", "8"),
+            help="Width of a Tab in code blocks",
+        ),
+        Setting(
+            "editor.spell_check",
+            "Check spelling",
+            "bool",
+            help="Underline misspelled words while you write",
+        ),
         Setting(
             "editor.auto_title",
             "Title property from the note name",
             "bool",
             help="Writes title: <name> into a note's properties on open; a rename updates it",
         ),
-        Setting("editor.default_mode", "Mode for a vault opened the first time", "choice", MODES),
+        Setting(
+            "editor.default_mode",
+            "Starting mode",
+            "choice",
+            MODES,
+            help="Live preview or plain source, for a vault opened the first time",
+        ),
     ),
     "Vault": (
         Setting(
@@ -86,13 +134,33 @@ SECTIONS: dict[str, tuple[Setting, ...]] = {
             "Daily notes folder",
             "text",
             placeholder="e.g. Daily",
+            help="Where daily notes are created",
         ),
     ),
     "AI": (
-        Setting("ai.host", "Ollama address", "url", placeholder="http://localhost:11434"),
-        Setting("ai.model", "Chat model", "text", placeholder="gemma4:12b"),
+        Setting(
+            "ai.host",
+            "Ollama address",
+            "url",
+            placeholder="http://localhost:11434",
+            help="Where the local Ollama server runs",
+        ),
+        Setting(
+            "ai.model",
+            "Chat model",
+            "text",
+            placeholder="gemma4:12b",
+            help="The model used by the chat and the AI commands",
+        ),
         Setting("ai.embed_model", "Embedding model", "text", help="Not used yet"),
-        Setting("ai.context_budget", "Context budget (tokens)", "int", minimum=500, maximum=200000),
+        Setting(
+            "ai.context_budget",
+            "Context budget (tokens)",
+            "int",
+            minimum=500,
+            maximum=200000,
+            help="How much of your notes the model may see per message",
+        ),
     ),
     "Paste": (
         Setting(
@@ -105,6 +173,20 @@ SECTIONS: dict[str, tuple[Setting, ...]] = {
 }
 
 ALL: dict[str, Setting] = {s.key: s for group in SECTIONS.values() for s in group}
+
+
+def search_settings(query: str) -> list[Setting]:
+    """The settings whose name, help text or section matches every word of ``query``."""
+    words = query.lower().split()
+    if not words:
+        return []
+    found: list[Setting] = []
+    for section, group in SECTIONS.items():
+        for setting in group:
+            haystack = f"{section} {setting.label} {setting.help} {setting.key}".lower()
+            if all(w in haystack for w in words):
+                found.append(setting)
+    return found
 
 
 def get_nested(values: Mapping[str, Any], key: str, default: Any = None) -> Any:

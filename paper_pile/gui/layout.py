@@ -69,6 +69,7 @@ class MainLayout:
             self.state.mode = "source" if mode == "source" else "live"
         self.theme = ThemeController(self.config, self._on_dark)
         self.right: RightPane | None = None
+        self._settings_wide = False  # the right pane is widened for Settings (not remembered)
         self.settings = SettingsPane(
             self.config,
             self._settings_applied,
@@ -165,6 +166,15 @@ class MainLayout:
         if self.right is not None:
             self.right.open_settings()
 
+    def _settings_wide_mode(self, wide: bool) -> None:
+        """Settings has two columns: widen the right pane while it shows, then put it back."""
+        splitter = self._splitters.get("right")
+        if splitter is None or wide == self._settings_wide:
+            return
+        self._settings_wide = wide
+        if self.state.panes_open["right"]:
+            self._apply("right")
+
     def _close_settings(self) -> None:
         if self.right is not None:
             self.right.close_settings()
@@ -192,7 +202,7 @@ class MainLayout:
             self.profile.refresh()
 
     def _right_pane(self) -> None:
-        self.right = RightPane(self.settings.open)
+        self.right = RightPane(self.settings.open, self._settings_wide_mode)
         self.right.build()
         with self.right.chat_host:
             self._chat_pane()
@@ -307,7 +317,8 @@ class MainLayout:
         splitter = self._splitters[pane]
         if self.state.panes_open[pane]:
             splitter.set_limits(*WIDTH_LIMITS[pane])
-            splitter.value = self.state.pane_widths[pane]
+            wide = pane == "right" and self._settings_wide
+            splitter.value = WIDTH_LIMITS[pane][1] if wide else self.state.pane_widths[pane]
             splitter.props(remove="disable")
         else:
             splitter.set_limits(0, 0)
@@ -329,6 +340,8 @@ class MainLayout:
         # Programmatic changes (collapse/restore) also land here; only an open pane's width counts.
         if value is None or not self.state.panes_open[pane] or value <= 0:
             return
+        if pane == "right" and self._settings_wide:
+            return  # the temporary wide width is not the user's choice
         width = clamp_width(pane, round(value))
         if width != self.state.pane_widths[pane]:
             self.state.pane_widths[pane] = width

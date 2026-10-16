@@ -14,8 +14,13 @@ CLOSE_ICON = "fa-regular fa-circle-xmark"
 
 
 class RightPane:
-    def __init__(self, on_open_settings: Callable[[ui.column], None]) -> None:
+    def __init__(
+        self,
+        on_open_settings: Callable[[ui.column], None],
+        on_wide: Callable[[bool], None] = lambda wide: None,
+    ) -> None:
         self._open_settings_into = on_open_settings
+        self._on_wide = on_wide
         self._settings_open = False
         self._active = "chat"
         self._bar: ui.row
@@ -57,6 +62,7 @@ class RightPane:
     # ---- drawing -------------------------------------------------------------------------
 
     def _render(self) -> None:
+        self._on_wide(self._active == "settings")  # Settings gets a wide pane
         self.chat_host.set_visibility(self._active == "chat")
         self.settings_host.set_visibility(self._active == "settings")
         self._bar.clear()
