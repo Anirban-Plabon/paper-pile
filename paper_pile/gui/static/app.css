@@ -180,15 +180,14 @@ html, body { overflow: hidden; }
 
 /* backlinks pane (P3.4) */
 .pp-backlinks { width: 100%; flex-shrink: 0; gap: 0; border-top: 1px solid var(--pp-border, rgba(128, 128, 128, .25)); }
-.pp-backlinks-head { width: 100%; padding: 4px 12px; cursor: pointer; user-select: none; font-size: 12px; gap: 4px; }
+.pp-backlinks-head { width: 100%; padding: 2px 12px; cursor: pointer; user-select: none; font-size: 12px; gap: 2px; min-height: 22px; }
 .pp-backlinks-title { font-weight: 600; }
-.pp-backlinks-body { width: 100%; max-height: 190px; overflow-y: auto; gap: 0; padding-bottom: 4px; flex-wrap: nowrap; }
-.pp-backlinks-empty { padding: 2px 12px 6px 30px; font-size: 12px; }
-.pp-backlink { width: 100%; gap: 0; padding: 4px 12px 4px 30px; cursor: pointer; }
+.pp-backlinks-body { width: 100%; max-height: 92px; overflow-y: auto; gap: 0; padding-bottom: 2px; flex-wrap: nowrap; }
+.pp-backlinks-empty { padding: 0 12px 4px 28px; font-size: 12px; }
+.pp-backlink { width: 100%; gap: 10px; padding: 0 12px 0 28px; height: 22px; flex: none; cursor: pointer; font-size: 12px; overflow: hidden; }
 .pp-backlink:hover { background: rgba(128, 128, 128, .12); }
-.pp-backlink-title { font-size: 13px; font-weight: 500; }
-.pp-backlink-path { font-size: 11px; margin-left: 8px; }
-.pp-backlink-snippet { font-size: 12px; opacity: .8; overflow: hidden; max-width: 100%; }
+.pp-backlink-title { flex: none; max-width: 30%; font-weight: 600; font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pp-backlink-snippet { flex: 1 1 0; min-width: 0; font-size: 12px; opacity: .8; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
 /* slash menu (P4.2): a CM6 tooltip inside .pp-editor, so .pp-dark applies */
 .cm-tooltip.pp-slash-tooltip { border: none; background: transparent; z-index: 3000; }
@@ -261,5 +260,5 @@ html, body { overflow: hidden; }
 .pp-embed-body pre, .pp-embed-body code { background: var(--pp-code-bg, #f3f4f6); border-radius: 4px; }
 .pp-embed-body pre { padding: 6px 10px; overflow-x: auto; }
 .pp-embed-missing .pp-embed-body { color: #b45309; }
-.pp-backlink-snippet { gap: 0; white-space: pre; }
-.pp-backlink-hit { font-weight: 600; color: #7c3aed; opacity: 1; }
+.pp-backlink-snippet b { font-weight: 600; color: #7c3aed; }
+.pp-embed-body { white-space: normal; }

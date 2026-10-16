@@ -3,6 +3,7 @@ each link. Collapsible. It only displays what :mod:`paper_pile.core.index` found
 
 from collections.abc import Callable
 from dataclasses import dataclass
+from html import escape
 
 from nicegui import ui
 
@@ -57,14 +58,13 @@ class BacklinksPane:
             if not self._items:
                 ui.label("No other note links here.").classes("pp-muted pp-backlinks-empty")
             for item in self._items:
-                with ui.column().classes("pp-backlink") as row:
-                    with ui.row().classes("items-baseline no-wrap"):
-                        ui.label(item.title).classes("pp-backlink-title")
-                        ui.label(item.path).classes("pp-muted pp-backlink-path")
-                    if item.snippet.text:
-                        with ui.row().classes("pp-backlink-snippet items-baseline no-wrap"):
-                            ui.label(item.snippet.before)
-                            if item.snippet.hit:
-                                ui.label(item.snippet.hit).classes("pp-backlink-hit")
-                            ui.label(item.snippet.after)
+                # one line per note: its title, then the line that links here (the link in bold)
+                with ui.row().classes("pp-backlink items-center no-wrap") as row:
+                    ui.label(item.title).classes("pp-backlink-title")
+                    snippet = item.snippet
+                    ui.html(
+                        f"{escape(snippet.before)}<b>{escape(snippet.hit)}</b>{escape(snippet.after)}",
+                        sanitize=False,
+                    ).classes("pp-backlink-snippet")
+                row.tooltip(f"{item.path}, line {item.line}")
                 row.on("click", lambda _e, i=item: self._on_open(i.path, i.line))
