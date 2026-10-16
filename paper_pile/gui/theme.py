@@ -14,6 +14,7 @@ from nicegui import Client, ui
 
 from paper_pile.core.config import Config
 from paper_pile.core.settings import accent_colors, hex_to_rgb, sanitized
+from paper_pile.gui.static_files import static_url
 
 log = logging.getLogger("paper_pile.theme")
 
@@ -59,7 +60,7 @@ class ThemeController:
         self._client = ui.context.client
         initial = json.dumps(theme_payload(self.config))
         ui.add_head_html(f"<script>window.__pp_theme = {initial};</script>")
-        ui.add_head_html('<script src="/pp-static/theme.js"></script>')
+        ui.add_head_html(f'<script src="{static_url("theme.js")}"></script>')
         ui.on("pp_theme_resolved", lambda e: self._resolved(bool(e.args.get("dark"))))
 
     def _resolved(self, dark: bool) -> None:

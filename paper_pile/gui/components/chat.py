@@ -155,27 +155,30 @@ class ChatPane:
                         self._refs = ui.row().classes("pp-chat-refs")
                         self._chips = ui.row().classes("pp-chat-chips")
                         self._preview = ui.column().classes("pp-chat-preview")
-                    self._input = (
-                        ui.textarea(placeholder="Ask, or @ a note")
-                        .props("borderless dense autogrow input-style='max-height: 220px'")
-                        .classes("pp-chat-input")
-                    )
-                    self._input.on_value_change(lambda e: self._update_mentions(e.value or ""))
-                    with ui.row().classes("pp-chat-row items-center no-wrap w-full"):
+                    # one line: + | text | model | send (the buttons stay at the bottom as it grows)
+                    with ui.row().classes("pp-chat-row items-end no-wrap w-full"):
                         self._plus_button()
-                        ui.space()
+                        self._input = (
+                            ui.textarea(placeholder="Ask, or @ a note")
+                            .props("borderless dense autogrow input-style='max-height: 220px'")
+                            .classes("pp-chat-input")
+                        )
+                        self._input.on_value_change(lambda e: self._input_changed(e.value or ""))
                         self._model = (
                             ui.select(
                                 {},
                                 value=None,
                                 on_change=lambda e: self._model_changed(e.value),
                             )
-                            .props("dense borderless options-dense behavior=menu")
+                            .props(
+                                "dense borderless options-dense behavior=menu "
+                                'dropdown-icon="fa-solid fa-chevron-down"'
+                            )
                             .classes("pp-chat-model")
                             .tooltip("Model")
                         )
                         self._send = ui.button(
-                            icon="fa-solid fa-arrow-up", on_click=self.send_or_stop
+                            icon="fa-solid fa-arrow-up", on_click=self.send_or_stop, color=None
                         )
                         self._send.props("round unelevated dense").classes("pp-chat-send")
                 self._upload = ui.upload(
@@ -367,7 +370,7 @@ class ChatPane:
     # ---- the + menu ----------------------------------------------------------------------
 
     def _plus_button(self) -> None:
-        self._plus = ui.button(icon="fa-solid fa-plus").props(
+        self._plus = ui.button(icon="fa-solid fa-plus", color=None).props(
             "round flat dense aria-label='Add context'"
         )
         self._plus.classes("pp-chat-plus")
@@ -535,6 +538,13 @@ class ChatPane:
             self._render_selections()
 
     # ---- @ mentions ----------------------------------------------------------------------
+
+    def _input_changed(self, value: str) -> None:
+        self._send.classes(
+            add="pp-chat-send-ready" if value.strip() else "",
+            remove="" if value.strip() else "pp-chat-send-ready",
+        )
+        self._update_mentions(value)
 
     def _update_mentions(self, value: str) -> None:
         m = _MENTION_TAIL.search(value)

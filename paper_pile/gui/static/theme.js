@@ -28,7 +28,9 @@
     body.classList.toggle('pp-compact', cfg.density === 'compact');
     root.style.setProperty('--pp-accent', dark ? cfg.accentDark : cfg.accentLight);
     root.style.setProperty('--pp-accent-rgb', dark ? cfg.accentDarkRgb : cfg.accentLightRgb);
+    // on <body> too: NiceGUI sets Quasar's primary there, which would win over <html>
     root.style.setProperty('--q-primary', dark ? cfg.accentDark : cfg.accentLight);
+    body.style.setProperty('--q-primary', dark ? cfg.accentDark : cfg.accentLight);
     root.style.setProperty('--pp-on-accent', onAccent(dark ? cfg.accentDark : cfg.accentLight));
     root.style.setProperty('--pp-editor-font', cfg.fontFamily);
     root.style.setProperty('--pp-editor-size', cfg.fontSize + 'px');

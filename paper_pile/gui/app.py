@@ -14,12 +14,11 @@ from paper_pile.gui.files import make_asset_router
 from paper_pile.gui.layout import MainLayout
 from paper_pile.gui.security import TokenGate
 from paper_pile.gui.shortcuts import install_shortcuts
+from paper_pile.gui.static_files import STATIC_DIR, STATIC_URL, static_url
 
 log = logging.getLogger("paper_pile.app")
 
 SERVE_HOST = "127.0.0.1"  # web mode never binds anything else
-STATIC_DIR = Path(__file__).parent / "static"
-STATIC_URL = "/pp-static"
 
 
 def _title(vault: Path) -> str:
@@ -46,10 +45,10 @@ def _build_pages(vault: Path, *, native: bool) -> None:
         ui.add_head_html(
             f'<link rel="stylesheet" href="{STATIC_URL}/vendor/fontawesome/css/all.min.css">'
         )
-        ui.add_head_html(f'<link rel="stylesheet" href="{STATIC_URL}/app.css">')
-        ui.add_head_html(f'<script src="{STATIC_URL}/tree.js" defer></script>')
-        ui.add_head_html(f'<script src="{STATIC_URL}/tabs.js" defer></script>')
-        ui.add_head_html(f'<script src="{STATIC_URL}/chat.js" defer></script>')
+        ui.add_head_html(f'<link rel="stylesheet" href="{static_url("app.css")}">')
+        ui.add_head_html(f'<script src="{static_url("tree.js")}" defer></script>')
+        ui.add_head_html(f'<script src="{static_url("tabs.js")}" defer></script>')
+        ui.add_head_html(f'<script src="{static_url("chat.js")}" defer></script>')
         # "reveal" only makes sense on this machine
         layout = MainLayout(vault, can_reveal=native, fs_bus=fs_bus)
         layout.build()
