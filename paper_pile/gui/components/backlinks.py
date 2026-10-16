@@ -6,13 +6,15 @@ from dataclasses import dataclass
 
 from nicegui import ui
 
+from paper_pile.core.snippets import Snippet
+
 
 @dataclass(frozen=True, slots=True)
 class BacklinkItem:
     path: str
     title: str
     line: int
-    snippet: str
+    snippet: Snippet
 
 
 class BacklinksPane:
@@ -59,6 +61,10 @@ class BacklinksPane:
                     with ui.row().classes("items-baseline no-wrap"):
                         ui.label(item.title).classes("pp-backlink-title")
                         ui.label(item.path).classes("pp-muted pp-backlink-path")
-                    if item.snippet:
-                        ui.label(item.snippet).classes("pp-backlink-snippet")
+                    if item.snippet.text:
+                        with ui.row().classes("pp-backlink-snippet items-baseline no-wrap"):
+                            ui.label(item.snippet.before)
+                            if item.snippet.hit:
+                                ui.label(item.snippet.hit).classes("pp-backlink-hit")
+                            ui.label(item.snippet.after)
                 row.on("click", lambda _e, i=item: self._on_open(i.path, i.line))

@@ -82,14 +82,3 @@ def test_headings() -> None:
     found = find_heading(text, "  two   X ")
     assert found is not None and found.line == 5
     assert find_heading(text, "not") is None
-
-
-def test_link_snippet() -> None:
-    from paper_pile.core.links import link_snippet
-
-    text = "# H\n- [ ] do [[x]]   now\n> quote [[y]]\n" + "w " * 200 + "[[z]]\n"
-    assert link_snippet(text, 2) == "do [[x]] now"
-    assert link_snippet(text, 3) == "quote [[y]]"
-    assert link_snippet(text, 1) == "H"
-    assert len(link_snippet(text, 4)) == 140 and link_snippet(text, 4).endswith("…")
-    assert link_snippet(text, 99) == ""

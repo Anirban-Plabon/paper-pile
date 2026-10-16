@@ -188,7 +188,7 @@ html, body { overflow: hidden; }
 .pp-backlink:hover { background: rgba(128, 128, 128, .12); }
 .pp-backlink-title { font-size: 13px; font-weight: 500; }
 .pp-backlink-path { font-size: 11px; margin-left: 8px; }
-.pp-backlink-snippet { font-size: 12px; opacity: .75; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
+.pp-backlink-snippet { font-size: 12px; opacity: .8; overflow: hidden; max-width: 100%; }
 
 /* slash menu (P4.2): a CM6 tooltip inside .pp-editor, so .pp-dark applies */
 .cm-tooltip.pp-slash-tooltip { border: none; background: transparent; z-index: 3000; }
@@ -261,3 +261,5 @@ html, body { overflow: hidden; }
 .pp-embed-body pre, .pp-embed-body code { background: var(--pp-code-bg, #f3f4f6); border-radius: 4px; }
 .pp-embed-body pre { padding: 6px 10px; overflow-x: auto; }
 .pp-embed-missing .pp-embed-body { color: #b45309; }
+.pp-backlink-snippet { gap: 0; white-space: pre; }
+.pp-backlink-hit { font-weight: 600; color: #7c3aed; opacity: 1; }

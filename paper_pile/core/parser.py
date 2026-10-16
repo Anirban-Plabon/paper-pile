@@ -22,6 +22,7 @@ must stay safe (chat replies, exports). Single newlines render as line breaks, m
 the editor shows.
 """
 
+import re
 from collections.abc import Callable, MutableMapping, Sequence
 from dataclasses import dataclass
 from typing import Any
@@ -388,3 +389,54 @@ def image_spans(text: str) -> list[LinkSpan]:
                 )
             )
     return found
+
+
+@dataclass(frozen=True, slots=True)
+class PlainLine:
+    text: str
+    hit: tuple[int, int] | None  # where the wanted link sits in ``text``
+
+
+_PLAIN_TYPES = {"text", "code_inline", "math_inline", "math_inline_double"}
+
+
+def plain_line(markdown: str, kind: str = "", raw: str = "") -> PlainLine:
+    """One line of markdown as plain text (no ``**``, brackets or URLs), for lists and snippets.
+
+    A wikilink shows its alias or note name, a link its text, an image its alt text. When
+    ``kind``/``raw`` name a link (as stored by :func:`note_links`), its place in the result is
+    returned as ``hit``.
+    """
+    parts: list[str] = []
+    length = 0
+    hit: tuple[int, int] | None = None
+    open_at: int | None = None
+    wanted = False
+
+    def add(piece: str) -> None:
+        nonlocal length
+        parts.append(piece)
+        length += len(piece)
+
+    for tok in _PARSER.parseInline(markdown):
+        for child in tok.children or []:
+            if child.type == "wikilink":
+                target = parse_wikilink(child.content)
+                start = length
+                add(target.text if target else child.content)
+                if kind == "wiki" and child.content == raw and hit is None:
+                    hit = (start, length)
+            elif child.type == "link_open":
+                open_at = length
+                wanted = kind == "md" and str(child.attrGet("href") or "") == raw
+            elif child.type == "link_close":
+                if wanted and hit is None and open_at is not None:
+                    hit = (open_at, length)
+                open_at, wanted = None, False
+            elif child.type == "image":
+                add(re.sub(r"\s*\|\s*\d+\s*$", "", child.content))  # `alt|300`: size, not text
+            elif child.type in _PLAIN_TYPES:
+                add(child.content)
+            elif child.type in {"softbreak", "hardbreak"}:
+                add(" ")
+    return PlainLine("".join(parts), hit)

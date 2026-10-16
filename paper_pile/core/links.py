@@ -151,16 +151,6 @@ def new_note_path(note: str, source: str) -> str | None:
     return name if "/" in note.strip() else posixpath.join(_folder(source), name)
 
 
-def link_snippet(text: str, line: int, width: int = 140) -> str:
-    """The one line of a note that holds a link, tidied for a list: list/quote/heading markers
-    dropped, whitespace collapsed, cut to ``width`` characters."""
-    lines = text.splitlines()
-    raw = lines[line - 1] if 1 <= line <= len(lines) else ""
-    raw = re.sub(r"^\s*(?:>\s*)*(?:[-*+]\s+(?:\[[ xX]\]\s+)?|\d+[.)]\s+|#{1,6}\s+)?", "", raw)
-    clean = " ".join(raw.split())
-    return clean if len(clean) <= width else clean[: width - 1].rstrip() + "…"
-
-
 def wikilink_forms(target: str, *, ext: bool = False) -> list[str]:
     """Ways to write a wikilink to ``target``, shortest first: the bare name, then more and more
     of its folder path, and last the exact vault path (``/folder/name``). ``ext`` keeps the file

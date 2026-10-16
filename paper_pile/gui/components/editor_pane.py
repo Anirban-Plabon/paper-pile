@@ -45,7 +45,6 @@ from paper_pile.core.index import Index
 from paper_pile.core.links import (
     external_url,
     link_keys,
-    link_snippet,
     new_note_path,
     resolve_md_link,
     resolve_wikilink,
@@ -55,6 +54,7 @@ from paper_pile.core.parser import find_heading
 from paper_pile.core.picker import search_notes
 from paper_pile.core.recovery import RecoveryEntry, RecoveryStore
 from paper_pile.core.rewrite import Edit, plan_rewrites
+from paper_pile.core.snippets import Snippet, link_snippet
 from paper_pile.core.tables import apply_op, table_extent
 from paper_pile.core.tabs import TabList
 from paper_pile.core.templates import render_template
@@ -645,9 +645,10 @@ class EditorPane:
         items = []
         for link in self.index.backlinks(path)[:100]:
             try:
-                snippet = link_snippet(self.vault.read_text(link.src), link.line)
+                text = self.vault.read_text(link.src)
+                snippet = link_snippet(text, link.line, link.kind, link.raw)
             except VaultError:
-                snippet = ""
+                snippet = Snippet("", "", "")
             items.append(BacklinkItem(link.src, link.title, link.line, snippet))
         self._backlinks.set_items(items)
 
