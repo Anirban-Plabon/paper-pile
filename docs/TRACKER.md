@@ -339,6 +339,7 @@ Legend: 🧠 = needs Opus (see PLAN §6 model guidance) · ⬜ todo · 🔄 in p
 <!-- YYYY-MM-DD · task · symptom → root cause → fix · (gotcha added? y/n) -->
 | Date | Task | Symptom | Root cause | Fix | Gotcha? |
 |---|---|---|---|---|---|
+| 2026-10-22 | P14.15 | Settings (full view) flickered: rows jumped between control-beside-text and control-below, endlessly; terminal full of "ResizeObserver loop completed with undelivered notifications" (user's screen recording) | P14.15 changed a stacked field's `min-width: 200px` to `min(200px, 100%)`: the % depends on the row's own layout, so once stacked the field could fit back beside the text, unstack, no longer fit, stack… (60 flips/s at some widths) | `min-width: 200px` back; very narrow panes (`@container ppmain (max-width: 330px)`) put every control on its own line, decided by the pane width only; real-app check measures flips at 52 widths on two pages (fails on the old CSS) | n (existing gotcha) |
 | 2026-10-22 | P14.15 | In a very narrow Settings pane the vault row's Change… stuck out past the pane's left edge instead of showing only its icon | the control is right-aligned (`justify-content: flex-end`): what does not fit overflows to the LEFT, which `scrollWidth` does not count, so tabs.js never saw it as squeezed | `justify-content: safe flex-end` (overflow goes right, where it is measured) | y |
 | 2026-10-22 | P14.13 | Settings → Vault → Change… did nothing; `RuntimeError: The current slot cannot be determined` | the button ran `open_vault` through `background_tasks.create`, a task with no slot, and the picker builds a dialog | pass the async method as `on_click` (NiceGUI awaits it in the button's slot) | y |
 | 2026-10-22 | P14.11 | Page view with line numbers scrolled sideways | the page's width was `min(page, 100% - 56px)` of the scroller, and the gutter takes room beside it | the page may shrink (`flex: 0 1 auto; min-width: 0`) | n |
@@ -533,3 +534,4 @@ Legend: 🧠 = needs Opus (see PLAN §6 model guidance) · ⬜ todo · 🔄 in p
 - 2026-10-22 · P14.7 slash menu on right-click (Cut/Copy/Paste) and on a lone `/` · 17 real-app checks
 - 2026-10-22 · P14.8–P14.13 outline on rail, many tabs, split backlinks, line numbers, draggable page breaks, settings order · 6 core tests; 34 real-app checks
 - 2026-10-22 · P14.14 page view: break lines hidden, drag limits + auto-scroll + page-count message; P14.15 vault row adapts · 21 real-app checks
+- 2026-10-22 · fix: Settings rows flip-flopping (flicker) after P14.15 · flip check at 52 widths × 2 pages
