@@ -63,6 +63,7 @@ from paper_pile.core.links import (
     resolve_wikilink,
     wikilink_to,
 )
+from paper_pile.core.page_move import move_page_break
 from paper_pile.core.parser import find_heading
 from paper_pile.core.paste import smart_paste
 from paper_pile.core.picker import search_notes
@@ -249,9 +250,7 @@ class EditorPane:
                 self._side.set_visibility(False)
                 self._editor = self._editors[0]
                 self._editor.set_visibility(False)
-            self._backlinks = BacklinksPane(
-                lambda path, line: self._spawn(self.open_link(path, line=line))
-            )
+            self._backlinks = BacklinksPane(self._open_backlink)
             self._backlinks.build()
         self._host = ui.element("div").classes("pp-host")  # dialogs + toasts; takes no space
         self.bus.subscribe("tree.open", lambda path: self._spawn(self.open(path)))
@@ -289,6 +288,7 @@ class EditorPane:
             on_caret=lambda e: self._on_caret(e.args),
             on_print_layout=lambda e: self._on_print_layout(e.args, slot),
             on_page_break=lambda e: self._spawn(self._on_page_break(e.args)),
+            on_page_break_move=lambda e: self._spawn(self._on_page_break_move(e.args)),
         )
 
     # ---- split view ----------------------------------------------------------------------
@@ -854,6 +854,22 @@ class EditorPane:
         if edit is not None:
             await self._apply_edit(tab_id, text, edit)
 
+    async def _on_page_break_move(self, args: dict[str, Any]) -> None:
+        """A page break (or a page line of page view) dragged to another line (``pagedrag.js``):
+        ``line`` is the break's line (0: a page line with no break, a new break is added),
+        ``target`` the line the page now starts at."""
+        tab_id = self.tabs.active
+        path = self._active_path()
+        if tab_id is None or path is None or args.get("docId") != tab_id or is_plain_text(path):
+            return
+        text = await self._live_text(tab_id)
+        if text is None:
+            return
+        line = int(args.get("line") or 0)
+        new = move_page_break(text, line or None, int(args["target"]))
+        if new is not None:
+            await self._apply_edit(tab_id, text, whole_text_edit(text, new), move_caret=False)
+
     # ---- the note picker (link to note, embed note, templates) ---------------------------
 
     def _open_picker(self, action: OpenPicker, source: str) -> None:
@@ -1337,11 +1353,25 @@ class EditorPane:
         self.refresh_backlinks()
 
     def refresh_backlinks(self) -> None:
-        """List the notes linking to the active note."""
-        path = self._active_path()
-        if self.index is None or path is None:
-            self._backlinks.set_items([])
+        """List the notes linking to the active note (while split: to each side's note)."""
+        if not self._split_open:
+            self._backlinks.set_items(self._backlink_items(self._active_path()))
             return
+        left, right = (self._tab_path(tab_id) for tab_id in self._shown)
+        self._backlinks.set_items(self._backlink_items(left), self._backlink_items(right))
+
+    def _open_backlink(self, path: str, line: int, side: int) -> None:
+        """A backlink clicked: open it on the side whose list it is in."""
+        self._focused(side)
+        self._spawn(self.open_link(path, line=line))
+
+    def _tab_path(self, tab_id: int | None) -> str | None:
+        buf = self.buffers.get(tab_id) if tab_id is not None else None
+        return buf.path if buf is not None else None
+
+    def _backlink_items(self, path: str | None) -> list[BacklinkItem]:
+        if self.index is None or path is None:
+            return []
         items = []
         for link in self.index.backlinks(path)[:100]:
             try:
@@ -1350,7 +1380,7 @@ class EditorPane:
             except VaultError:
                 snippet = Snippet("", "", "")
             items.append(BacklinkItem(link.src, link.title, link.line, snippet))
-        self._backlinks.set_items(items)
+        return items
 
     def refresh_links(self) -> None:
         """Tell the editor which notes exist, so links to missing ones are styled."""
@@ -1420,6 +1450,7 @@ class EditorPane:
         unsaved = self._unsaved()
         if self._structure_changed():
             self._tabbar.render(unsaved, self._split_tabs())
+            self.refresh_backlinks()  # split opened / closed, or a side shows another note
         else:
             self._tabbar.set_unsaved(unsaved)
         self._show_state()

@@ -251,10 +251,22 @@ body.pp-native.pp-right-open .pp-rtabbar { padding-right: 112px; }
 .pp-page-break-raw { color: var(--pp-muted); }
 /* Page view (pageview.js): the text column is the paper's text width (+ CodeMirror's 8 px of line
    padding), and a "Page N" line marks where each page of the PDF begins */
-.pp-editor .cm-editor.pp-page-view .cm-content { box-sizing: content-box; flex: 0 0 auto; width: min(calc(var(--pp-page-text) + 8px), calc(100% - 56px)); margin: 0 auto; }
-.pp-page-line { display: flex; align-items: center; gap: 8px; padding: 3px 0; color: var(--pp-muted); font-family: system-ui, sans-serif; font-size: 11px; line-height: 16px; user-select: none; pointer-events: none; }
+/* page view: the page shrinks beside the line numbers (the note never scrolls sideways) */
+.pp-editor .cm-editor.pp-page-view .cm-content { box-sizing: content-box; flex: 0 1 auto; min-width: 0; width: min(calc(var(--pp-page-text) + 8px), calc(100% - 56px)); margin: 0 auto; }
+.pp-page-line { display: flex; align-items: center; gap: 8px; padding: 3px 0; color: var(--pp-muted); font-family: system-ui, sans-serif; font-size: 11px; line-height: 16px; user-select: none; cursor: row-resize; }
 .pp-page-line::before { content: ""; flex: 1; border-top: 1px dashed rgba(var(--pp-accent-rgb), .55); }
 .pp-page-line-label { flex: none; padding: 0 6px; border-radius: 999px; background: rgba(var(--pp-accent-rgb), .12); color: rgb(var(--pp-accent-rgb)); }
+/* dragging a page break / page line (pagedrag.js): where the page would start */
+.pp-page-break-line { cursor: row-resize; }
+.pp-page-line:hover .pp-page-line-label, .pp-page-break-line:hover .pp-page-break-label { background: rgba(var(--pp-accent-rgb), .22); }
+.pp-page-drag-source { opacity: .35; }
+body.pp-page-dragging, body.pp-page-dragging * { cursor: row-resize !important; user-select: none; }
+.pp-page-drag-mark { position: fixed; height: 0; border-top: 2px dashed rgb(var(--pp-accent-rgb)); pointer-events: none; z-index: 3000; }
+.pp-page-drag-mark > span { position: absolute; right: 0; top: -10px; padding: 0 6px; border-radius: 999px; font: 11px/16px system-ui, sans-serif; background: rgb(var(--pp-accent-rgb)); color: #fff; }
+/* line numbers (Settings → Editor) */
+.pp-editor .cm-gutters { background: transparent; border-right: none; color: var(--pp-muted); }
+.pp-editor .cm-lineNumbers .cm-gutterElement { padding: 0 2px 0 12px; font-size: .8em; opacity: .7; font-variant-numeric: tabular-nums; }
+.pp-editor .cm-editor.pp-real-pages .cm-gutters { background: transparent; }
 /* Real pages (pageview.js): the text column is a sheet (paper margins as padding) on a desk; the
    widgets at page starts draw sheet ends, the desk between sheets and sheet tops. The desk band
    reaches past the sheet's padding and shadow (horizontal margins only: CodeMirror does not measure
@@ -279,7 +291,8 @@ body.pp-native.pp-right-open .pp-rtabbar { padding-right: 112px; }
 .pp-tabstrip { width: 100%; height: var(--pp-tab-h); flex-shrink: 0; gap: 0; padding: 0 4px; background: var(--pp-bg-side); border-bottom: 1px solid var(--pp-border); }
 .pp-tabbar { flex: 1 1 0; min-width: 0; height: 100%; gap: 0; overflow-x: auto; overflow-y: hidden; }
 .pp-rtabbar { width: 100%; height: var(--pp-tab-h); flex-shrink: 0; gap: 0; overflow-x: auto; overflow-y: hidden; background: var(--pp-bg-side); border-bottom: 1px solid var(--pp-border); }
-.pp-tabbar::-webkit-scrollbar { height: 4px; }
+.pp-tabbar { scrollbar-width: none; }
+.pp-tabbar::-webkit-scrollbar { display: none; height: 0; }
 .pp-rtabbar::-webkit-scrollbar { height: 4px; }
 .pp-tab { display: flex; align-items: center; gap: 6px; flex-shrink: 0; max-width: 220px; padding: 0 8px 0 12px; border-right: 1px solid var(--pp-border); cursor: pointer; user-select: none; color: var(--pp-muted); font-size: 13px; position: relative; }
 .pp-rtab { display: flex; align-items: center; gap: 6px; flex-shrink: 0; max-width: 220px; padding: 0 8px 0 12px; border-right: 1px solid var(--pp-border); cursor: pointer; user-select: none; color: var(--pp-muted); font-size: 13px; position: relative; }
@@ -317,6 +330,24 @@ body.pp-native.pp-right-open .pp-rtabbar { padding-right: 112px; }
 .pp-tab-dirty ~ .pp-tab-close { margin-left: -2px; }
 .pp-tab-drop-before { box-shadow: inset 3px 0 0 var(--pp-accent); }
 .pp-tab-drop-after { box-shadow: inset -3px 0 0 var(--pp-accent); }
+/* many tabs: they shrink to a minimum, then the row scrolls (wheel, ‹ › arrows, static/tabs.js),
+   fades at a cut-off edge, and the list button shows every open tab */
+.pp-tabstrip { position: relative; }
+.pp-tabstrip .pp-tab { flex: 0 1 auto; min-width: 96px; }
+.pp-tabstrip .pp-tab-title { min-width: 0; }
+.pp-tabbar.pp-cut-right { -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 44px), transparent); mask-image: linear-gradient(to right, #000 calc(100% - 44px), transparent); }
+.pp-tabbar.pp-cut-left { -webkit-mask-image: linear-gradient(to left, #000 calc(100% - 44px), transparent); mask-image: linear-gradient(to left, #000 calc(100% - 44px), transparent); }
+.pp-tabbar.pp-cut-left.pp-cut-right { -webkit-mask-image: linear-gradient(to right, transparent, #000 44px, #000 calc(100% - 44px), transparent); mask-image: linear-gradient(to right, transparent, #000 44px, #000 calc(100% - 44px), transparent); }
+.pp-tabs-arrow { position: absolute; top: 0; height: 100%; width: 22px; display: none; align-items: center; justify-content: center; cursor: pointer; color: var(--pp-muted); z-index: 2; border-radius: var(--pp-r-ctrl); }
+.pp-tabs-arrow.pp-on { display: flex; }
+.pp-tabs-arrow:hover { color: var(--pp-fg); background: rgba(127, 127, 127, .14); }
+.pp-tabs-arrow svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.pp-tabs-list { display: none !important; flex: none; gap: 2px; padding: 0 6px !important; width: auto !important; }
+.pp-tabs-overflow .pp-tabs-list { display: inline-flex !important; }
+.pp-tabs-list .q-btn__content { gap: 2px; flex-wrap: nowrap; }
+.pp-tabs-list-count { font-size: 11px; font-weight: 600; color: var(--pp-muted); }
+.pp-tabs-list-menu { max-height: 60vh; }
+.pp-tabs-list-menu .pp-tabs-list-on .pp-note-menu-label { font-weight: 600; color: var(--pp-accent); }
 .pp-editor-area { flex: 1 1 0; min-height: 0; width: 100%; position: relative; }
 .pp-recovery { min-width: 460px; }
 .pp-recovery-row { gap: 8px; }
@@ -599,7 +630,8 @@ body.pp-native.pp-right-open .pp-rtabbar { padding-right: 112px; }
 .pp-seg-icon { font-size: var(--pp-icon-m); color: inherit; }
 .pp-set-group { width: 100%; margin-top: 12px; padding: 16px 0 2px; border-top: 1px solid var(--pp-border); font-size: 13px; font-weight: 600; color: var(--pp-fg); }
 .pp-set-group:first-child { margin-top: 0; padding-top: 6px; border-top: none; }
-.pp-set-info { margin-left: auto; max-width: 260px; font-size: 13px; color: var(--pp-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pp-set-info { margin-left: auto; max-width: 260px; min-width: 0; font-size: 13px; color: var(--pp-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pp-set-vault-change { flex: none; margin-left: 8px; color: var(--pp-accent); }
 /* Settings → AI → Memories: filter, one line per saved chat, bulk deletes */
 .pp-mem { width: 100%; gap: 8px; padding: 12px 0 4px; flex-wrap: nowrap; }
 .pp-mem-filters { width: 100%; gap: 8px; flex-wrap: wrap; }
@@ -821,7 +853,13 @@ body.body--dark .pp-instr-box textarea { color-scheme: dark; }  /* the corner gr
 .pp-footer .pp-backlinks-head:hover { background: rgba(127, 127, 127, .12); }
 .pp-footer-status { display: flex; align-items: center; height: 100%; font-size: 12px; }
 .pp-backlinks { border-top: none !important; }
-.pp-backlinks-body:not(:empty) { border-top: 1px solid var(--pp-border); padding-top: 4px; }
+.pp-backlinks-lists { width: 100%; gap: 0; border-top: 1px solid var(--pp-border); padding-top: 4px; }
+.pp-backlinks-lists > .pp-backlinks-body { flex: 1 1 0; min-width: 0; }
+/* split: each side's toggle and list start where its editor starts (the divider) */
+.pp-backlinks-split .pp-backlinks-lists > .pp-backlinks-body:first-child { flex: 0 0 var(--pp-split-left, 50%); }
+.pp-backlinks-split .pp-backlinks-lists > .pp-backlinks-body + .pp-backlinks-body { border-left: 1px solid var(--pp-border); }
+.pp-backlinks-side { gap: 0; flex: none; min-width: 0; }
+.pp-backlinks-split .pp-footer > .pp-backlinks-side:first-child { flex: 0 0 calc(var(--pp-split-left, 50%) - 16px); }
 .pp-host { position: absolute; width: 0; height: 0; overflow: visible; }
 .pp-footer-status { min-width: 0; overflow: hidden; }
 .pp-footer-status .pp-statusbar { min-width: 0; white-space: nowrap; }

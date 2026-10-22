@@ -42,6 +42,7 @@ def theme_payload(config: Config | None) -> dict[str, Any]:
 EDITOR_OPTION_KEYS = frozenset(
     {
         "editor.word_wrap",
+        "editor.line_numbers",
         "editor.tab_size",
         "editor.spell_check",
         "general.language",
@@ -52,10 +53,11 @@ EDITOR_OPTION_KEYS = frozenset(
 
 
 def editor_options(config: Config | None) -> dict[str, Any]:
-    """Word wrap, tab size, spell check and page view (PLAN §4.17) for the editor."""
+    """Word wrap, line numbers, tab size, spell check and page view (PLAN §4.17) for the editor."""
     v = sanitized(config.values if config is not None else {})
     return {
         "wordWrap": v["editor.word_wrap"],
+        "lineNumbers": v["editor.line_numbers"],
         "tabSize": v["editor.tab_size"],
         "spellCheck": v["editor.spell_check"],
         "lang": v["general.language"],

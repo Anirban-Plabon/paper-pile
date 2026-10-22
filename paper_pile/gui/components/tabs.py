@@ -8,6 +8,10 @@ last save failed).
 In split view the tab of the note on the right side sits in a second group that starts at the
 split divider (``static/split.js`` keeps ``--pp-split-left`` on the editor column); each side's
 note is marked, the side being typed in more strongly.
+
+Many tabs: they shrink (down to a minimum width, names cut short) before they overflow; then
+the row scrolls (mouse wheel, or the ‹ › arrows ``static/tabs.js`` shows at a cut-off edge) and
+the list button before the note buttons lists every open tab.
 """
 
 import inspect
@@ -19,6 +23,7 @@ from nicegui import background_tasks, ui
 
 from paper_pile.core.tabs import TabList
 from paper_pile.gui.icons import icon_button, line_icon
+from paper_pile.gui.tips import tip
 
 
 @dataclass(frozen=True, slots=True)
@@ -65,6 +70,8 @@ class TabBar:
         self.menu_host: ui.element
         self._bar: ui.element
         self._dots: dict[int, ui.label] = {}
+        self._list_menu: ui.menu
+        self._list_count: ui.label
 
     def build(self) -> None:
         with ui.row().classes("pp-tabstrip pp-dragzone no-wrap items-center") as self._strip:
@@ -72,6 +79,16 @@ class TabBar:
             self._right = ui.row().classes("pp-tabbar pp-tabbar-right pp-dragzone no-wrap")
             self._right.classes("items-stretch")
             self._right.set_visibility(False)
+            with (
+                ui.button(color=None)
+                .props("flat dense no-caps")
+                .classes("pp-icon-btn pp-tabs-list") as list_button
+            ):
+                line_icon("chevrons-down", "s")
+                self._list_count = ui.label("").classes("pp-tabs-list-count")
+                self._list_menu = ui.menu().classes("pp-note-menu pp-tabs-list-menu")
+                self._list_menu.props("anchor='bottom right' self='top right'")
+            tip(list_button, "All open tabs")
             self.menu_host = ui.element("div").classes("pp-tab-more")  # the ⋯ note menu
             self.toggles["right"] = icon_button(
                 "panel-right-close", lambda: self._on_toggle_pane("right"), "Hide AI chat (Ctrl+L)"
@@ -97,6 +114,7 @@ class TabBar:
             path = next(t.path for t in self._tabs.tabs if t.id == right)
             with self._right:
                 self._chip(right, path, 1, split)
+        self._fill_list(split)
         self.set_unsaved(unsaved)
         self._bar.client.run_javascript(  # explicit client: we are often outside a page context
             "document.querySelector('.pp-tab-active')"
@@ -139,6 +157,26 @@ class TabBar:
                         ):
                             line_icon(icon).classes("pp-note-menu-icon")
                             ui.label(label).classes("pp-note-menu-label")
+
+    def _fill_list(self, split: SplitTabs | None) -> None:
+        """The list button's menu: every open tab, the one(s) on screen marked."""
+        tabs = self._tabs.tabs
+        titles = self._tabs.titles()
+        shown = {self._tabs.active} if split is None else {split.left, split.right}
+        self._list_count.set_text(str(len(tabs)))
+        self._list_menu.clear()
+        with self._list_menu:
+            for tab in tabs:
+                name, hint = titles[tab.id]
+                item = ui.menu_item(on_click=lambda _e=None, i=tab.id: self._on_activate(i))
+                item.classes("pp-note-menu-item")
+                if tab.id in shown:
+                    item.classes("pp-tabs-list-on")
+                with item:
+                    line_icon("file-text").classes("pp-note-menu-icon")
+                    ui.label(name).classes("pp-note-menu-label")
+                    if hint is not None:
+                        ui.label(hint).classes("pp-tab-hint")
 
     def set_unsaved(self, unsaved: dict[int, bool]) -> None:
         """Show or hide each tab's dirty dot without rebuilding the bar."""

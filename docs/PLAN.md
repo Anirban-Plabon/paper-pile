@@ -483,6 +483,14 @@ Output: the page boxes (printed as is) and the list of `{line, page}` starts (se
 
 **Note buttons beside ⋯ (2026-10-22, user request):** a split toggle (`columns-2` / close split) and, while AI is on, an AI button (`sparkles`) with Ask about this note, Summarize, Rewrite, Write….
 
+**More of the same day (2026-10-22, user request):**
+- *Outline on the folded rail:* while the file tree is folded away, an Outline button (`list-tree`) sits right above the Open vault button; it unfolds the tree with the Outline section open.
+- *Many tabs:* tabs shrink (to 96 px, names cut with …) before they overflow; then the row scrolls with the mouse wheel and with ‹ › arrows on a cut-off edge (which also fades), and a list button (`chevrons-down` + the tab count) before the note buttons lists every open tab (the one(s) on screen marked; a click shows it). User's choice: shrink + scroll + list, with arrows.
+- *Backlinks while split:* the footer has one Backlinks toggle per side, the right one at the split divider; the lists open together, side by side, each for its own side's note; a click opens the link on that side.
+- *Line numbers:* Settings → Editor → *Show line numbers* (`editor.line_numbers`, default off, essential). In page view the page shrinks beside them.
+- *Dragging page breaks:* hold the left mouse button on a page break line (or a *Page N* line of page view) and drop it on another line: the page now starts there. A break moves (keeping how it was written, with its empty lines; the one it leaves is dropped); a *Page N* line the layout drew (no break above it) adds a break and only goes up (lower down the text would not fit). A press without moving is a click (the caret goes to the break). The editor draws the drag and sends the drop (`page_break_move`); `core/page_move.py` makes the text, refusing places where a break would not count (code, lists…). One Ctrl+Z undoes it.
+- *Settings → General:* Version and Vault come first (before Features); the Vault row has *Change…* (the Open vault picker).
+
 **File tree keyboard:** the tree takes focus on click. ↑/↓ move, Shift+↑/↓ extend the selection, ←/→ fold / unfold a folder (← on a note goes to its folder), Enter opens, F2 renames, Delete moves the selection to the trash (one confirm), Ctrl+A selects every shown row, Esc clears.
 
 **Trash** (palette, the vault context menu of the tree — right-click blank tree space): a popup listing what is in `.trash/` (newest first: name, original folder, when; a filter box). *Restore* puts it back at its old path (a free name like `Note (restored).md` if that is taken, its image links re-pointed) with its images; nothing is ever deleted for good from the app. `Vault.delete` now writes `.trash/<stamp>/.trash.json` (`{path, dir}`), because `.trash/<stamp>/a/b.md` alone cannot tell a deleted note `a/b.md` from a deleted folder `a`; older stamp folders (and conflict copies) list each note on its own (`core/trash.py`).
@@ -627,6 +635,12 @@ P9.1–P9.3 and P9.5–P9.6 are built in this phase (order: P14.1, P9.1, P9.2, P
 | P14.5 | Outline in the Files pane | section under the tree, collapsible + resizable, state remembered; Ctrl+Shift+O; right-pane tab gone (real app) |
 | P14.6 | Tab menu + note buttons (split, AI) | every item works on the right-clicked tab; buttons follow split state and the AI switch (real app) |
 | P14.7 | Slash menu on right-click and on a lone `/` | right-click opens it at the click, inserted `/` removed on close, Cut/Copy/Paste; caret after a lone `/` opens it, not after `and/or`; qa_editor passes |
+| P14.8 | Outline button on the folded rail | above Open vault; opens tree + outline (real app) |
+| P14.9 | Many tabs: shrink + scroll + list | no tab under the note buttons; wheel / ‹ › scroll; list activates a tab (real app) |
+| P14.10 | Backlinks per split side | two toggles (right one at the divider), side-by-side lists, own note each (real app) |
+| P14.11 | Line numbers setting | on/off live; no sideways scroll in page view (real app) |
+| P14.12 | Drag page breaks / page lines | move a break, add one from a page line (up only), click still reveals; core tests; qa_editor passes |
+| P14.13 | Settings: Version + Vault first, Change… | order and button work (real app) |
 
 ### P10 — Note menu (⋯) (user request 2026-10-17)
 | ID | Task | Acceptance |

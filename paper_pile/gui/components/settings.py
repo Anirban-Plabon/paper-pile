@@ -106,12 +106,14 @@ class SettingsPane:
         native: bool = False,
         gallery: Callable[[], None] | None = None,
         on_cleared: Callable[[str], None] = lambda key: None,
+        open_vault: Callable[[], Any] | None = None,
     ) -> None:
         self.config = config
         self._on_applied = on_applied
         self._models = models
         self._close = on_close
         self._vault_root = vault_root
+        self._open_vault = open_vault  # the Vault row's Change… button
         self._folders = folders
         self._notes = notes
         self._memories = memories
@@ -250,6 +252,8 @@ class SettingsPane:
             group = None
             box: ui.element = self._content
             listed = [s for s in SECTIONS[self.page] if is_shown(self.page, s, values)]
+            if self.page == "General":
+                self._about()  # the version and the vault come first
             for setting in self._drawable(listed):
                 if setting.group != group:
                     self._after_group(group)
@@ -277,12 +281,6 @@ class SettingsPane:
         return out
 
     def _after_group(self, group: str | None) -> None:
-        if self.page == "General" and group == "Features":  # the switches come first
-            self._group("Version")
-            self._info("paper-pile", f"Version {__version__}")
-            if self._vault_root is not None:
-                self._group("Vault")
-                self._info(self._vault_root.name or "Vault", str(self._vault_root))
         if self._minimal():
             return  # the hand-made panels are for the full settings
         if self.page == "AI" and group == "Memories" and self._memories is not None:
@@ -303,12 +301,25 @@ class SettingsPane:
     def _group(self, title: str) -> None:
         ui.label(title).classes("pp-set-group")
 
-    def _info(self, label: str, value: str) -> None:
+    def _about(self) -> None:
+        """General's first groups: the version, and the vault (with Change… to open another)."""
+        self._group("Version")
+        self._info("paper-pile", f"Version {__version__}")
+        if self._vault_root is not None:
+            self._group("Vault")
+            row = self._info(self._vault_root.name or "Vault", str(self._vault_root))
+            if self._open_vault is not None:
+                with row:
+                    change = ui.button("Change…", on_click=self._open_vault)
+                    change.props("flat dense no-caps").classes("pp-set-vault-change")
+
+    def _info(self, label: str, value: str) -> ui.row:
         """A read-only row (the version, where the vault is)."""
-        with ui.row().classes("pp-set-row items-center"):
+        with ui.row().classes("pp-set-row items-center no-wrap") as row:
             with ui.column().classes("pp-set-text"):
                 ui.label(label).classes("pp-set-label")
             tip(ui.label(value).classes("pp-set-info"), value)  # the path may be cut off
+        return row
 
     # ---- one row ---------------------------------------------------------------------------
 

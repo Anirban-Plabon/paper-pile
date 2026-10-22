@@ -31,6 +31,7 @@ DEFAULTS: dict[str, Any] = {
         "font_size": 14,
         "line_height": 1.6,
         "word_wrap": True,
+        "line_numbers": False,
         "tab_size": 4,
         "spell_check": False,
         "default_mode": "live",

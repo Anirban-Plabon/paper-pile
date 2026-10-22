@@ -7,8 +7,8 @@ Legend: 🧠 = needs Opus (see PLAN §6 model guidance) · ⬜ todo · 🔄 in p
 
 ## Current focus
 - **Phase:** P14 — Features, navigation & safety (user request 2026-10-22; includes P9.1–P9.3, P9.5, P9.6)
-- **Task:** P14 built (P14.1–P14.4, P9.1–P9.3, P9.5); P9.6 README done, its manual QA items wait for the user; P10.5 / P12.4 native Save dialog checks still manual
-- **Now:** P14 done (switches, switcher + palette, vault search, outline, tree keys, trash, version history)
+- **Task:** P14 built (P14.1–P14.13, P9.1–P9.3, P9.5); P9.6 README done, its manual QA items wait for the user; P10.5 / P12.4 native Save dialog checks still manual
+- **Now:** P14 done (switches, switcher + palette, vault search, outline, tree keys, trash, version history; tab overflow, split backlinks, line numbers, draggable page breaks)
 - **Next up:** the user's manual QA pass (PLAN §6 checklist); then the user's AI-with-notes plan; then the Tauri v2 spike
 
 ## Open issues
@@ -166,6 +166,12 @@ Legend: 🧠 = needs Opus (see PLAN §6 model guidance) · ⬜ todo · 🔄 in p
 | P14.4 🧠 | Version history (diff chain) | ✅ | `core/history.py` (`History`: reverse line diffs + keyframe every 25, SHA-256 per version, `kept_versions` thinning, 50 MB cap, `renamed`; `Sessions`), `command_actions.whole_text_edit`, `EditorPane.keep_version` at session start / AI / tidy / merge / outside reload / restore, `HistoryDialog`; 17 tests; 11 real-app checks (edit + tidy → versions, Changes/Text views, Restore → editor, saved, Ctrl+Z undoes it, rename → history follows; whole history of the run < 2 KB) |
 | P14.5 | Outline in the Files pane | ✅ | `OutlinePane.build(is_open, height)` / `set_open`, `.pp-vsplit` handle (`panes.js` → `pp_vsplit`, tree keeps ≥ 120 px), `SessionState.outline_open` / `outline_height`; right-pane tab removed; 11 real-app checks incl. a real drag of the handle and Ctrl+Shift+O with the tree folded |
 | P14.6 | Tab menu + note buttons (split, AI) | ✅ | `TabBar(menu=)` + `TabMenuItem`, `EditorPane._tab_menu` / `_note_buttons` / `_update_note_buttons`, `note_actions(pane, note=)` bound to the tab's note, bus `note.rename` (tree) / `note.reveal` (layout); Add to chat also focuses the chat box; 15 real-app checks (every menu item, split button both ways, AI menu, Close others, AI off) |
+| P14.8 | Outline button on the folded rail | ✅ | `list-tree` button above Open vault in `_ribbon_bottom` → `toggle_outline`; 2 real-app checks |
+| P14.9 | Many tabs: shrink + scroll + list | ✅ | tabs `flex: 0 1 auto; min-width: 96px`; `tabs.js` wheel + ‹ › arrows + `pp-tabs-overflow` + edge fade; `TabBar._fill_list` (list button menu); 12 real-app checks with 18 tabs |
+| P14.10 | Backlinks per split side | ✅ | `BacklinksPane.set_items(items, right)` (two `_Side`s, lists side by side, `--pp-split-left`), `EditorPane._backlink_items` / `_open_backlink`; refreshed on every tab-structure change; 5 real-app checks |
+| P14.11 | Line numbers setting | ✅ | `editor.line_numbers` (essential, default off) → editor option `lineNumbers` (CM `lineNumbers()`); page view's page shrinks beside the gutter; 3 real-app checks |
+| P14.12 | Drag page breaks / page lines | ✅ | `core/page_move.py` `move_page_break` (6 tests), `pagedrag.js` (draws the drag, sends `page_break_move`), `EditorPane._on_page_break_move`; 9 real-app checks with real mouse drags (move down, Ctrl+Z, click reveals, page line down = nothing, up = new break) |
+| P14.13 | Settings: Version + Vault first, Change… | ✅ | `SettingsPane._about` before the first group, `open_vault` param; 2 real-app checks |
 | P14.7 | Slash menu on right-click and on a lone `/` | ✅ | `slash.js`: `loneSlashBefore`, temporary `/` (`openTemp` / `dropTemp`, kept out of undo history, `tempCleanup`), `clipboardRow` (Cut / Copy / Paste, buttons act on click), right-click handler; native window: the app's own page may read the clipboard (`native_boot._fix_permission_requests`, everything else still denied); editor tooltips kept inside the editor's box sideways (the pane clipped a menu opened near its right edge); 17 real-app checks with real right-clicks / clicks / keys |
 
 ## Decision log
@@ -324,11 +330,14 @@ Legend: 🧠 = needs Opus (see PLAN §6 model guidance) · ⬜ todo · 🔄 in p
 | 2026-10-22 | Trash entries get a `.trash.json` description (`{path, dir}`), written by `Vault.delete` | `.trash/<stamp>/a/b.md` cannot tell a deleted note from a deleted folder; older entries still list (note by note) | claude |
 | 2026-10-22 | Outline uses the existing `parser.headings` (no `core/outline.py`); the quick switcher uses `core.picker` (no `core/fuzzy.py`) | Both already existed and were tested | claude |
 | 2026-10-22 | Outline moves to a section under the file tree (user picked option 1, icon kept); slash menu also on right-click (with Cut/Copy/Paste, since the native window has no context menu) and on a caret after a lone `/`; tab right-click menu with split/rename/move/merge/history/copy/reveal/close; split + AI buttons beside ⋯ (AI button = menu: ask, summarize, rewrite, write — my reading of "ai button") | User request | user |
+| 2026-10-22 | Six more (user request): Outline button on the folded rail above Open vault; many tabs → shrink + scroll (wheel, ‹ › arrows) + a list of all tabs (user's choice); backlinks split per side; line numbers (setting, off by default); page breaks and page view's page lines draggable with the mouse; Version + Vault first in General, with *Change…* on the Vault row. Moving a break is worked out in Python (`core/page_move.py`); the editor only draws the drag. A page line the layout drew only moves up (a break further down would not change where the page ends) | User request | user |
 
 ## Issues log
 <!-- YYYY-MM-DD · task · symptom → root cause → fix · (gotcha added? y/n) -->
 | Date | Task | Symptom | Root cause | Fix | Gotcha? |
 |---|---|---|---|---|---|
+| 2026-10-22 | P14.13 | Settings → Vault → Change… did nothing; `RuntimeError: The current slot cannot be determined` | the button ran `open_vault` through `background_tasks.create`, a task with no slot, and the picker builds a dialog | pass the async method as `on_click` (NiceGUI awaits it in the button's slot) | y |
+| 2026-10-22 | P14.11 | Page view with line numbers scrolled sideways | the page's width was `min(page, 100% - 56px)` of the scroller, and the gutter takes room beside it | the page may shrink (`flex: 0 1 auto; min-width: 0`) | n |
 | 2026-10-22 | P14.7 | The right-click menu's Copy button did nothing (menu closed, nothing copied) | the slash menu (320 px) ran past a narrow editor's right edge, which clips it: the button's visible half was elsewhere and the click hit the chat pane; also, acting on mousedown let the mouseup land in the text | editor `tooltipSpace` uses the editor's box sideways (CodeMirror shifts the menu to fit); menu buttons act on click | y |
 | 2026-10-22 | P9.3 | After clicking an outline heading the caret's section was not marked (and the status bar's Ln stayed old after any jump) | the editor reports the caret only while it has focus (`u.view.hasFocus`), and `gotoLine` moved the caret before `view.focus()` | focus first, then dispatch | n |
 | 2026-10-22 | P14.1 | Closing Settings (AI + Calendar off) did not fold the right pane; `RuntimeError: The parent element this slot belongs to has been deleted` | the close icon's click handler ran in the icon's slot; redrawing the tab strip deleted the icon, and folding then called `ui.query` in that dead slot | `_right_emptied` runs inside `with self._splitters["right"]:` | y |
@@ -518,3 +527,4 @@ Legend: 🧠 = needs Opus (see PLAN §6 model guidance) · ⬜ todo · 🔄 in p
 - 2026-10-22 · P14.5 outline moved under the file tree · 11 real-app checks
 - 2026-10-22 · P14.6 tab right-click menu, split + AI buttons beside ⋯ · 15 real-app checks
 - 2026-10-22 · P14.7 slash menu on right-click (Cut/Copy/Paste) and on a lone `/` · 17 real-app checks
+- 2026-10-22 · P14.8–P14.13 outline on rail, many tabs, split backlinks, line numbers, draggable page breaks, settings order · 6 core tests; 34 real-app checks

@@ -146,3 +146,67 @@
     });
   });
 })();
+
+// Too many tabs (paper_pile/gui/components/tabs.py): the mouse wheel scrolls a tab row sideways,
+// a ‹ / › arrow sits on an edge that hides tabs (a click scrolls most of a row's width), and the
+// strip gets `pp-tabs-overflow` (shows the list button) while any row is cut off.
+(function () {
+  const arrows = new WeakMap(); // tab row → [left, right]
+  function arrowsOf(bar) {
+    let pair = arrows.get(bar);
+    if (pair && pair[0].isConnected) return pair;
+    pair = ['left', 'right'].map(function (side) {
+      const a = document.createElement('div');
+      a.className = 'pp-tabs-arrow pp-tabs-arrow-' + side;
+      a.innerHTML = '<svg viewBox="0 0 24 24"><path d="' + (side === 'left' ? 'm15 18-6-6 6-6' : 'm9 18 6-6-6-6') + '"/></svg>';
+      a.addEventListener('mousedown', function (e) { e.preventDefault(); });
+      a.addEventListener('click', function () {
+        bar.scrollBy({ left: (side === 'left' ? -0.7 : 0.7) * bar.clientWidth, behavior: 'smooth' });
+      });
+      bar.parentElement.appendChild(a);
+      return a;
+    });
+    arrows.set(bar, pair);
+    return pair;
+  }
+  function update(bar) {
+    const strip = bar.closest('.pp-tabstrip');
+    if (!strip) return;
+    const pair = arrowsOf(bar);
+    const shown = bar.offsetParent !== null;
+    const left = shown && bar.scrollLeft > 1;
+    const right = shown && bar.scrollLeft + bar.clientWidth < bar.scrollWidth - 1;
+    const sRect = strip.getBoundingClientRect();
+    const bRect = bar.getBoundingClientRect();
+    pair[0].style.left = bRect.left - sRect.left + 'px';
+    pair[1].style.left = bRect.right - sRect.left - pair[1].offsetWidth + 'px';
+    pair[0].classList.toggle('pp-on', left);
+    pair[1].classList.toggle('pp-on', right);
+    bar.classList.toggle('pp-cut-left', left);
+    bar.classList.toggle('pp-cut-right', right);
+    let over = false;
+    strip.querySelectorAll('.pp-tabbar').forEach(function (b) {
+      if (b.offsetParent !== null && b.scrollWidth > b.clientWidth + 1) over = true;
+    });
+    strip.classList.toggle('pp-tabs-overflow', over);
+  }
+  const sizes = new ResizeObserver(function (entries) { entries.forEach(function (e) { update(e.target); }); });
+  const watched = new WeakSet();
+  function watch() {
+    document.querySelectorAll('.pp-tabstrip > .pp-tabbar').forEach(function (bar) {
+      if (!watched.has(bar)) {
+        watched.add(bar);
+        sizes.observe(bar);
+        bar.addEventListener('scroll', function () { update(bar); }, { passive: true });
+        bar.addEventListener('wheel', function (e) {
+          if (Math.abs(e.deltaX) >= Math.abs(e.deltaY) || bar.scrollWidth <= bar.clientWidth) return;
+          e.preventDefault();
+          bar.scrollLeft += e.deltaY;
+        }, { passive: false });
+      }
+      update(bar); // tabs added or removed
+    });
+  }
+  if (window.ppEachFrame) window.ppEachFrame(watch);
+  else document.addEventListener('DOMContentLoaded', watch);
+})();

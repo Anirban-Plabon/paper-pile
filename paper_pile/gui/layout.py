@@ -119,6 +119,7 @@ class MainLayout:
             models=self._known_models,
             on_close=self._close_settings,
             vault_root=self.vault,
+            open_vault=self.open_vault,
             folders=Vault(self.vault).folders,
             notes=lambda: sorted(Vault(self.vault).walk_notes(), key=str.lower),
             memories=MemoriesPanel(
@@ -409,7 +410,8 @@ class MainLayout:
                 open_vault=self.open_vault,
             )
             self.profile.build()
-        with self._ribbon_bottom:  # settings + avatar stay reachable while the tree is folded
+        with self._ribbon_bottom:  # outline, settings + avatar stay reachable while folded
+            icon_button("list-tree", self.toggle_outline, "Outline (Ctrl+Shift+O)")
             self.profile.build_mini()
 
     def _profile_changed(self) -> None:

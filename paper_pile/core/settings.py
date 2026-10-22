@@ -268,6 +268,13 @@ SECTIONS: dict[str, tuple[Setting, ...]] = {
             essential=True,
         ),
         Setting(
+            "editor.line_numbers",
+            "Show line numbers",
+            "bool",
+            help="Line numbers beside the text",
+            essential=True,
+        ),
+        Setting(
             "editor.tab_size",
             "Tab size",
             "choice",

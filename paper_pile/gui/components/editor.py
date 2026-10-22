@@ -3,9 +3,9 @@
 The browser owns the buffer. Python sets text or inserts at the cursor through explicit
 method calls (never reactive props, so a server push cannot clobber typing) and receives
 ``change`` / ``blur`` / ``save`` / ``slash_query`` / ``slash_run`` / ``table_op`` /
-``image_saved`` / ``paste`` / ``print_layout`` / ``page_break`` events. Events about the text
-carry the ``docId`` given to the last :meth:`set_text`, so a late event from an old note is
-detectable.
+``image_saved`` / ``paste`` / ``print_layout`` / ``page_break`` / ``page_break_move`` events.
+Events about the text carry the ``docId`` given to the last :meth:`set_text`, so a late
+event from an old note is detectable.
 """
 
 from collections.abc import Callable
@@ -53,6 +53,7 @@ class Editor(
         on_caret: Handler | None = None,
         on_print_layout: Handler | None = None,
         on_page_break: Handler | None = None,
+        on_page_break_move: Handler | None = None,
     ) -> None:
         super().__init__()
         self._props["initialText"] = text
@@ -73,6 +74,8 @@ class Editor(
             self.on("print_layout", on_print_layout)
         if on_page_break:
             self.on("page_break", on_page_break)
+        if on_page_break_move:
+            self.on("page_break_move", on_page_break_move)
         if on_blur:
             self.on("blur", on_blur)
         if on_save:

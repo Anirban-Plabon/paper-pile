@@ -5,7 +5,7 @@ import { markdown, markdownLanguage } from "@codemirror/lang-markdown";
 import { HighlightStyle, indentUnit, syntaxHighlighting, syntaxTree } from "@codemirror/language";
 import { SearchQuery, findNext, highlightSelectionMatches, openSearchPanel, searchKeymap, setSearchQuery } from "@codemirror/search";
 import { Annotation, Compartment, EditorSelection, EditorState, Transaction } from "@codemirror/state";
-import { EditorView, drawSelection, dropCursor, keymap, tooltips } from "@codemirror/view";
+import { EditorView, drawSelection, dropCursor, keymap, lineNumbers, tooltips } from "@codemirror/view";
 import { classHighlighter, tags as t } from "@lezer/highlight";
 import { blocks, themeFacet } from "./blocks.js";
 import { livePreview } from "./livepreview.js";
@@ -16,6 +16,7 @@ import { editorExtensions } from "./grammar.js";
 import { autoBrackets, autoClose } from "./autoclose.js";
 import { headingFolding } from "./fold.js";
 import { listEditing } from "./listedit.js";
+import { pageDrag } from "./pagedrag.js";
 import { pageView, printLayoutReady } from "./pageview.js";
 import { selectionSync } from "./selectionsync.js";
 import { closeSlash, setSlashResults, slashExtension } from "./slash.js";
@@ -96,10 +97,11 @@ export function createEditor(
   const rt = { notePath: "", emit, getDocId: () => docId };
   const modeSlot = new Compartment();
   const optionsSlot = new Compartment();
-  // word wrap, tab size, spell check, page view (Settings): applied to every open note
-  let currentOptions = { wordWrap: true, tabSize: 4, spellCheck: false, lang: "en", pageView: false, pageStyle: "lines", paper: "A4", textWidthMm: 170, paperHeightMm: 297, marginMm: 20, ...options };
+  // word wrap, tab size, spell check, line numbers, page view (Settings): applied to every open note
+  let currentOptions = { wordWrap: true, lineNumbers: false, tabSize: 4, spellCheck: false, lang: "en", pageView: false, pageStyle: "lines", paper: "A4", textWidthMm: 170, paperHeightMm: 297, marginMm: 20, ...options };
   const optionsExt = (o) => [
     o.wordWrap ? EditorView.lineWrapping : [],
+    o.lineNumbers ? lineNumbers() : [],
     EditorState.tabSize.of(o.tabSize),
     indentUnit.of(" ".repeat(o.tabSize)),
     EditorView.contentAttributes.of({ spellcheck: o.spellCheck ? "true" : "false", lang: o.lang || "en" }),
@@ -220,6 +222,7 @@ export function createEditor(
       dropCursor(),
       tooltips({ tooltipSpace }),
       highlightSelectionMatches(),
+      pageDrag,
       runtimeFacet.of(rt),
       // the user is in this editor now (Python makes its note the active one)
       EditorView.domEventHandlers({ focus: () => { emit("focus", { docId }); return false; } }),
