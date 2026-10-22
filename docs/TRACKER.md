@@ -99,7 +99,7 @@ Legend: 🧠 = needs Opus (see PLAN §6 model guidance) · ⬜ todo · 🔄 in p
 ### P9 — Navigation & polish
 | ID | Task | Status | Notes |
 |---|---|---|---|
-| P9.1 | Palette + switcher | ⬜ | |
+| P9.1 | Palette + switcher | ✅ | `PickerPopup`, `core.picker.switcher_notes`, `SessionState.recent_notes`, `gui/commands_palette.py` (33 commands, `when` per command); Ctrl+P, Ctrl+Shift+F wired; 2 tests; 18 real-app checks with key events (filter, ↑/↓, Enter, Ctrl+Enter → split, Create, Esc, palette theme / file tree, note commands hidden without a note). Also (P14.1 gap): a tab's right-click menu (only *Add note to chat*) is gone while AI is off |
 | P9.2 | Vault search | ⬜ | |
 | P9.3 | Outline panel | ⬜ | |
 | P9.4 | Status bar | ✅ | word count (`core/stats.py`: body only, words = tokens with a letter/digit, any script) + Ln/Col reported by the editor (debounced 120 ms); was a hard-coded placeholder until 2026-10-20 |
@@ -503,3 +503,4 @@ Legend: 🧠 = needs Opus (see PLAN §6 model guidance) · ⬜ todo · 🔄 in p
 - 2026-10-22 · P13.14 tree multi-select (Ctrl/Shift+click, selection box, group move/delete/add to chat) · 1055 tests; 16 real-app checks
 - 2026-10-22 · P13.15 popups stay on screen (menus filled by Python re-placed; taskbar strip respected by menus and editor tooltips) · 12 real-app checks
 - 2026-10-22 · P14.1 feature switches (AI, Calendar) + Minimal settings (on by default) · 1057 tests; 20 real-app checks
+- 2026-10-22 · P9.1 quick switcher (Ctrl+O) + command palette (Ctrl+P) · 1058 tests; 18 real-app checks

@@ -281,3 +281,13 @@ def test_ai_commands_exist_only_while_ai_is_on(tmp_path: Path) -> None:
     config.set("features.ai", False)
     assert not ai_ids & {c.id for c in REGISTRY.all(ctx)}
     assert REGISTRY.all(ctx)  # the rest stays
+
+
+def test_switcher_lists_recent_notes_first_and_searches_with_a_query() -> None:
+    from paper_pile.core.picker import switcher_notes
+
+    paths = ["b.md", "a.md", "dir/Idea.md", "c.md"]
+    recent = ["c.md", "gone.md", "dir/Idea.md", "c.md"]
+    assert switcher_notes("", paths, recent) == ["c.md", "dir/Idea.md", "a.md", "b.md"]
+    assert switcher_notes("idea", paths, recent)[0] == "dir/Idea.md"
+    assert switcher_notes("zzz", paths, recent) == []

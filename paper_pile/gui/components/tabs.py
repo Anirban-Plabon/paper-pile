@@ -40,8 +40,10 @@ class TabBar:
         on_add_to_chat: Callable[[str], None] = lambda path: None,
         on_toggle_pane: Callable[[str], None] = lambda pane: None,
         on_activate_side: Callable[[int, int], None] | None = None,
+        ai_on: Callable[[], bool] = lambda: True,
     ) -> None:
         self._tabs = tabs
+        self._ai_on = ai_on  # the tab menu (Add note to chat) only while AI is on
         self._on_activate = on_activate
         self._on_close = on_close
         self._on_move = on_move
@@ -115,6 +117,8 @@ class TabBar:
             self._dots.setdefault(tab_id, dot)
             close = line_icon("x", "s").classes("pp-tab-close")
             close.on("click.stop", lambda _e, i=tab_id: self._on_close(i))
+            if not self._ai_on():
+                return
             with (
                 ui.context_menu(),
                 ui.menu_item("Add note to chat", lambda _e=None, p=path: self._on_add_to_chat(p)),

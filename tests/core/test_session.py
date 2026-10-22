@@ -54,6 +54,7 @@ def test_session_round_trip(tmp_path: Path) -> None:
         pane_widths={"left": 300, "right": 410, "settings": 600},
         panes_open={"left": False, "right": True},
         mode="source",
+        recent_notes=["d/b.md", "a.md"],
     )
     save_session(tmp_path, state)
     assert (tmp_path / ".paper-pile" / "session.json").is_file()

@@ -21,18 +21,21 @@ from paper_pile.core.config import Config
 from paper_pile.core.daily import DEFAULT_FORMAT, daily_relpath, new_daily_text, untouched_daily
 from paper_pile.core.events import EventBus
 from paper_pile.core.index import Index
-from paper_pile.core.session import SessionState, load_session, save_session
+from paper_pile.core.picker import switcher_notes
+from paper_pile.core.session import MAX_RECENT_NOTES, SessionState, load_session, save_session
 from paper_pile.core.settings import feature_on, language_name, sanitized
 from paper_pile.core.templates import template_draft_messages
 from paper_pile.core.vault import Vault, VaultError
 from paper_pile.core.vault_folders import ensure_folders, move_old_chats
 from paper_pile.core.watcher import TOPIC as FS_CHANGED
 from paper_pile.core.watcher import FsEvent
+from paper_pile.gui.commands_palette import palette_commands, palette_items, run_command
 from paper_pile.gui.components.calendar import CalendarPane
 from paper_pile.gui.components.chat import ChatPane
 from paper_pile.gui.components.editor_pane import EditorPane
 from paper_pile.gui.components.gallery import Gallery
 from paper_pile.gui.components.memories import MemoriesPanel
+from paper_pile.gui.components.picker_popup import PickerPopup, PickItem
 from paper_pile.gui.components.profile import ProfileBlock
 from paper_pile.gui.components.right_pane import RightPane
 from paper_pile.gui.components.settings import SettingsPane
@@ -133,6 +136,7 @@ class MainLayout:
         self._ribbon: ui.element
         self._ribbon_bottom: ui.element
         self._save_handle: asyncio.TimerHandle | None = None
+        self._picker: PickerPopup
 
     # ---- building ------------------------------------------------------------------------
 
@@ -141,6 +145,7 @@ class MainLayout:
         if self.can_reveal:  # the native window has no OS title bar: draw our own controls
             ui.query("body").classes("pp-native")
             WindowChrome().build()
+        self._picker = PickerPopup(ui.element("div").classes("pp-host"))
         with ui.element("div").classes("pp-root"):
             self._ribbon_column()
             outer = self._make_splitter("left", reverse=False)
@@ -160,6 +165,7 @@ class MainLayout:
         ui.on("pp_pane_collapse", lambda e: self._dragged_shut(str(e.args.get("pane"))))
         self.bus.subscribe("vault.created", lambda path: self._on_created())
         self.bus.subscribe("tree.add_to_chat", lambda path: self._chat_add_note(path))
+        self.bus.subscribe("vault.renamed", lambda old, new: self._recent_renamed(old, new))
         self._follow_external_changes()
         if self.editor_pane is not None:  # reopen last session's tabs (after the status bar exists)
             self.editor_pane.start(list(self.state.tabs), self.state.active)
@@ -198,18 +204,77 @@ class MainLayout:
                 icon_button(
                     "panel-left-open", lambda: self.toggle("left"), "Show file tree (Ctrl+B)"
                 )
-            icon_button("search", self.open_note, "Recent notes")
+            icon_button("search", self.search_vault, "Search in all notes (Ctrl+Shift+F)")
             icon_button("folder-plus", self.new_folder, "New folder")
             icon_button("file-plus", self.new_note, "New note")
             ui.space()
             self._ribbon_bottom = ui.column().classes("pp-ribbon-bottom items-center")
 
     def open_note(self) -> None:
-        """Unfold the file tree on its recent-notes search."""
+        """The quick switcher (Ctrl+O): pick a note by name."""
+        background_tasks.create(self._switcher())
+
+    async def _switcher(self) -> None:
+        vault = Vault(self.vault)
+
+        def search(query: str) -> list[PickItem]:
+            paths = switcher_notes(query, vault.walk_notes(), self.state.recent_notes)
+            items = [
+                PickItem(p, p.rsplit("/", 1)[-1].removesuffix(".md"), p.rpartition("/")[0])
+                for p in paths
+            ]
+            name = query.strip()
+            if name and all(i.title.lower() != name.lower() for i in items):
+                items.append(PickItem("", f"Create “{name}”", icon="file-plus"))
+            return items
+
+        picked = await self._picker.pick("Open a note by name…", search)
+        if picked is None or self.editor_pane is None:
+            return
+        item, aside = picked
+        if not item.key:  # Create "name"
+            name = item.title.removeprefix("Create “").removesuffix("”")
+            if self.tree is not None:
+                try:
+                    self.tree.create_note(name)
+                except VaultError as exc:
+                    ui.notify(str(exc), type="negative")
+        elif aside:
+            await self.editor_pane.open_in_split(item.key)
+        else:
+            self.bus.publish("tree.open", path=item.key)
+
+    def open_palette(self) -> None:
+        """The command palette (Ctrl+P)."""
+        background_tasks.create(self._palette())
+
+    async def _palette(self) -> None:
+        commands = palette_commands(self)
+        picked = await self._picker.pick(
+            "Type a command…", lambda query: palette_items(commands, query)
+        )
+        if picked is not None:
+            run_command(commands, picked[0].key)
+
+    def search_vault(self) -> None:
+        """Ctrl+Shift+F: the file tree's search box, over the text of every note."""
         if not self.state.panes_open["left"]:
             self.toggle("left")
         if self.tree is not None:
             self.tree.show_search()
+
+    def show_calendar(self) -> None:
+        if self.right is None or "calendar" not in self.right.tabs():
+            return
+        if not self.state.panes_open["right"]:
+            self.toggle("right")
+        self.right.show("calendar")
+
+    def _recent_renamed(self, old: str, new: str) -> None:
+        def moved(p: str) -> str:
+            return new + p[len(old) :] if p == old or p.startswith(old + "/") else p
+
+        self.state.recent_notes = [moved(p) for p in self.state.recent_notes]
 
     async def new_folder(self) -> None:
         if self.tree is not None:
@@ -627,6 +692,8 @@ class MainLayout:
     def _on_tabs_changed(self, paths: list[str], active: str | None) -> None:
         self.state.tabs = paths
         self.state.active = active
+        if active is not None:
+            self.state.recent_notes = push_recent(self.state.recent_notes, active, MAX_RECENT_NOTES)
         self._save_soon(immediately=True)
         self._refresh_calendar()
 

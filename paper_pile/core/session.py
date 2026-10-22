@@ -21,6 +21,7 @@ log = logging.getLogger("paper_pile.session")
 
 _LAST_VAULT_FILE = "last_vault.json"
 MAX_RECENT_VAULTS = 8
+MAX_RECENT_NOTES = 20  # the quick switcher lists these first
 SESSION_FILE = "session.json"
 META_DIR = ".paper-pile"
 
@@ -90,6 +91,7 @@ class SessionState:
     panes_open: dict[str, bool] = field(default_factory=lambda: {p: True for p in PANES})
     mode: Mode = "live"
     recent_commands: list[str] = field(default_factory=list)  # slash menu, newest first
+    recent_notes: list[str] = field(default_factory=list)  # opened notes, newest first
 
 
 def _session_path(vault: Path) -> Path:
@@ -126,6 +128,9 @@ def load_session(vault: Path) -> SessionState:
     recent = data.get("recent_commands")
     if isinstance(recent, list):
         state.recent_commands = [r for r in recent if isinstance(r, str)][:5]
+    notes = data.get("recent_notes")
+    if isinstance(notes, list):
+        state.recent_notes = [n for n in notes if isinstance(n, str)][:MAX_RECENT_NOTES]
     return state
 
 
@@ -139,6 +144,7 @@ def save_session(vault: Path, state: SessionState) -> None:
         "panes_open": state.panes_open,
         "mode": state.mode,
         "recent_commands": state.recent_commands[:5],
+        "recent_notes": state.recent_notes[:MAX_RECENT_NOTES],
     }
     try:
         path.parent.mkdir(exist_ok=True)

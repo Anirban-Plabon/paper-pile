@@ -355,6 +355,14 @@ class FileTree:
             return VAULT_ROOT
         return sel.rpartition("/")[0]
 
+    def create_note(self, name: str) -> str:
+        """A note called ``name`` in the selected folder (the quick switcher's *Create*); it is
+        shown, selected and opened."""
+        path = self.vault.create_note_in(self._target_folder(), name)
+        self._reveal_and_select(path)
+        self.bus.publish("tree.open", path=path)
+        return path
+
     async def _new_note(self, folder: str | None = None) -> None:
         """Create ``Untitled N`` right away (rename it from the tree or the title later)."""
         where = self._target_folder() if folder is None else folder

@@ -1060,3 +1060,19 @@ input::selection, textarea::selection { background: rgba(var(--pp-accent-rgb), .
 .pp-chat-saved .pp-chat-saved-del { font-size: var(--pp-icon-s); color: var(--pp-muted); opacity: 0; border-radius: 4px; padding: 3px; box-sizing: content-box; transition: opacity .15s; }
 .pp-chat-saved:hover .pp-chat-saved-del { opacity: 1; }
 .pp-chat-saved .pp-chat-saved-del:hover { color: var(--pp-fg); background: rgba(127, 127, 127, .2); }
+
+/* Quick switcher / command palette (gui/components/picker_popup.py, PLAN §4.18) */
+.q-dialog__inner--top > .q-card.pp-picker { margin-top: 12vh; }
+.q-card.pp-picker { width: min(620px, 92vw); max-width: none; padding: 6px; gap: 4px; flex-wrap: nowrap;
+  background: var(--pp-bg); color: var(--pp-fg); border: 1px solid var(--pp-border); box-shadow: 0 12px 36px rgba(0, 0, 0, .22); }
+.pp-picker-input { width: 100%; padding: 2px 10px; font-size: 15px; border-bottom: 1px solid var(--pp-border); }
+.pp-picker-input .q-field__native { color: var(--pp-fg); }
+.pp-picker-list { width: 100%; max-height: min(420px, 60vh); overflow-y: auto; gap: 0; padding: 2px 0; flex-wrap: nowrap; }
+.pp-picker-row { width: 100%; min-height: 34px; padding: 0 10px; gap: 10px; border-radius: var(--pp-r-ctrl); cursor: pointer; flex-shrink: 0; }
+.pp-picker-row:hover { background: rgba(127, 127, 127, .12); }
+.pp-picker-row.pp-picker-on, .pp-picker-row.pp-picker-on:hover { background: rgba(var(--pp-accent-rgb), .16); }
+.pp-picker-icon { font-size: var(--pp-icon-m); color: var(--pp-muted); flex-shrink: 0; }
+.pp-picker-title { font-size: 13.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.pp-picker-sub { font-size: 12px; color: var(--pp-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; flex-shrink: 1; }
+.pp-picker-hint { font-size: 11.5px; color: var(--pp-muted); white-space: nowrap; flex-shrink: 0; }
+.pp-picker-none { padding: 8px 12px; }

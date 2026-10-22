@@ -173,10 +173,14 @@ class SettingsPane:
         self._render_nav()
         self._render_content()
 
+    def _is_open(self) -> bool:
+        content = getattr(self, "_content", None)
+        return content is not None and not content.is_deleted
+
     def refresh(self) -> None:
         """A setting changed elsewhere (the ⋯ menu's Page view): show the new values, if open."""
-        content = getattr(self, "_content", None)
-        if content is not None and not content.is_deleted:
+        if self._is_open():
+            self._render_nav()
             self._render_content()
 
     def _values(self) -> dict[str, Any]:
@@ -1021,11 +1025,11 @@ class SettingsPane:
             ui.notify("Could not save the settings.", type="negative")
             return False
         self._on_applied({setting.key})
-        if setting.key in _RELAYOUT:
+        if setting.key in _RELAYOUT and self._is_open():
             self._keep_page_shown()
             self._render_nav()
             self._render_content()
-        if setting.key == "appearance.theme":  # the sidebar buttons and the Appearance row agree
+        if setting.key == "appearance.theme" and self._is_open():  # sidebar and row agree
             self._render_mode()
             if self.page == "Appearance" and not self.query:
                 self._render_content()

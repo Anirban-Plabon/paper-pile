@@ -76,7 +76,7 @@ from paper_pile.gui import printing
 from paper_pile.gui.components.backlinks import BacklinkItem, BacklinksPane
 from paper_pile.gui.components.editor import Editor, Mode
 from paper_pile.gui.components.note_actions import note_actions, pick_split_note
-from paper_pile.gui.components.note_menu import NoteMenu
+from paper_pile.gui.components.note_menu import NoteActions, NoteMenu
 from paper_pile.gui.components.tabs import SplitTabs, TabBar
 from paper_pile.gui.icons import ico, icon_button
 from paper_pile.gui.theme import editor_options
@@ -175,6 +175,8 @@ class EditorPane:
         self._chips: list[ui.row] = []  # per side: the note's name (click: choose another) + ✕
         self._chip_titles: list[ui.label] = []
         self._tidy_buttons: list[ui.button] = []  # per side: floats above its name island
+        self._ai = True  # the AI feature switch (set_ai)
+        self.note_actions: NoteActions
         self.note_menu: NoteMenu
         self._empty: ui.element  # shown while no tab is open; MainLayout fills it
         self._banner: ui.element
@@ -207,10 +209,12 @@ class EditorPane:
                 on_add_to_chat=self._add_note_to_chat,
                 on_toggle_pane=self._on_toggle_pane,
                 on_activate_side=self._activate_side,
+                ai_on=lambda: self._ai,
             )
             self._tabbar.build()
             with self._tabbar.menu_host:
-                self.note_menu = NoteMenu(note_actions(self))
+                self.note_actions = note_actions(self)  # also the command palette's
+                self.note_menu = NoteMenu(self.note_actions)
                 self.note_menu.build()
             self._banner = ui.row().classes("pp-banner items-center no-wrap")
             self._banner.set_visibility(False)
@@ -1786,8 +1790,10 @@ class EditorPane:
         return self._config
 
     def set_ai(self, on: bool) -> None:
-        """The AI feature was switched: the ⋯ menu shows or hides its AI group."""
+        """The AI feature was switched: the ⋯ menu and the tabs' menu follow."""
+        self._ai = on
         self.note_menu.set_ai(on)
+        self._tabbar.render(self._unsaved(), self._split_tabs())
 
     def add_to_chat(self, path: str) -> None:
         self._add_note_to_chat(path)
