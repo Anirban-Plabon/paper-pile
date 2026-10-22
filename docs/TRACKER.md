@@ -7,9 +7,9 @@ Legend: 🧠 = needs Opus (see PLAN §6 model guidance) · ⬜ todo · 🔄 in p
 
 ## Current focus
 - **Phase:** P14 — Features, navigation & safety (user request 2026-10-22; includes P9.1–P9.3, P9.5, P9.6)
-- **Task:** P10 done except the native Save dialog check (P10.5); auto-title-on-open decision still pending with the user
-- **Now:** P13 done (window, folders, images, split)
-- **Next up:** P9.1 palette + switcher → P9.2 vault search → P9.3 outline → P9.4/P9.5 → P9.6 QA + README; then the Tauri v2 spike
+- **Task:** P14 built (P14.1–P14.4, P9.1–P9.3, P9.5); P9.6 README done, its manual QA items wait for the user; P10.5 / P12.4 native Save dialog checks still manual
+- **Now:** P14 done (switches, switcher + palette, vault search, outline, tree keys, trash, version history)
+- **Next up:** the user's manual QA pass (PLAN §6 checklist); then the user's AI-with-notes plan; then the Tauri v2 spike
 
 ## Open issues
 <!-- - [ ] YYYY-MM-DD · task ID · what's blocking · what's needed -->
@@ -103,8 +103,8 @@ Legend: 🧠 = needs Opus (see PLAN §6 model guidance) · ⬜ todo · 🔄 in p
 | P9.2 | Vault search | ✅ | `FileTree._render_hits` over `Index.search`; `index.search_body` (schema 4); editor `openSearch(replace, query)`; selection-sync ignores `select.search`; 2 tests; 10 real-app checks (Ctrl+Shift+F, hits + marks, click → note open, panel query + match selected, no chat chip, prefix, empty box → recent); qa_editor 358/358 |
 | P9.3 | Outline panel | ✅ | `OutlinePane`, `parser.section_at`, right-pane Outline tab, Ctrl+Shift+O / ⋯ / palette; fixed: `gotoLine` focused AFTER moving the caret, so the caret (status bar Ln, outline mark) was never reported after a jump; two-line underlined headings joined without a space; 1 test; 10 real-app checks |
 | P9.4 | Status bar | ✅ | word count (`core/stats.py`: body only, words = tokens with a letter/digit, any script) + Ln/Col reported by the editor (debounced 120 ms); was a hard-coded placeholder until 2026-10-20 |
-| P9.5 | Shortcuts | ⬜ | |
-| P9.6 | Final QA + README | ⬜ | |
+| P9.5 | Shortcuts | ✅ | every §4.14 key pressed in the real app (19 checks: palette, switcher, new/close/next/previous tab incl. Alt forms, Ctrl+E/B/L, vault search, outline, settings, tidy, page break); Ctrl+Shift+V needs a system clipboard — covered by P6.3, not re-run |
+| P9.6 | Final QA + README | 🔄 | README.md written. QA checklist (PLAN §6): *Delete note → recoverable* now has the Trash popup (P14.3 checks). Still manual, for the user: offline with the network off, Wayland-native shortcuts, native Save dialog / PDF (P10.5, P12.4), Ollama stopped banner, rename with 5 backlinks + images |
 
 ### P10 — Note menu (⋯)
 | ID | Task | Status | Notes |
@@ -509,3 +509,4 @@ Legend: 🧠 = needs Opus (see PLAN §6 model guidance) · ⬜ todo · 🔄 in p
 - 2026-10-22 · P9.1 quick switcher (Ctrl+O) + command palette (Ctrl+P) · 1058 tests; 18 real-app checks
 - 2026-10-22 · P9.2 vault search, P9.3 outline, P14.2 tree keys, P14.3 trash · tests + 10 + 10 + 12 + 9 real-app checks
 - 2026-10-22 · P14.4 version history (diffs, thinning, cap; popup with restore) · 1090 tests; 11 real-app checks
+- 2026-10-22 · P9.5 shortcuts verified (19 real-app checks), P9.6 README.md · manual QA items listed for the user

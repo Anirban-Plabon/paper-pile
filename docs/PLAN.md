@@ -693,7 +693,7 @@ Spec (one place; the feature sections point here):
 - [ ] Mermaid renders in both themes
 - [ ] 10 tabs open, restart → restored
 - [ ] Ollama stopped → app usable, clear banner
-- [ ] Delete note → recoverable from `.trash/`
+- [x] Delete note → recoverable from `.trash/` (Trash popup, P14.3: restored with its images, real-app checks)
 - [ ] `--serve` reachable only on 127.0.0.1 and only with token
 - [ ] Export as PDF: native window (Save dialog → file) and `--serve` (browser print dialog → Save as PDF); the pages match page view's page lines
 - [ ] Native window on Wayland (default Qt backend): every §4.14 shortcut works (run `tools/spike_native.py`, press each, check the log). S3 injected keys only on the X11 backend; Wayland-native launches fine but its keys need this manual check
