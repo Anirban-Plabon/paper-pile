@@ -56,6 +56,8 @@ EDITOR_OPTION_KEYS = frozenset(
     {
         "editor.word_wrap",
         "editor.line_numbers",
+        "editor.readable_width",
+        "editor.highlight_line",
         "editor.tab_size",
         "editor.spell_check",
         "general.language",
@@ -71,6 +73,8 @@ def editor_options(config: Config | None) -> dict[str, Any]:
     return {
         "wordWrap": v["editor.word_wrap"],
         "lineNumbers": v["editor.line_numbers"],
+        "readableWidth": v["editor.readable_width"],
+        "highlightLine": v["editor.highlight_line"],
         "tabSize": v["editor.tab_size"],
         "spellCheck": v["editor.spell_check"],
         "lang": v["general.language"],

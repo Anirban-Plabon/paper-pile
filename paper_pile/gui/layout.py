@@ -9,8 +9,9 @@ import logging
 from collections.abc import AsyncIterator
 from datetime import date, datetime
 from pathlib import Path
+from typing import Any
 
-from nicegui import background_tasks, ui
+from nicegui import background_tasks, run, ui
 
 from paper_pile.core.ai.chats import chats_folder
 from paper_pile.core.ai.factory import chat_model, generation_options, make_provider
@@ -136,6 +137,7 @@ class MainLayout:
             native=self.can_reveal,
             on_cleared=self._folder_cleared,
             gallery=self._open_gallery,
+            rebuild_index=self._rebuild_index,
         )
         for pane in (*WIDTH_LIMITS, "settings"):
             self.state.pane_widths[pane] = clamp_width(pane, self.state.pane_widths[pane])
@@ -179,7 +181,9 @@ class MainLayout:
         self.bus.subscribe("note.reveal", lambda path: self._reveal_in_tree(path))
         self._follow_external_changes()
         if self.editor_pane is not None:  # reopen last session's tabs (after the status bar exists)
-            self.editor_pane.start(list(self.state.tabs), self.state.active)
+            reopen = bool(self._setting("general.restore_tabs"))
+            tabs = list(self.state.tabs) if reopen else []
+            self.editor_pane.start(tabs, self.state.active if reopen else None)
 
     def _follow_external_changes(self) -> None:
         """Re-list the tree when files change outside the app (watcher, P1.5)."""
@@ -215,9 +219,12 @@ class MainLayout:
                 icon_button(
                     "panel-left-open", lambda: self.toggle("left"), "Show file tree (Ctrl+B)"
                 )
-            icon_button("search", self.search_vault, "Search in all notes (Ctrl+Shift+F)")
-            icon_button("folder-plus", self.new_folder, "New folder")
-            icon_button("file-plus", self.new_note, "New note")
+            with ui.element("div").classes("pp-seg pp-tools pp-tools-column"):  # as in the pane
+                icon_button(
+                    "search", self.search_vault, "Search in all notes (Ctrl+Shift+F)", size="m"
+                )
+                icon_button("folder-plus", self.new_folder, "New folder", size="m")
+                icon_button("file-plus", self.new_note, "New note", size="m")
             ui.space()
             self._ribbon_bottom = ui.column().classes("pp-ribbon-bottom items-center")
 
@@ -395,6 +402,7 @@ class MainLayout:
                     search=self.index.search,
                     open_found=self._open_found,
                     open_trash=self.open_trash,
+                    confirm_delete=lambda: bool(self._setting("general.confirm_delete")),
                 )
                 self.tree.build()
                 self.outline = OutlinePane(self._jump_to_line, self.toggle_outline)
@@ -611,6 +619,8 @@ class MainLayout:
             self.theme.apply()
         if self.editor_pane is not None and EDITOR_OPTION_KEYS & changed:
             self.editor_pane.set_options(editor_options(self.config))
+        if self._status is not None and "editor.word_count" in changed:
+            self._status.stats_label.set_visibility(bool(self._setting("editor.word_count")))
         if self.editor_pane is not None and "editor.tidy_button" in changed:
             self.editor_pane.show_tidy_buttons()
         if changed & {"features.ai", "features.calendar"}:
@@ -774,8 +784,34 @@ class MainLayout:
         if self.editor_pane is not None:
             self.editor_pane.toggle_mode()
 
+    def open_today(self) -> None:
+        """The palette's Open today's daily note (created from the template if needed)."""
+        self._open_daily(date.today())
+
+    def new_chat(self) -> None:
+        """The palette's New chat: an empty chat, shown."""
+        if self.chat is None:
+            return
+        self.chat.new_chat()
+        self.ask_ai()
+
+    async def rebuild_index_now(self) -> None:
+        """The palette's Rebuild search index, with a message when done."""
+        count = await self._rebuild_index()
+        ui.notify(f"Index rebuilt: {count} notes", timeout=2000, position="bottom")
+
+    async def _rebuild_index(self) -> int:
+        """Settings → Advanced: index the whole vault again (a cache; the files are the truth)."""
+        result = await run.io_bound(self.index.rebuild)
+        return result.added
+
+    def _setting(self, key: str) -> Any:
+        """One validated setting value (its default when unset or invalid)."""
+        return sanitized(self.config.values)[key]
+
     def _set_stats(self, words: int | None, line: int, col: int) -> None:
         if self._status is not None:
+            self._status.stats_label.set_visibility(bool(self._setting("editor.word_count")))
             self._status.set_stats(words, line, col)
         self._caret_line = line
         self._update_outline()

@@ -16,7 +16,7 @@ drag handle at its corner and *Write with AI*, or read from a ``.md`` file), the
 
 import contextlib
 import logging
-from collections.abc import AsyncIterator, Callable
+from collections.abc import AsyncIterator, Awaitable, Callable
 from pathlib import Path
 from typing import Any
 
@@ -67,7 +67,6 @@ SECTION_ICONS = {
     "Vault": "folder-open",
     "AI": "lightbulb",
     "Paste": "clipboard-paste",
-    "Print": "printer",
 }
 _RELAYOUT = {"features.ai", "features.calendar", "settings.minimal"}  # change what is listed
 THEME_ICONS = {
@@ -109,7 +108,9 @@ class SettingsPane:
         gallery: Callable[[], None] | None = None,
         on_cleared: Callable[[str], None] = lambda key: None,
         open_vault: Callable[[], Any] | None = None,
+        rebuild_index: Callable[[], Awaitable[int]] | None = None,
     ) -> None:
+        self._rebuild_index = rebuild_index  # General → Advanced
         self.config = config
         self._on_applied = on_applied
         self._models = models
@@ -246,27 +247,31 @@ class SettingsPane:
                 found = self._drawable(search_settings(self.query, values))
                 if not found:
                     ui.label("No settings match.").classes("pp-muted pp-set-none")
-                for setting in found:
-                    self._row(setting, values[setting.key])
+                    return
+                with self._box():
+                    for setting in found:
+                        self._row(setting, values[setting.key])
                 return
             self._title.set_text(self.page)
-            group = None
-            box: ui.element = self._content
-            listed = [s for s in SECTIONS[self.page] if is_shown(self.page, s, values)]
             if self.page == "General":
                 self._about()  # the version and the vault come first
+            listed = [s for s in SECTIONS[self.page] if is_shown(self.page, s, values)]
+            group: str | None = None
+            box: ui.element | None = None
             for setting in self._drawable(listed):
-                if setting.group != group:
-                    self._after_group(group)
+                if box is None or setting.group != group:
+                    if box is not None:
+                        with box:
+                            self._after_group(group)
                     group = setting.group
-                    box = self._content
-                    if (self.page, group) in _FOLDED:
-                        box = self._folded(group)
-                    elif group:
-                        self._group(group)
+                    box = self._open_box(group)
                 with box:
                     self._row(setting, values[setting.key])
-            self._after_group(group)
+            if box is not None:
+                with box:
+                    self._after_group(group)
+            if self.page == "General" and not self._minimal():
+                self._advanced()
 
     def _drawable(self, settings: list[Setting]) -> list[Setting]:
         """``settings`` with the ones drawn inside another control replaced by that one (each
@@ -289,26 +294,63 @@ class SettingsPane:
         if self.page == "General" and group == "Templates":
             self._templates()  # write / edit a template, or add one from a file
 
-    def _folded(self, group: str) -> ui.element:
-        """A closed (until opened) group: its rows go inside."""
+    def _open_box(self, group: str | None) -> ui.element:
+        """A group: its title above a box whose rows are split by thin lines (a folded group's
+        box sits inside its expansion)."""
         with self._content:
-            box = ui.expansion(group, value=group in self._open_groups).classes("pp-set-fold")
-            box.props("dense switch-toggle-side")
-        box.on_value_change(
-            lambda e: (self._open_groups.add if e.value else self._open_groups.discard)(group)
-        )
-        return box
+            if group and (self.page, group) in _FOLDED:
+                fold = ui.expansion(group, value=group in self._open_groups)
+                fold.classes("pp-set-fold").props("dense switch-toggle-side")
+                fold.on_value_change(
+                    lambda e: (self._open_groups.add if e.value else self._open_groups.discard)(
+                        group
+                    )
+                )
+                with fold:
+                    return self._box()
+            if group:
+                self._group(group)
+            return self._box()
+
+    def _box(self) -> ui.element:
+        return ui.column().classes("pp-set-box")
 
     def _group(self, title: str) -> None:
         ui.label(title).classes("pp-set-group")
 
     def _about(self) -> None:
         """General's first groups: the version, and the vault (with Change… to open another)."""
-        self._group("Version")
-        self._info("paper-pile", f"Version {__version__}")
+        with self._open_box("Version"):
+            self._info("paper-pile", f"Version {__version__}")
         if self._vault_root is not None:
-            self._group("Vault")
-            self._vault_row(self._vault_root)
+            with self._open_box("Vault"):
+                self._vault_row(self._vault_root)
+
+    def _advanced(self) -> None:
+        """General → Advanced: maintenance actions (full settings only)."""
+        if self._rebuild_index is None:
+            return
+        rebuild = self._rebuild_index
+
+        async def run() -> None:
+            button.props("loading")
+            try:
+                count = await rebuild()
+            except Exception:
+                log.exception("index rebuild failed")
+                ui.notify("Could not rebuild the index; see the log.", type="negative")
+                return
+            finally:
+                button.props(remove="loading")
+            ui.notify(f"Index rebuilt: {count} notes", timeout=2000, position="bottom")
+
+        with self._open_box("Advanced"), ui.row().classes("pp-set-row items-center"):
+            with ui.column().classes("pp-set-text"):
+                ui.label("Rebuild search index").classes("pp-set-label")
+                ui.label("If search, backlinks or tags look out of date").classes("pp-set-help")
+            with ui.row().classes("pp-set-control items-center no-wrap"):
+                button = ui.button("Rebuild", icon=ico("refresh-cw"), on_click=run, color=None)
+                button.props("flat dense no-caps").classes("pp-instr-btn")
 
     def _vault_row(self, root: Path) -> None:
         """The vault's name and folder, with Change… (a normal row: the button drops under the
@@ -326,7 +368,7 @@ class SettingsPane:
 
     def _info(self, label: str, value: str) -> None:
         """A read-only row (the version)."""
-        with ui.row().classes("pp-set-row items-center no-wrap"):
+        with ui.row().classes("pp-set-row pp-set-row-inline items-center no-wrap"):
             with ui.column().classes("pp-set-text"):
                 ui.label(label).classes("pp-set-label")
             tip(ui.label(value).classes("pp-set-info"), value)
@@ -337,7 +379,8 @@ class SettingsPane:
         if setting.key == "ai.instructions":
             self._instruction(setting)
             return
-        with ui.row().classes("pp-set-row items-center"):
+        inline = " pp-set-row-inline" if setting.kind == "bool" else ""  # a switch never drops
+        with ui.row().classes("pp-set-row items-center" + inline):
             with ui.column().classes("pp-set-text"):
                 ui.label(setting.label).classes("pp-set-label")
                 if setting.help:

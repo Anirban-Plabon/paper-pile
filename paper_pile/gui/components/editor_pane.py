@@ -1872,8 +1872,8 @@ class EditorPane:
     def _note_buttons(self) -> None:
         """Split / close split, and the AI menu (while AI is on), left of the ⋯ button."""
         a = self.note_actions
-        self._split_button = icon_button("columns-2", self.toggle_split, "Split right")
-        self._ai_button = icon_button("sparkles", lambda: None, "AI")
+        self._split_button = icon_button("columns-2", self.toggle_split, "Split right", size="m")
+        self._ai_button = icon_button("sparkles", lambda: None, "AI", size="m")
         with self._ai_button, ui.menu().props('anchor="bottom right" self="top right"') as menu:
             menu.classes("pp-note-menu")
             for icon, label, action in (
@@ -1927,6 +1927,11 @@ class EditorPane:
             ("copy-x", "Close others", lambda: self._close_others(tab_id)),
         ]
         return items
+
+    async def close_other_tabs(self) -> None:
+        """Keep only the active tab (the palette's Close other tabs)."""
+        if self.tabs.active is not None:
+            await self._close_others(self.tabs.active)
 
     async def _close_others(self, keep: int) -> None:
         for tab in [t for t in self.tabs.tabs if t.id != keep]:

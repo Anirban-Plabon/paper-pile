@@ -21,6 +21,7 @@ class PickItem:
     subtitle: str = ""  # muted, after the title (a note's folder)
     hint: str = ""  # right-aligned (a shortcut)
     icon: str = ""
+    group: str = ""  # a heading drawn above the first item of each group (the palette)
 
 
 Picked = tuple[PickItem, bool]  # (item, aside)
@@ -72,7 +73,11 @@ class PickerPopup:
             with listing:
                 if not items:
                     ui.label("Nothing found").classes("pp-muted pp-picker-none")
+                group = ""
                 for i, item in enumerate(items):
+                    if item.group and item.group != group:
+                        group = item.group
+                        ui.label(group).classes("pp-picker-group")
                     row = ui.row().classes("pp-picker-row items-center no-wrap")
                     with row:
                         if item.icon:

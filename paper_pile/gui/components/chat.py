@@ -205,6 +205,9 @@ class ChatPane:
                             icon=ico("arrow-up"), on_click=self.send_or_stop, color=None
                         )
                         self._send.props("round unelevated dense").classes("pp-chat-send")
+                ui.label("AI can make mistakes. Check important information.").classes(
+                    "pp-chat-disclaimer"
+                )
                 self._upload = ui.upload(
                     on_upload=self._file_uploaded,
                     auto_upload=True,

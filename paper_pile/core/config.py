@@ -37,6 +37,9 @@ DEFAULTS: dict[str, Any] = {
         "line_height": 1.6,
         "word_wrap": True,
         "line_numbers": False,
+        "readable_width": False,
+        "highlight_line": False,
+        "word_count": True,
         "tab_size": 4,
         "spell_check": False,
         "default_mode": "live",
@@ -47,7 +50,7 @@ DEFAULTS: dict[str, Any] = {
         "page_view_last": "lines",  # the style the ⋯ menu turns on
     },
     "print": {"paper": "A4"},
-    "general": {"language": "en"},
+    "general": {"language": "en", "restore_tabs": True, "confirm_delete": True},
     "vault": {
         "templates_folder": ".template",
         "daily_notes_folder": ".daily-notes",

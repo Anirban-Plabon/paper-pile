@@ -452,7 +452,7 @@ A line is a manual page break when:
 - a heading stays with the line after it;
 - code blocks, tables, images, math, Mermaid, quotes and callouts are not split, unless one is taller than a page: then code splits between lines and tables between rows (header repeated); images, math and diagrams are scaled down to fit a page;
 - paragraphs and lists split between source lines, keeping at least 2 lines on each side when they can.
-Output: the page boxes (printed as is) and the list of `{line, page}` starts (sent to the editor). Paper: **A4** (210×297 mm) by default, **US Letter** in Settings → Print (`print.paper`); margins 20 mm.
+Output: the page boxes (printed as is) and the list of `{line, page}` starts (sent to the editor). Paper: **A4** (210×297 mm) by default, **US Letter** in Settings → Editor → Page view (`print.paper`, under Page view since 2026-10-22); margins 20 mm.
 
 **Known limit (follows from "break only between source lines"):** a paragraph written as ONE long source line (the usual way) is never cut: when it does not fit at the bottom of a page it moves whole to the next page, leaving a gap of up to one paragraph. Paragraphs of several source lines, lists, code and tables are cut normally.
 
@@ -521,6 +521,14 @@ Short, quiet animations that show *where something went*. Render-only (CSS + the
 **App chrome:** context menu and tooltips fade/scale in; chevrons (outline, backlinks, model picker, heading fold) rotate instead of swapping icons (the file tree redraws its rows, so its chevrons still swap); hover backgrounds and the tab close × fade; the task checkbox tick scales in; banners, chat jump buttons and new chat messages fade in; the chat shows pulsing dots until the first token.
 
 **Not animated:** typing, CodeMirror decorations and folding, pane widths (Ctrl+B / Ctrl+L), sheet heights, drag in progress.
+
+### 4.21 Tabs, tool boxes, settings, palette — user request 2026-10-22 (second round)
+- **Tab overflow:** while a tab row overflows, a ‹ and a › each get their own 26 px area at the row's edges, split from the tabs by a vertical line (the row is padded by them, so no tab hides underneath); a click brings the next hidden tab on that side fully into view — one tab per click; an arrow with nothing more on its side is dimmed.
+- **Tool boxes:** Files header (search · new folder · new note), the folded rail's same three, and the note buttons (split · AI · ⋯) sit in one box each, like vault · palette · settings (`pp-seg pp-tools`, 16 px icons).
+- **Settings:** boxes (§6 row rules); groups everywhere — General: Features, Language, *Startup and files*, Paste, Images, Daily notes, Templates, *Advanced*; Editor: Font, Layout, Writing, Page view (with Paper size), Advanced; AI: Model, Context, Memories, Advanced (with the unused embedding model).
+- **New settings:** Reopen last tabs (`general.restore_tabs`, on), Ask before deleting (`general.confirm_delete`, on), Readable line length (`editor.readable_width`, off: 46em column outside page view), Highlight current line (`editor.highlight_line`, off), Word count (`editor.word_count`, on: the status bar's words · Ln · Col). General → Advanced: *Rebuild search index* (full settings).
+- **AI chat:** "AI can make mistakes. Check important information." under the chat box.
+- **Command palette:** groups with headings (Notes, Tabs, Editing, Export, AI, View, App; a query orders groups by their best match). Added: today's daily note, rename, show in file tree, copy full path, close other tabs, new chat, rewrite, write with AI, line numbers / wrap / readable width / current line on-off, animations on / off, rebuild search index.
 
 ### 4.20 Icon and small UX fixes — user request 2026-10-22
 From the icon / UX survey (same day). **Icons:** one Lucide set everywhere (heading fold chevron, tab scroll arrows and table *+* buttons were text glyphs or a hand-drawn SVG); sizes only from the 14 / 16 / 18 px tokens (no 13 / 15 px, no icon wider than its box); one close button for dialogs and panes (`icons.close_button`: 16 px × in a 30 px button — Settings, Version history, Trash, Gallery, Memories); menu check marks are `check`, 14 px, accent colour; row icons 16 px; the corner radius of hover buttons from the tokens. **UX:** the tree's 🔎 says what it does (*Search in all notes*); tooltips warm up (after one has shown, the next shows at once for 0.8 s); visible keyboard focus (`:focus-visible` ring); hover-only delete buttons (memories, saved chats) reachable by Tab and Enter; a bigger tab × target; an empty vault shows a **New note** button in the tree; the status bar shows nothing while no note is open (no "Ready") and *Saved* has a "Saved at 14:32" tooltip (the file's time); a folded heading's *…* says how many lines it hides.
@@ -685,6 +693,16 @@ P9.1–P9.3 and P9.5–P9.6 are built in this phase (order: P14.1, P9.1, P9.2, P
 | P16.1 | Icons: one set, token sizes, one close button, one check mark | no text glyph / hand SVG icons left; no off-scale size in app.css; every dialog × is `close_button` (real click closes) |
 | P16.2 | Small UX fixes (§4.20 list) | each works in the real app; empty-vault button has a NiceGUI test |
 
+### P17 — Tabs, tool boxes, settings, palette (user request 2026-10-22, §4.21)
+| ID | Task | Acceptance |
+|---|---|---|
+| P17.1 | Tab overflow arrows with own areas + one tab per click | dividers; first tab not under ‹; three › clicks = three more tabs; ‹ brings one back (real clicks) |
+| P17.2 | Tool boxes (files header, rail, note buttons) | one box each (real app) |
+| P17.3 | Settings boxes + groups, Paper size under Page view, no Print page | rows only inside boxes on every page; nothing overflows a box from 1400 to 600 px; rows settle (no flip); core tests |
+| P17.4 | New settings (restore tabs, confirm delete, readable width, current line, word count, rebuild index) | each changes the app live / on next start; core tests |
+| P17.5 | Chat disclaimer | under the chat box (real app) |
+| P17.6 | Palette groups + missing commands | headings; new commands run (real app: line numbers) |
+
 ### P10 — Note menu (⋯) (user request 2026-10-17)
 | ID | Task | Acceptance |
 |---|---|---|
@@ -726,6 +744,7 @@ Spec (one place; the feature sections point here):
 - **Mode buttons in Settings:** above *Restore defaults* in the settings sidebar, the Light / Dark / System buttons (the `appearance.theme` setting) — a horizontal row while the sidebar is unfolded, a vertical column of icons while folded. The setting's label "Theme" becomes **Mode** (Settings → Appearance and search).
 - **Settings → General layout (changed 2026-10-21, user request):** groups Version, Vault (path), Language, Paste, **Images** (Gallery button, folder, Clear), **Daily notes** (folder, Clear, *Show in file tree*, date format, template), **Templates** (folder, Clear, *Show in file tree*, *Your templates*). The memories folder is set only under Settings → AI → Memories. Folder rows are labelled *Folder*; the switches *Show in file tree*.
 - **Settings rows (2026-10-22, user request; revised the same day):** no divider between rows — one only above each section heading (and the folded Advanced). Descriptions are a few words. A row's text keeps its natural width; when text and control do not fit side by side the control drops under the text (never a description wrapped beside a box) and its field stretches up to the next button (`pp-set-stacked`, set by `static/tabs.js` from the settled layout of each row). Buttons never put their text under their icon: a group that does not fit shows icons only, with the text as a hover tip (`pp-icons-only`).
+- **Settings boxes (2026-10-22, user request, replaces the row rules above):** every group is a rounded box under its title (as in Obsidian); thin lines split the rows inside a box, nothing outside it (no divider above titles). Settings without a group form a box with no title. A row puts its control under its text only when its box is narrower than 400 px — a CSS container query on the box (`ppbox`), so the layout depends on width alone and cannot flip; switch rows never stack (`pp-set-row-inline`). `pp-set-stacked` and its JS are gone; `pp-icons-only` stays. No Print page: Paper size sits right under Page view (Editor → Page view).
 - **Panes while Settings is open (2026-10-22):** dragging the right pane's edge past its minimum only resizes (never folds Settings away); folding or unfolding the file tree keeps Settings' on-screen width (the editor takes or gives the room), so Settings never grows, shrinks or flips between its wide and narrow forms.
 - **Daily-note template (2026-10-22, user request):** the *Template* field (Daily notes) takes a note path typed in, or picked from a list whose first entries are the notes of the default daily-note templates folder `<templates folder>/daily` (`.template/daily`, created on open); *Browse* in the native window (a note inside the vault). It is copied into each new daily note as before.
 - **Daily notes look like their template (2026-10-22, user request):** notes in the daily-notes folder and in the templates folder never get the automatic `title:` property (auto-title), so a daily note opens exactly as its template and a template never carries a title into other notes. When a day is opened from the calendar and its note still holds only what the app made (the plain `# date` heading or the current template, with or without an auto-added `title:`, `daily.untouched_daily`), it is made again from the current template; the old text is stashed in `.trash/` first, and a note open in a tab or written in by the user is never changed.

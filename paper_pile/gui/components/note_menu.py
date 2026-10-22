@@ -47,7 +47,7 @@ class NoteMenu:
 
     def build(self) -> None:
         a = self._actions
-        self._button = icon_button("ellipsis", lambda: None, "More options")
+        self._button = icon_button("ellipsis", lambda: None, "More options", size="m")
         with self._button, ui.menu().props('anchor="bottom right" self="top right"') as menu:
             menu.classes("pp-note-menu")
             self._item("search", "Find…", a.find, "Ctrl+F")

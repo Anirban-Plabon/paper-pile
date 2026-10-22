@@ -342,12 +342,6 @@ body.pp-page-dragging, body.pp-page-dragging * { cursor: row-resize !important; 
 .pp-tabstrip { position: relative; }
 .pp-tabstrip .pp-tab { flex: 0 1 auto; min-width: 96px; }
 .pp-tabstrip .pp-tab-title { min-width: 0; }
-.pp-tabbar.pp-cut-right { -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 44px), transparent); mask-image: linear-gradient(to right, #000 calc(100% - 44px), transparent); }
-.pp-tabbar.pp-cut-left { -webkit-mask-image: linear-gradient(to left, #000 calc(100% - 44px), transparent); mask-image: linear-gradient(to left, #000 calc(100% - 44px), transparent); }
-.pp-tabbar.pp-cut-left.pp-cut-right { -webkit-mask-image: linear-gradient(to right, transparent, #000 44px, #000 calc(100% - 44px), transparent); mask-image: linear-gradient(to right, transparent, #000 44px, #000 calc(100% - 44px), transparent); }
-.pp-tabs-arrow { position: absolute; top: 0; height: 100%; width: 22px; display: none; align-items: center; justify-content: center; cursor: pointer; color: var(--pp-muted); z-index: 2; border-radius: var(--pp-r-ctrl); }
-.pp-tabs-arrow.pp-on { display: flex; }
-.pp-tabs-arrow:hover { color: var(--pp-fg); background: rgba(127, 127, 127, .14); }
 .pp-tabs-list { display: none !important; flex: none; gap: 2px; padding: 0 6px !important; width: auto !important; }
 .pp-tabs-overflow .pp-tabs-list { display: inline-flex !important; }
 .pp-tabs-list .q-btn__content { gap: 2px; flex-wrap: nowrap; }
@@ -606,23 +600,9 @@ body.pp-page-dragging, body.pp-page-dragging * { cursor: row-resize !important; 
 .pp-set-top { width: 100%; flex: none; gap: 10px; padding: 14px 22px 8px; flex-wrap: wrap; }
 .pp-set-title { font-size: 17px; font-weight: 600; }
 .pp-set-content { flex: 1 1 0; min-height: 0; width: 100%; overflow-y: auto; padding: 0 22px 18px; gap: 0; flex-wrap: nowrap; }
-/* rows: no dividers (only sections have one); the control drops under the text when the text
-   would get narrower than ~200 px */
-.pp-set-row { width: 100%; gap: 6px 16px; padding: 10px 0; flex-wrap: wrap; }
-.pp-set-text { flex: 0 1 auto; min-width: 0; gap: 2px; }  /* its natural width: the control drops below rather than squeeze it */
 .pp-set-label { font-size: 14px; }
 .pp-set-help { font-size: 12.5px; color: var(--pp-muted); line-height: 1.35; }
 .pp-set-error { font-size: 12px; color: var(--pp-danger); }
-.pp-set-control { flex: 1 1 auto; min-width: 0; flex-wrap: nowrap; justify-content: safe flex-end; gap: 6px; }  /* safe: too wide, it overflows to the right, where tabs.js sees it (icons only) */
-/* the control dropped under the text (static/tabs.js marks the row): its field stretches up to the next button */
-.pp-set-stacked > .pp-set-control .pp-set-field, .pp-set-stacked > .pp-set-control > .q-field { flex: 1 1 200px; width: auto; min-width: 200px; }  /* min: it must not fit back beside the text */
-.pp-set-stacked > .pp-set-control .pp-stepper { flex: 1 1 auto; justify-content: space-between; }
-/* a very narrow pane: every control on its own line (decided by the pane's width only, so a row
-   never flips back and forth), and fields may be narrower than 200 px */
-@container ppmain (max-width: 330px) {
-  .pp-set-row > .pp-set-control { flex-basis: 100%; }
-  .pp-set-row > .pp-set-control .pp-set-field, .pp-set-row > .pp-set-control > .q-field { flex: 1 1 auto; width: auto; min-width: 0; }
-}
 /* buttons never put their text under their icon: when there is no room only the icon stays */
 .pp-set .q-btn__content { flex-wrap: nowrap; white-space: nowrap; }
 .pp-icons-only .q-btn:has(.q-icon) .q-btn__content > .block { max-width: 0; overflow: hidden; }
@@ -637,8 +617,6 @@ body.pp-page-dragging, body.pp-page-dragging * { cursor: row-resize !important; 
 .pp-seg-item:hover { color: var(--pp-fg); }
 .pp-seg-on, .pp-seg-on:hover { background: var(--pp-bg); color: var(--pp-fg); box-shadow: 0 1px 3px rgba(0, 0, 0, .15); }
 .pp-seg-icon { font-size: var(--pp-icon-m); color: inherit; }
-.pp-set-group { width: 100%; margin-top: 12px; padding: 16px 0 2px; border-top: 1px solid var(--pp-border); font-size: 13px; font-weight: 600; color: var(--pp-fg); }
-.pp-set-group:first-child { margin-top: 0; padding-top: 6px; border-top: none; }
 .pp-set-info { margin-left: auto; max-width: 260px; min-width: 0; font-size: 13px; color: var(--pp-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 /* the vault row: its folder path is cut short (whole path on hover), never widening the row */
 .pp-set-vault { flex: 1 1 160px; }
@@ -700,9 +678,7 @@ body.pp-page-dragging, body.pp-page-dragging * { cursor: row-resize !important; 
 .pp-gal-action .q-btn__content { gap: 8px; justify-content: flex-start; }
 .pp-gal-action.pp-gal-danger.q-btn { color: var(--pp-danger); }
 /* Settings: a group folded in an expansion (AI → Advanced) and a full-width row (the system instruction) */
-.pp-set-fold { width: 100%; margin-top: 10px; padding-top: 8px; border-top: 1px solid var(--pp-border); }
 .pp-set-fold .q-expansion-item__content, .pp-set-fold .nicegui-expansion-content { padding: 0; gap: 0; }
-.pp-set-fold > .q-expansion-item__container > .q-item { padding: 10px 0 6px; min-height: 0; font-size: 13px; font-weight: 600; color: var(--pp-fg); border-radius: var(--pp-r-ctrl); }
 .pp-set-fold > .q-expansion-item__container > .q-item .q-item__section--side { padding-right: 8px; min-width: 0; color: var(--pp-muted); }
 .pp-set-row.pp-set-block { flex-direction: column; flex-wrap: nowrap; align-items: stretch; gap: 10px; }
 .pp-instr-box, .pp-instr-file { width: 100%; font-size: 13px; }
@@ -1265,3 +1241,51 @@ body.pp-no-motion .pp-thinking i { opacity: .6; }
 .pp-mem-row:focus-within .pp-mem-row-del, .pp-chat-saved:focus-within .pp-chat-saved-del { opacity: 1; }
 .pp-tree-empty { gap: 6px; align-items: flex-start; }
 .pp-tree-empty-new.q-btn { color: var(--pp-accent); padding: 2px 8px; font-size: 13px; }
+
+/* ---- Settings: each group is a box under its title; thin lines split the rows inside a box,
+   nothing outside it. A row puts its control under its text only when its BOX is narrow (a
+   container query on the box: decided by width alone, so a row can never flip back and forth). */
+:root { --pp-set-box-bg: var(--pp-bg-side); --pp-set-line: rgba(127, 127, 127, .2); }
+body.body--dark { --pp-set-box-bg: rgba(255, 255, 255, .035); }
+.pp-set-content { gap: 0; }
+.pp-set-content > * { max-width: 860px; }
+.pp-set-group { width: 100%; margin: 22px 0 8px; padding: 0 4px; font-size: 14px; font-weight: 600; color: var(--pp-fg); }
+.pp-set-content > .pp-set-group:first-child { margin-top: 6px; }
+.pp-set-content > .pp-set-box:first-child { margin-top: 8px; }
+.pp-set-box { width: 100%; flex: none; gap: 0; flex-wrap: nowrap; padding: 0 16px; border: 1px solid var(--pp-set-line); border-radius: var(--pp-r-popup); background: var(--pp-set-box-bg); container: ppbox / inline-size; }
+.pp-set-box > * + * { border-top: 1px solid var(--pp-set-line); }
+.pp-set-box .pp-set-row { width: 100%; flex-wrap: nowrap; gap: 8px 16px; padding: 12px 0; }
+.pp-set-box .pp-set-row.pp-set-block { flex-direction: column; align-items: stretch; gap: 10px; }
+.pp-set-text { flex: 1 1 auto; min-width: 0; gap: 2px; }
+.pp-set-control { flex: 0 1 auto; min-width: 0; max-width: 72%; flex-wrap: nowrap; justify-content: safe flex-end; gap: 6px; }  /* safe: too wide, it overflows to the right, where tabs.js sees it (icons only) */
+@container ppbox (max-width: 400px) {
+  .pp-set-box .pp-set-row:not(.pp-set-row-inline):not(.pp-set-block) { flex-wrap: wrap; }
+  .pp-set-row:not(.pp-set-row-inline) > .pp-set-control { flex: 1 1 100%; max-width: 100%; justify-content: flex-start; }
+  .pp-set-row:not(.pp-set-row-inline) > .pp-set-control .pp-set-field, .pp-set-row:not(.pp-set-row-inline) > .pp-set-control > .q-field { flex: 1 1 auto; width: auto; min-width: 0; }
+  .pp-set-row > .pp-set-control > .pp-seg { max-width: 100%; flex-wrap: wrap; }
+}
+.pp-set-row-inline > .pp-set-control { flex: none; max-width: none; }  /* a switch never shrinks; its text wraps */
+/* a folded group (AI → Advanced): the title is the expansion header, the box opens under it */
+.pp-set-fold { width: 100%; margin-top: 14px; }
+.pp-set-fold > .q-expansion-item__container > .q-item { padding: 8px 4px; min-height: 0; font-size: 14px; font-weight: 600; color: var(--pp-fg); border-radius: var(--pp-r-ctrl); }
+.pp-set-fold .pp-set-box { margin-top: 4px; }
+.pp-set-box > .pp-mem { padding: 12px 0; }
+.pp-chat-disclaimer { width: 100%; padding: 6px 12px 0; text-align: center; font-size: 11px; line-height: 14px; color: var(--pp-muted); user-select: none; }
+.pp-chat-compose:has(.pp-chat-disclaimer) { padding-bottom: 8px; }
+/* tab overflow (tabs.js): each arrow has its own 26 px area at an edge of the row, split from
+   the tabs by a vertical line; the row is padded by those areas, so no tab hides under one */
+.pp-tabbar.pp-tabs-scroll { padding: 0 26px; scroll-padding: 0 26px; }
+.pp-tabs-arrow { position: absolute; top: 0; height: 100%; width: 26px; display: none; align-items: center; justify-content: center; cursor: pointer; color: var(--pp-muted); background: var(--pp-bg-side); z-index: 2; transition: color var(--pp-dur-fast) ease, background-color var(--pp-dur-fast) ease; }
+.pp-tabs-arrow-left { border-right: 1px solid var(--pp-border); }
+.pp-tabs-arrow-right { border-left: 1px solid var(--pp-border); }
+.pp-tabs-arrow.pp-on { display: flex; }
+.pp-tabs-arrow:hover { color: var(--pp-fg); background: rgba(127, 127, 127, .14); }
+.pp-tabs-arrow.pp-off { color: var(--pp-muted); opacity: .35; cursor: default; background: var(--pp-bg-side); }
+/* command palette: a muted heading above each group */
+.pp-picker-group { width: 100%; flex: none; padding: 10px 10px 3px; font-size: 11px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; color: var(--pp-muted); user-select: none; }
+.pp-picker-list > .pp-picker-group:first-child { padding-top: 4px; }
+/* the note buttons (split · AI · ⋯) in one box, like the vault · palette · settings box */
+.pp-tab-more.pp-tools { margin: 0 4px; }
+/* editor options: readable line length and the current line's band */
+.pp-editor .cm-editor.pp-readable:not(.pp-page-view) .cm-content { max-width: 46em; margin: 0 auto; }
+.pp-editor .cm-editor .cm-activeLine { background-color: rgba(127, 127, 127, .07); }

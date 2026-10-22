@@ -27,7 +27,7 @@ def test_every_setting_has_a_default_that_is_valid() -> None:
 
 
 def test_sections_cover_the_spec() -> None:
-    assert list(SECTIONS) == ["General", "Appearance", "Editor", "Print", "AI"]
+    assert list(SECTIONS) == ["General", "Appearance", "Editor", "AI"]  # paper size: Editor
     keys = set(ALL)
     assert {"appearance.theme", "appearance.accent", "appearance.density"} <= keys
     assert {
@@ -153,7 +153,7 @@ def test_config_unset_and_layers(tmp_path: Path) -> None:
 def test_search_finds_by_name_help_and_section() -> None:
     from paper_pile.core.settings import search_settings
 
-    assert [s.key for s in search_settings("font size")] == ["editor.font_size"]
+    assert [s.key for s in search_settings("font size")][0] == "editor.font_size"
     assert "ai.host" in [s.key for s in search_settings("ollama")]
     assert {s.key for s in search_settings("paste")} >= {"paste.smart_paste"}
     assert search_settings("") == [] and search_settings("zzzz") == []
@@ -173,6 +173,7 @@ def test_general_groups_language_paste_folders_daily() -> None:
     assert groups == [
         *["Features"] * 3,
         "Language",
+        *["Startup and files"] * 2,
         "Paste",
         "Images",
         *["Daily notes"] * 4,
@@ -290,3 +291,23 @@ def test_theme_payload_motion_and_whether_it_was_set(tmp_path: Path) -> None:
     cfg.unset("appearance.motion", "vault")
     assert theme_payload(cfg)["motion"] == 0.0
     assert theme_payload(None)["motionSet"] is False
+
+
+def test_paper_size_sits_under_page_view_and_every_editor_setting_has_a_group() -> None:
+    keys = [s.key for s in SECTIONS["Editor"]]
+    assert keys.index("print.paper") == keys.index("editor.page_view") + 1
+    assert all(s.group for s in SECTIONS["Editor"])
+    assert {s.group for s in SECTIONS["Editor"]} == {
+        "Font",
+        "Layout",
+        "Writing",
+        "Page view",
+        "Advanced",
+    }
+
+
+def test_new_settings_defaults() -> None:
+    v = sanitized({})
+    assert v["general.restore_tabs"] is True and v["general.confirm_delete"] is True
+    assert v["editor.readable_width"] is False and v["editor.highlight_line"] is False
+    assert v["editor.word_count"] is True

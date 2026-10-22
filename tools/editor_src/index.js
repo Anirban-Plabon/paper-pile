@@ -5,7 +5,7 @@ import { markdown, markdownLanguage } from "@codemirror/lang-markdown";
 import { HighlightStyle, indentUnit, syntaxHighlighting, syntaxTree } from "@codemirror/language";
 import { SearchQuery, findNext, highlightSelectionMatches, openSearchPanel, searchKeymap, setSearchQuery } from "@codemirror/search";
 import { Annotation, Compartment, EditorSelection, EditorState, Transaction } from "@codemirror/state";
-import { EditorView, drawSelection, dropCursor, keymap, lineNumbers, tooltips } from "@codemirror/view";
+import { EditorView, drawSelection, dropCursor, highlightActiveLine, keymap, lineNumbers, tooltips } from "@codemirror/view";
 import { classHighlighter, tags as t } from "@lezer/highlight";
 import { blocks, themeFacet } from "./blocks.js";
 import { livePreview } from "./livepreview.js";
@@ -103,6 +103,8 @@ export function createEditor(
   const optionsExt = (o) => [
     o.wordWrap ? EditorView.lineWrapping : [],
     o.lineNumbers ? lineNumbers() : [],
+    o.highlightLine ? highlightActiveLine() : [],
+    o.readableWidth ? EditorView.editorAttributes.of({ class: "pp-readable" }) : [],
     EditorState.tabSize.of(o.tabSize),
     indentUnit.of(" ".repeat(o.tabSize)),
     EditorView.contentAttributes.of({ spellcheck: o.spellCheck ? "true" : "false", lang: o.lang || "en" }),

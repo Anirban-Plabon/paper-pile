@@ -62,7 +62,9 @@ class FileTree:
         search: Callable[[str], list[SearchHit]] = lambda query: [],
         open_found: Callable[[str, str], Awaitable[None]] | None = None,
         open_trash: Callable[[], Awaitable[None]] | None = None,
+        confirm_delete: Callable[[], bool] = lambda: True,
     ) -> None:
+        self._confirm_delete = confirm_delete  # Settings → Ask before deleting
         self._open_trash = open_trash  # the vault menu's Trash…
         self._search = search  # full-text search (core.index.Index.search)
         self._open_found = open_found  # open a hit with its word found in the note
@@ -90,11 +92,12 @@ class FileTree:
         with ui.row().classes("pp-files-head items-center no-wrap"):
             ui.label("Files").classes("pp-pane-title")
             ui.space()
-            self._search_button = icon_button(
-                "search", self.toggle_search, "Search in all notes (Ctrl+Shift+F)"
-            )
-            icon_button("folder-plus", self.new_folder, "New folder")
-            icon_button("file-plus", self.new_note, "New note")
+            with ui.element("div").classes("pp-seg pp-tools pp-tools-row"):  # one box
+                self._search_button = icon_button(
+                    "search", self.toggle_search, "Search in all notes (Ctrl+Shift+F)", size="m"
+                )
+                icon_button("folder-plus", self.new_folder, "New folder", size="m")
+                icon_button("file-plus", self.new_note, "New note", size="m")
         self._search_box = (
             ui.input(placeholder="Search all notes")
             .props("outlined dense clearable debounce=150")
@@ -538,7 +541,9 @@ class FileTree:
     async def _delete(self, *paths: str) -> None:
         names = [p.rsplit("/", 1)[-1] for p in paths]
         label = f"“{names[0]}”" if len(paths) == 1 else f"{len(paths)} items"
-        if not await self._confirm(f"Move {label} to the trash?", "Delete"):
+        if self._confirm_delete() and not await self._confirm(
+            f"Move {label} to the trash?", "Delete"
+        ):
             return
         done: list[tuple[str, str]] = []
         failed: list[str] = []

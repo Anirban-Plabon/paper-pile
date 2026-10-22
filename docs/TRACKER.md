@@ -7,7 +7,7 @@ Legend: 🧠 = needs Opus (see PLAN §6 model guidance) · ⬜ todo · 🔄 in p
 
 ## Current focus
 - **Phase:** P14 — Features, navigation & safety (user request 2026-10-22; includes P9.1–P9.3, P9.5, P9.6)
-- **Task:** P15 Motion + P16 icon/UX fixes built; P14 built (P14.1–P14.16, P9.1–P9.3, P9.5); P9.6 README done, its manual QA items wait for the user; P10.5 / P12.4 native Save dialog checks still manual
+- **Task:** P17 tabs / tool boxes / settings boxes / palette built; P15 + P16 built; P14 built (P14.1–P14.16, P9.1–P9.3, P9.5); P9.6 README done, its manual QA items wait for the user; P10.5 / P12.4 native Save dialog checks still manual
 - **Now:** P15 + P16 done (motion with Animation speed setting; icons unified; small UX fixes); P14 done (switches, switcher + palette, vault search, outline, tree keys, trash, version history; tab overflow, split backlinks, line numbers, draggable page breaks)
 - **Next up:** the user's manual QA pass (incl. P15 motion feel in the native window) (PLAN §6 checklist); then the user's AI-with-notes plan; then the Tauri v2 spike
 
@@ -192,6 +192,16 @@ Legend: 🧠 = needs Opus (see PLAN §6 model guidance) · ⬜ todo · 🔄 in p
 | P16.1 | Icons: one set, token sizes, one close button, one check | ✅ | fold / tab arrows / table + → Lucide; 13/15 px → tokens; tree chevron box 14 px; `icons.close_button` in 5 dialogs; `pp-check`; row icons 16 px |
 | P16.2 | Small UX fixes | ✅ | tooltip warm-up; tree 🔎 tooltip; `:focus-visible`; deletes reachable by Tab; tab × 3 px padding; empty tree New note (NiceGUI test); status bar: no "Ready", "Saved at" tip; fold "N lines hidden". Survey items found already done: middle-click closes a tab; both 🔎 buttons open the same search (only the tooltip was wrong) |
 
+### P17 — Tabs, tool boxes, settings, palette (user request 2026-10-22)
+| ID | Task | Status | Notes |
+|---|---|---|---|
+| P17.1 | Tab overflow arrows + one tab per click | ✅ | tabs.js: `pp-tabs-scroll` (padding = arrow areas; overflow measured without it, so no flip), `step()` aligns the next cut tab to the inner edge, `pp-off` at an end; real clicks: 3 × › = +1 tab each, ‹ = −1 |
+| P17.2 | Tool boxes | ✅ | tree header, folded rail, `menu_host` (split · AI · ⋯) = `pp-seg pp-tools`; icons 16 px |
+| P17.3 | Settings boxes + groups; Paper size under Page view | ✅ | `_open_box` / `_box`; `pp-set-box` container query (400 px); `pp-set-row-inline` for switches; `pp-set-stacked` JS removed; no Print section; real app: all 4 pages, widths 1400→600 step 40: no overflow, no flip |
+| P17.4 | New settings + Rebuild index | ✅ | `general.restore_tabs`, `general.confirm_delete` (FileTree `confirm_delete`), `editor.readable_width` / `editor.highlight_line` (editor options), `editor.word_count`; General → Advanced *Rebuild* (`run.io_bound(index.rebuild)`); 2 core tests |
+| P17.5 | Chat disclaimer | ✅ | `.pp-chat-disclaimer` |
+| P17.6 | Palette groups + commands | ✅ | `PaletteCommand.group`, `GROUPS`, `PickItem.group` headings; 15 new commands (`open_today`, `new_chat`, `rebuild_index_now`, `close_other_tabs`) |
+
 ## Decision log
 <!-- YYYY-MM-DD · decision · reason · (who: user / claude) -->
 | Date | Decision | Reason | By |
@@ -354,6 +364,7 @@ Legend: 🧠 = needs Opus (see PLAN §6 model guidance) · ⬜ todo · 🔄 in p
 | 2026-10-22 | P15 Motion (§4.19): page-number moves slide + crossed lines tinted, jump flash + smooth scroll, block-move slide, popups/chevrons/hover polish; setting *Animation speed* Off/Fast/Normal/Slow (×0/0.6/1/1.6), OS reduced motion = Off while untouched. Only opacity/transform animate; measured sizes (sheet padding, widget/line heights, pane widths) never do | User request (animations survey + "animation to moving page no" + speed setting); CodeMirror measures heights, so animating them makes clicks drift | user / claude |
 | 2026-10-22 | Motion speed reaches the editor through `--pp-motion` / `window.ppMotion` (theme.js), not an editor option; Off keeps a still jump highlight; the file tree's chevrons still swap (rows are redrawn); popups only animate in (no fade-out) | Simplest live path for both split editors; a fading-out menu would take clicks; animating a redrawn row is impossible without keeping its DOM | claude |
 | 2026-10-22 | P16 icon / UX fixes (§4.20) from the survey, built with P15 (user: "implement all of them") | User request | user |
+| 2026-10-22 | Settings: boxed groups (Obsidian style), Paper size under Page view (Print page removed), new settings (reopen tabs, confirm delete, readable width, current line, word count, rebuild index), AI embedding model moved to AI → Advanced (unused); row stacking is CSS-only (box container query) — the JS `pp-set-stacked` measuring is removed; tab arrows get their own areas and step one tab; palette grouped | User request (second polish round); CSS-only stacking cannot flip at any width, which the user asked not to see again | user / claude |
 
 ## Issues log
 <!-- YYYY-MM-DD · task · symptom → root cause → fix · (gotcha added? y/n) -->
@@ -559,3 +570,4 @@ Legend: 🧠 = needs Opus (see PLAN §6 model guidance) · ⬜ todo · 🔄 in p
 - 2026-10-22 · P14.16 command palette button (vault · palette · settings box); Settings × fix · 6 + 1 real-app checks
 - 2026-10-22 · P14.17 `--debug` window log; half-screen maximize not reproduced (open issue) · real-window runs on the laptop panel
 - 2026-10-22 · P15.1–P15.6 motion + Animation speed; P16.1–P16.2 icon / UX fixes · 3 new tests; 26 real-app checks (+ real-pages run); qa_editor 358/358
+- 2026-10-22 · P17.1–P17.6 tab arrows, tool boxes, settings boxes + groups + new settings, chat disclaimer, palette groups · 2 new core tests; 20 real-app checks (settings 1400→600 px, no overflow / no flip)

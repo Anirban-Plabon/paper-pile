@@ -107,16 +107,10 @@
     const restore = set.querySelector('.pp-set-restore');
     if (restore) { if (folded) restore.dataset.tip = 'Restore defaults'; else delete restore.dataset.tip; }
   }
-  // A row whose control dropped under its text is marked (its field then stretches). A group of
-  // buttons that does not fit shows icons only, each with its text as a hover tip. Rows are
-  // checked whenever their own size changes, so the mark always matches the settled layout.
+  // Where a control sits (beside or under the text) is pure CSS (a container query on the box,
+  // app.css). Here only: a group of buttons that does not fit shows icons only, each with its
+  // text as a hover tip. Rows are checked whenever their own size changes.
   function fitRow(row) {
-    const text = row.querySelector(':scope > .pp-set-text');
-    const control = row.querySelector(':scope > .pp-set-control');
-    if (text && control) {
-      const below = control.getBoundingClientRect().top >= text.getBoundingClientRect().bottom - 2;
-      if (row.classList.contains('pp-set-stacked') !== below) row.classList.toggle('pp-set-stacked', below);
-    }
     row.querySelectorAll('.pp-set-control, .pp-instr-bar, .pp-set-blockhead').forEach(function (box) {
       box.classList.remove('pp-icons-only');
       const squeezed = box.scrollWidth > box.clientWidth + 1;
@@ -147,11 +141,36 @@
   });
 })();
 
-// Too many tabs (paper_pile/gui/components/tabs.py): the mouse wheel scrolls a tab row sideways,
-// a ‹ / › arrow sits on an edge that hides tabs (a click scrolls most of a row's width), and the
-// strip gets `pp-tabs-overflow` (shows the list button) while any row is cut off.
+// Too many tabs (paper_pile/gui/components/tabs.py): the mouse wheel scrolls a tab row sideways.
+// While a row overflows it gets `pp-tabs-scroll`: a ‹ and a › button, each in its own area at an
+// edge of the row with a vertical line between it and the tabs (the row is padded by that area,
+// so no tab hides under it). A click brings the next hidden tab on that side fully into view (one
+// tab per click); an arrow with nothing more on its side is dimmed. The strip gets
+// `pp-tabs-overflow` (shows the list button) while any row is cut off.
 (function () {
+  const AREA = 26; // px each arrow takes (keep in sync with .pp-tabs-arrow in app.css)
   const arrows = new WeakMap(); // tab row → [left, right]
+  // The tabs' positions in the row's scrolled content, and the part of it that is in view.
+  function tabBoxes(bar) {
+    const origin = bar.getBoundingClientRect().left - bar.scrollLeft;
+    return [...bar.querySelectorAll(':scope > .pp-tab')].map(function (t) {
+      const r = t.getBoundingClientRect();
+      return { left: r.left - origin, right: r.right - origin };
+    });
+  }
+  function step(bar, side) {
+    const view = { left: bar.scrollLeft + AREA, right: bar.scrollLeft + bar.clientWidth - AREA };
+    const tabs = tabBoxes(bar);
+    let to = null;
+    if (side === 'right') {
+      const next = tabs.find(function (t) { return t.right > view.right + 1; });
+      if (next) to = next.right - (bar.clientWidth - AREA);
+    } else {
+      const prev = tabs.slice().reverse().find(function (t) { return t.left < view.left - 1; });
+      if (prev) to = prev.left - AREA;
+    }
+    if (to !== null) bar.scrollTo({ left: Math.max(0, to), behavior: window.ppMotion === 0 ? 'auto' : 'smooth' });
+  }
   function arrowsOf(bar) {
     let pair = arrows.get(bar);
     if (pair && pair[0].isConnected) return pair;
@@ -159,10 +178,9 @@
       const a = document.createElement('div');
       a.className = 'pp-tabs-arrow pp-tabs-arrow-' + side;
       a.innerHTML = window.ppIconSvg('chevron-' + side, 's');
+      a.dataset.tip = side === 'left' ? 'Previous tab' : 'Next tab';
       a.addEventListener('mousedown', function (e) { e.preventDefault(); });
-      a.addEventListener('click', function () {
-        bar.scrollBy({ left: (side === 'left' ? -0.7 : 0.7) * bar.clientWidth, behavior: 'smooth' });
-      });
+      a.addEventListener('click', function () { step(bar, side); });
       bar.parentElement.appendChild(a);
       return a;
     });
@@ -174,21 +192,22 @@
     if (!strip) return;
     const pair = arrowsOf(bar);
     const shown = bar.offsetParent !== null;
-    const left = shown && bar.scrollLeft > 1;
-    const right = shown && bar.scrollLeft + bar.clientWidth < bar.scrollWidth - 1;
+    const padded = bar.classList.contains('pp-tabs-scroll');
+    // overflow without the arrows' own padding, so showing them never decides whether they show
+    const over = shown && bar.scrollWidth - (padded ? 2 * AREA : 0) > bar.clientWidth + 1;
+    if (over !== padded) bar.classList.toggle('pp-tabs-scroll', over);
     const sRect = strip.getBoundingClientRect();
     const bRect = bar.getBoundingClientRect();
     pair[0].style.left = bRect.left - sRect.left + 'px';
-    pair[1].style.left = bRect.right - sRect.left - pair[1].offsetWidth + 'px';
-    pair[0].classList.toggle('pp-on', left);
-    pair[1].classList.toggle('pp-on', right);
-    bar.classList.toggle('pp-cut-left', left);
-    bar.classList.toggle('pp-cut-right', right);
-    let over = false;
+    pair[1].style.left = bRect.right - sRect.left - AREA + 'px';
+    pair.forEach(function (a) { a.classList.toggle('pp-on', over); });
+    pair[0].classList.toggle('pp-off', bar.scrollLeft <= 1);
+    pair[1].classList.toggle('pp-off', bar.scrollLeft + bar.clientWidth >= bar.scrollWidth - 1);
+    let any = false;
     strip.querySelectorAll('.pp-tabbar').forEach(function (b) {
-      if (b.offsetParent !== null && b.scrollWidth > b.clientWidth + 1) over = true;
+      if (b.offsetParent !== null && b.scrollWidth > b.clientWidth + 1) any = true;
     });
-    strip.classList.toggle('pp-tabs-overflow', over);
+    strip.classList.toggle('pp-tabs-overflow', any);
   }
   const sizes = new ResizeObserver(function (entries) { entries.forEach(function (e) { update(e.target); }); });
   const watched = new WeakSet();
