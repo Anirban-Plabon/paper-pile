@@ -2,14 +2,14 @@
 // Python finds the note and renders it (`/_pp/embed`); a click anywhere on the block opens that
 // note in a tab. The block is read-only: arrow into it to see (and edit) the `![[...]]` text.
 import { WidgetType } from "@codemirror/view";
-import { editorContext } from "./context.js";
+import { measureAgain, rtOf } from "./context.js";
 
 export class EmbedWidget extends WidgetType {
-  constructor(note, heading) {
+  constructor(note, heading, source) {
     super();
     this.note = note;
     this.heading = heading;
-    this.source = editorContext.notePath;
+    this.source = source;
   }
   eq(other) {
     return other.note === this.note && other.heading === this.heading && other.source === this.source;
@@ -34,7 +34,7 @@ export class EmbedWidget extends WidgetType {
         } else {
           body.innerHTML = j.html; // server-rendered, raw HTML in notes is escaped there
         }
-        view.requestMeasure();
+        measureAgain(view);
       })
       .catch(() => {
         body.textContent = "Could not load the note";
@@ -44,7 +44,7 @@ export class EmbedWidget extends WidgetType {
       const link = e.target.closest ? e.target.closest("a.wikilink") : null;
       const note = link ? link.getAttribute("data-note") : this.note;
       const heading = link ? link.getAttribute("data-heading") || "" : this.heading;
-      editorContext.emit("wikilink", { note, heading });
+      rtOf(view.state).emit("wikilink", { note, heading });
     });
     wrap.addEventListener("click", (e) => {
       if (e.target.closest && e.target.closest("a")) e.preventDefault(); // links inside are inert

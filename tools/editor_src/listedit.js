@@ -3,7 +3,7 @@
 //  * Enter continues a list/quote as a TIGHT list (never inserts blank lines between items); on an
 //    empty item it steps out: a nested item moves out one level, a top-level item loses its marker,
 //    an empty quote line leaves one quote level. So a list, a callout or a quote can always be
-//    escaped by pressing Enter on the empty line.
+//    escaped by pressing Enter on the empty line; leaving it for good keeps an empty line under it.
 //  * Tab / Shift+Tab nest and un-nest an item (and the items under it) to exactly the column that
 //    makes it a child of the item above, also inside quotes (the indentation goes AFTER the `> `).
 //  * A list marker typed right after a list marker (`- -`) is written as an escaped character
@@ -87,10 +87,20 @@ function enter(view) {
       const indent = parent ? parent.indent : 0;
       return replaceLine(view, line, info.quote + " ".repeat(indent) + info.marker + info.gap + info.task);
     }
-    return replaceLine(view, line, info.quote); // top-level item: the marker goes, the quote stays
+    return leave(view, line, info.quote); // top-level item: the marker goes, the quote stays
   }
-  if (info.quote) return replaceLine(view, line, info.quote.replace(/[ \t]*>[ \t]?$/, "")); // leave a quote level
+  if (info.quote) return leave(view, line, info.quote.replace(/[ \t]*>[ \t]?$/, "")); // leave a quote level
   return false;
+}
+
+// Replace an empty item/quote line by `rest`. When that leaves the list or quote for good, the
+// line stays empty and the caret goes to a new line under it: text typed straight under a list or
+// quote line would still belong to it in markdown (a "lazy" line), so the block is closed by an
+// empty line, like every block.
+function leave(view, line, rest) {
+  const above = line.number > 1 ? view.state.doc.line(line.number - 1).text : "";
+  if (rest !== "" || above.trim() === "") return replaceLine(view, line, rest);
+  return replaceLine(view, line, "\n");
 }
 
 // move the item on the caret's line, and everything nested under it, to a new indentation

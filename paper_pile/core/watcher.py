@@ -24,7 +24,7 @@ from watchdog.events import FileSystemEvent, FileSystemEventHandler
 from watchdog.observers import Observer
 
 from paper_pile.core.events import EventBus
-from paper_pile.core.vault import is_note_name
+from paper_pile.core.vault import is_hidden_part, is_note_name
 
 log = logging.getLogger("paper_pile.watcher")
 
@@ -51,7 +51,7 @@ def _rel_parts(root: Path, raw: str | bytes) -> tuple[str, ...] | None:
 
 
 def _visible(parts: tuple[str, ...] | None, is_dir: bool) -> bool:
-    if not parts or any(p.startswith(".") for p in parts):
+    if not parts or any(is_hidden_part(p, i) for i, p in enumerate(parts)):
         return False
     return is_dir or is_note_name(parts[-1])
 

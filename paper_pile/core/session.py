@@ -1,7 +1,8 @@
 """Open tabs, last vault, and session restore.
 
 Two small pieces of state live here:
-  * the *last vault* (global, in the user state dir), so ``paper-pile`` can reopen it;
+  * the *last vault* and the recent ones (global, in the user state dir), so ``paper-pile`` can
+    reopen it and "Open vault" can list them;
   * the per-vault *session* (``<vault>/.paper-pile/session.json``): pane layout, mode, tabs.
 Both are tolerant on read (missing or corrupt -> defaults) and never fatal on write.
 """
@@ -19,12 +20,17 @@ from paper_pile.core.fsutil import atomic_write_bytes
 log = logging.getLogger("paper_pile.session")
 
 _LAST_VAULT_FILE = "last_vault.json"
+MAX_RECENT_VAULTS = 8
 SESSION_FILE = "session.json"
 META_DIR = ".paper-pile"
 
 Mode = Literal["live", "source"]
 PANES = ("left", "right")
-DEFAULT_WIDTHS = {"left": 260, "right": 340}
+DEFAULT_WIDTHS = {
+    "left": 260,
+    "right": 340,
+    "settings": 720,
+}  # settings: the right pane while it shows Settings
 
 
 def _state_dir(state_dir: Path | None) -> Path:
@@ -42,12 +48,36 @@ def load_last_vault(state_dir: Path | None = None) -> Path | None:
     return vault if vault.is_dir() else None
 
 
+def load_recent_vaults(state_dir: Path | None = None) -> list[Path]:
+    """Vaults opened before, newest first; only those that still exist as directories."""
+    path = _state_dir(state_dir) / _LAST_VAULT_FILE
+    try:
+        data = json.loads(path.read_text())
+    except (FileNotFoundError, ValueError, OSError):
+        return []
+    if not isinstance(data, dict):
+        return []
+    raw = data.get("recent")
+    names = [str(v) for v in raw] if isinstance(raw, list) else []
+    if "vault" in data:
+        names.insert(0, str(data["vault"]))
+    seen: list[Path] = []
+    for name in names:
+        vault = Path(name)
+        if vault not in seen and vault.is_dir():
+            seen.append(vault)
+    return seen[:MAX_RECENT_VAULTS]
+
+
 def save_last_vault(vault: Path, state_dir: Path | None = None) -> None:
-    """Remember ``vault`` as the one to open next time. Failure is logged, never fatal."""
+    """Remember ``vault`` as the one to open next time (and at the top of the recent vaults).
+    Failure is logged, never fatal."""
     directory = _state_dir(state_dir)
+    recent = [vault] + [v for v in load_recent_vaults(state_dir) if v != vault]
+    data = {"vault": str(vault), "recent": [str(v) for v in recent[:MAX_RECENT_VAULTS]]}
     try:
         directory.mkdir(parents=True, exist_ok=True)
-        (directory / _LAST_VAULT_FILE).write_text(json.dumps({"vault": str(vault)}))
+        (directory / _LAST_VAULT_FILE).write_text(json.dumps(data))
     except OSError:
         log.warning("could not remember last vault", exc_info=True)
 
@@ -84,10 +114,11 @@ def load_session(vault: Path) -> SessionState:
         state.tabs = cast(list[str], tabs)
     if isinstance(data.get("active"), str):
         state.active = data["active"]
-    for pane in PANES:
-        widths, opens = data.get("pane_widths"), data.get("panes_open")
+    widths, opens = data.get("pane_widths"), data.get("panes_open")
+    for pane in DEFAULT_WIDTHS:
         if isinstance(widths, dict) and (w := _positive_int(widths.get(pane))):
             state.pane_widths[pane] = w
+    for pane in PANES:
         if isinstance(opens, dict) and isinstance(opens.get(pane), bool):
             state.panes_open[pane] = opens[pane]
     if data.get("mode") in ("live", "source"):

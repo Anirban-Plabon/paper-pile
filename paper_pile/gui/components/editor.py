@@ -3,8 +3,9 @@
 The browser owns the buffer. Python sets text or inserts at the cursor through explicit
 method calls (never reactive props, so a server push cannot clobber typing) and receives
 ``change`` / ``blur`` / ``save`` / ``slash_query`` / ``slash_run`` / ``table_op`` /
-``image_saved`` / ``paste`` events. Events about the text carry the ``docId`` given to the last
-:meth:`set_text`, so a late event from an old note is detectable.
+``image_saved`` / ``paste`` / ``print_layout`` / ``page_break`` events. Events about the text
+carry the ``docId`` given to the last :meth:`set_text`, so a late event from an old note is
+detectable.
 """
 
 from collections.abc import Callable
@@ -47,6 +48,11 @@ class Editor(
         on_link: Handler | None = None,
         on_wikilink: Handler | None = None,
         on_paste: Handler | None = None,
+        on_focus: Handler | None = None,
+        on_tag: Handler | None = None,
+        on_caret: Handler | None = None,
+        on_print_layout: Handler | None = None,
+        on_page_break: Handler | None = None,
     ) -> None:
         super().__init__()
         self._props["initialText"] = text
@@ -57,6 +63,16 @@ class Editor(
         self._props["options"] = options or {}
         if on_change:
             self.on("change", on_change)
+        if on_focus:
+            self.on("focus", on_focus)
+        if on_tag:
+            self.on("tag", on_tag)
+        if on_caret:
+            self.on("caret", on_caret)
+        if on_print_layout:
+            self.on("print_layout", on_print_layout)
+        if on_page_break:
+            self.on("page_break", on_page_break)
         if on_blur:
             self.on("blur", on_blur)
         if on_save:
@@ -86,12 +102,14 @@ class Editor(
         if on_paste:
             self.on("paste", on_paste)
 
-    async def get_text(self) -> str | None:
-        """The editor's current text, or ``None`` if the browser did not answer in time."""
+    async def get_text(self, doc_id: int) -> str | None:
+        """The text of doc ``doc_id`` if it is the one on screen; ``None`` if another doc is
+        shown or the browser did not answer in time."""
         try:
-            return str(await self.run_method("getText"))
+            text = await self.run_method("getText", doc_id)
         except TimeoutError:
             return None
+        return None if text is None else str(text)
 
     def set_text(
         self, text: str, doc_id: int = 0, path: str = "", *, keep_caret: bool = False
@@ -193,3 +211,16 @@ class Editor(
 
     def focus(self) -> None:
         self.run_method("focus")
+
+    def sync_text(self, doc_id: int, text: str) -> None:
+        """The note ``doc_id`` changed in the other editor of a split: mirror it here (outside
+        this editor's undo history, not reported back as a change)."""
+        self.run_method("syncText", doc_id, text)
+
+    def print_layout_ready(self, seq: int, url: str) -> None:
+        """The print page for page view's request ``seq`` (see ``static/print.js``)."""
+        self.run_method("printLayoutReady", seq, url)
+
+    def open_search(self, replace: bool = False) -> None:
+        """Find (``replace``: and replace) in the note on screen."""
+        self.run_method("openSearch", replace)

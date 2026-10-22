@@ -6,6 +6,11 @@ refers to them with a plain relative markdown path, ``![image|480](.mamba.assets
 (the number after ``|`` is the display width, the Obsidian convention). The app owns that folder:
 renaming, moving, duplicating or deleting a note takes its images along, and images no longer
 referenced are moved to ``.trash`` (never unlinked).
+
+Since P13 new images go to the vault's images folder instead (``vault.images_folder``, default
+``.image``): shared by all notes, referred to relative to the note's folder (``.image/x.png``,
+``../.image/x.png``). Moving a note re-points those references (:func:`plan_media_edits`);
+deleting a note leaves shared images alone. Per-note folders keep working as described above.
 """
 
 import hashlib
@@ -159,8 +164,9 @@ def _webp_size(data: bytes) -> tuple[int, int] | None:
 # ---- saving ----------------------------------------------------------------------------------
 
 
-def save_image(vault: "Vault", note: str, data: bytes) -> SavedImage:
-    """Store ``data`` as an image of ``note`` and return how to refer to it.
+def save_image(vault: "Vault", note: str, data: bytes, folder: str = "") -> SavedImage:
+    """Store ``data`` as an image of ``note`` and return how to refer to it: in the images
+    folder ``folder`` (vault-relative) when given, else in the note's own assets folder.
 
     The name is the first 12 hex digits of the SHA-256 of the bytes plus the extension the bytes
     really have (so a ``.png`` that is not a PNG is refused, not stored). The same picture twice
@@ -175,21 +181,29 @@ def save_image(vault: "Vault", note: str, data: bytes) -> SavedImage:
     if ext is None or f".{ext}" not in IMAGE_SUFFIXES:
         raise ImageError("not a supported image (png, jpg, gif, webp, bmp, avif or svg)")
     name = f"{hashlib.sha256(data).hexdigest()[:_HASH_CHARS]}.{ext}"
-    folder = vault.root / assets_folder(note)
-    target = folder / name
+    shared = folder.strip("/")
+    rel_folder = shared or assets_folder(note)
+    if shared:
+        vault.resolve(shared)  # a safe vault folder
+    target = vault.root / rel_folder / name
     new = not target.exists()
     if new:
-        folder.mkdir(parents=True, exist_ok=True)
+        target.parent.mkdir(parents=True, exist_ok=True)
         atomic_write_bytes(target, data)
     size = image_size(data)
     width = min(size[0], DEFAULT_MAX_WIDTH) if size and size[0] > 0 else None
-    return SavedImage(
-        name,
-        f"{assets_folder(note)}/{name}",
-        encode_ref(assets_prefix(note), name),
-        width,
-        new,
-    )
+    prefix = _relative(rel_folder, _folder_of(note)) if shared else assets_prefix(note)
+    return SavedImage(name, f"{rel_folder}/{name}", encode_ref(prefix, name), width, new)
+
+
+def _folder_of(note: str) -> str:
+    parent = PurePosixPath(note).parent.as_posix()
+    return "" if parent == "." else parent
+
+
+def _relative(target: str, start: str) -> str:
+    """``target`` (vault-relative) as seen from folder ``start`` (vault-relative, "" = root)."""
+    return posixpath.relpath(target or ".", start or ".")
 
 
 # ---- what a note refers to -------------------------------------------------------------------
@@ -315,6 +329,33 @@ def plan_ref_edits(text: str, old_note: str, new_note: str) -> list[Edit]:
             else:
                 continue
             break
+    return edits
+
+
+def plan_media_edits(text: str, old_note: str, new_note: str, media: str) -> list[Edit]:
+    """Edits that keep ``text``'s images in the shared images folder ``media`` (vault-relative)
+    showing after the note moved from ``old_note``'s folder to ``new_note``'s: each such path is
+    written again relative to the new folder. Everything else stays byte-identical."""
+    old_dir, new_dir, media = _folder_of(old_note), _folder_of(new_note), media.strip("/")
+    if old_dir == new_dir or not media:
+        return []
+    spans = image_spans(text)
+    starts = locate_spans(text, spans)
+    edits: list[Edit] = []
+    for span, start in zip(spans, starts, strict=True):
+        raw = unquote(span.raw)
+        if start is None or not raw or raw.startswith("/") or ":" in raw.split("/")[0]:
+            continue
+        target = posixpath.normpath(posixpath.join(old_dir or ".", raw))
+        if not target.startswith(media + "/"):
+            continue
+        found = scan_destination(span.source[1:])  # skip the "!"
+        if found is None:
+            continue
+        d_start, d_end, _angle = found
+        head, _, name = _relative(target, new_dir).rpartition("/")
+        at = start + 1 + d_start
+        edits.append(Edit(at, start + 1 + d_end, encode_ref(head, name) if head else quote(name)))
     return edits
 
 

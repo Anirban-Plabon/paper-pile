@@ -2,7 +2,7 @@
 // `<span class="math inline">` / `<div class="math block">` (what Python's markdown parser writes)
 // and Mermaid for ```mermaid blocks. Links are made inert here; Python decides what may open.
 import katex from "katex";
-import { renderMermaid } from "./blocks.js";
+import { renderMermaid } from "./mermaidrender.js";
 
 export async function typeset(root, theme = "light") {
   if (!root) return;

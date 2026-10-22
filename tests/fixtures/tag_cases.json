@@ -1,0 +1,122 @@
+[
+  {
+    "name": "plain",
+    "src": "a #tag b",
+    "tags": [
+      "tag"
+    ]
+  },
+  {
+    "name": "line_start",
+    "src": "#start of a line",
+    "tags": [
+      "start"
+    ]
+  },
+  {
+    "name": "heading_is_not_a_tag",
+    "src": "# Heading",
+    "tags": []
+  },
+  {
+    "name": "heading_with_tag",
+    "src": "## Title #inside",
+    "tags": [
+      "inside"
+    ]
+  },
+  {
+    "name": "glued_is_not_a_tag",
+    "src": "x#no and url.org/#frag",
+    "tags": []
+  },
+  {
+    "name": "digits_only",
+    "src": "#123 but #1a",
+    "tags": [
+      "1a"
+    ]
+  },
+  {
+    "name": "nested",
+    "src": "#a/b and #a/b/",
+    "tags": [
+      "a/b",
+      "a/b"
+    ]
+  },
+  {
+    "name": "unicode",
+    "src": "#বাংলা #café",
+    "tags": [
+      "বাংলা",
+      "café"
+    ]
+  },
+  {
+    "name": "dash_underscore",
+    "src": "#a-b_c.",
+    "tags": [
+      "a-b_c"
+    ]
+  },
+  {
+    "name": "double_hash",
+    "src": "##x",
+    "tags": []
+  },
+  {
+    "name": "code_span",
+    "src": "`#code` #yes",
+    "tags": [
+      "yes"
+    ]
+  },
+  {
+    "name": "fenced_code",
+    "src": "```\n#nope\n```\n#yes",
+    "tags": [
+      "yes"
+    ]
+  },
+  {
+    "name": "link_url",
+    "src": "[l](u#x) #t",
+    "tags": [
+      "t"
+    ]
+  },
+  {
+    "name": "quote_and_list",
+    "src": "> q #in\n\n- item #li",
+    "tags": [
+      "in",
+      "li"
+    ]
+  },
+  {
+    "name": "second_line",
+    "src": "first\n#second",
+    "tags": [
+      "second"
+    ]
+  },
+  {
+    "name": "punctuation_end",
+    "src": "(#paren) #end, #stop!",
+    "tags": [
+      "end",
+      "stop"
+    ]
+  },
+  {
+    "name": "wikilink_heading",
+    "src": "[[#heading]] [[n#h]]",
+    "tags": []
+  },
+  {
+    "name": "lone_hash",
+    "src": "a # b",
+    "tags": []
+  }
+]

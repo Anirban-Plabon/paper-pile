@@ -528,3 +528,23 @@ def test_folders_lists_visible_folders_only(tmp_path) -> None:
         (tmp_path / rel).mkdir(parents=True)
     (tmp_path / "note.md").write_text("x")
     assert Vault(tmp_path).folders() == ["a", "a/b", "Zed"]
+
+
+def test_recent_notes_are_newest_first_and_capped(vault: Vault) -> None:
+    for i, name in enumerate(["a.md", "sub/b.md", "c.txt"]):
+        path = vault.create_note(name) if "/" not in name else None
+        if path is None:
+            vault.create_folder("sub")
+            path = vault.create_note(name)
+        os.utime(vault.resolve(path), (1000 + i, 1000 + i))
+    assert vault.recent_notes() == ["c.txt", "sub/b.md", "a.md"]
+    assert vault.recent_notes(limit=2) == ["c.txt", "sub/b.md"]
+
+
+def test_free_numbered_name_starts_at_one_and_skips_taken(vault: Vault) -> None:
+    assert vault.free_numbered_name("", "Untitled", ".md") == "Untitled 1"
+    vault.create_note("Untitled 1.md")
+    vault.create_note("Untitled 2.md")
+    assert vault.free_numbered_name("", "Untitled", ".md") == "Untitled 3"
+    vault.create_folder("d")
+    assert vault.free_numbered_name("d", "Untitled", ".md") == "Untitled 1"

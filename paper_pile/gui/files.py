@@ -6,13 +6,16 @@ in ``--serve`` mode the route sits behind the token gate like everything else.
 """
 
 import mimetypes
+from collections.abc import Callable
 from pathlib import Path
 
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import FileResponse, JSONResponse
 
 from paper_pile.core import assets, embed
+from paper_pile.core.config import Config
 from paper_pile.core.profile import avatar_path
+from paper_pile.core.settings import sanitized
 from paper_pile.core.vault import Vault, VaultError
 
 UPLOAD_HEADER = "x-pp-upload"  # a custom header: a cross-site form post cannot set it
@@ -35,13 +38,15 @@ def _same_site(request: Request) -> bool:
 SVG_CSP = "sandbox; default-src 'none'; style-src 'unsafe-inline'"
 
 
-def make_asset_router(vault: Vault) -> APIRouter:
+def make_asset_router(vault: Vault | Callable[[], Vault]) -> APIRouter:
+    """``vault`` may be a function giving the open vault (it changes with "Open vault")."""
+    current: Callable[[], Vault] = vault if callable(vault) else (lambda: vault)
     router = APIRouter()
 
     @router.get("/_pp/asset")
     def asset(note: str, path: str) -> FileResponse:
         try:
-            target = vault.asset_path(note, path)
+            target = current().asset_path(note, path)
         except VaultError as exc:
             raise HTTPException(status_code=404, detail="not found") from exc
         return FileResponse(target, media_type=_media_type(target), headers=_headers(target))
@@ -50,10 +55,10 @@ def make_asset_router(vault: Vault) -> APIRouter:
     def embedded(note: str, target: str, heading: str = "") -> JSONResponse:
         """The content of ``![[target#heading]]`` written in ``note``, as safe HTML."""
         try:
-            vault.resolve(note)
+            current().resolve(note)
         except VaultError as exc:
             raise HTTPException(status_code=404, detail="not found") from exc
-        shown = embed.embed(vault, note, target, heading)
+        shown = embed.embed(current(), note, target, heading)
         return JSONResponse(
             {
                 "path": shown.path,
@@ -74,7 +79,7 @@ def make_asset_router(vault: Vault) -> APIRouter:
 
     @router.post("/_pp/upload")
     async def upload(request: Request, note: str) -> JSONResponse:
-        """Save a pasted / dropped / picked image into the note's assets folder."""
+        """Save a pasted / dropped / picked image into the vault's images folder."""
         if not _same_site(request):
             raise HTTPException(status_code=403, detail="forbidden")
         data = bytearray()
@@ -83,7 +88,9 @@ def make_asset_router(vault: Vault) -> APIRouter:
             if len(data) > assets.MAX_IMAGE_BYTES:
                 return JSONResponse({"error": "image is too large"}, status_code=413)
         try:
-            saved = assets.save_image(vault, note, bytes(data))
+            vault = current()
+            folder = str(sanitized(Config(vault=vault.root).values)["vault.images_folder"])
+            saved = assets.save_image(vault, note, bytes(data), folder)
         except VaultError as exc:
             return JSONResponse({"error": str(exc)}, status_code=400)
         return JSONResponse({"ref": saved.ref, "name": saved.name, "width": saved.width})

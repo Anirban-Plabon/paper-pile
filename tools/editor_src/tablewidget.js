@@ -10,17 +10,13 @@ import { syntaxTree } from "@codemirror/language";
 import { Prec } from "@codemirror/state";
 import { WidgetType, keymap } from "@codemirror/view";
 import { renderInline } from "./widgets.js";
+import { rtOf } from "./context.js";
 
 const IDLE_COMMIT_MS = 600;
 const FOCUS_RETRY_MS = 1500;
 const LOCAL_ROW_GRACE_MS = 4000; // how long an optimistic new row may wait for Python's edit
 
-const runtime = { emit: () => {}, getDocId: () => 0, pending: null };
-
-export function tablesRuntime({ emit, getDocId }) {
-  runtime.emit = emit;
-  runtime.getDocId = getDocId;
-}
+const runtime = { pending: null };
 
 // Ask the next table build/patch to focus a cell. `from` (table start line offset) narrows it to
 // one table; used after `/table` and after structure changes.
@@ -77,7 +73,8 @@ function sendOp(dom, op) {
   const range = view && tableRange(view, dom);
   if (!range) return;
   // only the start: the table's length changes with every edit, so Python measures it itself
-  runtime.emit("table_op", { docId: runtime.getDocId(), from: range.from, op });
+  const rt = rtOf(view.state);
+  rt.emit("table_op", { docId: rt.getDocId(), from: range.from, op });
 }
 
 // ---- the editable table ------------------------------------------------------------------------
@@ -144,10 +141,10 @@ export class TableWidget extends WidgetType {
       (r === 0 ? (table._head ??= table.appendChild(el("thead"))) : (table._body ??= table.appendChild(el("tbody")))).appendChild(tr);
     });
     const addRow = el("button", "pp-table-add pp-table-addrow", "+");
-    addRow.title = "Add row";
+    addRow.dataset.tip = "Add row";
     addRow.type = "button";
     const addCol = el("button", "pp-table-add pp-table-addcol", "+");
-    addCol.title = "Add column";
+    addCol.dataset.tip = "Add column";
     addCol.type = "button";
     const grid = el("div", "pp-table-grid");
     grid.append(table, addCol);

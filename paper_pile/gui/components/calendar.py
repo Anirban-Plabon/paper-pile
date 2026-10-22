@@ -21,6 +21,7 @@ from paper_pile.core.daily import (
     shift_month,
 )
 from paper_pile.core.vault import Vault
+from paper_pile.gui.icons import line_icon
 
 WEEKDAYS = ("MON", "TUE", "WED", "THU", "FRI", "SAT", "SUN")
 
@@ -81,14 +82,14 @@ class CalendarPane:
                     ui.label(month_name(self.month)).classes("pp-cal-month")
                     ui.label(str(self.year)).classes("pp-cal-year")
                 ui.space()
-                prev = ui.icon("fa-solid fa-chevron-left").classes("pp-cal-nav")
+                prev = line_icon("chevron-left", "s").classes("pp-cal-nav")
                 prev.on("click", lambda _e: self._step(-1))
-                prev.tooltip("Previous month")
+                prev.props('data-tip="Previous month"')
                 today = ui.label("TODAY").classes("pp-cal-today-btn")
                 today.on("click", lambda _e: self._go_today())
-                nxt = ui.icon("fa-solid fa-chevron-right").classes("pp-cal-nav")
+                nxt = line_icon("chevron-right", "s").classes("pp-cal-nav")
                 nxt.on("click", lambda _e: self._step(1))
-                nxt.tooltip("Next month")
+                nxt.props('data-tip="Next month"')
             with ui.element("div").classes("pp-cal-grid"):
                 ui.label("W").classes("pp-cal-wk pp-cal-colhead")
                 for name in WEEKDAYS:
@@ -120,4 +121,3 @@ class CalendarPane:
                     ui.element("span").classes("pp-cal-dot")
                     if mark.open_tasks:
                         ui.element("span").classes("pp-cal-dot pp-cal-dot-open")
-        cell.tooltip(d.strftime("%A, %-d %B %Y"))

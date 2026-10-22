@@ -18,8 +18,9 @@ Math rules (the pandoc convention, as implemented by ``mdit_py_plugins.dollarmat
   line before its closing ``$$``, is plain text. A block may directly follow a paragraph line.
 
 Raw HTML in notes is escaped, not passed through: rendered output is used in places that
-must stay safe (chat replies, exports). Single newlines render as line breaks, matching what
-the editor shows.
+must stay safe (chat replies, exports). The one exception is a page break line
+(:mod:`paper_pile.core.pagebreak`), which becomes ``<div class="pp-page-break">``. Single
+newlines render as line breaks, matching what the editor shows.
 """
 
 import re
@@ -32,6 +33,7 @@ from markdown_it import MarkdownIt
 from markdown_it.common.utils import escapeHtml
 from markdown_it.renderer import RendererProtocol
 from markdown_it.rules_block import StateBlock
+from markdown_it.rules_core import StateCore
 from markdown_it.rules_inline import StateInline
 from markdown_it.rules_inline.image import image as _image_rule
 from markdown_it.rules_inline.link import link as _link_rule
@@ -42,7 +44,9 @@ from mdit_py_plugins.dollarmath.index import math_block_dollar
 from mdit_py_plugins.footnote import footnote_plugin
 from mdit_py_plugins.tasklists import tasklists_plugin
 
+from paper_pile.core import pagebreak
 from paper_pile.core.links import WikiTarget, parse_wikilink
+from paper_pile.core.tags import property_tags, starts_tag, tag_body, unique
 
 _PARAGRAPH_LIKE = ["paragraph", "reference", "blockquote", "list"]
 
@@ -64,10 +68,15 @@ def make_parser(*, breaks: bool = True) -> MarkdownIt:
         )
     )
     md.block.ruler.before("table", "front_matter", _front_matter_rule)
+    md.block.ruler.before("html_block", "page_break", _page_break_rule)
+    md.core.ruler.push("page_break_effect", _page_break_effect)
     md.inline.ruler.before("link", "wikilink", _wikilink_rule)
+    md.inline.ruler.before("wikilink", "hashtag", _hashtag_rule)
     md.inline.ruler.at("link", _located_link_rule)
     md.inline.ruler.at("image", _located_image_rule)
     md.add_render_rule("wikilink", _render_wikilink)
+    md.add_render_rule("hashtag", _render_hashtag)
+    md.add_render_rule("page_break", _render_page_break)
     # let a `$$` block start right after a paragraph line (the plugin's own registration cannot)
     md.block.ruler.at("math_block", _interrupting_math_block(), {"alt": _PARAGRAPH_LIKE})
     return md
@@ -103,6 +112,33 @@ def _wikilink_rule(state: StateInline, silent: bool) -> bool:
         }
     state.pos = end + 2
     return True
+
+
+def _hashtag_rule(state: StateInline, silent: bool) -> bool:
+    """``#tag``: see :mod:`paper_pile.core.tags` (code spans are consumed earlier)."""
+    src, pos = state.src, state.pos
+    if pos >= state.posMax or not starts_tag(src, pos):
+        return False
+    body = tag_body(src[: state.posMax], pos + 1)
+    if not body:
+        return False
+    if not silent:
+        token = state.push("hashtag", "", 0)
+        token.content = body
+        token.meta = {"pos": pos}
+    state.pos = pos + 1 + len(body)
+    return True
+
+
+def _render_hashtag(
+    self: RendererProtocol,
+    tokens: Sequence[Token],
+    idx: int,
+    options: OptionsDict,
+    env: EnvType,
+) -> str:
+    tag = escapeHtml(tokens[idx].content)
+    return f'<a class="tag" data-tag="{tag}">#{tag}</a>'
 
 
 def _located_link_rule(state: StateInline, silent: bool) -> bool:
@@ -171,6 +207,47 @@ def _front_matter_rule(state: StateBlock, start: int, end: int, silent: bool) ->
     return True
 
 
+def _page_break_rule(state: StateBlock, start: int, end: int, silent: bool) -> bool:
+    """A page break line (:mod:`paper_pile.core.pagebreak`): top level only, with an empty line
+    (or the start/end of the file) above and below. It never interrupts a paragraph."""
+    # not `parentType`: markdown-it's lheading rule leaves it at "paragraph" when it fails
+    if state.level != 0:
+        return False
+    if not pagebreak.is_break_line(state.src[state.bMarks[start] : state.eMarks[start]]):
+        return False
+    if start > 0 and not state.isEmpty(start - 1):
+        return False
+    if start + 1 < end and not state.isEmpty(start + 1):
+        return False
+    if silent:
+        return True
+    token = state.push("page_break", "div", 0)
+    token.block = True
+    token.map = [start, start + 1]
+    token.meta = {"effective": False}
+    state.line = start + 1
+    return True
+
+
+def _page_break_effect(state: StateCore) -> None:
+    """Mark the page breaks that start a new page (``meta["effective"]``)."""
+    blocks = [t for t in state.tokens if t.level == 0 and t.nesting >= 0 and not t.hidden]
+    flags = pagebreak.effective([t.type == "page_break" for t in blocks])
+    for tok, flag in zip(blocks, flags, strict=True):
+        if tok.type == "page_break":
+            tok.meta["effective"] = flag
+
+
+def _render_page_break(
+    self: RendererProtocol,
+    tokens: Sequence[Token],
+    idx: int,
+    options: OptionsDict,
+    env: EnvType,
+) -> str:
+    return '<div class="pp-page-break"></div>\n' if tokens[idx].meta["effective"] else ""
+
+
 def _interrupting_math_block() -> Callable[[StateBlock, int, int, bool], bool]:
     """The plugin's block rule, made safe to use as a paragraph terminator.
 
@@ -207,9 +284,15 @@ class FrontMatter:
     error: str | None = None  # why parsing failed, if it did
 
 
-def front_matter(text: str) -> FrontMatter | None:
+def parse(text: str) -> list[Token]:
+    """The token stream of ``text``; pass it to the functions below that take ``tokens`` when
+    several of them read the same note (each parse costs about a millisecond)."""
+    return list(_PARSER.parse(text))
+
+
+def front_matter(text: str, tokens: list[Token] | None = None) -> FrontMatter | None:
     """The note's YAML front matter, or ``None`` if it has none."""
-    tokens = _PARSER.parse(text)
+    tokens = parse(text) if tokens is None else tokens
     if not tokens or tokens[0].type != "front_matter":
         return None
     raw = tokens[0].content
@@ -222,6 +305,47 @@ def front_matter(text: str) -> FrontMatter | None:
     if not isinstance(loaded, dict):
         return FrontMatter(raw, {}, "front matter is not a key: value mapping")
     return FrontMatter(raw, loaded)
+
+
+def body_start(text: str) -> int:
+    """Where the note's body begins: just after its front matter (0 when it has none)."""
+    tokens = _PARSER.parse(text)
+    if not tokens or tokens[0].type != "front_matter" or not tokens[0].map:
+        return 0
+    lines = text.split("\n")
+    end_line = tokens[0].map[1]
+    return min(len(text), sum(len(line) + 1 for line in lines[:end_line]))
+
+
+def inline_tags(text: str, tokens: list[Token] | None = None) -> list[str]:
+    """Every inline ``#tag`` in ``text`` as written (without ``#``), in order."""
+    found: list[str] = []
+    for tok in parse(text) if tokens is None else tokens:
+        if tok.type == "inline" and tok.children:
+            found.extend(c.content for c in tok.children if c.type == "hashtag")
+    return found
+
+
+def note_tags(text: str, tokens: list[Token] | None = None) -> list[str]:
+    """A note's tags: its ``tags`` property first, then inline tags; one per tag."""
+    tokens = parse(text) if tokens is None else tokens
+    fm = front_matter(text, tokens)
+    return unique([*(property_tags(fm.data) if fm else []), *inline_tags(text, tokens)])
+
+
+@dataclass(frozen=True, slots=True)
+class PageBreak:
+    line: int  # 1-based
+    effective: bool  # starts a new page (see :func:`paper_pile.core.pagebreak.effective`)
+
+
+def page_breaks(text: str, tokens: list[Token] | None = None) -> list[PageBreak]:
+    """The note's page break lines, in order."""
+    return [
+        PageBreak(t.map[0] + 1, bool(t.meta["effective"]))
+        for t in (parse(text) if tokens is None else tokens)
+        if t.type == "page_break" and t.map
+    ]
 
 
 def math_spans(text: str) -> tuple[list[str], list[str]]:
@@ -265,11 +389,11 @@ class LinkRef:
     line: int  # 1-based line of the paragraph/heading holding it
 
 
-def note_links(text: str) -> list[LinkRef]:
+def note_links(text: str, tokens: list[Token] | None = None) -> list[LinkRef]:
     """Links that point at other notes: ``[[wikilinks]]`` and relative markdown links."""
     found: list[LinkRef] = []
 
-    for tok in _PARSER.parse(text):
+    for tok in parse(text) if tokens is None else tokens:
         if tok.type != "inline" or not tok.children:
             continue
         line = (tok.map[0] + 1) if tok.map else 1

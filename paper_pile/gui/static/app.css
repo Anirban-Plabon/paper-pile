@@ -21,14 +21,43 @@
   --pp-banner-border: #f0c36d;
   --pp-banner-fg: #5c3b00;
   --pp-editor-font: monospace;
+  --pp-code-font: monospace;
   --pp-editor-size: 15px;
   --pp-editor-lh: 1.6;
+  --pp-r-popup: 12px;  /* menus, popups, dialogs, cards */
+  --pp-desk: #e6e8ec;  /* Real pages: around the sheets */
+  --pp-sheet-edge: rgba(0, 0, 0, .14);
+  --pp-r-ctrl: 8px;    /* buttons, inputs, menu items, tiles, blocks */
+  --pp-r-sm: 4px;      /* small inline bits: code, kbd, chips in text */
+  --pp-icon-s: 14px;   /* chevrons, close crosses, checks */
+  --pp-icon-m: 16px;   /* rows, menus, tabs */
+  --pp-icon-l: 18px;   /* toolbar buttons */
   --pp-row-h: 24px;
   --pp-tab-h: 34px;
   --pp-bar-h: 26px;
+  --pp-foot-h: 41px;    /* the profile row and the footer under the editor share it */
 }
+/* One shape and one icon style everywhere (tokens above). Quasar's own parts follow too; our
+   rules are unlayered, so they win over Quasar's layered CSS. */
+.q-menu, .q-dialog .q-card, .q-card.pp-dialog { border-radius: var(--pp-r-popup); }
+.q-tooltip, .q-notification, .q-uploader, .q-item { border-radius: var(--pp-r-ctrl); }
+.q-field--outlined .q-field__control { border-radius: var(--pp-r-ctrl); }
+.q-btn:not(.q-btn--round):not(.q-btn--rounded) { border-radius: var(--pp-r-ctrl); }
+.q-icon svg use, svg.pp-i use { fill: none; stroke: currentColor; stroke-width: 1.75; stroke-linecap: round; stroke-linejoin: round; }
+svg.pp-i { width: 1em; height: 1em; flex: none; }
+.pp-i-s { font-size: var(--pp-icon-s); }
+.pp-i-m { font-size: var(--pp-icon-m); }
+.pp-i-l { font-size: var(--pp-icon-l); }
+/* Quasar sizes a button's icon relative to the button text (1.7em); pin it to the tokens */
+.q-btn .q-icon, .q-item .q-icon, .q-field__append .q-icon, .q-field__prepend .q-icon { font-size: var(--pp-icon-m); }
+.q-btn.pp-i-s .q-icon, .q-btn .pp-i-s { font-size: var(--pp-icon-s); }
+.q-btn.pp-i-l .q-icon { font-size: var(--pp-icon-l); }
+.q-btn .q-icon.on-left { margin-right: 10px; }
+
 /* Dark theme: set on <body> by static/theme.js (Quasar's own dark mode adds body--dark) */
 body.body--dark {
+  --pp-desk: #141518;
+  --pp-sheet-edge: rgba(0, 0, 0, .55);
   --pp-border: #3a3f47;
   --pp-bg: #1e1e1e;
   --pp-bg-side: #25272b;
@@ -54,11 +83,21 @@ body.pp-compact .pp-msg-text, body.pp-compact .pp-msg-body { font-size: 12.5px; 
 html, body { overflow: hidden; }
 .nicegui-content { padding: 0 !important; gap: 0 !important; }
 .q-page { min-height: 100vh !important; }
-.pp-root { width: 100vw; height: 100vh; background: var(--pp-bg); color: var(--pp-fg); }
+.pp-root { display: flex; flex-wrap: nowrap; width: 100vw; height: 100vh; background: var(--pp-bg); color: var(--pp-fg); }
+/* WSL: a window maximized over the Windows taskbar keeps its content out of it (native_boot.py) */
+.pp-root { height: calc(100vh - var(--pp-inset-top, 0px) - var(--pp-inset-bottom, 0px)); margin-top: var(--pp-inset-top, 0px); }
+/* toasts: inside the page's own area (never behind the Windows taskbar of a maximized WSL window)
+   and above the footer bar */
+.q-notifications__list--bottom { bottom: calc(var(--pp-inset-bottom, 0px) + var(--pp-foot-h)); }
+.q-notifications__list--top { top: calc(var(--pp-inset-top, 0px) + var(--pp-tab-h)); }
 .pp-fill { width: 100%; height: 100%; }
+.pp-root > .q-splitter { flex: 1 1 0; width: auto; min-width: 0; }
 .pp-main { width: 100%; height: 100%; gap: 0; flex-wrap: nowrap; }
 .pp-grow { flex: 1 1 0; min-height: 0; }
 .pp-root .q-splitter__separator { background: var(--pp-border); }
+/* the grab strip reaches right of the line only: on its left is the pane's scrollbar (8 px), which must
+   keep scrolling (Quasar centres a 12 px strip on the line) */
+.pp-root .q-splitter--vertical > .q-splitter__separator > div { left: 0; right: -7px; }
 /* The pane itself has no padding and clips, so a collapsed (0 px) pane is truly 0 wide. */
 .pp-pane { width: 100%; height: 100%; padding: 0; gap: 0; overflow: hidden; flex-wrap: nowrap; }
 .pp-pane-body { width: 100%; height: 100%; padding: 10px 12px; gap: 6px; overflow: auto; flex-wrap: nowrap; }
@@ -66,31 +105,72 @@ html, body { overflow: hidden; }
 .pp-chat { background: var(--pp-bg-side); }
 .pp-pane-title { font-size: 11px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--pp-muted); }
 .pp-muted { color: var(--pp-muted); font-size: 12px; }
-.pp-empty { margin: auto; font-size: 14px; }
-.pp-statusbar { width: 100%; height: var(--pp-bar-h); padding: 0 6px; gap: 10px; border-top: 1px solid var(--pp-border); background: var(--pp-bg-side); flex-shrink: 0; }
-.pp-toggle-off { opacity: .45; }
+/* Start actions in the middle of the editor area while no note is open */
+.pp-empty { position: absolute; inset: 0; z-index: 1; margin: auto; width: max-content; height: max-content; gap: 8px; align-items: stretch; flex-wrap: nowrap; }
+.pp-start-btn.q-btn { min-width: 168px; min-height: 36px; padding: 0 14px; border: 1px solid var(--pp-border); border-radius: var(--pp-r-ctrl); color: var(--pp-fg); font-size: 13px; font-weight: 400; }
+.pp-start-btn.q-btn:hover { background: rgba(127, 127, 127, .12); }
+.pp-start-btn .q-btn__content { flex-wrap: nowrap; justify-content: flex-start; gap: 8px; width: 100%; }
+.pp-start-btn .q-icon { color: var(--pp-muted); }
+.pp-start-keys { margin-left: auto; padding: 1px 7px; border-radius: 6px; background: rgba(127, 127, 127, .16); color: var(--pp-muted); font-size: 12px; }
+.pp-statusbar { height: 100%; padding: 0; gap: 10px; flex-shrink: 0; }
 .pp-dot { font-size: 11px; }
 .pp-dot-off { color: var(--pp-dot-off); }
 .pp-dot-on { color: var(--pp-dot-on); }
 
+/* Line icons (paper_pile/gui/icons.py) */
+.pp-icon-btn.q-btn { width: 30px; height: 30px; min-width: 30px; min-height: 30px; padding: 0; color: var(--pp-muted); }
+.pp-icon-btn.q-btn:hover { color: var(--pp-fg); }
+.pp-icon-btn.q-btn.pp-icon-active { color: var(--pp-accent); background: rgba(var(--pp-accent-rgb), .15); }
+.pp-ribbon { flex: 0 0 40px; width: 40px; height: 100%; padding: 0;  /* rows line up with the tab strip and the footer */ gap: 2px; background: var(--pp-bg-side); }  /* the splitter line beside it is the divider: no second border */
+
 /* File tree (paper_pile/gui/components/tree.py, static/tree.js) */
-.pp-left-body { overflow: hidden; }
-.pp-tree { flex: 1 1 0; min-height: 0; width: calc(100% + 24px); margin: 0 -12px; overflow-y: auto; padding: 2px 0 12px; gap: 0; }
+.pp-left-top { width: 100%; height: var(--pp-tab-h); flex: none; padding: 0 4px; gap: 6px; border-bottom: 1px solid var(--pp-border); }
+.pp-win-title { font-size: 12px; color: var(--pp-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; user-select: none; pointer-events: none; }
+.pp-files-head { width: 100%; height: 38px; padding: 8px 6px 0 12px; gap: 2px; flex: none; } /* 8 px of air above Files and its buttons */
+.pp-ribbon-top { width: 100%; height: var(--pp-tab-h); flex: none; border-bottom: 1px solid var(--pp-border); margin-bottom: 2px; }
+/* Native window without an OS title bar */
+.pp-wincontrols { position: fixed; top: 0; right: 0; height: var(--pp-tab-h); padding-right: 4px; gap: 0; z-index: 2500; }
+.pp-wincontrols .pp-icon-btn.q-btn { width: 34px; height: 28px; border-radius: var(--pp-r-ctrl); }
+.pp-wincontrols .pp-win-close.q-btn:hover { background: #e5484d; color: #fff; }
+/* maximize / restore: a small square, two squares while maximized (body.pp-maximized, native_boot) */
+.pp-wincontrols .pp-win-max .q-icon { font-size: 13px; }
+.pp-wincontrols .pp-win-max .pp-win-restore { display: none; }
+body.pp-maximized .pp-wincontrols .pp-win-max .q-icon:not(.pp-win-restore) { display: none; }
+body.pp-maximized .pp-wincontrols .pp-win-max .pp-win-restore { display: inline-flex; }
+.pp-resize { position: fixed; z-index: 2600; }
+.pp-resize-e { top: 12px; right: 0; width: 4px; height: calc(100vh - 24px); cursor: ew-resize; }
+.pp-resize-w { top: 12px; left: 0; width: 4px; height: calc(100vh - 24px); cursor: ew-resize; }
+.pp-resize-n { top: 0; left: 12px; height: 4px; width: calc(100vw - 24px); cursor: ns-resize; }
+.pp-resize-s { bottom: 0; left: 12px; height: 4px; width: calc(100vw - 24px); cursor: ns-resize; }
+.pp-resize-ne, .pp-resize-sw, .pp-resize-nw, .pp-resize-se { width: 12px; height: 12px; }
+.pp-resize-ne { top: 0; right: 0; cursor: nesw-resize; }
+.pp-resize-sw { bottom: 0; left: 0; cursor: nesw-resize; }
+.pp-resize-nw { top: 0; left: 0; cursor: nwse-resize; }
+.pp-resize-se { bottom: 0; right: 0; cursor: nwse-resize; }
+body:not(.pp-native) .pp-wincontrols, body:not(.pp-native) .pp-resize { display: none; }
+body.pp-native:not(.pp-right-open) .pp-tabstrip { padding-right: 112px; }
+body.pp-native.pp-right-open .pp-rtabbar { padding-right: 112px; }
+.pp-files-search { width: calc(100% - 12px); margin: 6px 6px 2px; flex: none; font-size: 13px; }
+.pp-tree-sub { margin-left: auto; padding-left: 8px; overflow: hidden; text-overflow: ellipsis; font-size: 11px; pointer-events: none; }
+.pp-left-body { overflow: hidden; padding: 0; gap: 0; }
+.pp-tree { flex: 1 1 0; min-height: 0; width: 100%; margin: 0; overflow-y: auto; padding: 2px 0 12px; gap: 0; }
+.pp-tree-band { position: fixed; z-index: 2500; pointer-events: none; border: 1px solid var(--pp-accent); background: rgba(var(--pp-accent-rgb), .10); border-radius: var(--pp-r-sm); }
 .pp-tree-row { display: flex; align-items: center; gap: 4px; height: var(--pp-row-h); padding-right: 8px; cursor: pointer; user-select: none; white-space: nowrap; }
 .pp-tree-row:hover { background: rgba(127, 127, 127, .12); }
-.pp-tree-selected, .pp-tree-selected:hover { background: rgba(var(--pp-accent-rgb), .18); }
-.pp-ico { font-size: 16px; width: 16px; flex-shrink: 0; color: var(--pp-muted); }
+.pp-tree-selected, .pp-tree-selected:hover,
+.pp-tree-banded, .pp-tree-banded:hover { background: rgba(var(--pp-accent-rgb), .18); }
+.pp-ico { font-size: var(--pp-icon-m); width: 16px; flex-shrink: 0; color: var(--pp-muted); }
 .pp-ico-folder { color: var(--pp-accent); }
-.pp-ico-chev { font-size: 9px; width: 10px; margin-right: -2px; }
+.pp-ico-chev { font-size: var(--pp-icon-s); width: 10px; margin-right: -2px; }
 .pp-tree-name { overflow: hidden; text-overflow: ellipsis; font-size: 13px; pointer-events: none; }
 .pp-tree-row > * { pointer-events: none; }
 .pp-tree-empty { padding: 6px 12px; }
 .pp-drop-target { background: rgba(var(--pp-accent-rgb), .28) !important; outline: 1px dashed var(--pp-accent); outline-offset: -1px; }
 .pp-tree.pp-drop-target { outline-offset: -2px; }
-.pp-ctxmenu { display: none; position: fixed; z-index: 3000; min-width: 190px; padding: 4px; gap: 0; background: var(--pp-bg); border: 1px solid var(--pp-border); border-radius: 6px; box-shadow: 0 6px 20px rgba(0, 0, 0, .18); }
+.pp-ctxmenu { display: none; position: fixed; z-index: 3000; min-width: 190px; padding: 4px; gap: 0; background: var(--pp-bg); border: 1px solid var(--pp-border); border-radius: var(--pp-r-popup); box-shadow: 0 6px 20px rgba(0, 0, 0, .18); }
 .pp-ctxmenu-open { display: flex; }
 .pp-ctxmenu .pp-ctx-item.q-btn { width: 100%; justify-content: flex-start; font-size: 13px; font-weight: 400; color: var(--pp-fg) !important; }
-.pp-ctxmenu .pp-ctx-item .q-icon { color: var(--pp-muted); font-size: 15px; }
+.pp-ctxmenu .pp-ctx-item .q-icon { color: var(--pp-muted); font-size: var(--pp-icon-m); }
 .pp-ctxmenu .pp-ctx-danger.q-btn, .pp-ctxmenu .pp-ctx-danger .q-icon { color: var(--pp-danger) !important; }
 .pp-dialog { min-width: 320px; gap: 12px; }
 .pp-dialog-title { font-size: 14px; font-weight: 600; }
@@ -108,7 +188,7 @@ html, body { overflow: hidden; }
 .pp-bullet { display: inline-block; width: 1ch; text-align: center; text-indent: 0; color: var(--pp-accent); }
 .pp-list-num { color: var(--pp-muted); }
 .pp-task { display: inline-block; width: 2ch; text-align: left; text-indent: 0; cursor: pointer; }
-.pp-task .pp-box { display: inline-block; box-sizing: border-box; width: 1.5ch; height: 1.5ch; border: 1.5px solid var(--pp-muted); border-radius: 3px; vertical-align: -0.2em; }
+.pp-task .pp-box { display: inline-block; box-sizing: border-box; width: 1.5ch; height: 1.5ch; border: 1.5px solid var(--pp-muted); border-radius: var(--pp-r-sm); vertical-align: -0.2em; }
 .pp-task:hover .pp-box { border-color: var(--pp-accent); }
 .pp-task-checked .pp-box { background: var(--pp-accent); border-color: var(--pp-accent); position: relative; }
 .pp-task-checked .pp-box::after { content: ""; position: absolute; left: 30%; top: 8%; width: 28%; height: 58%; border: solid var(--pp-on-accent); border-width: 0 2px 2px 0; transform: rotate(45deg); }
@@ -122,7 +202,7 @@ html, body { overflow: hidden; }
 .pp-editor .cm-line.pp-quote-2 { --pp-qpad: 3.2ch; --pp-bars: linear-gradient(var(--pp-bar), var(--pp-bar)) 6px 0 / 3px 100% no-repeat, linear-gradient(var(--pp-bar), var(--pp-bar)) calc(6px + 1.6ch) 0 / 3px 100% no-repeat; }
 .pp-editor .cm-line.pp-quote-3 { --pp-qpad: 4.8ch; --pp-bars: linear-gradient(var(--pp-bar), var(--pp-bar)) 6px 0 / 3px 100% no-repeat, linear-gradient(var(--pp-bar), var(--pp-bar)) calc(6px + 1.6ch) 0 / 3px 100% no-repeat, linear-gradient(var(--pp-bar), var(--pp-bar)) calc(6px + 3.2ch) 0 / 3px 100% no-repeat; }
 .pp-editor .cm-line.pp-quote { background: var(--pp-bars); }
-.pp-editor .cm-line.pp-quote, .pp-editor .cm-line.pp-li { padding-left: calc(6px + var(--pp-qpad, 0px) + var(--pp-hang, 0px)); text-indent: calc(-1 * var(--pp-hang, 0px)); }
+.pp-editor .cm-line.pp-quote, .pp-editor .cm-line.pp-li { padding-left: calc(6px + var(--pp-qpad, 0px) + var(--pp-hang, 0px)); text-indent: calc(-1 * var(--pp-pull, var(--pp-hang, 0px))); }
 /* a code block inside a quote keeps the bar and draws its card to the right of it */
 .pp-editor .cm-line.pp-quote.pp-codeblock { background: var(--pp-bars), linear-gradient(var(--pp-code-bg), var(--pp-code-bg)) calc(6px + var(--pp-qpad)) 0 / calc(100% - 6px - var(--pp-qpad)) 100% no-repeat; padding-left: calc(6px + var(--pp-qpad) + 12px); text-indent: 0; border-radius: 0; }
 .pp-link { color: var(--pp-accent); text-decoration: underline; text-decoration-color: rgba(var(--pp-accent-rgb), .4); text-underline-offset: 2px; }
@@ -132,8 +212,8 @@ html, body { overflow: hidden; }
 .pp-ctrl .pp-wikilink[data-wiki-note] { cursor: pointer; }
 .pp-wikilink-missing { color: var(--pp-warn); text-decoration-style: dashed; text-decoration-color: rgba(var(--pp-warn-rgb), .6); }
 .pp-image { display: inline-block; max-width: 100%; vertical-align: middle; }
-.pp-image img { display: block; max-width: 100%; height: auto; border-radius: 4px; margin: 2px 0; }
-.pp-image-chip { display: inline-block; padding: 0 8px; border: 1px dashed var(--pp-border); border-radius: 4px; color: var(--pp-muted); font-size: .85em; }
+.pp-image img { display: block; max-width: 100%; height: auto; border-radius: var(--pp-r-sm); margin: 2px 0; }
+.pp-image-chip { display: inline-block; padding: 0 8px; border: 1px dashed var(--pp-border); border-radius: var(--pp-r-sm); color: var(--pp-muted); font-size: .85em; }
 /* Code blocks and syntax colours. Token colours are variables so the dark theme can swap them. */
 .pp-editor { --pp-code-bg: #f3f4f6; --pp-tok-keyword: #cf222e; --pp-tok-string: #0a3069; --pp-tok-number: #0550ae; --pp-tok-comment: #6e7781; --pp-tok-type: #953800; --pp-tok-prop: #116329; --pp-tok-meta: #8250df; }
 .pp-editor.pp-dark { --pp-code-bg: #2a2d33; --pp-tok-keyword: #ff7b72; --pp-tok-string: #a5d6ff; --pp-tok-number: #79c0ff; --pp-tok-comment: #8b949e; --pp-tok-type: #ffa657; --pp-tok-prop: #7ee787; --pp-tok-meta: #d2a8ff; }
@@ -155,20 +235,46 @@ html, body { overflow: hidden; }
 .pp-table table { border-collapse: collapse; min-width: 50%; font-size: .95em; }
 .pp-table th, .pp-table td { padding: 4px 12px; border: 1px solid var(--pp-border); }
 .pp-table th { background: var(--pp-bg-side); font-weight: 600; }
-.pp-table code { background: var(--pp-code-bg, #f3f4f6); border-radius: 3px; padding: 0 3px; }
+.pp-table code { background: var(--pp-code-bg, #f3f4f6); border-radius: var(--pp-r-sm); padding: 0 3px; }
 .pp-fm-line { color: var(--pp-muted); font-size: .88em; }
-.pp-frontmatter { box-sizing: border-box; margin: 4px 6px 10px; padding: 6px 10px; border: 1px solid var(--pp-border); border-radius: 6px; background: var(--pp-bg-side); font-size: .85em; color: var(--pp-muted); cursor: text; }
+.pp-frontmatter { box-sizing: border-box; margin: 4px 6px 10px; padding: 6px 10px; border: 1px solid var(--pp-border); border-radius: var(--pp-r-ctrl); background: var(--pp-bg-side); font-size: .85em; color: var(--pp-muted); cursor: text; }
 .pp-fm-row { display: flex; gap: 12px; line-height: 1.6; }
 .pp-fm-key { flex: 0 0 9ch; font-weight: 600; opacity: .8; overflow: hidden; text-overflow: ellipsis; }
 .pp-fm-val { color: var(--pp-fg); overflow-wrap: anywhere; }
 .pp-hr { display: block; height: 0; margin: 0.55em 0; border-top: 1px solid rgba(var(--pp-accent-rgb), .45); }
-.pp-mode-toggle { cursor: pointer; user-select: none; padding: 0 4px; border-radius: 3px; }
+/* A manual page break (PLAN §4.17): dashed line, name in the middle; padding, not margin (CM) */
+.pp-page-break-line { display: flex; align-items: center; gap: 10px; padding: .45em 0; color: var(--pp-muted); font-size: 11px; line-height: 16px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; user-select: none; cursor: text; }
+.pp-page-break-line::before, .pp-page-break-line::after { content: ""; flex: 1; border-top: 1px dashed currentColor; opacity: .55; }
+.pp-page-break-raw { color: var(--pp-muted); }
+/* Page view (pageview.js): the text column is the paper's text width (+ CodeMirror's 8 px of line
+   padding), and a "Page N" line marks where each page of the PDF begins */
+.pp-editor .cm-editor.pp-page-view .cm-content { box-sizing: content-box; flex: 0 0 auto; width: min(calc(var(--pp-page-text) + 8px), calc(100% - 56px)); margin: 0 auto; }
+.pp-page-line { display: flex; align-items: center; gap: 8px; padding: 3px 0; color: var(--pp-muted); font-family: system-ui, sans-serif; font-size: 11px; line-height: 16px; user-select: none; pointer-events: none; }
+.pp-page-line::before { content: ""; flex: 1; border-top: 1px dashed rgba(var(--pp-accent-rgb), .55); }
+.pp-page-line-label { flex: none; padding: 0 6px; border-radius: 999px; background: rgba(var(--pp-accent-rgb), .12); color: rgb(var(--pp-accent-rgb)); }
+/* Real pages (pageview.js): the text column is a sheet (paper margins as padding) on a desk; the
+   widgets at page starts draw sheet ends, the desk between sheets and sheet tops. The desk band
+   reaches past the sheet's padding and shadow (horizontal margins only: CodeMirror does not measure
+   vertical ones) */
+.pp-editor .cm-editor.pp-real-pages .cm-scroller { background: var(--pp-desk); }
+.pp-editor .cm-editor.pp-real-pages .cm-content { padding: 0 var(--pp-margin); width: min(calc(var(--pp-page-text) + 8px), calc(100% - 2 * var(--pp-margin) - 40px)); margin: 20px auto 40px; background: var(--pp-bg); box-shadow: 0 0 0 1px var(--pp-sheet-edge), 0 2px 10px var(--pp-sheet-edge); }
+.pp-sheet-top, .pp-sheet-end { box-sizing: border-box; background: var(--pp-bg); margin: 0 calc(-1 * var(--pp-margin)); }
+.pp-sheet-end { position: relative; }
+.pp-sheet-gap .pp-sheet-end { border-bottom: 1px solid var(--pp-sheet-edge); }
+.pp-sheet-gap .pp-sheet-top { border-top: 1px solid var(--pp-sheet-edge); }
+.pp-sheet-desk { background: var(--pp-desk); margin: 0 calc(-1 * var(--pp-margin) - 20px); }
+.pp-sheet-num { position: absolute; left: 0; right: 0; bottom: calc(var(--pp-margin) / 2 - .5em); text-align: center; font-family: system-ui, sans-serif; font-size: 11px; line-height: 1; color: var(--pp-muted); user-select: none; }
+.pp-sheet-gap, .pp-sheet-last { user-select: none; }
+/* the hidden frame that lays the note out on paper for page view */
+.pp-print-frame { position: fixed; left: -100000px; top: 0; width: 260mm; height: 300mm; border: 0; opacity: 0; pointer-events: none; }
+.pp-mode-toggle { cursor: pointer; user-select: none; padding: 0 4px; border-radius: var(--pp-r-sm); }
 .pp-mode-toggle:hover { background: rgba(127, 127, 127, .18); }
 .pp-mode-toggle.pp-mode-plain { cursor: default; }
 .pp-mode-toggle.pp-mode-plain:hover { background: none; }
 
 /* Tab bar (paper_pile/gui/components/tabs.py, static/tabs.js) */
-.pp-tabbar { width: 100%; height: var(--pp-tab-h); flex-shrink: 0; gap: 0; overflow-x: auto; overflow-y: hidden; background: var(--pp-bg-side); border-bottom: 1px solid var(--pp-border); }
+.pp-tabstrip { width: 100%; height: var(--pp-tab-h); flex-shrink: 0; gap: 0; padding: 0 4px; background: var(--pp-bg-side); border-bottom: 1px solid var(--pp-border); }
+.pp-tabbar { flex: 1 1 0; min-width: 0; height: 100%; gap: 0; overflow-x: auto; overflow-y: hidden; }
 .pp-rtabbar { width: 100%; height: var(--pp-tab-h); flex-shrink: 0; gap: 0; overflow-x: auto; overflow-y: hidden; background: var(--pp-bg-side); border-bottom: 1px solid var(--pp-border); }
 .pp-tabbar::-webkit-scrollbar { height: 4px; }
 .pp-rtabbar::-webkit-scrollbar { height: 4px; }
@@ -177,6 +283,15 @@ html, body { overflow: hidden; }
 .pp-tab:hover { background: rgba(127, 127, 127, .10); }
 .pp-rtab:hover { background: rgba(127, 127, 127, .10); }
 .pp-tab-active { background: var(--pp-bg); color: var(--pp-fg); box-shadow: inset 0 2px 0 var(--pp-accent); }
+/* split view (P13.8): the right side's tab starts at the divider; the other side's note is marked
+   more softly than the side being typed in */
+.pp-tab-shown { background: var(--pp-bg); color: var(--pp-fg); box-shadow: inset 0 2px 0 rgba(var(--pp-accent-rgb), .35); }
+.pp-tabstrip-split > .pp-tabbar:first-child { flex: 0 0 calc(var(--pp-split-left, 50%) - 4px); }
+.pp-tabbar-right { flex: 1 1 0; min-width: 0; height: 100%; border-left: 1px solid var(--pp-border); }
+/* a note dragged over an editor (static/notedrop.js) */
+.pp-split-pane.pp-drop-here::after, .pp-editor-area.pp-drop-here::after, .pp-editor-area.pp-drop-split::after { content: ""; position: absolute; top: 0; bottom: 0; z-index: 20; pointer-events: none; background: rgba(var(--pp-accent-rgb), .1); border: 2px solid rgba(var(--pp-accent-rgb), .55); border-radius: var(--pp-r-ctrl); }
+.pp-split-pane.pp-drop-here::after, .pp-editor-area.pp-drop-here::after { left: 0; right: 0; }
+.pp-editor-area.pp-drop-split::after { left: 50%; right: 0; }
 .pp-rtab-active { background: var(--pp-bg); color: var(--pp-fg); box-shadow: inset 0 2px 0 var(--pp-accent); }
 .pp-tab > * { pointer-events: none; }
 .pp-rtab > * { pointer-events: none; }
@@ -190,8 +305,8 @@ html, body { overflow: hidden; }
 .pp-rtab-dot { display: none; font-size: 10px; color: var(--pp-muted); }
 .pp-tab-dirty { display: inline; }
 .pp-rtab-dirty { display: inline; }
-.pp-tab-close { font-size: 15px; border-radius: 3px; opacity: 0; padding: 1px; }
-.pp-rtab-close { font-size: 15px; border-radius: 3px; opacity: 0; padding: 1px; }
+.pp-tab-close { font-size: var(--pp-icon-s); border-radius: var(--pp-r-sm); opacity: 0; padding: 1px; }
+.pp-rtab-close { font-size: var(--pp-icon-s); border-radius: var(--pp-r-sm); opacity: 0; padding: 1px; }
 .pp-tab:hover .pp-tab-close, .pp-tab-active .pp-tab-close { opacity: .7; }
 .pp-rtab:hover .pp-rtab-close, .pp-rtab-active .pp-rtab-close { opacity: .7; }
 .pp-tab .pp-tab-close:hover { opacity: 1; background: rgba(127, 127, 127, .25); }
@@ -221,7 +336,7 @@ html, body { overflow: hidden; }
 .pp-strong { font-weight: 700; }
 .pp-em { font-style: italic; }
 .pp-strike { text-decoration: line-through; }
-.pp-code { font-family: monospace; color: var(--pp-accent); background: rgba(var(--pp-accent-rgb), .12); border-radius: 5px; padding: 2px 7px; margin: 0 1px; }
+.pp-code { font-family: var(--pp-code-font); color: var(--pp-accent); background: rgba(var(--pp-accent-rgb), .12); border-radius: var(--pp-r-sm); padding: 2px 7px; margin: 0 1px; }
 
 /* Block widgets (tools/editor_src/blocks.js) */
 .pp-math-block, .pp-mermaid { text-align: center; padding: 8px 0; cursor: text; }
@@ -241,28 +356,28 @@ html, body { overflow: hidden; }
 
 /* slash menu (P4.2): a CM6 tooltip inside .pp-editor, so .pp-dark applies */
 .cm-tooltip.pp-slash-tooltip { border: none; background: transparent; z-index: 3000; }
-.pp-slash { width: 320px; display: flex; flex-direction: column; background: var(--pp-bg); color: var(--pp-fg); border: 1px solid var(--pp-border); border-radius: 8px; box-shadow: 0 8px 28px rgba(0, 0, 0, .2); font-family: Roboto, system-ui, sans-serif; font-size: 13px; overflow: hidden; }
+.pp-slash { width: 320px; display: flex; flex-direction: column; background: var(--pp-bg); color: var(--pp-fg); border: 1px solid var(--pp-border); border-radius: var(--pp-r-popup); box-shadow: 0 8px 28px rgba(0, 0, 0, .2); font-family: Roboto, system-ui, sans-serif; font-size: 13px; overflow: hidden; }
 .pp-slash-header { padding: 8px 12px; border-bottom: 1px solid var(--pp-border); min-height: 18px; }
 .pp-slash-placeholder { color: var(--pp-muted); }
 .pp-slash-query { font-weight: 500; }
 .pp-slash-body { max-height: 340px; overflow-y: auto; padding: 4px; }
 .pp-slash-group { padding: 8px 8px 4px; font-size: 11px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; color: var(--pp-muted); }
-.pp-slash-item { display: flex; align-items: center; gap: 10px; padding: 5px 8px; border-radius: 6px; cursor: pointer; }
+.pp-slash-item { display: flex; align-items: center; gap: 10px; padding: 5px 8px; border-radius: var(--pp-r-ctrl); cursor: pointer; }
 .pp-slash-selected { background: rgba(var(--pp-accent-rgb), .14); }
-.pp-slash-icon { width: 28px; height: 28px; flex: none; display: inline-flex; align-items: center; justify-content: center; border: 1px solid var(--pp-border); border-radius: 6px; background: var(--pp-bg-side); font-size: 18px; color: var(--pp-muted); }
+.pp-slash-icon { width: 28px; height: 28px; flex: none; display: inline-flex; align-items: center; justify-content: center; border: 1px solid var(--pp-border); border-radius: var(--pp-r-ctrl); background: var(--pp-bg-side); font-size: var(--pp-icon-m); color: var(--pp-muted); }
 .pp-slash-text { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; }
 .pp-slash-title { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .pp-slash-subtitle { font-size: 11px; color: var(--pp-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.pp-slash-badge { flex: none; padding: 1px 6px; border-radius: 10px; font-size: 10px; background: rgba(var(--pp-accent-rgb), .16); color: var(--pp-accent); }
+.pp-slash-badge { flex: none; padding: 1px 6px; border-radius: 999px; font-size: 10px; background: rgba(var(--pp-accent-rgb), .16); color: var(--pp-accent); }
 .pp-slash-hint { flex: none; font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 12px; color: var(--pp-muted); }
 .pp-slash-empty { padding: 14px 10px; color: var(--pp-muted); }
 .pp-slash-footer { display: flex; align-items: center; gap: 6px; padding: 6px 12px; border-top: 1px solid var(--pp-border); font-size: 11px; color: var(--pp-muted); }
-.pp-slash-footer kbd { font-family: inherit; padding: 0 4px; border: 1px solid var(--pp-border); border-radius: 4px; }
+.pp-slash-footer kbd { font-family: inherit; padding: 0 4px; border: 1px solid var(--pp-border); border-radius: var(--pp-r-sm); }
 
 /* note picker dialog (P4.3) */
 .pp-picker { width: 420px; max-width: 92vw; gap: 8px; }
 .pp-picker-list { width: 100%; max-height: 320px; overflow-y: auto; gap: 0; flex-wrap: nowrap; }
-.pp-picker-row { width: 100%; padding: 5px 8px; gap: 8px; border-radius: 6px; cursor: pointer; font-size: 13px; }
+.pp-picker-row { width: 100%; padding: 5px 8px; gap: 8px; border-radius: var(--pp-r-ctrl); cursor: pointer; font-size: 13px; }
 .pp-picker-row:hover { background: rgba(128, 128, 128, .12); }
 .pp-picker-sel { background: rgba(var(--pp-accent-rgb), .14); }
 
@@ -277,25 +392,25 @@ html, body { overflow: hidden; }
 .pp-table-edit th, .pp-table-edit td { min-width: 90px; cursor: text; }
 .pp-table-input { width: 100%; box-sizing: border-box; padding: 0; margin: 0; border: none; outline: none; background: transparent; font: inherit; color: inherit; text-align: inherit; }
 .pp-table-edit td:has(.pp-table-input), .pp-table-edit th:has(.pp-table-input) { outline: 2px solid var(--pp-accent); outline-offset: -2px; background: rgba(var(--pp-accent-rgb), .06); }
-.pp-table-add { border: 1px dashed var(--pp-border); background: transparent; color: var(--pp-muted); border-radius: 4px; cursor: pointer; opacity: 0; transition: opacity .12s; font: inherit; line-height: 1; padding: 0; }
+.pp-table-add { border: 1px dashed var(--pp-border); background: transparent; color: var(--pp-muted); border-radius: var(--pp-r-sm); cursor: pointer; opacity: 0; transition: opacity .12s; font: inherit; line-height: 1; padding: 0; }
 .pp-table-edit:hover .pp-table-add, .pp-table-edit:focus-within .pp-table-add { opacity: .8; }
 .pp-table-add:hover { opacity: 1 !important; background: rgba(var(--pp-accent-rgb), .12); color: var(--pp-accent); }
 .pp-table-addrow { display: block; width: 100%; max-width: 320px; height: 16px; margin-top: 3px; }
 .pp-table-addcol { width: 16px; margin-left: 3px; flex: none; }
-.pp-tmenu { position: fixed; z-index: 4000; min-width: 190px; padding: 4px; background: var(--pp-bg); color: var(--pp-fg); border: 1px solid var(--pp-border); border-radius: 6px; box-shadow: 0 6px 20px rgba(0, 0, 0, .18); font-family: Roboto, system-ui, sans-serif; font-size: 13px; }
-.pp-tmenu-item { padding: 5px 10px; border-radius: 4px; cursor: pointer; }
+.pp-tmenu { position: fixed; z-index: 4000; min-width: 190px; padding: 4px; background: var(--pp-bg); color: var(--pp-fg); border: 1px solid var(--pp-border); border-radius: var(--pp-r-popup); box-shadow: 0 6px 20px rgba(0, 0, 0, .18); font-family: Roboto, system-ui, sans-serif; font-size: 13px; }
+.pp-tmenu-item { padding: 5px 10px; border-radius: var(--pp-r-ctrl); cursor: pointer; }
 .pp-tmenu-item:hover { background: rgba(var(--pp-accent-rgb), .14); }
 .pp-tmenu-sep { height: 1px; margin: 4px 2px; background: var(--pp-border); }
 .pp-table-edit th { text-align: left; }
 
 /* image resize handle (P5.3) */
 .pp-image { position: relative; }
-.pp-image-handle { position: absolute; right: 2px; bottom: 6px; width: 14px; height: 14px; border-radius: 3px; background: rgba(var(--pp-accent-rgb), .9); border: 2px solid var(--pp-bg); box-sizing: border-box; cursor: nwse-resize; opacity: 0; transition: opacity .12s; }
+.pp-image-handle { position: absolute; right: 2px; bottom: 6px; width: 14px; height: 14px; border-radius: var(--pp-r-sm); background: rgba(var(--pp-accent-rgb), .9); border: 2px solid var(--pp-bg); box-sizing: border-box; cursor: nwse-resize; opacity: 0; transition: opacity .12s; }
 .pp-image:hover .pp-image-handle, .pp-image-resizing .pp-image-handle { opacity: 1; }
 .pp-image-resizing img { outline: 2px solid rgba(var(--pp-accent-rgb), .6); }
 
 /* embedded note: ![[note]] alone on a line */
-.pp-embed { margin: 6px 6px; border: 1px solid var(--pp-border); border-left: 3px solid var(--pp-wiki); border-radius: 6px; background: var(--pp-bg-side); cursor: pointer; max-height: 340px; overflow-y: auto; }
+.pp-embed { margin: 6px 6px; border: 1px solid var(--pp-border); border-left: 3px solid var(--pp-wiki); border-radius: var(--pp-r-ctrl); background: var(--pp-bg-side); cursor: pointer; max-height: 340px; overflow-y: auto; }
 .pp-embed:hover { border-color: var(--pp-wiki); }
 .pp-embed-title { padding: 5px 12px; font-size: 11px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; color: var(--pp-muted); border-bottom: 1px solid var(--pp-border); position: sticky; top: 0; background: var(--pp-bg-side); }
 .pp-embed-body { padding: 4px 12px 8px; font-size: .95em; line-height: 1.5; }
@@ -303,10 +418,12 @@ html, body { overflow: hidden; }
 .pp-embed-body p { margin: .4em 0; }
 .pp-embed-body ul, .pp-embed-body ol { margin: .3em 0; padding-left: 1.5em; }
 .pp-embed-body img { max-width: 100%; }
+/* a rendered page break (chat, embeds): the editor draws its own (PLAN §4.17) */
+.pp-page-break { margin: .8em 0; border-top: 1px dashed var(--pp-border); }
 .pp-embed-body a { color: inherit; text-decoration: underline; pointer-events: none; }
 .pp-embed-body a.wikilink { color: var(--pp-wiki); pointer-events: auto; }
 .pp-embed-body blockquote { margin: .4em 0; padding-left: 10px; border-left: 3px solid var(--pp-border); color: var(--pp-muted); }
-.pp-embed-body pre, .pp-embed-body code { background: var(--pp-code-bg, #f3f4f6); border-radius: 4px; }
+.pp-embed-body pre, .pp-embed-body code { background: var(--pp-code-bg, #f3f4f6); border-radius: var(--pp-r-sm); }
 .pp-embed-body pre { padding: 6px 10px; overflow-x: auto; }
 .pp-embed-missing .pp-embed-body { color: var(--pp-warn); }
 .pp-backlink-snippet b { font-weight: 600; color: var(--pp-wiki); }
@@ -321,11 +438,11 @@ html, body { overflow: hidden; }
 .pp-msg { width: 100%; gap: 2px; flex: none; }
 .pp-msg-who { font-size: 11px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; color: var(--pp-muted); }
 .pp-msg-text { white-space: pre-wrap; font-size: 13px; }
-.pp-msg-user .pp-msg-text { background: rgba(var(--pp-accent-rgb), .1); border-radius: 8px; padding: 6px 10px; align-self: stretch; }
+.pp-msg-user .pp-msg-text { background: rgba(var(--pp-accent-rgb), .1); border-radius: var(--pp-r-ctrl); padding: 6px 10px; align-self: stretch; }
 .pp-msg-body { font-size: 13px; line-height: 1.5; width: 100%; overflow-wrap: anywhere; }
 .pp-msg-body p { margin: .35em 0; }
-.pp-msg-body pre { background: var(--pp-code-bg, #f3f4f6); border-radius: 6px; padding: 8px 10px; overflow-x: auto; font-size: 12px; }
-.pp-msg-body code { background: var(--pp-code-bg, #f3f4f6); border-radius: 3px; padding: 0 3px; }
+.pp-msg-body pre { background: var(--pp-code-bg, #f3f4f6); border-radius: var(--pp-r-ctrl); padding: 8px 10px; overflow-x: auto; font-size: 12px; }
+.pp-msg-body code { background: var(--pp-code-bg, #f3f4f6); border-radius: var(--pp-r-sm); padding: 0 3px; }
 .pp-msg-body pre code { background: none; padding: 0; }
 .pp-msg-body table { border-collapse: collapse; } .pp-msg-body th, .pp-msg-body td { border: 1px solid var(--pp-border); padding: 2px 8px; }
 .pp-msg-body ul, .pp-msg-body ol { margin: .3em 0; padding-left: 1.4em; }
@@ -336,19 +453,17 @@ html, body { overflow: hidden; }
 .pp-msg-actions { gap: 0; opacity: .6; }
 .pp-msg:hover .pp-msg-actions { opacity: 1; }
 .pp-chat-compose { position: relative; width: 100%; flex: none; gap: 2px; padding: 8px 12px 12px; }
-.pp-chat-mentions { width: 100%; gap: 0; border: 1px solid var(--pp-border); border-radius: 6px; background: var(--pp-bg); box-shadow: 0 4px 14px rgba(0, 0, 0, .12); }
+.pp-chat-mentions { width: 100%; gap: 0; border: 1px solid var(--pp-border); border-radius: var(--pp-r-popup); background: var(--pp-bg); box-shadow: 0 4px 14px rgba(0, 0, 0, .12); }
 .pp-chat-mention { width: 100%; padding: 3px 10px; gap: 8px; cursor: pointer; font-size: 12px; }
 .pp-chat-mention:hover { background: rgba(var(--pp-accent-rgb), .12); }
 
 /* settings dialog, profile block (P8) */
-.pp-swatch.q-btn { width: 24px; height: 24px; min-width: 24px; min-height: 24px; padding: 0; border-radius: 50%; box-shadow: inset 0 0 0 2px rgba(255, 255, 255, .6); }
-.pp-swatch-on { outline: 2px solid var(--pp-fg); outline-offset: 2px; }
-.pp-profile { width: 100%; flex: none; gap: 4px; padding: 6px 8px 6px 12px; border-top: 1px solid var(--pp-border); }
+.pp-profile { width: 100%; flex: none; gap: 4px; height: var(--pp-foot-h); box-sizing: border-box; padding: 0 8px 0 12px; border-top: 1px solid var(--pp-border); }
 .pp-profile-who { gap: 8px; cursor: pointer; min-width: 0; flex: 1 1 auto; }
 .pp-profile-name { font-size: 13px; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .pp-avatar { width: 28px; height: 28px; flex: none; border-radius: 50%; background: var(--pp-accent) center / cover no-repeat; display: flex; align-items: center; justify-content: center; color: var(--pp-on-accent); }
 .pp-avatar-initials { font-size: 11px; font-weight: 700; letter-spacing: .02em; }
-.pp-profile-btn { color: var(--pp-muted) !important; }
+
 .pp-profile-dialog { width: 360px; gap: 8px; }
 .pp-ask { width: 480px; max-width: 92vw; gap: 8px; }
 .pp-msg-attach { font-size: 12px; }
@@ -373,13 +488,13 @@ html, body { overflow: hidden; }
 .pp-chat-input .q-field__native { padding: 6px 0; line-height: 1.5; scrollbar-width: thin; }
 .pp-chat-input .q-field__native::placeholder { line-height: 1.5; }
 .pp-chat-input .q-field__control:before, .pp-chat-input .q-field__control:after { display: none; }
-.pp-chat-ref-icon { font-size: 15px; color: var(--pp-muted); }
+.pp-chat-ref-icon { font-size: var(--pp-icon-m); color: var(--pp-muted); }
 .pp-chat-ref-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.pp-chat-menu { min-width: 260px; max-width: 320px; background: var(--pp-bg); color: var(--pp-fg); border: 1px solid var(--pp-border); border-radius: 14px; box-shadow: 0 8px 28px rgba(0, 0, 0, .2); padding: 4px; }
-.pp-chat-menu .q-item { border-radius: 8px; min-height: 36px; gap: 10px; font-size: 13px; }
-.pp-menu-icon { font-size: 18px; color: var(--pp-muted); }
+.pp-chat-menu { min-width: 260px; max-width: 320px; background: var(--pp-bg); color: var(--pp-fg); border: 1px solid var(--pp-border); border-radius: var(--pp-r-popup); box-shadow: 0 8px 28px rgba(0, 0, 0, .2); padding: 4px; }
+.pp-chat-menu .q-item { border-radius: var(--pp-r-ctrl); min-height: 36px; gap: 10px; font-size: 13px; }
+.pp-menu-icon { font-size: var(--pp-icon-m); color: var(--pp-muted); }
 .pp-menu-title { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.pp-menu-check { font-size: 18px; color: var(--pp-muted); }
+.pp-menu-check { font-size: var(--pp-icon-s); color: var(--pp-muted); }
 .pp-chat-more { gap: 0; min-width: 220px; }
 .pp-chat-more-search { padding: 0 10px; }
 .pp-chat-strip { width: 100%; gap: 4px; padding: 4px 6px 6px; border-bottom: 1px solid var(--pp-border); }
@@ -389,7 +504,7 @@ html, body { overflow: hidden; }
 .pp-chat-ref-note { color: rgb(var(--pp-accent-rgb)); font-weight: 500; }
 .pp-chat-chip-open { background: rgba(var(--pp-accent-rgb), .16); }
 .pp-chat-preview { width: 100%; gap: 0; }
-.pp-chat-chip-body { width: 100%; max-height: 200px; overflow: auto; padding: 4px 10px; border-radius: 12px; background: rgba(127, 127, 127, .08); }
+.pp-chat-chip-body { width: 100%; max-height: 200px; overflow: auto; padding: 4px 10px; border-radius: var(--pp-r-ctrl); background: rgba(127, 127, 127, .08); }
 
 /* callouts: a quote that opens with a bold label gets a tinted box; its text is untouched */
 .pp-editor .cm-line.pp-quote.pp-callout { --pp-bar: var(--pp-accent); background-color: rgba(var(--pp-accent-rgb), .13); }
@@ -398,7 +513,7 @@ html, body { overflow: hidden; }
 .pp-blockcopy-wrap { position: absolute; top: 3px; right: 6px; z-index: 2; }
 .pp-math-block, .pp-mermaid { position: relative; }
 .pp-math-block .pp-blockcopy, .pp-mermaid .pp-blockcopy { position: absolute; top: 4px; right: 4px; }
-.pp-blockcopy { display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 24px; padding: 0; cursor: pointer; color: var(--pp-muted); background: var(--pp-bg); border: 1px solid var(--pp-border); border-radius: 6px; opacity: .55; transition: opacity .12s, color .12s; }
+.pp-blockcopy { display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 24px; padding: 0; cursor: pointer; color: var(--pp-muted); background: var(--pp-bg); border: 1px solid var(--pp-border); border-radius: var(--pp-r-ctrl); opacity: .55; transition: opacity .12s, color .12s; }
 .pp-blockcopy:hover, .pp-code-first:hover .pp-blockcopy, .pp-math-block:hover .pp-blockcopy, .pp-mermaid:hover .pp-blockcopy { opacity: 1; color: var(--pp-accent); border-color: rgba(var(--pp-accent-rgb), .5); }
 .pp-blockcopy-done { color: var(--pp-accent) !important; opacity: 1; }
 /* the text selection follows the theme colour too */
@@ -412,7 +527,7 @@ html, body { overflow: hidden; }
 .pp-fold { position: absolute; left: -1.25em; top: 50%; transform: translateY(-50%); font-size: .7em; line-height: 1; color: var(--pp-muted); cursor: pointer; opacity: 0; user-select: none; padding: 2px; }
 .pp-h:hover .pp-fold, .pp-fold-folded { opacity: 1; }
 .pp-fold:hover { color: var(--pp-accent); }
-.pp-fold-placeholder { margin-left: .5em; padding: 0 6px; border-radius: 4px; color: var(--pp-accent); background: rgba(var(--pp-accent-rgb), .14); cursor: pointer; }
+.pp-fold-placeholder { margin-left: .5em; padding: 0 6px; border-radius: var(--pp-r-sm); color: var(--pp-accent); background: rgba(var(--pp-accent-rgb), .14); cursor: pointer; }
 .pp-fold::before { content: "\25BE"; }
 .pp-fold-folded::before { content: "\25B8"; }
 
@@ -420,54 +535,166 @@ html, body { overflow: hidden; }
 .pp-right { background: var(--pp-bg-side); }
 .pp-right-body { width: 100%; padding: 0; gap: 0; min-height: 0; flex-wrap: nowrap; overflow: hidden; }
 .pp-right-body > .pp-chat { flex: 1 1 0; min-height: 0; }
-.pp-rtab-icon { color: inherit; font-size: 13px; width: 15px; text-align: center; }
-.pp-right-tabs .pp-rtab-close { font-size: 14px; }
+.pp-rtab-icon { color: inherit; font-size: var(--pp-icon-m); width: 15px; text-align: center; }
+.pp-right-tabs .pp-rtab-close { font-size: var(--pp-icon-s); }
 
 /* settings: two columns (section list | rows of "name + help ... control") */
-.pp-set { width: 100%; height: 100%; gap: 0; flex-wrap: nowrap; align-items: stretch; overflow: hidden; }
-.pp-set-nav { width: 190px; flex: none; gap: 2px; padding: 12px 10px; border-right: 1px solid var(--pp-border); flex-wrap: nowrap; }
+.pp-set { width: 100%; height: 100%; gap: 0; flex-wrap: nowrap; align-items: stretch; overflow: hidden; container: ppset / inline-size; }
+/* the Mode buttons above Restore defaults: a row of three icons (a column when folded) */
+.pp-set-mode { align-self: stretch; display: flex; justify-content: center; margin-bottom: 6px; }
+.pp-set-mode .pp-seg { width: 100%; }
+.pp-set-mode .pp-seg-item { flex: 1 1 0; justify-content: center; padding: 6px 0; }
+.pp-set-nav { width: 190px; flex: none; gap: 2px; padding: 12px 10px; transition: width .15s; border-right: 1px solid var(--pp-border); flex-wrap: nowrap; }
 .pp-set-search { width: 100%; font-size: 13px; }
-.pp-set-search .q-field__control { border-radius: 10px; }
-.pp-set-search-icon { font-size: 13px; color: var(--pp-muted); }
-.pp-set-caption { font-size: 12px; color: var(--pp-muted); padding: 14px 8px 4px; }
+.pp-set-search .q-field__control { border-radius: var(--pp-r-ctrl); padding: 0 12px; }
+.pp-set-search .q-field__prepend { padding-right: 10px; }
+.pp-set-search-icon { font-size: var(--pp-icon-s); color: var(--pp-muted); }
+.pp-set-caption { font-size: 12px; color: var(--pp-muted); padding: 14px 12px 4px; }
 .pp-set-navlist { width: 100%; gap: 2px; }
-.pp-set-navitem { width: 100%; gap: 10px; padding: 7px 10px; border-radius: 9px; cursor: pointer; font-size: 13.5px; color: var(--pp-fg); }
+.pp-set-navitem { width: 100%; gap: 10px; padding: 7px 12px; white-space: nowrap; overflow: hidden; border-radius: var(--pp-r-ctrl); cursor: pointer; font-size: 13.5px; color: var(--pp-fg); }
 .pp-set-navitem:hover { background: rgba(127, 127, 127, .10); }
 .pp-set-navitem-on, .pp-set-navitem-on:hover { background: rgba(var(--pp-accent-rgb), .14); font-weight: 600; }
-.pp-set-navicon { font-size: 14px; width: 18px; text-align: center; color: var(--pp-muted); }
+.pp-set-navicon { font-size: var(--pp-icon-m); flex: none; color: var(--pp-muted); }
 .pp-set-navitem-on .pp-set-navicon { color: var(--pp-accent); }
-.pp-set-main { flex: 1 1 0; min-width: 0; height: 100%; gap: 0; flex-wrap: nowrap; background: var(--pp-bg); }
-.pp-set-top { width: 100%; flex: none; gap: 10px; padding: 14px 22px 8px; }
+.pp-set-main { flex: 1 1 0; min-width: 0; height: 100%; gap: 0; flex-wrap: nowrap; background: var(--pp-bg); container: ppmain / inline-size; }
+.pp-set-top { width: 100%; flex: none; gap: 10px; padding: 14px 22px 8px; flex-wrap: wrap; }
 .pp-set-title { font-size: 17px; font-weight: 600; }
-.pp-set-close { font-size: 15px; padding: 6px; border-radius: 8px; cursor: pointer; color: var(--pp-muted); }
+.pp-set-close { font-size: var(--pp-icon-s); padding: 6px; border-radius: var(--pp-r-ctrl); cursor: pointer; color: var(--pp-muted); }
 .pp-set-close:hover { background: rgba(127, 127, 127, .15); color: var(--pp-fg); }
 .pp-set-content { flex: 1 1 0; min-height: 0; width: 100%; overflow-y: auto; padding: 0 22px 18px; gap: 0; flex-wrap: nowrap; }
-.pp-set-row { width: 100%; gap: 16px; padding: 14px 0; border-bottom: 1px solid var(--pp-border); }
-.pp-set-row:last-child { border-bottom: none; }
-.pp-set-text { flex: 1 1 auto; min-width: 0; gap: 2px; }
+/* rows: no dividers (only sections have one); the control drops under the text when the text
+   would get narrower than ~200 px */
+.pp-set-row { width: 100%; gap: 6px 16px; padding: 10px 0; flex-wrap: wrap; }
+.pp-set-text { flex: 0 1 auto; min-width: 0; gap: 2px; }  /* its natural width: the control drops below rather than squeeze it */
 .pp-set-label { font-size: 14px; }
 .pp-set-help { font-size: 12.5px; color: var(--pp-muted); line-height: 1.35; }
 .pp-set-error { font-size: 12px; color: var(--pp-danger); }
-.pp-set-control { flex: none; }
+.pp-set-control { flex: 1 1 auto; min-width: 0; flex-wrap: nowrap; justify-content: flex-end; gap: 6px; }
+/* the control dropped under the text (static/tabs.js marks the row): its field stretches up to the next button */
+.pp-set-stacked > .pp-set-control .pp-set-field, .pp-set-stacked > .pp-set-control > .q-field { flex: 1 1 200px; width: auto; min-width: 200px; }  /* min: it must not fit back beside the text */
+.pp-set-stacked > .pp-set-control .pp-stepper { flex: 1 1 auto; justify-content: space-between; }
+/* buttons never put their text under their icon: when there is no room only the icon stays */
+.pp-set .q-btn__content { flex-wrap: nowrap; white-space: nowrap; }
+.pp-icons-only .q-btn:has(.q-icon) .q-btn__content > .block { max-width: 0; overflow: hidden; }
+.pp-icons-only .q-btn:has(.q-icon) .q-icon.on-left { margin-right: 0; }
+.pp-icons-only .pp-seg-item:has(.q-icon) > :not(.q-icon) { display: none; }
 .pp-set-field { width: 200px; font-size: 13px; }
-.pp-set-field .q-field__control { border-radius: 10px; }
+.pp-set-field .q-field__control { border-radius: var(--pp-r-ctrl); }
 .pp-set-none { padding: 18px 0; }
 .pp-swatches { gap: 8px; }
-.pp-seg { gap: 2px; padding: 3px; border-radius: 12px; background: rgba(127, 127, 127, .14); }
-.pp-seg-item { gap: 6px; padding: 5px 13px; border-radius: 9px; cursor: pointer; font-size: 13px; color: var(--pp-muted); user-select: none; }
+.pp-seg { flex: none; white-space: nowrap; gap: 2px; padding: 3px; border-radius: calc(var(--pp-r-ctrl) + 3px); background: rgba(127, 127, 127, .14); }
+.pp-seg-item { gap: 6px; padding: 5px 13px; border-radius: var(--pp-r-ctrl); cursor: pointer; font-size: 13px; color: var(--pp-muted); user-select: none; }
 .pp-seg-item:hover { color: var(--pp-fg); }
 .pp-seg-on, .pp-seg-on:hover { background: var(--pp-bg); color: var(--pp-fg); box-shadow: 0 1px 3px rgba(0, 0, 0, .15); }
-.pp-seg-icon { font-size: 14px; color: inherit; }
-.pp-set-group { width: 100%; padding: 18px 0 2px; font-size: 13px; font-weight: 600; color: var(--pp-fg); }
-.pp-set-group:first-child { padding-top: 6px; }
-.pp-set-info { max-width: 260px; font-size: 13px; color: var(--pp-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pp-seg-icon { font-size: var(--pp-icon-m); color: inherit; }
+.pp-set-group { width: 100%; margin-top: 12px; padding: 16px 0 2px; border-top: 1px solid var(--pp-border); font-size: 13px; font-weight: 600; color: var(--pp-fg); }
+.pp-set-group:first-child { margin-top: 0; padding-top: 6px; border-top: none; }
+.pp-set-info { margin-left: auto; max-width: 260px; font-size: 13px; color: var(--pp-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* Settings → AI → Memories: filter, one line per saved chat, bulk deletes */
+.pp-mem { width: 100%; gap: 8px; padding: 12px 0 4px; flex-wrap: nowrap; }
+.pp-mem-filters { width: 100%; gap: 8px; flex-wrap: wrap; }
+.pp-mem-search { flex: 1 1 100px; min-width: 0; font-size: 13px; }
+.pp-mem-date { flex: 0 0 136px; font-size: 13px; }
+.pp-mem-cal { font-size: var(--pp-icon-s); color: var(--pp-muted); cursor: pointer; border-radius: 4px; padding: 3px; box-sizing: content-box; }
+.pp-mem-cal:hover { color: var(--pp-fg); background: rgba(127, 127, 127, .15); }
+.pp-mem-path { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pp-mem-change.q-btn, .pp-mem-more.q-btn, .pp-instr-btn.q-btn { font-size: 12.5px; color: var(--pp-fg); padding: 2px 10px; border-radius: var(--pp-r-ctrl); }
+.pp-mem-more.q-btn { align-self: center; color: var(--pp-muted); }
+.pp-mem-more.q-btn:hover, .pp-mem-change.q-btn:hover { color: var(--pp-fg); }
+.pp-instr-btn .q-icon { font-size: var(--pp-icon-s); margin-right: 6px; }
+/* calendar popup of the date boxes: our colours in both themes, rounded like every popup */
+.q-menu.pp-date-popup { border: 1px solid var(--pp-border); border-radius: var(--pp-r-popup); background: var(--pp-bg); box-shadow: 0 8px 28px rgba(0, 0, 0, .2); overflow: hidden; }
+.pp-date.q-date { width: 272px; min-width: 0; background: var(--pp-bg); color: var(--pp-fg); border-radius: var(--pp-r-popup); box-shadow: none; }
+.pp-date .q-date__navigation .q-btn, .pp-date .q-date__calendar-item .q-btn:not(.bg-primary) { color: var(--pp-fg); }
+.pp-date .q-date__calendar-weekdays > div { color: var(--pp-muted); opacity: 1; }
+.pp-date .q-date__view { padding: 10px 12px 12px; min-height: 0; }
+.pp-date .q-date__content, .pp-date .q-date__main { min-height: 0; height: auto; }
+.pp-date .q-date__calendar-days-container { min-height: 0; height: auto; }
+.pp-date .q-date__years-content .q-btn, .pp-date .q-date__months-item .q-btn { color: var(--pp-fg); }
+/* the image gallery (P13.7): a big popup, day headings, a grid of square tiles, details on the right */
+.q-card.pp-gallery { width: min(1180px, 95vw); max-width: none; height: 88vh; max-height: none; gap: 10px; flex-wrap: nowrap; }
+.pp-gal-bar { gap: 8px; }
+.pp-gal-count { font-size: 12.5px; }
+.pp-gal-search { width: 200px; font-size: 13px; }
+.pp-gal-search .q-field__control { border-radius: var(--pp-r-ctrl); }
+.pp-gal-body { flex: 1 1 0; min-height: 0; gap: 14px; }
+.pp-gal-grid { flex: 1 1 0; min-width: 0; height: 100%; overflow-y: auto; gap: 6px; flex-wrap: nowrap; padding-right: 4px; }
+.pp-gal-day { font-size: 12.5px; font-weight: 600; color: var(--pp-muted); padding: 10px 0 2px; }
+.pp-gal-day:first-child { padding-top: 0; }
+.pp-gal-tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(var(--pp-gal-edge), 1fr)); gap: 8px; width: 100%; }
+.pp-gal-tile { cursor: pointer; border-radius: var(--pp-r-ctrl); padding: 4px; border: 1px solid transparent; min-width: 0; }
+.pp-gal-tile:hover { background: rgba(127, 127, 127, .1); }
+.pp-gal-tile-on { border-color: rgba(var(--pp-accent-rgb), .8); background: rgba(var(--pp-accent-rgb), .08); }
+.pp-gal-img { width: 100%; aspect-ratio: 1; border-radius: calc(var(--pp-r-ctrl) - 2px); overflow: hidden; background: repeating-conic-gradient(rgba(127,127,127,.12) 0 25%, transparent 0 50%) 0 0 / 16px 16px; }
+.pp-gal-img img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.pp-gal-unused .pp-gal-img { outline: 1px dashed rgba(127, 127, 127, .6); outline-offset: -1px; }
+.pp-gal-name { font-size: 11.5px; color: var(--pp-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding-top: 3px; }
+.pp-gal-empty { padding: 20px 0; }
+.pp-gal-side { flex: 0 0 300px; height: 100%; overflow-y: auto; gap: 6px; flex-wrap: nowrap; padding: 2px 2px 2px 14px; border-left: 1px solid var(--pp-border); }
+.pp-gal-side-title { font-weight: 600; font-size: 13.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; flex: 1 1 auto; }
+.pp-gal-preview { width: 100%; border-radius: var(--pp-r-ctrl); overflow: hidden; background: repeating-conic-gradient(rgba(127,127,127,.12) 0 25%, transparent 0 50%) 0 0 / 16px 16px; }
+.pp-gal-preview img { width: 100%; max-height: 320px; object-fit: contain; display: block; }
+.pp-gal-side { transition: flex-basis .15s; }
+.pp-gal-side.pp-gal-side-wide { flex-basis: 58%; }
+.pp-gal-side-wide .pp-gal-preview img { max-height: 60vh; }
+.pp-gal-meta, .pp-gal-path { font-size: 12px; }
+.pp-gal-path { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; width: 100%; }
+.pp-gal-used-title { font-size: 12.5px; font-weight: 600; padding-top: 8px; }
+.pp-gal-note { font-size: 13px; color: var(--pp-accent); cursor: pointer; padding: 2px 6px; margin-left: -6px; border-radius: var(--pp-r-sm); }
+.pp-gal-note:hover { background: rgba(var(--pp-accent-rgb), .12); }
+.pp-gal-actions { gap: 2px; padding-top: 10px; }
+.pp-gal-action.q-btn { justify-content: flex-start; font-size: 13px; color: var(--pp-fg); padding: 4px 8px; border-radius: var(--pp-r-ctrl); }
+.pp-gal-action .q-btn__content { gap: 8px; justify-content: flex-start; }
+.pp-gal-action.pp-gal-danger.q-btn { color: var(--pp-danger); }
+/* Settings: a group folded in an expansion (AI → Advanced) and a full-width row (the system instruction) */
+.pp-set-fold { width: 100%; margin-top: 10px; padding-top: 8px; border-top: 1px solid var(--pp-border); }
+.pp-set-fold .q-expansion-item__content, .pp-set-fold .nicegui-expansion-content { padding: 0; gap: 0; }
+.pp-set-fold > .q-expansion-item__container > .q-item { padding: 10px 0 6px; min-height: 0; font-size: 13px; font-weight: 600; color: var(--pp-fg); border-radius: var(--pp-r-ctrl); }
+.pp-set-fold > .q-expansion-item__container > .q-item .q-item__section--side { padding-right: 8px; min-width: 0; color: var(--pp-muted); }
+.pp-set-row.pp-set-block { flex-direction: column; flex-wrap: nowrap; align-items: stretch; gap: 10px; }
+.pp-instr-box, .pp-instr-file { width: 100%; font-size: 13px; }
+.pp-instr-box .q-field__control, .pp-instr-file .q-field__control, .pp-instr-big .q-field__control { border-radius: var(--pp-r-ctrl); }
+.pp-instr-box textarea { line-height: 1.5; height: 150px; min-height: 90px; max-height: 70vh; resize: vertical; }
+body.body--dark .pp-instr-box textarea { color-scheme: dark; }  /* the corner grip in the theme's colours */
+.pp-instr-bar { gap: 4px; margin-top: -4px; }
+.pp-instr-count { font-size: 12px; }
+/* General → Templates: pick a template (or a new one), name, a big box, Save */
+.pp-tpl-head { gap: 8px; }
+.pp-tpl-pick { flex: 1 1 160px; min-width: 0; font-size: 13px; }
+.pp-tpl-name { font-size: 13px; }
+.pp-tpl-pick .q-field__control, .pp-tpl-name .q-field__control { border-radius: var(--pp-r-ctrl); }
+.pp-tpl-box textarea { height: 220px; }
+.pp-tpl-save.q-btn { font-size: 12.5px; padding: 2px 14px; border-radius: var(--pp-r-ctrl); }
+.q-card.pp-instr-dialog { width: min(860px, 92vw); max-width: none; }
+.pp-instr-big { width: 100%; font-size: 13.5px; }
+.pp-instr-big textarea { height: 60vh; min-height: 240px; line-height: 1.55; resize: none; }
+.pp-instr-draft textarea { height: 40vh; }
+.pp-mem-search .q-field__control, .pp-mem-date .q-field__control { border-radius: var(--pp-r-ctrl); }
+.pp-mem-bar { width: 100%; gap: 4px; min-height: 30px; }
+.pp-mem-count { font-size: 12.5px; }
+.pp-mem-del.q-btn { font-size: 12.5px; color: var(--pp-danger); padding: 2px 8px; border-radius: var(--pp-r-ctrl); }
+.pp-mem-list { width: 100%; gap: 0; padding: 4px; max-height: 420px; overflow-y: auto; flex-wrap: nowrap; border: 1px solid var(--pp-border); border-radius: var(--pp-r-ctrl); }
+.pp-mem-row { width: 100%; gap: 8px; min-height: 32px; padding: 4px 8px; border-radius: var(--pp-r-ctrl); cursor: pointer; font-size: 13px; }
+.pp-mem-row:hover { background: rgba(127, 127, 127, .12); }
+.pp-mem-icon { flex: none; font-size: var(--pp-icon-s); color: var(--pp-muted); }
+.pp-mem-title { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pp-mem-day { flex: none; font-size: 12px; }
+.pp-mem-row-del { flex: none; font-size: var(--pp-icon-s); color: var(--pp-muted); opacity: 0; border-radius: 4px; padding: 3px; box-sizing: content-box; transition: opacity .15s; }
+.pp-mem-row:hover .pp-mem-row-del { opacity: 1; }
+.pp-mem-row-del:hover { color: var(--pp-danger); background: rgba(127, 127, 127, .2); }
+.pp-mem-empty { padding: 10px 8px; font-size: 13px; }
+.q-card.pp-mem-view { width: min(760px, 92vw); max-width: none; max-height: 86vh; gap: 8px; flex-wrap: nowrap; }
+.pp-mem-view-head { width: 100%; gap: 2px; margin-bottom: -12px; }
+.pp-mem-doc { flex: 1 1 auto; min-height: 0; overflow-y: auto; padding: 4px 6px 8px; font-size: 14px; }
+.pp-mem-doc h1 { font-size: 20px; font-weight: 600; line-height: 1.3; margin: 4px 0 2px; }
+.pp-mem-doc h3 { font-size: 13px; font-weight: 600; color: var(--pp-accent); text-transform: uppercase; letter-spacing: .04em; line-height: 1.3; margin: 18px 0 2px; padding-top: 12px; border-top: 1px solid var(--pp-border); }
 /* one-button pickers with a popup: accent colour and font */
-.pp-pick.q-btn { gap: 8px; padding: 5px 10px 5px 12px; border: 1px solid var(--pp-border); border-radius: 10px; font-size: 13px; font-weight: 400; color: var(--pp-fg); }
-.pp-pick-chev { font-size: 10px; color: var(--pp-muted); margin-left: 4px; }
+.pp-pick.q-btn { gap: 8px; padding: 5px 10px 5px 12px; border: 1px solid var(--pp-border); border-radius: var(--pp-r-ctrl); font-size: 13px; font-weight: 400; color: var(--pp-fg); }
+.pp-pick-chev { font-size: var(--pp-icon-s); color: var(--pp-muted); margin-left: 4px; }
 .pp-swatch-dot { display: inline-block; width: 16px; height: 16px; border-radius: 50%; box-shadow: inset 0 0 0 1px rgba(0, 0, 0, .15); }
-.pp-set-popup { background: var(--pp-bg); color: var(--pp-fg); border: 1px solid var(--pp-border); border-radius: 12px; box-shadow: 0 8px 28px rgba(0, 0, 0, .2); padding: 6px; }
-.pp-set-popup .q-item { border-radius: 8px; min-height: 34px; font-size: 13px; }
-.pp-swatchgrid { display: grid; grid-template-columns: repeat(4, 28px); gap: 10px; padding: 6px; }
+.pp-set-popup { background: var(--pp-bg); color: var(--pp-fg); border: 1px solid var(--pp-border); border-radius: var(--pp-r-popup); box-shadow: 0 8px 28px rgba(0, 0, 0, .2); padding: 6px; }
+.pp-set-popup .q-item { border-radius: var(--pp-r-ctrl); min-height: 34px; font-size: 13px; }
+
 .pp-fontmenu { min-width: 250px; }
 .pp-fontitem { gap: 10px; }
 .pp-fontname { flex: 1 1 auto; font-size: 14px; }
@@ -480,15 +707,15 @@ html, body { overflow: hidden; }
 .pp-cal-title { gap: 8px; }
 .pp-cal-month { font-size: 19px; font-weight: 300; }
 .pp-cal-year { font-size: 19px; font-weight: 600; color: var(--pp-accent); }
-.pp-cal-nav { font-size: 11px; padding: 6px; border-radius: 8px; cursor: pointer; color: var(--pp-muted); }
+.pp-cal-nav { font-size: var(--pp-icon-s); padding: 6px; border-radius: var(--pp-r-ctrl); cursor: pointer; color: var(--pp-muted); }
 .pp-cal-nav:hover { background: rgba(127, 127, 127, .15); color: var(--pp-fg); }
-.pp-cal-today-btn { font-size: 10px; font-weight: 600; letter-spacing: .08em; color: var(--pp-muted); padding: 4px 6px; border-radius: 8px; cursor: pointer; }
+.pp-cal-today-btn { font-size: 10px; font-weight: 600; letter-spacing: .08em; color: var(--pp-muted); padding: 4px 6px; border-radius: var(--pp-r-ctrl); cursor: pointer; }
 .pp-cal-today-btn:hover { background: rgba(127, 127, 127, .15); color: var(--pp-fg); }
 .pp-cal-grid { display: grid; grid-template-columns: 24px repeat(7, 1fr); row-gap: 0; width: 100%; }
 .pp-cal-colhead { font-size: 9.5px; font-weight: 600; letter-spacing: .06em; text-align: center; color: var(--pp-muted); padding: 4px 0 5px; }
 .pp-cal-wk { font-size: 10px; color: var(--pp-muted); display: flex; align-items: center; justify-content: center; opacity: .8; }
 .pp-cal-wk.pp-cal-colhead { align-items: flex-start; }
-.pp-cal-day { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 0; height: 34px; border-radius: 7px; cursor: pointer; user-select: none; }
+.pp-cal-day { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 0; height: 34px; border-radius: var(--pp-r-ctrl); cursor: pointer; user-select: none; }
 .pp-cal-day:hover { background: rgba(127, 127, 127, .14); }
 .pp-cal-num { font-size: 12.5px; line-height: 1.2; }
 .pp-cal-out .pp-cal-num { opacity: .35; }
@@ -505,7 +732,8 @@ html, body { overflow: hidden; }
 .pp-cal-link:hover { text-decoration: underline; }
 
 /* message action icons: small and muted, like every other icon */
-.pp-msg-actions .q-btn { color: var(--pp-muted); font-size: 10px; }
+.pp-msg-actions .q-btn { color: var(--pp-muted); }
+.pp-msg-actions .q-btn .q-icon { font-size: var(--pp-icon-s); }
 .pp-msg-actions .q-btn:hover { color: var(--pp-fg); }
 /* any Quasar widget still using the primary colour follows the accent */
 .text-primary { color: var(--pp-accent) !important; }
@@ -513,24 +741,319 @@ html, body { overflow: hidden; }
 
 
 /* composer buttons: a plain + and a round send in the accent (faint until there is text) */
-.pp-chat-plus.q-btn { width: 34px; height: 34px; min-width: 34px; min-height: 0; flex: none; padding: 0; font-size: 15px; background: transparent; color: var(--pp-fg); }
+.pp-chat-plus.q-btn { width: 34px; height: 34px; min-width: 34px; min-height: 0; flex: none; padding: 0; font-size: var(--pp-icon-m); background: transparent; color: var(--pp-fg); }
 .pp-chat-plus.q-btn:hover { background: rgba(127, 127, 127, .14); }
-.pp-chat-send.q-btn { width: 34px; height: 34px; min-width: 34px; min-height: 0; flex: none; padding: 0; font-size: 14px; background: rgba(var(--pp-accent-rgb), .35); color: var(--pp-fg); transition: background .12s, color .12s; }
+.pp-chat-send.q-btn { width: 34px; height: 34px; min-width: 34px; min-height: 0; flex: none; padding: 0; font-size: var(--pp-icon-m); background: rgba(var(--pp-accent-rgb), .35); color: var(--pp-fg); transition: background .12s, color .12s; }
 .pp-chat-send.pp-chat-send-ready.q-btn, .pp-chat-send.q-btn:hover { background: var(--pp-accent); color: var(--pp-on-accent); }
-.pp-chat-plus.q-btn .q-icon { font-size: 15px; }
-.pp-chat-send.q-btn .q-icon { font-size: 13px; }
+.pp-chat-plus.q-btn .q-icon { font-size: var(--pp-icon-m); }
+.pp-chat-send.q-btn .q-icon { font-size: var(--pp-icon-m); }
 
 /* model picker: a pill button and a roomy menu above it (name, details, check) */
 .pp-chat-model.q-btn { flex: none; max-width: 160px; height: 34px; min-height: 0; padding: 0 12px; border-radius: 17px; font-size: 13.5px; font-weight: 400; color: var(--pp-fg); }
 .pp-chat-model.q-btn .q-btn__content { gap: 8px; flex-wrap: nowrap; }
 .pp-chat-model.q-btn:hover, .pp-chat-model-open.q-btn { background: rgba(127, 127, 127, .14); }
 .pp-chat-model-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.pp-chat-model-chev { font-size: 10px; }
-.pp-model-menu { min-width: 260px; max-width: 340px; padding: 8px 0; background: var(--pp-bg); color: var(--pp-fg); border: 1px solid var(--pp-border); border-radius: 18px; box-shadow: 0 8px 28px rgba(0, 0, 0, .18); }
+.pp-chat-model-chev { font-size: var(--pp-icon-s); }
+.pp-model-menu { min-width: 260px; max-width: 340px; padding: 8px 0; background: var(--pp-bg); color: var(--pp-fg); border: 1px solid var(--pp-border); border-radius: var(--pp-r-popup); box-shadow: 0 8px 28px rgba(0, 0, 0, .18); }
 .pp-model-item.q-item { min-height: 0; padding: 9px 20px; gap: 16px; align-items: center; }
 .pp-model-item.q-item:hover { background: rgba(127, 127, 127, .10); }
 .pp-model-text { flex: 1 1 auto; min-width: 0; gap: 2px; }
 .pp-model-name { font-size: 14px; }
 .pp-model-detail { font-size: 12.5px; color: var(--pp-muted); }
-.pp-model-check { flex: none; font-size: 13px; color: var(--pp-fg); }
+.pp-model-check { flex: none; font-size: var(--pp-icon-s); color: var(--pp-fg); }
 .pp-model-empty { padding: 9px 20px; color: var(--pp-muted); }
+
+/* Settings: narrow pane. Below 560 px the section list folds to icons; below ~440 px of content
+   each row puts its control under the text. */
+@container ppset (max-width: 560px) {
+  .pp-set-nav { width: 52px; padding: 12px 6px; }
+  .pp-set-search, .pp-set-caption, .pp-set-navlabel { display: none; }
+  /* Quasar's .block is a layered !important display, so collapse the label instead */
+  .pp-set-restore .q-btn__content > .block { max-width: 0; overflow: hidden; white-space: nowrap; }
+  .pp-set-restore .q-icon.on-left { margin-right: 0; }
+  .pp-set-restore.q-btn { align-self: center; }
+  .pp-set-navitem { justify-content: center; padding: 8px 0; }
+  .pp-set-mode .pp-seg { flex-direction: column; align-items: stretch; }
+  .pp-set-mode .pp-seg-item { flex: none; width: 100%; padding: 7px 0; }
+}
+@container ppmain (max-width: 440px) {
+  .pp-set-scope { order: 3; flex-basis: 100%; }
+  .pp-set-close { order: 2; }
+  .pp-set-top { padding: 12px 16px 6px; }
+  .pp-set-content { padding: 0 16px 16px; }
+}
+
+/* Accent: a grid of presets and a colour-code field with a picker */
+.pp-accent-popup { padding: 10px; }
+.pp-swatchgrid { display: grid; grid-template-columns: repeat(6, 28px); gap: 8px; }
+.pp-swatch { width: 28px; height: 28px; border-radius: var(--pp-r-ctrl); cursor: pointer; box-shadow: inset 0 0 0 1px rgba(0, 0, 0, .12); }
+.pp-swatch:hover { transform: scale(1.08); }
+.pp-swatch-on { outline: 2px solid var(--pp-fg); outline-offset: 2px; }
+.pp-accent-code { width: 100%; margin-top: 10px; font-size: 13px; }
+.pp-pick-accent.q-btn { padding: 6px 8px 6px 10px; }
+
+/* Right pane tabs shrink (title ellipsis, then icon only) instead of sliding under the window
+   buttons; the strip never scrolls, so the reserved room on the right is always kept. */
+.pp-rtabbar { overflow: hidden; box-sizing: border-box; }
+.pp-rtab { flex: 0 1 auto; min-width: 34px; overflow: hidden; }
+.pp-rtab-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.pp-rtab-icon, .pp-rtab-close { flex: none; }
+
+/* Folded left pane: settings above the avatar, at the bottom of the icon column */
+.pp-ribbon-bottom { width: 100%; flex: none; gap: 6px; padding: 6px 0 0; }
+.pp-ribbon-foot { width: 100%; height: var(--pp-foot-h); box-sizing: border-box; display: flex; align-items: center; justify-content: center; border-top: 1px solid var(--pp-border); }
+.pp-avatar-mini { cursor: pointer; }
+
+/* Footer under the editor: Backlinks toggle (left) + status (right), as tall as the profile row
+   so both top lines meet; the backlinks list opens above it. */
+.pp-footer { width: 100%; height: var(--pp-foot-h); box-sizing: border-box; flex: none; gap: 10px; padding: 0 10px 0 6px; border-top: 1px solid var(--pp-border); background: var(--pp-bg-side); }
+.pp-footer .pp-backlinks-head { width: auto; padding: 2px 6px; min-height: 0; border-radius: var(--pp-r-ctrl); }
+.pp-footer .pp-backlinks-head:hover { background: rgba(127, 127, 127, .12); }
+.pp-footer-status { display: flex; align-items: center; height: 100%; font-size: 12px; }
+.pp-backlinks { border-top: none !important; }
+.pp-backlinks-body:not(:empty) { border-top: 1px solid var(--pp-border); padding-top: 4px; }
+.pp-host { position: absolute; width: 0; height: 0; overflow: visible; }
+.pp-footer-status { min-width: 0; overflow: hidden; }
+.pp-footer-status .pp-statusbar { min-width: 0; white-space: nowrap; }
+.pp-accent-code .q-field__append .q-btn { width: 28px; height: 28px; min-height: 0; border-radius: var(--pp-r-ctrl); padding: 0; }
+.pp-rtabs-icons .pp-rtab-title { display: none; }
+.pp-rtabs-icons .pp-rtab { padding: 0 10px; gap: 4px; }
+
+/* Every hover highlight is a rounded shape (--pp-r-ctrl), inset from the edges. Tabs keep their
+   square tab shape for the active one; their hover is an inset rounded shape behind the text. */
+.pp-tree-row { margin: 0 6px; border-radius: var(--pp-r-ctrl); }
+.pp-backlink { margin: 0 6px; width: calc(100% - 12px); border-radius: var(--pp-r-ctrl); padding-left: 22px; }
+.pp-chat-mention { border-radius: var(--pp-r-ctrl); }
+.pp-tab, .pp-rtab { isolation: isolate; }
+.pp-tab:hover, .pp-rtab:hover { background: transparent; }
+.pp-tab-active:hover, .pp-rtab-active:hover { background: var(--pp-bg); }
+.pp-tab:not(.pp-tab-active):hover::before, .pp-rtab:not(.pp-rtab-active):hover::before {
+  content: ""; position: absolute; inset: 4px 3px; z-index: -1;
+  border-radius: var(--pp-r-ctrl); background: rgba(127, 127, 127, .12);
+}
+.pp-rtab { position: relative; }
+
+/* Tooltips (static/tips.js): one look, 8 px inside the window */
+.pp-tip { position: fixed; z-index: 9999; pointer-events: none; max-width: 320px; padding: 4px 8px; border-radius: var(--pp-r-ctrl); background: var(--pp-tip-bg); color: var(--pp-tip-fg); font-size: 12px; line-height: 1.4; box-shadow: 0 4px 14px rgba(0, 0, 0, .18); opacity: 0; transition: opacity .12s; white-space: pre-line; }
+.pp-tip-on { opacity: 1; }
+:root { --pp-tip-bg: #2b2f36; --pp-tip-fg: #f3f4f6; }
+body.body--dark { --pp-tip-bg: #e6e8eb; --pp-tip-fg: #1f2328; }
+
+/* Icon buttons: a rounded rectangle on hover, like every other hover */
+.pp-icon-btn.q-btn, .pp-chat-ref .q-btn, .pp-chat-chip .q-btn { border-radius: var(--pp-r-ctrl); }
+.pp-chat-model-chev { flex: none; }
+.pp-chat-model-name { min-width: 0; }
+
+/* Scrollbars: thin and in the theme's colours (a light, wide bar looked like a thick divider) */
+* { scrollbar-width: thin; scrollbar-color: rgba(127, 127, 127, .35) transparent; }
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-thumb { background: rgba(127, 127, 127, .35); border-radius: 8px; border: 2px solid transparent; background-clip: content-box; }
+::-webkit-scrollbar-thumb:hover { background-color: rgba(127, 127, 127, .55); }
+::-webkit-scrollbar-track, ::-webkit-scrollbar-corner { background: transparent; }
+
+/* Fields follow the theme (Quasar's own field colours are for its light theme) */
+.q-field__native, .q-field__input, .q-field__prefix, .q-field__suffix, .q-select__dropdown-icon, .q-field__marginal { color: var(--pp-fg); }
+.q-field__native::placeholder, .q-field__input::placeholder, textarea::placeholder, input::placeholder { color: var(--pp-muted); opacity: 1; }
+.q-field__label { color: var(--pp-muted); }
+.q-field--outlined .q-field__control:before { border-color: var(--pp-border); }
+.q-field--outlined:hover .q-field__control:before { border-color: rgba(127, 127, 127, .6); }
+.q-menu, .q-card, .q-dialog .q-card { background: var(--pp-bg); color: var(--pp-fg); }
+.q-item { color: var(--pp-fg); }
+.q-separator { background: var(--pp-border); }
+.pp-tabbar, .pp-rtabbar { scrollbar-width: none; }  /* tabs scroll with the wheel; no bar under them */
+
+/* Editor popups (slash menu, link and autocomplete tooltips) are CodeMirror tooltips; its own
+   light theme rule (.ͼ2 .cm-tooltip) loads later, so ours must be more specific to follow the theme. */
+.cm-editor .cm-tooltip { background: var(--pp-bg); color: var(--pp-fg); border: 1px solid var(--pp-border); border-radius: var(--pp-r-popup); }
+.cm-editor .cm-tooltip.pp-slash { background: var(--pp-bg); color: var(--pp-fg); border: 1px solid var(--pp-border); border-radius: var(--pp-r-popup); }
+.cm-editor .cm-tooltip.pp-slash-tooltip:not(.pp-slash) { background: transparent; border: none; }
+
+/* Composer: send sits concentric in the card's rounded corner at any height
+   (gap 6 px padding + 1 px border on both sides; radius = 17 px circle + 7 px) */
+.pp-chat-card { border-radius: 24px; }
+.pp-chat-row { padding: 0; }
+/* The buttons never move: bottom-aligned in the one-row and the two-row layout alike, so growing
+   text (or switching layouts) only moves the top of the card. */
+.pp-chat-row { align-items: end; }
+/* one line = 7 + 20 + 7 = 34 px, exactly the buttons' height, so the one-row card is 48 px with the
+   buttons centred (7 px all round). Quasar adds 2 px padding on the container and a 36 px textarea
+   min-height, which made the row 40 px and pushed the buttons 6 px below centre. */
+.pp-chat-input .q-field__control-container { padding: 0; }
+.pp-chat-input .q-field__native { padding: 7px 0; min-height: 34px; line-height: 20px; }
+.pp-chat-input .q-field__native::placeholder { line-height: 20px; }
+
+/* Profile dialog: avatar preview + plain buttons (the uploader is hidden) */
+.pp-profile-pic { width: 100%; gap: 16px; padding: 4px 0; }
+.pp-avatar-big { width: 64px; height: 64px; }
+.pp-avatar-big .pp-avatar-initials { font-size: 22px; }
+.pp-profile-pic-side { gap: 4px; }
+.pp-profile-pic-buttons { gap: 6px; }
+.pp-btn-outline.q-btn { border: 1px solid var(--pp-border); color: var(--pp-fg); padding: 2px 10px; }
+.pp-btn-quiet.q-btn { color: var(--pp-muted); padding: 2px 8px; }
+.pp-btn-outline.q-btn:hover, .pp-btn-quiet.q-btn:hover { background: rgba(127, 127, 127, .12); }
+
+/* Selected text everywhere (fields, chat, settings, dialogs) uses the accent, not the system blue.
+   Quasar selects a combobox's whole text on focus, so this shows up as soon as a field is clicked. */
+::selection { background: rgba(var(--pp-accent-rgb), .30); color: inherit; }
+input::selection, textarea::selection { background: rgba(var(--pp-accent-rgb), .30); color: var(--pp-fg); }
+
+/* Code font (Settings → Editor → Code font): code blocks, inline code, code in tables, embeds, chat */
+.pp-editor .cm-line.pp-codeblock, .pp-table code, .pp-embed-body pre, .pp-embed-body code, .pp-msg-body pre, .pp-msg-body code { font-family: var(--pp-code-font); }
+
+/* − value + : a number field with step buttons inside one outlined box */
+.pp-stepper { height: 32px; gap: 0; border: 1px solid var(--pp-border); border-radius: var(--pp-r-ctrl); background: var(--pp-bg); overflow: hidden; }
+.pp-stepper:focus-within { border-color: rgba(var(--pp-accent-rgb), .6); }
+.pp-stepper .pp-step-btn.q-btn { width: 30px; min-width: 30px; height: 30px; min-height: 0; padding: 0; border-radius: 0; color: var(--pp-muted); }
+.pp-stepper .pp-step-btn.q-btn:hover { color: var(--pp-fg); background: rgba(127, 127, 127, .14); }
+.pp-stepper .pp-step-btn.q-btn .q-icon { font-size: var(--pp-icon-s); }
+.pp-stepper .pp-step-btn.q-btn.disabled { opacity: .35 !important; }
+.pp-step-value { width: 56px; }
+.pp-step-value .q-field__control { min-height: 0; height: 30px; padding: 0; }
+.pp-step-value .q-field__control:before, .pp-step-value .q-field__control:after { display: none; }
+.pp-step-value .q-field__native { padding: 0; min-height: 0; height: 30px; text-align: center; font-variant-numeric: tabular-nums; }
+
+/* ⋯ note menu (PLAN §4.15) */
+.pp-tab-more { display: flex; align-items: center; flex: none; }
+.pp-note-menu { min-width: 240px; background: var(--pp-bg); color: var(--pp-fg); border: 1px solid var(--pp-border); border-radius: var(--pp-r-popup); box-shadow: 0 8px 28px rgba(0, 0, 0, .2); padding: 4px; }
+.pp-note-menu .q-item.pp-note-menu-item { min-height: 32px; padding: 0 10px; gap: 10px; border-radius: var(--pp-r-ctrl); font-size: 13px; align-items: center; }
+.pp-note-menu .q-item.pp-note-menu-item:hover { background: rgba(127, 127, 127, .12); }
+.pp-note-menu .q-item.disabled { opacity: .5 !important; }
+.pp-note-menu-icon { color: var(--pp-muted); flex: none; }
+.pp-note-menu-label { flex: 1 1 auto; white-space: nowrap; }
+.pp-note-menu-hint { flex: none; margin-left: 16px; font-size: 11.5px; color: var(--pp-muted); }
+.pp-note-menu-check { flex: none; margin-left: 16px; color: var(--pp-accent); }
+.pp-note-menu { overflow-x: hidden; }
+.pp-note-menu .q-separator, .pp-chat-menu .q-separator { margin: 4px 6px; width: auto; background: var(--pp-border); }
+.pp-note-menu-group { padding: 4px 10px 2px; font-size: 11px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; color: var(--pp-muted); }
+.pp-dialog-text { max-width: 420px; font-size: 13px; }
+
+/* Split view: two editors side by side; each names its note in a small floating chip */
+.pp-split { display: flex; width: 100%; height: 100%; }
+.pp-split-head { position: absolute; bottom: 10px; right: 14px; z-index: 5; height: 28px; gap: 2px; padding: 0 2px 0 10px; background: var(--pp-bg); border: 1px solid var(--pp-border); border-radius: var(--pp-r-ctrl); box-shadow: 0 2px 8px rgba(0, 0, 0, .08); }
+.pp-split-title { max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; color: var(--pp-muted); }
+.pp-split-head .pp-icon-btn.q-btn { width: 24px; height: 24px; min-height: 0; }
+
+/* Find / replace: CodeMirror's search panel, themed like the app (light and dark) */
+.pp-editor .cm-panels { background: var(--pp-bg-side); color: var(--pp-fg); font-family: Roboto, system-ui, sans-serif; font-size: 13px; }
+.pp-editor .cm-panels.cm-panels-bottom { border-top: 1px solid var(--pp-border); }
+.pp-editor .cm-panels.cm-panels-top { border-bottom: 1px solid var(--pp-border); }
+.pp-editor .cm-search { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 8px 40px 8px 12px; position: relative; }
+.pp-editor .cm-search br { flex-basis: 100%; height: 0; content: ""; }
+.pp-editor .cm-search .cm-textfield { height: 28px; min-width: 180px; padding: 0 8px; margin: 0; font: inherit; color: var(--pp-fg); background: var(--pp-bg); border: 1px solid var(--pp-border); border-radius: var(--pp-r-ctrl); outline: none; }
+.pp-editor .cm-search .cm-textfield:focus { border-color: rgba(var(--pp-accent-rgb), .6); }
+.pp-editor .cm-search .cm-button { height: 28px; padding: 0 10px; margin: 0; font: inherit; color: var(--pp-fg); background: transparent; background-image: none; border: 1px solid var(--pp-border); border-radius: var(--pp-r-ctrl); cursor: pointer; text-transform: capitalize; }
+.pp-editor .cm-search .cm-button:hover { background: rgba(127, 127, 127, .12); }
+.pp-editor .cm-search label { display: inline-flex; align-items: center; gap: 4px; margin: 0 2px; color: var(--pp-muted); font-size: 12px; text-transform: capitalize; }
+.pp-editor .cm-search input[type=checkbox] { accent-color: var(--pp-accent); margin: 0; }
+.pp-editor .cm-search button[name=close] { position: absolute; top: 8px; right: 10px; width: 24px; height: 24px; padding: 0; font-size: 18px; line-height: 1; color: var(--pp-muted); background: transparent; border: none; border-radius: var(--pp-r-ctrl); cursor: pointer; }
+.pp-editor .cm-search button[name=close]:hover { color: var(--pp-fg); background: rgba(127, 127, 127, .14); }
+.pp-editor .cm-searchMatch { background: rgba(var(--pp-accent-rgb), .22); border-radius: 2px; }
+.pp-editor .cm-searchMatch.cm-searchMatch-selected { background: rgba(var(--pp-accent-rgb), .45); }
+.pp-picker-badge { margin-left: auto; flex: none; padding: 0 6px; font-size: 11px; line-height: 18px; color: var(--pp-muted); border: 1px solid var(--pp-border); border-radius: 999px; }
+/* split: a chip on each side; the side being typed in has the accent */
+.pp-split-pane { flex: 1 1 0; min-width: 0; position: relative; display: flex; flex-direction: column; }
+/* the divider between the two sides: a 1 px line with a wider grab area (static/split.js) */
+.pp-split-handle { display: none; position: relative; flex: none; width: 1px; background: var(--pp-border); cursor: col-resize; z-index: 6; }
+.pp-split.pp-split-on > .pp-split-handle { display: block; }
+.pp-split-handle::before { content: ""; position: absolute; top: 0; bottom: 0; left: 0; right: -7px; }  /* not over the left side's scrollbar */
+.pp-split-handle:hover, .pp-split-dragging > .pp-split-handle { background: rgba(var(--pp-accent-rgb), .7); }
+.pp-split-dragging { cursor: col-resize; user-select: none; }
+.pp-split-dragging .pp-split-pane { pointer-events: none; }
+/* one editor: it fills the area whatever width the divider gave it last */
+.pp-split:not(.pp-split-on) > .pp-split-pane { flex: 1 1 0 !important; }
+.pp-split-pane > .pp-editor { flex: 1 1 0; min-height: 0; height: auto; }
+.pp-split-title { cursor: pointer; padding: 2px 4px; border-radius: var(--pp-r-sm); }
+.pp-split-title:hover { color: var(--pp-fg); background: rgba(127, 127, 127, .12); }
+.pp-split-head.pp-split-head-active { border-color: rgba(var(--pp-accent-rgb), .7); }
+.pp-split-head.pp-split-head-active .pp-split-title { color: var(--pp-accent); }
+
+/* Tags (PLAN §4.16): inline #tag chips, the tags row of the properties block, the #tag tab */
+.pp-tag { display: inline-block; padding: 0 7px; margin: 0 1px; border-radius: 999px; line-height: 1.45; font-size: .9em; color: rgb(var(--pp-accent-rgb)); background: rgba(var(--pp-accent-rgb), .12); cursor: pointer; }
+.pp-tag:hover { background: rgba(var(--pp-accent-rgb), .22); }
+.pp-tag.pp-tag-edit { padding: 0; background: none; border-radius: 0; cursor: text; font-size: inherit; line-height: inherit; }
+.pp-fm-val.pp-fm-tags { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; }
+.pp-fm-tag { font-size: .95em; }
+.pp-tagpane { width: 100%; height: 100%; gap: 0; flex-wrap: nowrap; }
+.pp-tagpane-head { width: 100%; flex: none; gap: 10px; padding: 12px 14px 8px; }
+.pp-tagpane-tag { font-size: 13px; cursor: default; }
+.pp-tagpane-tag:hover { background: rgba(var(--pp-accent-rgb), .12); }
+.pp-tagpane-count { font-size: 12px; }
+.pp-tagpane-list { width: 100%; flex: 1 1 0; min-height: 0; overflow-y: auto; gap: 2px; padding: 0 8px 12px; flex-wrap: nowrap; }
+.pp-tagpane-row { width: 100%; gap: 10px; padding: 6px 8px; border-radius: var(--pp-r-ctrl); cursor: pointer; }
+.pp-tagpane-row:hover { background: rgba(127, 127, 127, .12); }
+.pp-tagpane-icon { color: var(--pp-muted); flex: none; }
+.pp-tagpane-text { min-width: 0; gap: 0; }
+.pp-tagpane-title { font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%; }
+.pp-tagpane-detail { font-size: 11.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%; }
+.pp-tagpane-empty { padding: 8px 6px; font-size: 13px; }
+
+/* Callouts (`> **Note:** …`): a card like the properties block — thin border, rounded corners,
+   a light tint — in the callout's colour, with a rounded colour stick on the left */
+.pp-editor .cm-line.pp-quote.pp-callout { --pp-c: var(--pp-accent-rgb); position: relative; background: rgba(var(--pp-c), .08); border-left: 1px solid rgba(var(--pp-c), .35); border-right: 1px solid rgba(var(--pp-c), .35); padding-left: 24px; padding-right: 12px; color: var(--pp-fg); }
+.pp-editor .cm-line.pp-quote.pp-callout-ok { --pp-c: 34, 160, 107; }
+.pp-editor .cm-line.pp-quote.pp-callout-warn { --pp-c: 217, 130, 43; }
+.pp-editor .cm-line.pp-quote.pp-callout-bad { --pp-c: 214, 69, 69; }
+.pp-editor .cm-line.pp-callout::before { content: ""; position: absolute; left: 9px; top: 0; bottom: 0; width: 4px; background: rgb(var(--pp-c)); }
+.pp-editor .cm-line.pp-callout.pp-callout-first { border-top: 1px solid rgba(var(--pp-c), .35); border-top-left-radius: var(--pp-r-ctrl); border-top-right-radius: var(--pp-r-ctrl); padding-top: 7px; }
+.pp-editor .cm-line.pp-callout.pp-callout-last { border-bottom: 1px solid rgba(var(--pp-c), .35); border-bottom-left-radius: var(--pp-r-ctrl); border-bottom-right-radius: var(--pp-r-ctrl); padding-bottom: 7px; }
+.pp-editor .cm-line.pp-callout.pp-callout-first::before { top: 8px; border-top-left-radius: 2px; border-top-right-radius: 2px; }
+.pp-editor .cm-line.pp-callout.pp-callout-last::before { bottom: 8px; border-bottom-left-radius: 2px; border-bottom-right-radius: 2px; }
+/* callout cards line up with the properties block: same side margins (6 px) and vertical padding */
+.pp-editor .cm-line.pp-quote.pp-callout { margin-left: 6px; margin-right: 6px; }
+.pp-editor .cm-line.pp-callout.pp-callout-first { padding-top: 6px; }
+.pp-editor .cm-line.pp-callout.pp-callout-last { padding-bottom: 6px; }
+/* a tag chip in the properties block never breaks inside the tag; a long one ends with … */
+.pp-fm-tag { white-space: nowrap; max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
+/* the properties block never makes the note wider than the pane: its value column may shrink */
+.pp-frontmatter { min-width: 0; max-width: calc(100% - 12px); overflow: hidden; }
+.pp-fm-row { min-width: 0; }
+.pp-fm-val { flex: 1 1 auto; min-width: 0; }
+.pp-fm-val { contain: inline-size; overflow: hidden; } /* its width comes from the row, never from a long value */
+
+/* CodeMirror does not measure vertical margins of lines and block widgets: every such margin
+   puts the text below it a few pixels away from where the editor thinks it is (clicks and the
+   caret land off). Spacing is padding (or an outer spacer) instead. */
+.pp-table { margin: 0 0 0 6px; padding: 6px 0; }
+.pp-table-preview { margin: 0; padding-top: 4px; }
+.pp-embed { margin: 0 6px; }
+.pp-fm-wrap { padding: 4px 6px 10px; }
+.pp-frontmatter { margin: 0; max-width: 100%; }
+.pp-editor .cm-line.pp-code-first { margin-top: 0; }
+.pp-editor .cm-line.pp-code-last { margin-bottom: 0; }
+/* An H1 comes with a divider under it that looks exactly like `---` (.pp-hr: same colour, same
+   left/right edges = the text column), clear of the heading's descenders. It is drawn inside the
+   line's bottom padding (a margin below it would not be measured by CodeMirror); the selector must
+   beat `.pp-editor .cm-line { padding }` or the padding is silently 0. */
+.pp-h1 { margin-bottom: 0; border-bottom: none; }
+.pp-editor .cm-line.pp-h1 { padding-bottom: .75em; background: linear-gradient(rgba(var(--pp-accent-rgb), .45), rgba(var(--pp-accent-rgb), .45)) left 0 bottom -.32em / 100% 1px no-repeat; background-origin: content-box; background-clip: padding-box; }
+/* wide blocks scroll inside themselves; their content never widens the note (min-content) */
+.pp-table, .pp-embed, .pp-math-block, .pp-mermaid, .pp-table-preview { contain: inline-size; overflow-x: auto; }
+/* "Open vault" dialog: recent vaults, then a folder browser */
+.pp-vault-dialog { width: 520px; }
+.pp-vault-section { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .04em; color: var(--pp-muted); margin-bottom: -4px; }
+.pp-vault-recent { max-height: 150px; }
+.pp-vault-list { height: 240px; border: 1px solid var(--pp-border); border-radius: var(--pp-r-ctrl); padding: 4px; }
+.pp-vault-path { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; }
+.pp-vault-bar { gap: 6px; }
+.pp-vault-empty { padding: 6px 8px; font-size: 13px; }
+/* Floating buttons (tidy note, chat jumps): small circles that float over the content */
+.pp-fab.q-btn { position: absolute; z-index: 5; width: 32px; height: 32px; min-width: 0; min-height: 0; padding: 0; background: var(--pp-bg); color: var(--pp-muted); border: 1px solid var(--pp-border); box-shadow: 0 2px 8px rgba(0, 0, 0, .12); transition: opacity .15s, color .15s; }
+.pp-fab.q-btn:hover { color: var(--pp-accent); }
+.pp-fab.q-btn .q-icon { font-size: var(--pp-icon-m); }
+.pp-tidy-fab.q-btn { right: 22px; bottom: 16px; opacity: .7; }
+.pp-split-on .pp-tidy-fab.q-btn { right: 14px; bottom: 46px; } /* split: just above the side's name island */
+.pp-tidy-fab.q-btn:hover { opacity: 1; }
+.pp-chat-logwrap { position: relative; flex: 1 1 0; min-height: 0; width: 100%; display: flex; flex-direction: column; }
+.pp-chat-jumps { position: absolute; right: 14px; bottom: 10px; gap: 6px; z-index: 5; pointer-events: none; }
+.pp-chat-jumps .pp-fab.q-btn { position: static; pointer-events: auto; }
+.pp-chat-jump.q-btn { display: none; }
+.pp-can-up .pp-chat-jump-top.q-btn, .pp-can-down .pp-chat-jump-bottom.q-btn { display: inline-flex; }
+/* the chat's ⋮ menu (top right of the log): new chat, saved chats ("Memories"), AI settings */
+.pp-chat-head { width: 100%; flex: none; gap: 6px; padding: 4px 6px 4px 14px; border-bottom: 1px solid var(--pp-border); }
+.pp-chat-title { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; font-weight: 500; color: var(--pp-muted); }
+.pp-chat-head .pp-icon-btn.q-btn { flex: none; }
+.pp-menu-caption { padding: 6px 12px 2px; font-size: 11.5px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; color: var(--pp-muted); }
+.pp-menu-empty { padding: 4px 12px 8px; font-size: 13px; }
+.pp-chat-saved .pp-chat-saved-del { font-size: var(--pp-icon-s); color: var(--pp-muted); opacity: 0; border-radius: 4px; padding: 3px; box-sizing: content-box; transition: opacity .15s; }
+.pp-chat-saved:hover .pp-chat-saved-del { opacity: 1; }
+.pp-chat-saved .pp-chat-saved-del:hover { color: var(--pp-fg); background: rgba(127, 127, 127, .2); }

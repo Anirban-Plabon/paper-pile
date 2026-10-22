@@ -8,12 +8,12 @@
 // Block widgets (display math, mermaid, tables, ...) live in blocks.js (a StateField).
 import { syntaxTree } from "@codemirror/language";
 import { Decoration, ViewPlugin } from "@codemirror/view";
-import { editorContext, normNote } from "./context.js";
+import { editorContext, normNote, rtOf } from "./context.js";
 import { parseWikilink } from "./wikilink.js";
 import { activeLines, refreshEffect, touches } from "./reveal.js";
 import { CodeCopyWidget } from "./blockactions.js";
 import { FoldToggle, foldEffects, foldState } from "./fold.js";
-import { BulletWidget, CheckboxWidget, HrWidget, ImageWidget, MathWidget } from "./widgets.js";
+import { BulletWidget, CheckboxWidget, HrWidget, ImageWidget, MathWidget, PageBreakWidget } from "./widgets.js";
 
 const hide = Decoration.replace({});
 const mark = (cls) => Decoration.mark({ class: cls });
@@ -50,6 +50,7 @@ function references(cx) {
 const HEADING_LINE = Array.from({ length: 6 }, (_, i) => lineDeco(`pp-h pp-h${i + 1}`));
 const SETEXT_UNDERLINE = lineDeco("pp-setext-underline");
 const FM_LINE = lineDeco("pp-fm-line");
+const PAGE_BREAK_RAW = lineDeco("pp-page-break-raw");
 const CODE_LINE = lineDeco("pp-codeblock");
 const CODE_FIRST = lineDeco("pp-codeblock pp-code-first");
 const CODE_LAST = lineDeco("pp-codeblock pp-code-last");
@@ -61,11 +62,13 @@ const CALLOUT_TYPES = {
   warning: "warn", caution: "warn", attention: "warn", important: "warn",
   danger: "bad", error: "bad", bug: "bad", failure: "bad",
 };
-const CALLOUT_LINE = {
-  "": lineDeco("pp-callout"),
-  ok: lineDeco("pp-callout pp-callout-ok"),
-  warn: lineDeco("pp-callout pp-callout-warn"),
-  bad: lineDeco("pp-callout pp-callout-bad"),
+const CALLOUT_KIND = { "": "pp-callout", ok: "pp-callout pp-callout-ok", warn: "pp-callout pp-callout-warn", bad: "pp-callout pp-callout-bad" };
+const CALLOUT_EDGE = ["", " pp-callout-first", " pp-callout-last", " pp-callout-first pp-callout-last"];
+const calloutLines = new Map();
+const calloutLine = (kind, edge) => {
+  const key = `${kind}:${edge}`;
+  if (!calloutLines.has(key)) calloutLines.set(key, lineDeco(CALLOUT_KIND[kind] + CALLOUT_EDGE[edge]));
+  return calloutLines.get(key);
 };
 const QUOTE_LINE = [1, 2, 3].map((n) => lineDeco(`pp-quote pp-quote-${n}`));
 const LIST_GLYPHS = ["\u2022", "\u25E6", "\u25AA"]; // bullet, white bullet, small square, repeating with depth
@@ -77,6 +80,8 @@ const numberPadded = (pad) => Decoration.mark({ class: "pp-list-num", attributes
 // up with the quote bar's offset `--pp-qpad`, so a list inside a quote stays inside the bar.
 const hangingIndent = (cols) =>
   Decoration.line({ class: "pp-li", attributes: { style: `--pp-hang:${cols}ch` } });
+const continuationIndent = (cols, lead) =>
+  Decoration.line({ class: "pp-li", attributes: { style: `--pp-hang:${cols}ch;--pp-pull:${Math.min(cols, lead)}ch` } });
 // How many characters of a line the quote marks (`> `) hide when the line is not being edited.
 const quotePrefix = (text) => /^(?:>[ ]?)+/.exec(text)?.[0].length ?? 0;
 
@@ -180,28 +185,42 @@ const handlers = {
         const line = cx.doc.line(n);
         // quote marks in front of the item are hidden (zero width) unless that line is being edited
         const hidden = cx.active.has(n) ? 0 : quotePrefix(line.text);
-        cx.out.push(hangingIndent(Math.max(0, col - hidden)).range(line.from));
+        const hang = Math.max(0, col - hidden);
+        // a continuation line (also a "lazy" one written without indentation) sits under the
+        // item's text: only its own leading spaces are pulled back, not the whole hang
+        const prefix = quotePrefix(line.text);
+        const lead = prefix - hidden + /^[ \t]*/.exec(line.text.slice(prefix))[0].length;
+        cx.out.push((n === first.number ? hangingIndent(hang) : continuationIndent(hang, lead)).range(line.from));
       }
     }
   },
 
   // A quote that opens with a bold label (`> **Note:** ...`, what /callout inserts) is a callout:
   // the box is tinted in the theme colour; the text is untouched.
+  // Every line of a quote gets its bars, also a "lazy" line written without `>`: markdown keeps a
+  // line that follows quoted text in the quote, so it must not look like it is outside.
   Blockquote: (cx, node) => {
-    if (node.node.parent?.name === "Blockquote") return;
+    let level = 1;
+    for (let a = node.node.parent; a; a = a.parent) if (a.name === "Blockquote") level++;
+    const end = cx.doc.lineAt(node.to).number;
+    for (let n = cx.doc.lineAt(node.from).number; n <= end; n++) {
+      cx.quoteDepth.set(n, Math.max(cx.quoteDepth.get(n) ?? 0, level));
+    }
+    if (level > 1) return;
     const first = cx.doc.lineAt(node.from);
     const label = /^\s*>\s*\*\*([^*\n]+?):?\*\*/.exec(first.text);
     if (!label) return;
-    const deco = CALLOUT_LINE[CALLOUT_TYPES[label[1].trim().toLowerCase()] ?? ""];
-    for (let n = first.number; n <= cx.doc.lineAt(node.to).number; n++) {
-      cx.out.push(deco.range(cx.doc.line(n).from));
+    const kind = CALLOUT_TYPES[label[1].trim().toLowerCase()] ?? "";
+    const last = cx.doc.lineAt(node.to).number;
+    for (let n = first.number; n <= last; n++) {
+      const edge = (n === first.number ? 1 : 0) + (n === last ? 2 : 0); // a card: rounded ends
+      cx.out.push(calloutLine(kind, edge).range(cx.doc.line(n).from));
     }
   },
 
-  // `>` quote markers: hidden off-line; every quoted line gets a bar per nesting level.
+  // `>` quote markers: hidden off-line (the bars come from the Blockquote handler).
   QuoteMark: (cx, node) => {
     const line = cx.doc.lineAt(node.from);
-    cx.quoteDepth.set(line.number, (cx.quoteDepth.get(line.number) ?? 0) + 1);
     if (cx.active.has(line.number)) return;
     const space = cx.doc.sliceString(node.to, node.to + 1) === " " ? 1 : 0;
     cx.out.push(hide.range(node.from, node.to + space));
@@ -211,6 +230,13 @@ const handlers = {
   HorizontalRule: (cx, node) => {
     if (cx.active.has(cx.doc.lineAt(node.from).number)) return;
     cx.out.push(Decoration.replace({ widget: new HrWidget() }).range(node.from, node.to));
+  },
+
+  // A manual page break: the drawn line off-line, the raw (dimmed) `<div …>` on the caret's line.
+  PageBreak: (cx, node) => {
+    const line = cx.doc.lineAt(node.from);
+    if (cx.active.has(line.number)) cx.out.push(PAGE_BREAK_RAW.range(line.from));
+    else cx.out.push(Decoration.replace({ widget: new PageBreakWidget() }).range(node.from, node.to));
   },
 
   // `[text](url)`, `[text][ref]`, `[ref]`: the text is styled as a link and carries its target (for
@@ -254,6 +280,15 @@ const handlers = {
     cx.out.push(hide.range(node.to - 2, node.to));
   },
 
+  // `#tag`: a chip; a plain click opens the tag's list (Python), unless the tag is being edited
+  HashTag: (cx, node) => {
+    const tag = cx.doc.sliceString(node.from + 1, node.to);
+    const editing = touches(cx.state, node.from, node.to);
+    const attributes = { "data-tag": tag };
+    if (!editing) attributes["data-tag-open"] = "1";
+    cx.out.push(Decoration.mark({ class: editing ? "pp-tag pp-tag-edit" : "pp-tag", attributes }).range(node.from, node.to));
+  },
+
   // `<https://example.org>`
   Autolink: (cx, node) => {
     const url = node.node.getChild("URL");
@@ -280,7 +315,7 @@ const handlers = {
     if (marks.length < 3 || !url || touches(cx.state, node.from, node.to)) return;
     const altRaw = cx.doc.sliceString(marks[0].to, marks[1].from);
     const sized = /^(.*?)\|\s*(\d+)\s*$/.exec(altRaw);
-    const widget = new ImageWidget(cx.doc.sliceString(url.from, url.to), sized ? sized[1] : altRaw, sized ? Number(sized[2]) : null);
+    const widget = new ImageWidget(cx.doc.sliceString(url.from, url.to), sized ? sized[1] : altRaw, sized ? Number(sized[2]) : null, rtOf(cx.state).notePath);
     cx.out.push(Decoration.replace({ widget }).range(node.from, node.to));
   },
 

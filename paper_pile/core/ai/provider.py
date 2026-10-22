@@ -25,6 +25,16 @@ class Health:
     details: dict[str, str] = field(default_factory=dict)  # model -> "9B · gemma3 · 5.4 GB"
 
 
+@dataclass(frozen=True, slots=True)
+class GenerationOptions:
+    """How the model answers (Settings → AI → Advanced). ``None`` leaves the backend's default."""
+
+    temperature: float | None = None
+    top_p: float | None = None
+    num_ctx: int | None = None  # the model's context window, in tokens
+    keep_alive_min: int | None = None  # how long the model stays loaded after a reply
+
+
 class ProviderError(Exception):
     """A request to the AI backend failed; the message is fit to show to the user."""
 
@@ -41,7 +51,11 @@ class Provider(Protocol):
     host: str
 
     def chat(
-        self, messages: Sequence[ChatMessage], *, model: str | None = None
+        self,
+        messages: Sequence[ChatMessage],
+        *,
+        model: str | None = None,
+        options: GenerationOptions | None = None,
     ) -> AsyncIterator[str]:
         """The reply to ``messages`` as it is generated, piece by piece. Cancelling the task that
         iterates it stops the generation."""

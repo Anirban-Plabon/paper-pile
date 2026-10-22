@@ -27,6 +27,7 @@ DEFAULTS: dict[str, Any] = {
     "appearance": {"theme": "system", "accent": "blue", "density": "comfortable"},
     "editor": {
         "font_family": "monospace",
+        "code_font_family": "monospace",
         "font_size": 14,
         "line_height": 1.6,
         "word_wrap": True,
@@ -34,11 +35,19 @@ DEFAULTS: dict[str, Any] = {
         "spell_check": False,
         "default_mode": "live",
         "auto_title": True,
+        "block_spacing": True,
+        "tidy_button": True,
+        "page_view": "off",  # off | lines | pages (PLAN §4.17)
+        "page_view_last": "lines",  # the style the ⋯ menu turns on
     },
+    "print": {"paper": "A4"},
     "general": {"language": "en"},
     "vault": {
-        "templates_folder": "",
-        "daily_notes_folder": "",
+        "templates_folder": ".template",
+        "daily_notes_folder": ".daily-notes",
+        "images_folder": ".image",
+        "show_templates": True,
+        "show_daily_notes": True,
         "daily_notes_format": "YYYY-MM-DD",
         "daily_notes_template": "",
     },
@@ -47,6 +56,17 @@ DEFAULTS: dict[str, Any] = {
         "model": "gemma4:12b",
         "embed_model": "",
         "context_budget": 6000,
+        "instructions": "",
+        "instructions_from": "text",  # text | file
+        "instructions_file": "",
+        "temperature": 0.8,
+        "top_p": 0.9,
+        "num_ctx": 0,  # 0 = the model's default
+        "keep_alive": 5,  # minutes
+        "history_turns": 12,
+        "save_chats": True,
+        "keep_chats_days": 0,  # 0 = forever
+        "chats_folder": ".memory",  # vault-relative, or absolute
     },
     "paste": {"smart_paste": True},
 }

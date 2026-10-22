@@ -1,19 +1,26 @@
-"""Status bar. The save indicator is live (P2.1); the other values are placeholders (P9.4)."""
+"""Status bar: Live/Source, word count + caret position, save state, Ollama dot (P9.4)."""
 
 from collections.abc import Callable
 from dataclasses import dataclass
 
 from nicegui import ui
 
+from paper_pile.gui.tips import tip
+
 
 @dataclass
 class StatusBar:
-    left_toggle: ui.button
-    right_toggle: ui.button
     save_label: ui.label
     mode_label: ui.label
     ollama_dot: ui.label
-    ollama_tip: ui.tooltip
+    stats_label: ui.label
+
+    def set_stats(self, words: int | None, line: int, col: int) -> None:
+        """``words`` is None without an open note: nothing to count."""
+        if words is None:
+            self.stats_label.set_text("")
+            return
+        self.stats_label.set_text(f"{words} word{'' if words == 1 else 's'} · Ln {line}, Col {col}")
 
     def set_mode(self, mode: str, plain: bool = False) -> None:
         """Show Live/Source, or "Plain text" (not toggleable) while a .txt note is active."""
@@ -30,7 +37,7 @@ class StatusBar:
         self.ollama_dot.classes(
             add="pp-dot-on" if ok else "pp-dot-off", remove="pp-dot-off" if ok else "pp-dot-on"
         )
-        self.ollama_tip.set_text(text)
+        tip(self.ollama_dot, text)
 
     def set_save_state(self, text: str, *, error: bool = False) -> None:
         self.save_label.set_text(text)
@@ -41,29 +48,15 @@ class StatusBar:
 
 
 def status_bar(
-    on_toggle_left: Callable[[], None],
-    on_toggle_right: Callable[[], None],
     on_toggle_mode: Callable[[], None],
     mode: str = "live",
 ) -> StatusBar:
     with ui.row().classes("pp-statusbar items-center no-wrap"):
-        left = (
-            ui.button(icon="fa-solid fa-bars", on_click=on_toggle_left)
-            .props("flat dense size=sm")
-            .tooltip("Toggle file tree (Ctrl+B)")
-        )
         ui.space()
         mode_label = ui.label("Live" if mode == "live" else "Source")
-        mode_label.classes("pp-muted pp-mode-toggle").tooltip("Live Preview / Source (Ctrl+E)")
+        mode_label.classes("pp-muted pp-mode-toggle")
         mode_label.on("click", lambda _e: on_toggle_mode())
-        ui.label("0 words · Ln 1, Col 1").classes("pp-muted")
+        stats = ui.label("").classes("pp-muted pp-stats")
         save = ui.label("Ready").classes("pp-muted pp-save")
-        dot = ui.label("●").classes("pp-dot pp-dot-off")
-        with dot:
-            tip = ui.tooltip("Ollama status")
-        right = (
-            ui.button(icon="fa-regular fa-comment", on_click=on_toggle_right)
-            .props("flat dense size=sm")
-            .tooltip("Toggle AI chat (Ctrl+L)")
-        )
-    return StatusBar(left, right, save, mode_label, dot, tip)
+        dot = tip(ui.label("●").classes("pp-dot pp-dot-off"), "Ollama status")
+    return StatusBar(save, mode_label, dot, stats)

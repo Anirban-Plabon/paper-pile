@@ -1,4 +1,4 @@
-"""Bottom of the left pane: your avatar and name, the settings button and the theme switch."""
+"""Bottom of the left pane: your avatar and name, and the settings button."""
 
 import logging
 from collections.abc import Callable
@@ -14,6 +14,8 @@ from paper_pile.core.profile import (
     remove_avatar,
     save_avatar,
 )
+from paper_pile.gui.icons import ico, icon_button
+from paper_pile.gui.tips import tip
 
 log = logging.getLogger("paper_pile.profile")
 
@@ -23,18 +25,17 @@ class ProfileBlock:
         self,
         config: Config,
         open_settings: Callable[[], None],
-        toggle_theme: Callable[[], None],
         on_changed: Callable[[], None] = lambda: None,
         vault_name: str = "",
+        open_vault: Callable[[], object] = lambda: None,
     ) -> None:
         self._vault_name = vault_name
+        self._open_vault = open_vault
         self.config = config
         self._open_settings = open_settings
-        self._toggle_theme = toggle_theme
         self._on_changed = on_changed
-        self._avatar: ui.element
+        self._avatars: list[ui.element] = []  # the block's, and the folded pane's
         self._name: ui.label
-        self._theme_button: ui.button
 
     @property
     def name(self) -> str:
@@ -43,16 +44,25 @@ class ProfileBlock:
     def build(self) -> None:
         with ui.row().classes("pp-profile items-center no-wrap"):
             with ui.row().classes("pp-profile-who items-center no-wrap") as who:
-                self._avatar = ui.element("div").classes("pp-avatar")
+                self._avatars.append(ui.element("div").classes("pp-avatar"))
                 self._name = ui.label("").classes("pp-profile-name")
             who.on("click", lambda _e: self._open_dialog())
             ui.space()
-            self._theme_button = ui.button(icon="fa-regular fa-moon", on_click=self._toggle_theme)
-            self._theme_button.props("flat round dense size=sm").classes("pp-profile-btn")
-            self._theme_button.tooltip("Light / dark")
-            settings = ui.button(icon="fa-solid fa-gear", on_click=self._open_settings)
-            settings.props("flat round dense size=sm").classes("pp-profile-btn")
-            settings.tooltip("Settings (Ctrl+,)")
+            icon_button("folder-open", self._open_vault, "Open vault").classes("pp-profile-btn")
+            icon_button("settings", self._open_settings, "Settings (Ctrl+,)").classes(
+                "pp-profile-btn"
+            )
+        self.refresh()
+
+    def build_mini(self) -> None:
+        """The folded-pane version: open vault and settings above the avatar, in one column."""
+        icon_button("folder-open", self._open_vault, "Open vault")
+        icon_button("settings", self._open_settings, "Settings (Ctrl+,)")
+        with ui.element("div").classes("pp-ribbon-foot"):  # level with the footer and profile row
+            avatar = ui.element("div").classes("pp-avatar pp-avatar-mini")
+        avatar.on("click", lambda _e: self._open_dialog())
+        tip(avatar, "Profile")
+        self._avatars.append(avatar)
         self.refresh()
 
     def refresh(self) -> None:
@@ -63,23 +73,22 @@ class ProfileBlock:
             add="pp-muted" if not name else "", remove="" if not name else "pp-muted"
         )
         picture = avatar_path(str(self.config.get("profile.avatar", "")))
-        self._avatar.clear()
-        if picture is not None:
-            stamp = int(picture.stat().st_mtime)
-            url = f"/_pp/avatar?name={picture.name}&v={stamp}"
-            self._avatar.style(f"background-image:url('{url}')")
-        else:
-            self._avatar.style("background-image:none")
-            with self._avatar:
-                ui.label(initials(name)).classes("pp-avatar-initials")
-
-    def show_dark(self, dark: bool) -> None:
-        icon = "fa-regular fa-sun" if dark else "fa-regular fa-moon"
-        self._theme_button.props(f'icon="{icon}"')  # quoted: the name contains a space
+        for avatar in self._avatars:
+            avatar.clear()
+            if picture is not None:
+                stamp = int(picture.stat().st_mtime)
+                url = f"/_pp/avatar?name={picture.name}&v={stamp}"
+                avatar.style(f"background-image:url('{url}')")
+            else:
+                avatar.style("background-image:none")
+                with avatar:
+                    ui.label(initials(name)).classes("pp-avatar-initials")
 
     # ---- the profile dialog ----------------------------------------------------------------
 
     def _open_dialog(self) -> None:
+        """Name and picture. The picture is chosen with a plain button (the uploader itself is
+        hidden: Quasar's upload box does not follow the theme)."""
         with ui.dialog() as dialog, ui.card().classes("pp-dialog pp-profile-dialog"):
             ui.label("Profile").classes("pp-dialog-title")
             ui.label("Stored only on this computer.").classes("pp-muted")
@@ -88,24 +97,38 @@ class ProfileBlock:
                 .props("outlined dense autofocus")
                 .classes("w-full")
             )
-            ui.label("Picture").classes("pp-set-label")
-            ui.upload(
-                on_upload=lambda e: self._uploaded(e, dialog),
+            with ui.row().classes("pp-profile-pic items-center no-wrap"):
+                preview = ui.element("div").classes("pp-avatar pp-avatar-big")
+                with ui.column().classes("pp-profile-pic-side"):
+                    ui.label("Picture").classes("pp-set-label")
+                    with ui.row().classes("items-center no-wrap pp-profile-pic-buttons"):
+                        ui.button(
+                            "Choose…",
+                            icon=ico("image-up"),
+                            on_click=lambda: upload.run_method("pickFiles"),
+                            color=None,
+                        ).props("flat no-caps dense").classes("pp-btn-outline")
+                        ui.button(
+                            "Remove", icon=ico("trash-2"), on_click=self._remove, color=None
+                        ).props("flat no-caps dense").classes("pp-btn-quiet")
+                    ui.label("PNG, JPEG, GIF or WebP, up to 2 MB").classes("pp-muted")
+            upload = ui.upload(
+                on_upload=self._uploaded,
                 auto_upload=True,
                 max_file_size=2 * 1024 * 1024,
                 on_rejected=lambda: ui.notify("The picture must be at most 2 MB.", type="negative"),
-            ).props("accept=image/png,image/jpeg,image/gif,image/webp flat bordered").classes(
-                "w-full"
-            )
-            with ui.row().classes("justify-between w-full"):
-                ui.button("Remove picture", on_click=lambda: self._remove(dialog)).props(
-                    "flat no-caps size=sm"
+            ).props("accept=image/png,image/jpeg,image/gif,image/webp")
+            upload.classes("hidden")
+            with ui.row().classes("justify-end w-full"):
+                ui.button("Cancel", on_click=dialog.close).props("flat no-caps")
+                ui.button("Save", on_click=lambda: self._save_name(name.value, dialog)).props(
+                    "no-caps unelevated"
                 )
-                with ui.row():
-                    ui.button("Cancel", on_click=dialog.close).props("flat no-caps")
-                    ui.button("Save", on_click=lambda: self._save_name(name.value, dialog)).props(
-                        "no-caps"
-                    )
+        self._avatars.append(preview)  # the preview follows changes like the other avatars
+        self.refresh()
+        dialog.on(
+            "hide", lambda _e: self._avatars.remove(preview) if preview in self._avatars else None
+        )
         dialog.open()
 
     def _save_name(self, value: str, dialog: ui.dialog) -> None:
@@ -116,7 +139,7 @@ class ProfileBlock:
         self.refresh()
         self._on_changed()
 
-    async def _uploaded(self, e: events.UploadEventArguments, dialog: ui.dialog) -> None:
+    async def _uploaded(self, e: events.UploadEventArguments) -> None:
         try:
             name = save_avatar(await e.file.read())
         except AvatarError as exc:
@@ -128,10 +151,9 @@ class ProfileBlock:
         self._on_changed()
         ui.notify("Picture updated", timeout=1500, position="bottom")
 
-    def _remove(self, dialog: ui.dialog) -> None:
+    def _remove(self) -> None:
         remove_avatar(profile_dir())
         self.config.set("profile.avatar", "", "global")
         self.config.save("global")
-        dialog.close()
         self.refresh()
         self._on_changed()

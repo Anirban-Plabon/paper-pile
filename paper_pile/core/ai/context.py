@@ -102,10 +102,12 @@ class Context:
         cut = " (some cut)" if any(p.truncated for p in self.parts) else ""
         return ("Context: " + ", ".join(bits) + cut) if bits else "No context"
 
-    def system_prompt(self, user_name: str = "", language: str = "") -> str:
+    def system_prompt(self, user_name: str = "", language: str = "", instructions: str = "") -> str:
         who = f" The user is called {user_name}." if user_name else ""
         if language:
             who += f" Answer in {language} unless the user writes in another language."
+        if instructions.strip():
+            who += f" The user asks you to follow this: {instructions.strip()}"
         head = (
             "You are the assistant inside paper-pile, a local markdown note app. Answer in "
             "markdown; write math as $...$ (inline) or $$...$$ (display). Be direct and keep "

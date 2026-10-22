@@ -6,37 +6,15 @@ import { Facet, StateEffect, StateField } from "@codemirror/state";
 import { Decoration, EditorView, WidgetType } from "@codemirror/view";
 import katex from "katex";
 import { copyButton } from "./blockactions.js";
+import { measureAgain, rtOf } from "./context.js";
 import { EmbedWidget } from "./embedwidget.js";
 import { TablePreview, TableWidget } from "./tablewidget.js";
+import { tagBody } from "./tag.js";
 import { parseWikilink } from "./wikilink.js";
+import { cachedSvg, renderMermaid } from "./mermaidrender.js";
+import { frontMatterEnd, pageViewFacet } from "./pageview.js";
 
 export const themeFacet = Facet.define({ combine: (v) => v[0] ?? "light" });
-
-const CACHE_MAX = 100;
-const svgCache = new Map(); // `${theme}\0${src}` -> svg string
-let mermaidPromise = null;
-let renderChain = Promise.resolve();
-let renderCount = 0;
-
-const loadMermaid = () => (mermaidPromise ??= import("mermaid").then((m) => m.default));
-
-// Renders are serialized: mermaid keeps global state (initialize + temp DOM nodes).
-// `parse` runs first and throws on invalid input, so mermaid never injects its error graphic.
-export function renderMermaid(src, theme) {
-  const key = `${theme}\0${src}`;
-  if (svgCache.has(key)) return Promise.resolve(svgCache.get(key));
-  const job = renderChain.then(async () => {
-    const mermaid = await loadMermaid();
-    mermaid.initialize({ startOnLoad: false, securityLevel: "strict", theme: theme === "dark" ? "dark" : "default" });
-    await mermaid.parse(src);
-    const { svg } = await mermaid.render(`pp-mmd-${++renderCount}`, src);
-    if (svgCache.size >= CACHE_MAX) svgCache.delete(svgCache.keys().next().value);
-    svgCache.set(key, svg);
-    return svg;
-  });
-  renderChain = job.catch(() => {});
-  return job;
-}
 
 function revealOnMouseDown(dom, view) {
   dom.addEventListener("mousedown", (e) => {
@@ -75,12 +53,15 @@ class DisplayMathWidget extends WidgetType {
 // YAML front matter as a compact properties block. Logic stays in Python: this only splits
 // `key: value` lines for display (continuation lines are appended to the previous value).
 class FrontMatterWidget extends WidgetType {
-  constructor(text) {
+  // `inlineTags`: the #tags written in the note's text, shown in the `tags` row too (display only:
+  // the file is not changed)
+  constructor(text, inlineTags = []) {
     super();
     this.text = text;
+    this.inlineTags = inlineTags;
   }
   eq(other) {
-    return other.text === this.text;
+    return other.text === this.text && other.inlineTags.join("\n") === this.inlineTags.join("\n");
   }
   rows() {
     const rows = [];
@@ -90,6 +71,7 @@ class FrontMatterWidget extends WidgetType {
       if (m) rows.push([m[1], m[2]]);
       else if (rows.length) rows[rows.length - 1][1] += (rows[rows.length - 1][1] ? " " : "") + line.trim();
     }
+    if (this.inlineTags.length && !rows.some(([k]) => k.trim().toLowerCase() === "tags")) rows.push(["tags", ""]);
     return rows;
   }
   toDOM(view) {
@@ -105,15 +87,52 @@ class FrontMatterWidget extends WidgetType {
       key.textContent = k;
       const val = document.createElement("span");
       val.className = "pp-fm-val";
-      val.textContent = v;
+      if (k.trim().toLowerCase() === "tags") fillTagChips(val, v, view, this.inlineTags);
+      else val.textContent = v;
       row.append(key, val);
       el.appendChild(row);
     }
     revealOnMouseDown(el, view);
-    return el;
+    // the spacing around the block is padding of an outer box: CodeMirror ignores margins
+    const outer = document.createElement("div");
+    outer.className = "pp-fm-wrap";
+    outer.appendChild(el);
+    return outer;
   }
   ignoreEvent() {
     return false;
+  }
+}
+
+// The `tags` property as chips (display only: Python's core/tags.py decides what a note's tags
+// are; this just splits `[a, b]`, `a, b`, `- a - b` the same simple way).
+function fillTagChips(el, value, view, inlineTags = []) {
+  const words = value.replace(/[\[\]]/g, " ").split(/[\s,]+/);
+  const tags = words.map((w) => w.replace(/^["'#-]+|["']+$/g, "")).filter((w) => w && tagBody(w) === w.replace(/\/+$/, ""));
+  const seen = new Set(tags.map((t) => t.toLowerCase()));
+  for (const t of inlineTags) {
+    if (!seen.has(t.toLowerCase())) {
+      seen.add(t.toLowerCase());
+      tags.push(t);
+    }
+  }
+  if (!tags.length) {
+    el.textContent = value;
+    return;
+  }
+  el.classList.add("pp-fm-tags");
+  for (const tag of tags) {
+    const chip = document.createElement("span");
+    chip.className = "pp-tag pp-fm-tag";
+    chip.textContent = `#${tag}`;
+    chip.dataset.tag = tag;
+    chip.addEventListener("mousedown", (e) => {
+      if (e.button !== 0) return;
+      e.preventDefault();
+      e.stopPropagation(); // not the properties block's "click to edit"
+      rtOf(view.state).emit("tag", { tag });
+    });
+    el.appendChild(chip);
   }
 }
 
@@ -135,7 +154,7 @@ class MermaidWidget extends WidgetType {
     const body = document.createElement("div");
     el.appendChild(body);
     el.appendChild(copyButton("diagram", "mermaid", this.src));
-    const cached = svgCache.get(`${this.theme}\0${this.src}`);
+    const cached = cachedSvg(this.src, this.theme);
     if (cached) {
       body.innerHTML = cached; // no "Rendering…" flash when a known diagram comes back
     } else {
@@ -143,11 +162,11 @@ class MermaidWidget extends WidgetType {
       renderMermaid(this.src, this.theme).then(
         (svg) => {
           body.innerHTML = svg;
-          view.requestMeasure();
+          measureAgain(view);
         },
         (err) => {
           showError(body, `Mermaid: ${String(err?.message ?? err).split("\n")[0]}`);
-          view.requestMeasure();
+          measureAgain(view);
         },
       );
     }
@@ -157,6 +176,17 @@ class MermaidWidget extends WidgetType {
   ignoreEvent() {
     return false;
   }
+}
+
+// Every inline #tag in the note, in order (for the properties block's `tags` row).
+function inlineTagsOf(tree, doc) {
+  const found = [];
+  tree.iterate({
+    enter(node) {
+      if (node.name === "HashTag") found.push(doc.sliceString(node.from + 1, node.to));
+    },
+  });
+  return found;
 }
 
 // Block containers whose insides can never hold a block widget: skip them while walking the tree.
@@ -183,7 +213,7 @@ function candidates(state) {
           const line = doc.line(n);
           const m = /^!\[\[([^\[\]\n]+)\]\]$/.exec(line.text.trim());
           const target = m ? parseWikilink(m[1]) : null;
-          if (target && target.note) out.push({ from: line.from, to: line.to, widget: new EmbedWidget(target.note, target.heading), editing: null });
+          if (target && target.note) out.push({ from: line.from, to: line.to, widget: new EmbedWidget(target.note, target.heading, rtOf(state).notePath), editing: null });
         }
         return false;
       }
@@ -192,9 +222,11 @@ function candidates(state) {
         const src = doc.sliceString(node.from, node.to);
         push(node, new TableWidget(src, state, node.node), new TablePreview(src, state, node.node));
         return false; // its cells are rendered by the widget
+      } else if (node.name === "FrontMatter" && state.facet(pageViewFacet) && frontMatterEnd(state) >= 0) {
+        return; // page view hides the properties (pageview.js)
       } else if (node.name === "FrontMatter") {
         const marks = node.node.getChildren("FrontMatterMark");
-        push(node, new FrontMatterWidget(doc.sliceString(marks[0].to, marks[1].from).trim()));
+        push(node, new FrontMatterWidget(doc.sliceString(marks[0].to, marks[1].from).trim(), inlineTagsOf(tree, doc)));
       } else if (node.name === "BlockMath") {
         const marks = node.node.getChildren("BlockMathMark");
         // a block is only ever parsed when it is closed, so both marks exist

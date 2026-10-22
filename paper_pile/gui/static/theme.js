@@ -33,6 +33,7 @@
     body.style.setProperty('--q-primary', dark ? cfg.accentDark : cfg.accentLight);
     root.style.setProperty('--pp-on-accent', onAccent(dark ? cfg.accentDark : cfg.accentLight));
     root.style.setProperty('--pp-editor-font', cfg.fontFamily);
+    root.style.setProperty('--pp-code-font', cfg.codeFont || 'monospace');
     root.style.setProperty('--pp-editor-size', cfg.fontSize + 'px');
     root.style.setProperty('--pp-editor-lh', String(cfg.lineHeight));
     try {

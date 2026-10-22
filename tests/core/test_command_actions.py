@@ -1,3 +1,5 @@
+from pathlib import Path
+
 import pytest
 
 from paper_pile.core import commands_builtin  # noqa: F401  (registers the commands)
@@ -11,6 +13,7 @@ from paper_pile.core.commands import (
     ReplaceLinePrefix,
     ReplaceSelection,
 )
+from paper_pile.core.config import Config
 from paper_pile.core.textpos import codepoint_index, utf16_index
 
 
@@ -157,10 +160,20 @@ def test_search_finds_the_obvious_commands() -> None:
     assert first("quote") == "quote"
 
 
-def test_divider_gets_a_blank_line_under_text() -> None:
-    assert REGISTRY.run("divider", ctx("para\n/", 5)) == Insert("\n---\n")
-    assert REGISTRY.run("divider", ctx("para\n\n/", 6)) == Insert("---\n")
-    assert REGISTRY.run("divider", ctx("/", 0)) == Insert("---\n")
+def test_divider_gets_a_blank_line_under_text(tmp_path: Path) -> None:
+    def run(text: str, at: int, config: Config | None = None) -> object:
+        c = CommandContext("a.md", text, at, config=config, end=at + 1)
+        return REGISTRY.run("divider", c)
+
+    assert run("para\n/", 5) == Insert("\n---\n", 5)
+    assert run("para\n\n/", 6) == Insert("---\n", 4)
+    assert run("/", 0) == Insert("---\n", 4)
+    # wrapped like every block: an empty line below it too when text follows
+    assert run("# Head\n/\nnext", 7) == Insert("\n---\n", 5)
+    assert run("a\n/\n\nb", 2) == Insert("\n---", 4)  # the empty line below is already there
+    off = Config(global_path=tmp_path / "none.toml", vault=tmp_path)
+    off.set("editor.block_spacing", False, scope="vault")
+    assert run("para\n/", 5, off) == Insert("\n---\n")
 
 
 def test_divider_end_to_end_never_makes_a_setext_heading() -> None:
@@ -172,3 +185,43 @@ def test_divider_end_to_end_never_makes_a_setext_heading() -> None:
     assert edit
     new, _ = apply(text, edit)
     assert "<h2>" not in render_html(new) and "<hr" in render_html(new)
+
+
+@pytest.mark.parametrize(
+    ("text", "start"),
+    [
+        ("para\n/page", 5),  # under text
+        ("para /page", 5),  # after text on the same line
+        ("/page", 0),  # empty note
+        ("# Head\n/page\nnext", 7),  # text right below
+        ("a\n\n/page\n\nb", 3),  # empty lines already there
+        ("- item /page", 7),  # in a list item: the break goes below the list
+    ],
+)
+def test_page_break_is_a_break_even_after_typing(tmp_path: Path, text: str, start: int) -> None:
+    from paper_pile.core.parser import page_breaks
+
+    off = Config(global_path=tmp_path / "none.toml", vault=tmp_path)
+    off.set("editor.block_spacing", False, scope="vault")  # the empty lines do not depend on it
+    end = start + len("/page")
+    action = REGISTRY.run("page-break", CommandContext("a.md", text, start, config=off, end=end))
+    edit = resolve(action, text, start, end)
+    assert edit
+    new, caret = apply(text, edit)
+    typed = new[:caret] + "typed" + new[caret:]
+    assert [b.effective for b in page_breaks("before\n\n" + typed)] == [True]
+
+
+def test_page_break_found_by_its_names() -> None:
+    first = lambda q: REGISTRY.search(q)[0].commands[0].id  # noqa: E731
+    assert first("page break") == "page-break"
+    assert first("pagebreak") == "page-break"
+
+
+def test_page_break_is_written_as_dash_dash_dash_slash() -> None:
+    text = "a\n/page\nb"
+    action = REGISTRY.run("page-break", CommandContext("a.md", text, 2, end=7))
+    edit = resolve(action, text, 2, 7)
+    assert edit
+    new, caret = apply(text, edit)
+    assert new == "a\n\n---/\n\n\nb" and new[caret:] == "\nb"

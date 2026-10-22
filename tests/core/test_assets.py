@@ -315,3 +315,40 @@ def test_set_width_clamps_and_rejects() -> None:
     assert set_width_edit("![a\nb](x.png)", 0, 100) is None
     assert set_width_edit("![a] (x.png)", 0, 100) is None
     assert set_width_edit("![a](x.png)", 99, 100) is None
+
+
+# ---- the shared images folder (P13.6) ---------------------------------------------------------
+
+
+def test_new_images_go_to_the_images_folder(tmp_path: Path) -> None:
+    from paper_pile.core.assets import save_image
+
+    vault = Vault(tmp_path)
+    (tmp_path / "notes" / "deep").mkdir(parents=True)
+    top = save_image(vault, "a.md", png(), ".image")
+    deep = save_image(vault, "notes/deep/b.md", png(), ".image")
+    assert top.path == f".image/{top.name}" and top.ref == f".image/{top.name}"
+    assert deep.ref == f"../../.image/{deep.name}" and not deep.new  # same picture: one file
+    assert vault.asset_path("notes/deep/b.md", deep.ref).read_bytes() == png()
+    assert not (tmp_path / ".a.assets").exists()
+    spaced = save_image(vault, "a.md", png(), "My pictures")
+    assert spaced.ref == f"My%20pictures/{spaced.name}"
+
+
+def test_moving_a_note_repoints_its_shared_images() -> None:
+    from paper_pile.core.assets import plan_media_edits
+    from paper_pile.core.rewrite import apply_edits
+
+    text = (
+        "![a|300](.image/x.png) ![b](<.image/y z.png>) ![own](.a.assets/o.png) "
+        "![web](https://e.com/.image/w.png) ![other](pics/p.png)"
+    )
+    moved = apply_edits(text, plan_media_edits(text, "a.md", "notes/deep/a.md", ".image"))
+    assert moved == (
+        "![a|300](../../.image/x.png) ![b](<../../.image/y%20z.png>) ![own](.a.assets/o.png) "
+        "![web](https://e.com/.image/w.png) ![other](pics/p.png)"
+    )
+    back = apply_edits(moved, plan_media_edits(moved, "notes/deep/a.md", "a.md", ".image"))
+    assert back.replace("y%20z", "y z") == text
+    assert plan_media_edits(text, "a.md", "b.md", ".image") == []  # same folder: nothing
+    assert plan_media_edits(text, "a.md", "n/a.md", "") == []

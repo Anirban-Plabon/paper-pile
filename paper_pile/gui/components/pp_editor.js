@@ -36,8 +36,8 @@ export default {
     this.api?.destroy();
   },
   methods: {
-    async getText() {
-      return (await this.ready).getText();
+    async getText(expectedId) {
+      return (await this.ready).getText(expectedId ?? null);
     },
     async setText(text, docId, path, keepCaret) {
       (await this.ready).setText(text, docId, path, keepCaret);
@@ -96,6 +96,15 @@ export default {
     },
     async focus() {
       (await this.ready).focus();
+    },
+    async syncText(docId, text) {
+      (await this.ready).syncText(docId, text);
+    },
+    async openSearch(replace) {
+      (await this.ready).openSearch(replace);
+    },
+    async printLayoutReady(seq, url) {
+      (await this.ready).printLayoutReady(seq, url);
     },
   },
 };

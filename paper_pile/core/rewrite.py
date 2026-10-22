@@ -62,12 +62,16 @@ def apply_edits(text: str, edits: list[Edit]) -> str:
 
 
 def plan_rewrites(
-    moves: Mapping[str, str], new_paths: Collection[str], texts: Mapping[str, str]
+    moves: Mapping[str, str],
+    new_paths: Collection[str],
+    texts: Mapping[str, str],
+    media: str = "",
 ) -> RewritePlan:
     """Edits that keep every link in ``texts`` pointing where it did.
 
     ``moves`` maps each moved note's old path to its new one; ``new_paths`` is every note path
-    after the move; ``texts`` holds the notes to examine, keyed by their *new* path.
+    after the move; ``texts`` holds the notes to examine, keyed by their *new* path; ``media``
+    is the shared images folder (its pictures do not move with a note).
     """
     old_of = {new: old for old, new in moves.items()}
     new_set = set(new_paths)
@@ -77,7 +81,7 @@ def plan_rewrites(
         if not src_new.lower().endswith(".md"):
             continue  # plain text has no links
         src_old = old_of.get(src_new, src_new)
-        edits, skipped = _plan_note(text, src_old, src_new, moves, old_set, new_set)
+        edits, skipped = plan_note(text, src_old, src_new, moves, old_set, new_set, media)
         plan.skipped += skipped
         if edits:
             plan.edits[src_new] = edits
@@ -86,20 +90,25 @@ def plan_rewrites(
     return plan
 
 
-def _plan_note(
+def plan_note(
     text: str,
     src_old: str,
     src_new: str,
     moves: Mapping[str, str],
     old_set: set[str],
     new_set: set[str],
+    media: str = "",
 ) -> tuple[list[Edit], int]:
+    """The edits for one note whose text was at ``src_old`` and is now at ``src_new``, and how
+    many links needed an edit but could not be located (``old_set``/``new_set``: every note
+    path before/after)."""
     edits: list[Edit] = []
     if src_old != src_new:
         # the note's images folder is named after the note: a rename changes the paths
-        from paper_pile.core.assets import plan_ref_edits
+        from paper_pile.core.assets import plan_media_edits, plan_ref_edits
 
         edits.extend(plan_ref_edits(text, src_old, src_new))
+        edits.extend(plan_media_edits(text, src_old, src_new, media))
     spans = link_spans(text)
     if not spans:
         return edits, 0

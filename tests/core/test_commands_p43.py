@@ -46,11 +46,11 @@ def test_math_block_and_inline() -> None:
 
 def test_blocks_start_on_their_own_line() -> None:
     text, caret = run("code", "words ", "/code")
-    assert text == "words \n```\n\n```\n" and text[caret - 1] == "\n"
+    assert text == "words \n\n```\n\n```\n" and text[caret - 1] == "\n"
     text, _ = run("table", "# Title\n", "/table")
-    assert text.startswith("# Title\n| Column 1")  # already at a line start: no extra newline
+    assert text.startswith("# Title\n\n| Column 1")  # an empty line between them
     text, _ = run("table", "intro ", "/table")
-    assert text.startswith("intro \n| Column 1")
+    assert text.startswith("intro \n\n| Column 1")
 
 
 @pytest.mark.parametrize(
@@ -196,7 +196,7 @@ def test_list_and_quote_commands_leave_an_empty_line_after(cid: str) -> None:
 def test_blocks_leave_an_empty_line_after() -> None:
     assert apply_command("code", "|", "/c") == "```\n\n```\n"
     assert apply_command("code", "|\ntext", "/c") == "```\n\n```\n\ntext"
-    assert apply_command("code", "|\n\ntext", "/c") == "```\n\n```\n\n\ntext"  # keeps yours
+    assert apply_command("code", "|\n\ntext", "/c") == "```\n\n```\n\ntext"  # one is enough
     assert apply_command("math", "|\ntext", "/m") == "$$\n\n$$\n\ntext"
     assert apply_command("table", "|\ntext", "/t").endswith("|\n\ntext")
     assert apply_command("flowchart", "|\ntext", "/f").endswith("```\n\ntext")
@@ -205,8 +205,43 @@ def test_blocks_leave_an_empty_line_after() -> None:
     assert apply_command("callout", "|\n> more", "/c") == "> **Note:** \n> more"
 
 
-def test_plain_heading_commands_add_no_extra_line() -> None:
-    assert apply_command("h1", "|\ntext", "/h") == "# \ntext"
+def test_headings_get_empty_lines_around_them() -> None:
+    assert apply_command("h1", "|\ntext", "/h") == "# \n\ntext"
+    assert apply_command("h1", "above\n|\ntext", "/h") == "above\n\n# \n\ntext"
+    assert apply_command("h2", "above\n\n|\n\ntext", "/h") == "above\n\n## \n\ntext"
+
+
+def test_list_items_continue_a_list_above_without_a_gap() -> None:
+    assert apply_command("todo", "- [ ] one\n|", "/t") == "- [ ] one\n- [ ] \n"
+    assert apply_command("bullet", "words\n|", "/b") == "words\n\n- \n"
+
+
+class _Settings:
+    def __init__(self, **values: object) -> None:
+        self.values = values
+
+    def get(self, key: str, default: object = None) -> object:
+        return self.values.get(key, default)
+
+
+def apply_without_spacing(command_id: str, template: str, query: str) -> str:
+    full, start, end = typed(template, query)
+    off = _Settings(**{"editor.block_spacing": False})
+    ctx = CommandContext("a.md", full, start, end=end, config=off)  # type: ignore[arg-type]
+    edit = resolve(REGISTRY.run(command_id, ctx), full, start, end)
+    assert edit is not None
+    out = full
+    for c in sorted(edit.changes, key=lambda c: c.start, reverse=True):
+        out = out[: c.start] + c.insert + out[c.end :]
+    return out
+
+
+def test_setting_off_keeps_blocks_on_their_own_lines_only() -> None:
+    assert apply_without_spacing("h1", "above\n|\ntext", "/h") == "above\n# \ntext"
+    assert apply_without_spacing("code", "words |", "/c") == "words \n```\n\n```\n"
+    assert apply_without_spacing("code", "a\n|\nb", "/c") == "a\n```\n\n```\nb"
+    # lists still end with an empty line, so the next text is not pulled into them
+    assert apply_without_spacing("bullet", "|\nnext", "/b") == "- \n\nnext"
 
 
 # ---- AI commands --------------------------------------------------------------------------------

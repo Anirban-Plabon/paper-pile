@@ -10,6 +10,7 @@ import ollama
 
 from paper_pile.core.ai.provider import (
     ChatMessage,
+    GenerationOptions,
     Health,
     ModelNotFoundError,
     ProviderError,
@@ -29,6 +30,25 @@ def describe_model(parameter_size: str | None, family: str | None, size: int | N
     if size:
         parts.append(f"{size / 1e9:.1f} GB")
     return " · ".join(parts)
+
+
+def ollama_options(options: GenerationOptions | None) -> dict[str, Any]:
+    """``options`` / ``keep_alive`` arguments for ``AsyncClient.chat`` (only the set ones)."""
+    if options is None:
+        return {}
+    model = {
+        k: v
+        for k, v in (
+            ("temperature", options.temperature),
+            ("top_p", options.top_p),
+            ("num_ctx", options.num_ctx),
+        )
+        if v is not None
+    }
+    out: dict[str, Any] = {"options": model} if model else {}
+    if options.keep_alive_min is not None:
+        out["keep_alive"] = f"{options.keep_alive_min}m"
+    return out
 
 
 class OllamaProvider:
@@ -51,12 +71,17 @@ class OllamaProvider:
     # ---- chat ------------------------------------------------------------------------------
 
     async def chat(
-        self, messages: Sequence[ChatMessage], *, model: str | None = None
+        self,
+        messages: Sequence[ChatMessage],
+        *,
+        model: str | None = None,
+        options: GenerationOptions | None = None,
     ) -> AsyncIterator[str]:
         name = model or self.model
         payload = [{"role": m.role, "content": m.content} for m in messages]
+        extra = ollama_options(options)
         try:
-            stream = await self._client.chat(model=name, messages=payload, stream=True)
+            stream = await self._client.chat(model=name, messages=payload, stream=True, **extra)
             async for part in stream:
                 text = part.message.content if part.message else ""
                 if text:  # reasoning ("thinking") text is not part of the answer

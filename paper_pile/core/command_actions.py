@@ -56,14 +56,21 @@ def resolve(action: Action, text: str, start: int, end: int) -> TextEdit | None:
     if isinstance(action, ReplaceSelection):
         return TextEdit((TextChange(start, end, action.text),), start + len(action.text))
     if isinstance(action, ReplaceLinePrefix):
-        return _replace_line_prefix(action.prefix, text, start, end, action.blank_after)
+        return _replace_line_prefix(
+            action.prefix, text, start, end, action.blank_after, action.blank_before
+        )
     if isinstance(action, OpenNote | OpenPicker | StreamInsert):
         return None
     raise TypeError(f"unknown action: {action!r}")
 
 
 def _replace_line_prefix(
-    prefix: str, text: str, start: int, end: int, blank_after: bool = False
+    prefix: str,
+    text: str,
+    start: int,
+    end: int,
+    blank_after: bool = False,
+    blank_before: bool = False,
 ) -> TextEdit:
     line_start = text.rfind("\n", 0, start) + 1
     line_end = text.find("\n", end)
@@ -83,12 +90,26 @@ def _replace_line_prefix(
     new_line = line[:indent_len] + new_marker + rest
     if blank_after and _needs_blank_after(text, line_end):
         new_line += "\n"
+    spaced = blank_before and new_marker and _needs_blank_before(text, line_start, prefix)
+    lead = "\n" if spaced else ""
     caret_in_rest = max(0, len(before) - indent_len - marker_len)
-    cursor = line_start + indent_len + len(new_marker) + min(caret_in_rest, len(rest))
-    return TextEdit((TextChange(line_start, line_end, new_line),), cursor)
+    cursor = line_start + len(lead) + indent_len + len(new_marker) + min(caret_in_rest, len(rest))
+    return TextEdit((TextChange(line_start, line_end, lead + new_line),), cursor)
 
 
 _CONTINUES = re.compile(r"^[ \t]*(?:[-*+]|\d{1,9}[.)]|>)(?:\s|$)|^[ \t]+\S")
+
+
+def _needs_blank_before(text: str, line_start: int, prefix: str) -> bool:
+    """Should an empty line go above the line starting at ``line_start``? Yes under a text line;
+    not at the top of the note, under an empty line, or (for a list item or quote) under a line
+    of a list or quote, which it continues."""
+    if line_start == 0:
+        return False
+    above = text[: line_start - 1].rsplit("\n", 1)[-1]
+    if not above.strip():
+        return False
+    return prefix.startswith("#") or not _CONTINUES.match(above)
 
 
 def _needs_blank_after(text: str, line_end: int) -> bool:

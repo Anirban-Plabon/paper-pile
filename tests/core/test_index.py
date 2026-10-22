@@ -188,3 +188,24 @@ def test_a_closed_index_reopens_when_used_again(vault: Vault) -> None:
     assert ix.paths() == ["a.md", "b.md", "dir/c.txt"]  # a page that came back keeps working
     assert ix.backlinks("b.md")[0].src == "a.md"
     assert ix.update_note("a.md")
+
+
+def test_tags_are_indexed_nested_and_case_insensitive(tmp_path: Path) -> None:
+    v = Vault(tmp_path)
+    v.create_note("p.md", "---\ntags: [Work]\n---\n# Plan\n")
+    v.create_note("q.md", "# Q\nnotes #work/meetings and #idea\n")
+    v.create_note("r.md", "# R\n`#work` in code, #workshop is another tag\n")
+    v.create_note("s.txt", "#work in plain text is not a tag")
+    ix = Index(v)
+    ix.sync()
+    found = ix.notes_with_tag("#WORK")
+    assert [(n.path, n.tags) for n in found] == [("p.md", ("Work",)), ("q.md", ("work/meetings",))]
+    assert [n.path for n in ix.notes_with_tag("work/meetings")] == ["q.md"]
+    assert ix.tags_of("q.md") == ["work/meetings", "idea"]
+    v.write_text("q.md", "# Q\nno tags now\n")
+    ix.update_note("q.md")
+    assert [n.path for n in ix.notes_with_tag("work")] == ["p.md"]
+    v.delete("p.md")
+    ix.sync()
+    assert ix.notes_with_tag("work") == []
+    assert ix.notes_with_tag("") == []

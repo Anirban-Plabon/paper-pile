@@ -47,6 +47,7 @@ class ReplaceLinePrefix:
 
     prefix: str
     blank_after: bool = False
+    blank_before: bool = False  # an empty line above too, unless the line above continues it
 
 
 @dataclass(frozen=True, slots=True)

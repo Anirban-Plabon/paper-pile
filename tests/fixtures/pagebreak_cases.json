@@ -1,0 +1,329 @@
+[
+  {
+    "name": "between_paragraphs",
+    "src": "a\n\n<div style=\"page-break-after: always;\"></div>\n\nb",
+    "breaks": [
+      {
+        "line": 3,
+        "effective": true
+      }
+    ]
+  },
+  {
+    "name": "after_heading",
+    "src": "# Title\n\n<div style=\"page-break-after: always;\"></div>\n\nnext",
+    "breaks": [
+      {
+        "line": 3,
+        "effective": true
+      }
+    ]
+  },
+  {
+    "name": "after_list",
+    "src": "- a\n- b\n\n<div style=\"page-break-after: always;\"></div>\n\nnext",
+    "breaks": [
+      {
+        "line": 4,
+        "effective": true
+      }
+    ]
+  },
+  {
+    "name": "after_code_fence",
+    "src": "```\ncode\n```\n\n<div style=\"page-break-after: always;\"></div>\n\nnext",
+    "breaks": [
+      {
+        "line": 5,
+        "effective": true
+      }
+    ]
+  },
+  {
+    "name": "modern_property",
+    "src": "a\n\n<div style=\"break-after: page\"></div>\n\nb",
+    "breaks": [
+      {
+        "line": 3,
+        "effective": true
+      }
+    ]
+  },
+  {
+    "name": "class_form",
+    "src": "a\n\n<div class=\"page-break\"></div>\n\nb",
+    "breaks": [
+      {
+        "line": 3,
+        "effective": true
+      }
+    ]
+  },
+  {
+    "name": "case_and_spacing",
+    "src": "a\n\n  <DIV  Style = 'Page-Break-After : Always' >  </div >  \n\nb",
+    "breaks": [
+      {
+        "line": 3,
+        "effective": true
+      }
+    ]
+  },
+  {
+    "name": "no_semicolon",
+    "src": "a\n\n<div style=\"page-break-after: always\"></div>\n\nb",
+    "breaks": [
+      {
+        "line": 3,
+        "effective": true
+      }
+    ]
+  },
+  {
+    "name": "at_start",
+    "src": "<div style=\"page-break-after: always;\"></div>\n\na",
+    "breaks": [
+      {
+        "line": 1,
+        "effective": false
+      }
+    ]
+  },
+  {
+    "name": "at_end",
+    "src": "a\n\n<div style=\"page-break-after: always;\"></div>",
+    "breaks": [
+      {
+        "line": 3,
+        "effective": false
+      }
+    ]
+  },
+  {
+    "name": "at_end_newline",
+    "src": "a\n\n<div style=\"page-break-after: always;\"></div>\n",
+    "breaks": [
+      {
+        "line": 3,
+        "effective": false
+      }
+    ]
+  },
+  {
+    "name": "only_break",
+    "src": "<div style=\"page-break-after: always;\"></div>",
+    "breaks": [
+      {
+        "line": 1,
+        "effective": false
+      }
+    ]
+  },
+  {
+    "name": "consecutive",
+    "src": "a\n\n<div style=\"page-break-after: always;\"></div>\n\n<div style=\"page-break-after: always;\"></div>\n\nb",
+    "breaks": [
+      {
+        "line": 3,
+        "effective": true
+      },
+      {
+        "line": 5,
+        "effective": false
+      }
+    ]
+  },
+  {
+    "name": "two_pages_apart",
+    "src": "a\n\n<div style=\"page-break-after: always;\"></div>\n\nb\n\n<div style=\"page-break-after: always;\"></div>\n\nc",
+    "breaks": [
+      {
+        "line": 3,
+        "effective": true
+      },
+      {
+        "line": 7,
+        "effective": true
+      }
+    ]
+  },
+  {
+    "name": "after_front_matter_blank",
+    "src": "---\ntitle: x\n---\n\n<div style=\"page-break-after: always;\"></div>\n\nbody",
+    "breaks": [
+      {
+        "line": 5,
+        "effective": false
+      }
+    ]
+  },
+  {
+    "name": "text_right_above",
+    "src": "a\n<div style=\"page-break-after: always;\"></div>\n\nb",
+    "breaks": []
+  },
+  {
+    "name": "text_right_below",
+    "src": "a\n\n<div style=\"page-break-after: always;\"></div>\nb",
+    "breaks": []
+  },
+  {
+    "name": "heading_right_above",
+    "src": "# Title\n<div style=\"page-break-after: always;\"></div>\n\nb",
+    "breaks": []
+  },
+  {
+    "name": "in_fence",
+    "src": "a\n\n```\n<div style=\"page-break-after: always;\"></div>\n```\n\nb",
+    "breaks": []
+  },
+  {
+    "name": "indented_code",
+    "src": "a\n\n    <div style=\"page-break-after: always;\"></div>\n\nb",
+    "breaks": []
+  },
+  {
+    "name": "in_quote",
+    "src": "> a\n>\n> <div style=\"page-break-after: always;\"></div>\n>\n> b",
+    "breaks": []
+  },
+  {
+    "name": "in_list_item",
+    "src": "- a\n\n  <div style=\"page-break-after: always;\"></div>\n\n  b",
+    "breaks": []
+  },
+  {
+    "name": "in_math_block",
+    "src": "$$\n<div style=\"page-break-after: always;\"></div>\n$$",
+    "breaks": []
+  },
+  {
+    "name": "in_front_matter",
+    "src": "---\nx: |\n\n  <div style=\"page-break-after: always;\"></div>\n\n---\nbody",
+    "breaks": []
+  },
+  {
+    "name": "inline_code",
+    "src": "a\n\n`<div style=\"page-break-after: always;\"></div>`\n\nb",
+    "breaks": []
+  },
+  {
+    "name": "text_after_on_line",
+    "src": "a\n\n<div style=\"page-break-after: always;\"></div> more\n\nb",
+    "breaks": []
+  },
+  {
+    "name": "not_closed_on_line",
+    "src": "a\n\n<div style=\"page-break-after: always;\">\n\nb",
+    "breaks": []
+  },
+  {
+    "name": "other_style",
+    "src": "a\n\n<div style=\"color: red\"></div>\n\nb",
+    "breaks": []
+  },
+  {
+    "name": "other_value",
+    "src": "a\n\n<div style=\"page-break-after: auto\"></div>\n\nb",
+    "breaks": []
+  },
+  {
+    "name": "dashes_are_not_breaks",
+    "src": "a\n\n---\n\nb",
+    "breaks": []
+  },
+  {
+    "name": "newpage_is_text",
+    "src": "a\n\n\\newpage\n\nb",
+    "breaks": []
+  },
+  {
+    "name": "slash_between_paragraphs",
+    "src": "a\n\n---/\n\nb",
+    "breaks": [
+      {
+        "line": 3,
+        "effective": true
+      }
+    ]
+  },
+  {
+    "name": "slash_spaces_around",
+    "src": "a\n\n   ---/  \n\nb",
+    "breaks": [
+      {
+        "line": 3,
+        "effective": true
+      }
+    ]
+  },
+  {
+    "name": "slash_and_div_in_a_row",
+    "src": "a\n\n---/\n\n<div class=\"page-break\"></div>\n\nb",
+    "breaks": [
+      {
+        "line": 3,
+        "effective": true
+      },
+      {
+        "line": 5,
+        "effective": false
+      }
+    ]
+  },
+  {
+    "name": "slash_right_under_text",
+    "src": "a\n---/\n\nb",
+    "breaks": []
+  },
+  {
+    "name": "slash_text_right_below",
+    "src": "a\n\n---/\nb",
+    "breaks": []
+  },
+  {
+    "name": "slash_in_quote",
+    "src": "> a\n>\n> ---/\n>\n> b",
+    "breaks": []
+  },
+  {
+    "name": "slash_in_list_item",
+    "src": "- a\n\n  ---/\n\n  b",
+    "breaks": []
+  },
+  {
+    "name": "slash_in_fence",
+    "src": "a\n\n```\n---/\n```\n\nb",
+    "breaks": []
+  },
+  {
+    "name": "slash_indented_code",
+    "src": "a\n\n    ---/\n\nb",
+    "breaks": []
+  },
+  {
+    "name": "slash_longer_dashes",
+    "src": "a\n\n----/\n\nb",
+    "breaks": []
+  },
+  {
+    "name": "slash_with_text",
+    "src": "a\n\n---/ next\n\nb",
+    "breaks": []
+  },
+  {
+    "name": "slash_at_start",
+    "src": "---/\n\na",
+    "breaks": [
+      {
+        "line": 1,
+        "effective": false
+      }
+    ]
+  },
+  {
+    "name": "divider_still_a_divider",
+    "src": "a\n\n---\n\nb",
+    "breaks": []
+  }
+]

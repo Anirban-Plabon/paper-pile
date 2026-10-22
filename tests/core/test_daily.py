@@ -1,4 +1,5 @@
 from datetime import date, datetime
+from pathlib import Path
 
 import pytest
 
@@ -106,3 +107,21 @@ def test_new_daily_text_falls_back_without_a_template(tmp_path) -> None:
 def test_render_template_plain_placeholders_still_work() -> None:
     out = render_template("{{title}} {{date}} {{time}}", title="T", now=datetime(2026, 1, 2, 3, 4))
     assert out == "T 2026-01-02 03:04"
+
+
+def test_untouched_daily_notes_can_take_the_template(tmp_path: Path) -> None:
+    from paper_pile.core.daily import untouched_daily
+
+    (tmp_path / "tpl.md").write_text("## Plan {{date}}\n\n- \n")
+    vault = Vault(tmp_path)
+    day, now = date(2026, 10, 22), datetime(2026, 10, 22, 9, 30)
+    fmt = "YYYY-MM-DD"
+    plain = "# 2026-10-22\n\n"
+    titled = "---\ntitle: 2026-10-22\n---\n# 2026-10-22\n\n"
+    templated_titled = "---\ntitle: 2026-10-22\n---\n## Plan 2026-10-22\n\n- \n"
+    for text in (plain, titled, titled.replace("\n", "\r\n"), templated_titled):
+        assert untouched_daily(text, vault, "tpl.md", day, now, fmt), text
+    assert not untouched_daily(plain + "wrote something\n", vault, "tpl.md", day, now, fmt)
+    own_title = "---\ntitle: Mine\n---\n# 2026-10-22\n"
+    assert not untouched_daily(own_title, vault, "tpl.md", day, now, fmt)
+    assert not untouched_daily(templated_titled, vault, "", day, now, fmt)  # template not set

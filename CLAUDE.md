@@ -66,4 +66,34 @@ Ask the user a **short** question instead of guessing on anything that changes t
 
 ## Gotchas
 <!-- Append one line per durable lesson: `- <area>: <lesson>` -->
-- (none yet)
+- NiceGUI User tests: need `@pytest.mark.nicegui_main_file(<file calling ui.run()>)` (see `tests/gui/nicegui_main.py`); `user.should_see(text)` also matches tooltips, so wait on a word only the dialog has.
+- Icons: Quasar renders `svguse:` as `<i class=q-icon><svg><use>` (style `.q-icon svg use`, not `.q-icon > use`), and a button's icon is 1.7× the button's font-size — set icon sizes on `.q-icon`, never on the button.
+- UI checks: when driving the real app (native or `--serve`), set `XDG_CONFIG_HOME` AND `XDG_STATE_HOME` to ABSOLUTE scratch dirs, or settings land in the user's real `~/.config/paper-pile` and the throwaway vault becomes the user's "last vault".
+- CSS vs Quasar: Quasar utility classes (`.block`, `.hidden`, …) are layered `!important`, which beats our unlayered `!important` — work around them (size/overflow), don't fight them.
+- CodeMirror tooltips (slash menu, autocomplete) get CM's light theme from `.ͼ2 .cm-tooltip`, injected after app.css — theme them with `.cm-editor .cm-tooltip…` (higher specificity), not a bare class.
+- Quasar textareas: `.q-field__control-container` has 2 px padding and dense `.q-field__native` a 36 px `min-height` — zero/override both (and use a whole-pixel line-height) when a field must match a fixed button height.
+- WSL: WSLg reports every monitor at scale 1 whatever Windows uses; the real per-monitor scale only comes from Windows (`core/display.py`). Don't trust Qt's devicePixelRatio/physical DPI there.
+- Never open this repo (or `tests/fixtures`) as a vault: auto-title adds `title:` front matter to every `.md` it opens and silently changes fixtures. A test failure is never "pre-existing" until its cause is known.
+- Git on `/mnt/*` (drvfs): files touched by Windows tools come back CRLF (`.gitattributes` keeps LF canonical) and `git update-index --refresh` may not clear stale entries — compare `git hash-object` with the index blob before believing `git status`.
+- Editor bundle: never keep per-editor state in module globals — a page can hold two editors (split view). Use the runtime facet (`rtOf(view.state)` in `context.js`).
+- After `tools/build_editor.sh`, restart the app: NiceGUI serves the bundle as a cached ES module, so a page reload keeps the old code.
+- Qt from another thread (`native_boot.py`): a QObject that receives a queued signal must be kept referenced (`_KEEP`), or the call is silently dropped.
+- UI tests: never drive the app on a vault the user may use. Before a test run, check which vault the user's own app has open (`ls -l /proc/<pid>/fd | grep index.db`) and test on a fresh COPY. Isolating `XDG_CONFIG_HOME` does not isolate the vault.
+- Two editors (split): never read "the active tab's text" from `self._editor` — use `EditorPane._live_text(tab_id)` (the editor checks it shows that doc), or one note's text gets saved under another.
+- Scripted edits: read then write (`s = p.read_text(); …; p.write_text(s)`), never `open(p,'w')` in the same expression as a read — it truncates first. Uncommitted work has no backup when edited by scripts: keep a copy (`cp f f.bak`) before editing a large uncommitted file.
+- WSL: Qt's `availableGeometry()` is the whole monitor (the Windows taskbar is unknown to WSLg); size windows against the work area from `core/display.py`.
+- Editor widgets: anything with a large min-content width (nowrap chips, long values) widens the whole CodeMirror content and makes the note scroll sideways — give such containers `min-width: 0` + `contain: inline-size`.
+- CodeMirror layout: never put vertical `margin` on editor lines or block widgets (CM does not measure margins; clicks drift) — use padding or an outer spacer. A widget whose size changes after it is drawn must call `measureAgain(view)` (`context.js`), not just `requestMeasure()`.
+- Run `uv run python tools/qa_editor.py` after any editor CSS/JS change (it starts its own throwaway vault; ~6 min).
+- UI checks: click with real mouse events (CDP `Input.dispatchMouseEvent`, check `document.elementFromPoint`), never JS `el.click()` — it skips hit-testing, so a button covered by another element still "works".
+- Markdown lazy lines: a line without `>`/indent right under a quote or list line still belongs to it (the `Blockquote`/`ListItem` node spans it). Decorate from the node's lines, not from `QuoteMark`s, and never leave the caret on a line directly under a block the user just "left".
+- Editor line CSS: padding on a line class (`.pp-h1 { padding }`) loses to `.pp-editor .cm-line { padding }` — write it as `.pp-editor .cm-line.<class>` and check the computed value.
+- Qt on Wayland (WSLg): `windowStateChanged` arrives BEFORE the new size (use `heightChanged` to measure), and never `resize()` a window while the compositor may still have it maximized — it is a protocol error that kills the app.
+- markdown-it block rules: `state.parentType` is not reliable (`lheading` leaves it at `"paragraph"` when it fails); test top level with `state.level == 0`.
+- Editor bundle: after moving code between modules, grep the old module for every moved name — esbuild bundles an undefined identifier without a word and it only throws at runtime (a throwing widget breaks the whole view update).
+- CodeMirror: a plugin/field that stays in a reconfigured Compartment keeps its instance (constructor not re-run); react to facet changes in `update()` (compare `u.startState.facet` / `u.state.facet`).
+- Qt WebEngine in a dev tool (not the app) as root: `QApplication(sys.argv[:1])` and `QTWEBENGINE_DISABLE_SANDBOX=1`, or Chromium refuses to start.
+- HTML5 drag & drop: a drop target's `dropEffect` must be one the drag source's `effectAllowed` permits (tree rows and tabs use `'move'`), or `drop` never fires. Test drags with CDP `Input.setInterceptDrags` + `dispatchDragEvent`; plain mouse events don't start an HTML5 drag.
+- Layout state set by JS from measured positions (e.g. `pp-set-stacked`) must not change what was measured: a class that lets a field shrink can make the row fit again and flip forever. Keep sizes that decide wrapping (min-width) the same in both states, and re-measure per element with a ResizeObserver.
+- Date fields: never use a native `<input type=date>` — its calendar icon and popup ignore our theme (dark mode, rounded popups). Use `ui.date` in a `ui.menu` (`.pp-date-popup`, see `memories.py`).
+- CodeMirror keymaps: the first binding for a key wins — a key the default keymap already binds (Mod-Enter, Mod-h…) must be listed BEFORE `...defaultKeymap`.

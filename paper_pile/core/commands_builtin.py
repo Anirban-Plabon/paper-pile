@@ -16,24 +16,27 @@ from paper_pile.core.commands import (
     StreamInsert,
     command,
 )
+from paper_pile.core.pagebreak import PAGE_BREAK
+from paper_pile.core.spacing import spaced_block
 from paper_pile.core.tables import Table, format_table
 from paper_pile.core.templates import DATE_FORMAT, TIME_FORMAT
 
 BASIC = "Basic blocks"
 
 _BLOCK_LINES = {"bullet", "numbered", "todo", "quote"}
+_HEADINGS = {"h1", "h2", "h3", "h4"}
 
 # (id, title, icon, hint, line prefix, aliases)
 _LINE_BLOCKS = [
-    ("text", "Text", "notes", "", "", ("paragraph", "plain")),
-    ("h1", "Heading 1", "looks_one", "#", "# ", ("heading", "title", "header")),
-    ("h2", "Heading 2", "looks_two", "##", "## ", ("heading", "subtitle", "header")),
-    ("h3", "Heading 3", "looks_3", "###", "### ", ("heading", "header")),
-    ("h4", "Heading 4", "looks_4", "####", "#### ", ("heading", "header")),
-    ("bullet", "Bulleted list", "format_list_bulleted", "-", "- ", ("ul", "list", "unordered")),
-    ("numbered", "Numbered list", "format_list_numbered", "1.", "1. ", ("ol", "list", "ordered")),
-    ("todo", "To-do list", "check_box", "[ ]", "- [ ] ", ("checkbox", "task", "checklist")),
-    ("quote", "Quote", "format_quote", ">", "> ", ("blockquote", "cite")),
+    ("text", "Text", "type", "", "", ("paragraph", "plain")),
+    ("h1", "Heading 1", "heading-1", "#", "# ", ("heading", "title", "header")),
+    ("h2", "Heading 2", "heading-2", "##", "## ", ("heading", "subtitle", "header")),
+    ("h3", "Heading 3", "heading-3", "###", "### ", ("heading", "header")),
+    ("h4", "Heading 4", "heading-4", "####", "#### ", ("heading", "header")),
+    ("bullet", "Bulleted list", "list", "-", "- ", ("ul", "list", "unordered")),
+    ("numbered", "Numbered list", "list-ordered", "1.", "1. ", ("ol", "list", "ordered")),
+    ("todo", "To-do list", "square-check", "[ ]", "- [ ] ", ("checkbox", "task", "checklist")),
+    ("quote", "Quote", "quote", ">", "> ", ("blockquote", "cite")),
 ]
 
 
@@ -42,8 +45,12 @@ def _line_block(
 ) -> None:
     @command(cid, title, group=BASIC, icon=icon, hint=hint, aliases=aliases)
     def run(ctx: CommandContext) -> Action:
-        # lists and quotes get an empty line after them, so they end and can be left
-        return ReplaceLinePrefix(prefix, blank_after=cid in _BLOCK_LINES)
+        # lists and quotes always get an empty line after them, so they end and can be left;
+        # with "Blank lines around blocks" headings, lists and quotes get one above and below
+        spaced = spacing_on(ctx) and cid in _BLOCK_LINES | _HEADINGS
+        return ReplaceLinePrefix(
+            prefix, blank_after=cid in _BLOCK_LINES or spaced, blank_before=spaced
+        )
 
 
 for _spec in _LINE_BLOCKS:
@@ -54,43 +61,52 @@ for _spec in _LINE_BLOCKS:
     "divider",
     "Divider",
     group=BASIC,
-    icon="horizontal_rule",
+    icon="minus",
     hint="---",
     aliases=("hr", "rule", "line", "separator"),
 )
 def divider(ctx: CommandContext) -> Action:
-    """A horizontal rule. Directly under a text line ``---`` would make that line a heading, so
-    a blank line goes first unless there already is one."""
+    """A horizontal rule, spaced like every other block when "Blank lines around blocks" is on.
+    Directly under a text line ``---`` would make that line a heading, so even with the setting
+    off a blank line goes first unless there already is one."""
+    if spacing_on(ctx):
+        return block(ctx, "---", len("---\n"))  # the caret goes below the rule
     line_start = ctx.text.rfind("\n", 0, ctx.cursor) + 1
     previous = ctx.text[: line_start - 1].rsplit("\n", 1)[-1] if line_start else ""
     return Insert("\n---\n" if previous.strip() else "---\n")
 
 
+@command(
+    "page-break",
+    "Page break",
+    group=BASIC,
+    icon="scissors-line-dashed",
+    aliases=("pagebreak", "new page", "print", "pdf"),
+)
+def page_break(ctx: CommandContext) -> Action:
+    """A manual page break (PLAN §4.17). It only counts with an empty line above and below,
+    so both are always added (whatever "Blank lines around blocks" says), and the caret goes
+    one line further down: typing right under the break would turn it back into text."""
+    end = ctx.end if ctx.end is not None else ctx.cursor
+    text, at = spaced_block(ctx.text, ctx.cursor, end, PAGE_BREAK, blank_lines=True)
+    insert = text[:at] + PAGE_BREAK + "\n\n"
+    return Insert(insert, len(insert))
+
+
 # ---- blocks that need their own lines ---------------------------------------------------------
 
 
+def spacing_on(ctx: CommandContext) -> bool:
+    """Settings → Editor → Advanced → "Blank lines around blocks" (on by default)."""
+    return ctx.config is None or bool(ctx.config.get("editor.block_spacing", True))
+
+
 def block(ctx: CommandContext, body: str, caret: int | None = None) -> Insert:
-    """Insert a multi-line ``body`` as its own block: if the command was typed after other text on
-    the line, the block starts on a fresh line, and an empty line follows it (unless one does, or
-    the next line is part of the same quote), so the block can be left. ``caret`` is an offset
-    into ``body``."""
-    line_start = ctx.text.rfind("\n", 0, ctx.cursor) + 1
-    lead = "\n" if ctx.text[line_start : ctx.cursor].strip() else ""
-    rest = ctx.text[ctx.end if ctx.end is not None else ctx.cursor :]
-    first_rest, _, below = rest.partition("\n")
-    following = below.split("\n", 1)[0]
-    gap = ""
-    if body.endswith("\n"):
-        # the block ends its own line; what is left of the typed line comes right after it, and
-        # a line break straight after the block is already the empty line we want
-        gap = "\n" if first_rest.strip() else ""
-    elif not rest:
-        gap = "\n"  # end of the note: leave a line below the block
-    elif not first_rest.strip() and following.strip():
-        same_quote = body.startswith(">") and following.lstrip().startswith(">")
-        gap = "" if same_quote else "\n"
-    text = lead + body + gap
-    return Insert(text, len(lead) + (len(body) if caret is None else caret))
+    """Insert a multi-line ``body`` as a block on lines of its own, with an empty line above and
+    below when the setting is on (``core/spacing.py``). ``caret`` is an offset into ``body``."""
+    end = ctx.end if ctx.end is not None else ctx.cursor
+    text, at = spaced_block(ctx.text, ctx.cursor, end, body, blank_lines=spacing_on(ctx))
+    return Insert(text, min(len(text), at + (len(body) if caret is None else caret)))
 
 
 @command(
@@ -121,7 +137,7 @@ def code_block(ctx: CommandContext) -> Action:
     "math",
     "Math block",
     group=CODE,
-    icon="functions",
+    icon="sigma",
     hint="$$",
     aliases=("latex", "equation", "formula"),
 )
@@ -159,10 +175,12 @@ def _mermaid(cid: str, title: str, icon: str, source: str, aliases: tuple[str, .
         return block(ctx, f"```mermaid\n{source}```\n")
 
 
-_mermaid("flowchart", "Flowchart", "account_tree", _FLOWCHART, ("mermaid", "diagram", "graph"))
-_mermaid("sequence", "Sequence diagram", "swap_horiz", _SEQUENCE, ("mermaid", "diagram", "uml"))
+_mermaid("flowchart", "Flowchart", "workflow", _FLOWCHART, ("mermaid", "diagram", "graph"))
 _mermaid(
-    "gantt", "Gantt chart", "view_timeline", _GANTT, ("mermaid", "diagram", "schedule", "timeline")
+    "sequence", "Sequence diagram", "arrow-left-right", _SEQUENCE, ("mermaid", "diagram", "uml")
+)
+_mermaid(
+    "gantt", "Gantt chart", "chart-gantt", _GANTT, ("mermaid", "diagram", "schedule", "timeline")
 )
 
 
@@ -183,7 +201,7 @@ def image(ctx: CommandContext) -> Action:
     "table",
     "Table",
     group="Media",
-    icon="table_chart",
+    icon="table",
     subtitle="3 × 3",
     hint="| |",
     aliases=("grid", "spreadsheet"),
@@ -216,7 +234,7 @@ def link_to_note(ctx: CommandContext) -> Action:
     "embed",
     "Embed note",
     group=LINKS,
-    icon="note_add",
+    icon="file-plus",
     hint="![[ ]]",
     aliases=("transclude", "include"),
 )
@@ -235,7 +253,7 @@ def _now() -> datetime:
     "date",
     "Date",
     group=INSERT,
-    icon="event",
+    icon="calendar",
     subtitle="Today",
     hint="YYYY-MM-DD",
     aliases=("today",),
@@ -248,7 +266,7 @@ def date_today(ctx: CommandContext) -> Action:
     "time",
     "Time",
     group=INSERT,
-    icon="schedule",
+    icon="clock",
     subtitle="Now",
     hint="HH:MM",
     aliases=("now", "clock"),
@@ -266,7 +284,7 @@ def _has_templates(ctx: CommandContext) -> bool:
     "template",
     "Template",
     group=INSERT,
-    icon="description",
+    icon="file-text",
     subtitle="From your templates folder",
     aliases=("snippet", "boilerplate"),
     when=_has_templates,
@@ -285,7 +303,7 @@ _has_selection = lambda ctx: bool(ctx.selection)  # noqa: E731
     "ai-summarize",
     "Summarize",
     group=AI,
-    icon="summarize",
+    icon="scroll-text",
     subtitle="The selection, or the whole note",
     badge="AI",
     aliases=("summary", "tldr", "shorten"),
@@ -302,7 +320,7 @@ def ai_summarize(ctx: CommandContext) -> Action:
     "ai-continue",
     "Continue writing",
     group=AI,
-    icon="edit_note",
+    icon="pencil-line",
     subtitle="From where the caret is",
     badge="AI",
     aliases=("continue", "write more", "extend", "autocomplete"),
@@ -319,7 +337,7 @@ def ai_continue(ctx: CommandContext) -> Action:
     "ai-explain",
     "Explain selection",
     group=AI,
-    icon="psychology",
+    icon="brain",
     subtitle="Select text, then press Ctrl+J",
     badge="AI",
     aliases=("explain", "what does this mean"),
@@ -337,7 +355,7 @@ def ai_explain(ctx: CommandContext) -> Action:
     "ai-fix",
     "Fix grammar",
     group=AI,
-    icon="spellcheck",
+    icon="spell-check",
     subtitle="Replaces the selection",
     badge="AI",
     aliases=("grammar", "proofread", "spelling", "correct"),
@@ -356,7 +374,7 @@ def ai_fix(ctx: CommandContext) -> Action:
     "ai-ask",
     "Ask…",
     group=AI,
-    icon="question_answer",
+    icon="messages-square",
     subtitle="Ask the AI about this note",
     badge="AI",
     aliases=("question", "ask ai", "prompt", "write"),

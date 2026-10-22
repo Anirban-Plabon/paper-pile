@@ -9,14 +9,11 @@ node check_sync.mjs  # the editor's grammar must agree with the Python parser
 out=../../paper_pile/gui/static/vendor
 rm -rf "$out/pp-editor"
 mkdir -p "$out/pp-editor" "$out/katex"
-npx esbuild index.js --bundle --splitting --format=esm --minify --target=es2022 \
-  --entry-names=index --chunk-names=chunks/[name]-[hash] --outdir="$out/pp-editor"
+# two entries: the editor, and the print page's layout (print.js); they share chunks
+npx esbuild index.js print.js --bundle --splitting --format=esm --minify --target=es2022 \
+  --entry-names=[name] --chunk-names=chunks/[name]-[hash] --outdir="$out/pp-editor"
 cp node_modules/katex/dist/katex.min.css "$out/katex/"
 rm -rf "$out/katex/fonts" && cp -r node_modules/katex/dist/fonts "$out/katex/fonts"
-# Font Awesome Free icons (CSS + the two web fonts in use; no CDN)
-fa=node_modules/@fortawesome/fontawesome-free
-rm -rf "$out/fontawesome" && mkdir -p "$out/fontawesome/css" "$out/fontawesome/webfonts"
-cp "$fa/css/all.min.css" "$out/fontawesome/css/"
-cp "$fa/webfonts/fa-solid-900.woff2" "$fa/webfonts/fa-regular-400.woff2" "$out/fontawesome/webfonts/"
-cp "$fa/LICENSE.txt" "$out/fontawesome/LICENSE.txt"
+# Lucide line icons: one JSON file read by paper_pile/gui/icons.py (no CDN)
+node build_icons.mjs
 echo "built $out/pp-editor/"

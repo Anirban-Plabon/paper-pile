@@ -1,4 +1,4 @@
-// Checks the editor's Lezer grammar (grammar.js: math + front matter) against the shared fixtures
+// Checks the editor's Lezer grammar (grammar.js: math, front matter, wikilinks, tags, page breaks) against the shared fixtures
 // in tests/fixtures/, which are generated from the Python reference parser
 // (paper_pile/core/parser.py). Run by tools/build_editor.sh and tests/core/test_grammar_sync.py:
 // the two engines must not drift.
@@ -54,6 +54,26 @@ function extractWikilinks(src) {
   return found;
 }
 
+function extractTags(src) {
+  const found = [];
+  md.parse(src).iterate({
+    enter(node) {
+      if (node.name === "HashTag") found.push(src.slice(node.from + 1, node.to));
+    },
+  });
+  return found;
+}
+
+function extractPageBreaks(src) {
+  const found = [];
+  md.parse(src).iterate({
+    enter(node) {
+      if (node.name === "PageBreak") found.push(src.slice(0, node.from).split("\n").length);
+    },
+  });
+  return found;
+}
+
 let failed = 0;
 const math = load("math_cases.json");
 for (const c of math) {
@@ -85,6 +105,27 @@ for (const c of wiki) {
     console.log(`  lezer : ${JSON.stringify(got)}`);
   }
 }
-const total = math.length + fm.length + wiki.length;
-console.log(failed ? `${failed} of ${total} cases differ` : `all ${total} grammar cases agree with the Python parser (${math.length} math, ${fm.length} front matter, ${wiki.length} wikilink)`);
+const tagCases = load("tag_cases.json");
+for (const c of tagCases) {
+  const got = extractTags(c.src);
+  if (JSON.stringify(got) !== JSON.stringify(c.tags)) {
+    failed++;
+    console.log(`MISMATCH tag/${c.name}: ${JSON.stringify(c.src)}`);
+    console.log(`  python: ${JSON.stringify(c.tags)}`);
+    console.log(`  lezer : ${JSON.stringify(got)}`);
+  }
+}
+const breakCases = load("pagebreak_cases.json");
+for (const c of breakCases) {
+  const got = extractPageBreaks(c.src);
+  const want = c.breaks.map((b) => b.line);
+  if (JSON.stringify(got) !== JSON.stringify(want)) {
+    failed++;
+    console.log(`MISMATCH pagebreak/${c.name}: ${JSON.stringify(c.src)}`);
+    console.log(`  python: ${JSON.stringify(want)}`);
+    console.log(`  lezer : ${JSON.stringify(got)}`);
+  }
+}
+const total = math.length + fm.length + wiki.length + tagCases.length + breakCases.length;
+console.log(failed ? `${failed} of ${total} cases differ` : `all ${total} grammar cases agree with the Python parser (${math.length} math, ${fm.length} front matter, ${wiki.length} wikilink, ${tagCases.length} tag, ${breakCases.length} page break)`);
 process.exit(failed ? 1 : 0);

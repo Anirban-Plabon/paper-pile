@@ -139,3 +139,19 @@ def new_daily_text(vault: Vault, template: str, day: date, now: datetime, fmt: s
         except VaultError:
             pass
     return f"# {title}\n\n"
+
+
+def untouched_daily(
+    text: str, vault: Vault, template: str, day: date, now: datetime, fmt: str
+) -> bool:
+    """Does a day's note still hold only what the app put there (the plain date heading, or the
+    template as it renders now), with or without the ``title:`` property auto-title added? Such
+    a note may be made again from the current template; anything the user wrote keeps it."""
+    from paper_pile.core.titles import with_title  # titles imports the parser; keep this light
+
+    name = daily_relpath(day, "", fmt or DEFAULT_FORMAT).rsplit("/", 1)[-1].rsplit(".", 1)[0]
+    plain = f"# {format_date(day, fmt or DEFAULT_FORMAT).rsplit('/', 1)[-1]}\n\n"
+    made = {plain, new_daily_text(vault, template, day, now, fmt)}
+    made |= {t for t in (with_title(m, name) for m in made) if t is not None}
+    clean = text.replace("\r\n", "\n").rstrip()
+    return any(clean == m.rstrip() for m in made)

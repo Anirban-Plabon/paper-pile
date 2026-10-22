@@ -167,3 +167,10 @@ def test_source_view_keeps_graphics_as_code() -> None:
     assert "```text\ngraph TD" in out and "```mermaid" not in out
     assert "print('![z](q.png)')" in out and "`![z](q.png)`" not in out
     assert out.startswith("- a")
+
+
+def test_system_prompt_carries_the_users_instructions(vault: Vault) -> None:
+    ctx = build_context(vault, current_path=None)
+    prompt = ctx.system_prompt("", "", "  Answer in bullet points ")
+    assert prompt.endswith("follow this: Answer in bullet points")
+    assert "follow this" not in ctx.system_prompt("", "", "   ")

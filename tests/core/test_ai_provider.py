@@ -1,5 +1,6 @@
 import json
 from collections.abc import Callable
+from pathlib import Path
 
 import httpx
 import pytest
@@ -172,3 +173,48 @@ async def test_the_fake_provider_follows_the_protocol() -> None:
     assert (await fake.health()).ok and await fake.models() == ["fake-model", "fake-model-2"]
     fake.up = False
     assert not (await fake.health()).ok
+
+
+async def test_generation_options_are_sent_to_ollama() -> None:
+    from paper_pile.core.ai.provider import GenerationOptions
+
+    seen: dict[str, object] = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.update(json.loads(request.content))
+        return httpx.Response(
+            200, content=ndjson({"message": {"role": "assistant", "content": "ok"}, "done": True})
+        )
+
+    options = GenerationOptions(temperature=0.2, top_p=0.5, num_ctx=None, keep_alive_min=10)
+    pieces = [x async for x in provider(handler).chat(MSGS, options=options)]
+    assert pieces == ["ok"]
+    assert seen["options"] == {"temperature": 0.2, "top_p": 0.5}
+    assert seen["keep_alive"] == "10m"
+
+
+def test_ollama_options_leave_out_what_is_unset() -> None:
+    from paper_pile.core.ai.ollama import ollama_options
+    from paper_pile.core.ai.provider import GenerationOptions
+
+    assert ollama_options(None) == {}
+    assert ollama_options(GenerationOptions()) == {}
+    assert ollama_options(GenerationOptions(num_ctx=8192, keep_alive_min=0)) == {
+        "options": {"num_ctx": 8192},
+        "keep_alive": "0m",
+    }
+
+
+def test_generation_options_from_the_config(tmp_path: Path) -> None:
+    from paper_pile.core.ai.factory import generation_options
+    from paper_pile.core.config import Config
+
+    config = Config(global_path=tmp_path / "c.toml")
+    opts = generation_options(config)
+    assert (opts.temperature, opts.top_p, opts.num_ctx, opts.keep_alive_min) == (0.8, 0.9, None, 5)
+    config.set("ai.temperature", 0.3, "global")
+    config.set("ai.num_ctx", 16384, "global")
+    config.set("ai.top_p", 7, "global")  # out of range: the default is used
+    opts = generation_options(config)
+    assert (opts.temperature, opts.top_p, opts.num_ctx) == (0.3, 0.9, 16384)
+    assert generation_options(None).temperature is None

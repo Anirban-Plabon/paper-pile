@@ -2,23 +2,24 @@
 // JS is a thin layer: it renders and captures events. All logic lives in Python.
 import { defaultKeymap, history, isolateHistory, historyKeymap, indentWithTab } from "@codemirror/commands";
 import { markdown, markdownLanguage } from "@codemirror/lang-markdown";
-import { HighlightStyle, indentUnit, syntaxHighlighting } from "@codemirror/language";
-import { highlightSelectionMatches, searchKeymap } from "@codemirror/search";
-import { Compartment, EditorSelection, EditorState } from "@codemirror/state";
+import { HighlightStyle, indentUnit, syntaxHighlighting, syntaxTree } from "@codemirror/language";
+import { highlightSelectionMatches, openSearchPanel, searchKeymap } from "@codemirror/search";
+import { Annotation, Compartment, EditorSelection, EditorState, Transaction } from "@codemirror/state";
 import { EditorView, drawSelection, dropCursor, keymap } from "@codemirror/view";
 import { classHighlighter, tags as t } from "@lezer/highlight";
 import { blocks, themeFacet } from "./blocks.js";
 import { livePreview } from "./livepreview.js";
 import { refreshEffect } from "./reveal.js";
 import { codeLanguages } from "./codelang.js";
-import { editorContext } from "./context.js";
+import { editorContext, runtimeFacet } from "./context.js";
 import { editorExtensions } from "./grammar.js";
 import { autoBrackets, autoClose } from "./autoclose.js";
 import { headingFolding } from "./fold.js";
 import { listEditing } from "./listedit.js";
+import { pageView, printLayoutReady } from "./pageview.js";
 import { selectionSync } from "./selectionsync.js";
 import { closeSlash, setSlashResults, slashExtension } from "./slash.js";
-import { focusTableCell, tableKeys, tablesRuntime } from "./tablewidget.js";
+import { focusTableCell, tableKeys } from "./tablewidget.js";
 import { streamAppend, streamBegin, streamEnd, streamField } from "./stream.js";
 import { typeset } from "./typeset.js";
 
@@ -52,22 +53,52 @@ if (typeof window !== "undefined") {
   window.ppTypeset = (el, theme) => typeset(el, theme || (window.ppIsDark ? "dark" : "light"));
 }
 
+// Marks a change mirrored from the other editor of a split (not the user's, not reported back).
+const mirrored = Annotation.define();
+
+// Does the note end with something other than a paragraph (a heading, list, quote, table, fenced
+// block, math, an image or embed line, a rule)? Then there is no place after it for the caret.
+function endsWithBlock(state) {
+  const last = state.doc.line(state.doc.lines);
+  if (/^\s*!\[/.test(last.text)) return true; // an image or embed on its own line is drawn as a block
+  let node = syntaxTree(state).resolveInner(last.from, 1);
+  while (node.parent && node.parent.name !== "Document") node = node.parent;
+  return node.name !== "Paragraph" && node.name !== "Document";
+}
+
+// Open the search panel; with `replace`, put the caret in its replace field.
+function openSearch(view, replace) {
+  openSearchPanel(view);
+  const name = replace ? "replace" : "search";
+  const grab = () => {
+    const field = view.dom.querySelector(`.cm-search input[name=${name}]`);
+    if (field && document.activeElement !== field) {
+      field.focus();
+      field.select();
+    }
+  };
+  grab();
+  // opened from a menu: the menu hands focus back to its button as it closes, so take it again
+  for (const ms of [120, 320]) setTimeout(grab, ms);
+  return true;
+}
+
 export function createEditor(
   parent,
   { doc = "", mode = "live", theme = "light", emit = () => {}, imageUploadUrl = null, linkTarget = "python", options = {} } = {},
 ) {
-  tablesRuntime({ emit, getDocId: () => docId });
-  editorContext.emit = emit;
-  editorContext.getDocId = () => docId;
+  // this editor's own runtime (note path, events, doc id), reached by its widgets via the facet
+  const rt = { notePath: "", emit, getDocId: () => docId };
   const modeSlot = new Compartment();
   const optionsSlot = new Compartment();
-  // word wrap, tab size, spell check (Settings): applied to every open note
-  let currentOptions = { wordWrap: true, tabSize: 4, spellCheck: false, lang: "en", ...options };
+  // word wrap, tab size, spell check, page view (Settings): applied to every open note
+  let currentOptions = { wordWrap: true, tabSize: 4, spellCheck: false, lang: "en", pageView: false, pageStyle: "lines", paper: "A4", textWidthMm: 170, paperHeightMm: 297, marginMm: 20, ...options };
   const optionsExt = (o) => [
     o.wordWrap ? EditorView.lineWrapping : [],
     EditorState.tabSize.of(o.tabSize),
     indentUnit.of(" ".repeat(o.tabSize)),
     EditorView.contentAttributes.of({ spellcheck: o.spellCheck ? "true" : "false", lang: o.lang || "en" }),
+    o.pageView ? pageView({ style: o.pageStyle, paper: o.paper, textWidthMm: o.textWidthMm, paperHeightMm: o.paperHeightMm, marginMm: o.marginMm }) : [],
   ];
   const themeSlot = new Compartment();
   const modeExt = (m) => (m === "live" ? [livePreview, blocks, tableKeys] : []);
@@ -79,6 +110,17 @@ export function createEditor(
   // Which document the editor currently shows. Python bumps it on every note switch and ignores
   // events carrying an older id, so a late "change" can never land in the wrong note.
   let docId = 0;
+
+  // Ln / Col for the status bar, a moment after the caret stops moving
+  let caretTimer = null;
+  const reportCaret = (state) => {
+    clearTimeout(caretTimer);
+    caretTimer = setTimeout(() => {
+      const head = state.selection.main.head;
+      const line = state.doc.lineAt(head);
+      emit("caret", { docId, line: line.number, col: head - line.from + 1 });
+    }, 120);
+  };
 
   const flush = () => {
     if (timer === null) return;
@@ -101,7 +143,7 @@ export function createEditor(
   const uploadImage = async (file) => {
     const id = docId;
     try {
-      const url = `${imageUploadUrl}?note=${encodeURIComponent(editorContext.notePath)}`;
+      const url = `${imageUploadUrl}?note=${encodeURIComponent(rt.notePath)}`;
       const r = await fetch(url, {
         method: "POST",
         headers: { "Content-Type": file.type || "application/octet-stream", "X-PP-Upload": "1" },
@@ -146,7 +188,7 @@ export function createEditor(
   // A note switch builds a fresh state, which also drops the undo history: Ctrl+Z must never
   // pull the previous note's text into this one.
   const makeState = (text, id) => {
-    const plain = isPlainPath(editorContext.notePath);
+    const plain = isPlainPath(rt.notePath);
     if (plain) plainDocs.add(id);
     else plainDocs.delete(id);
     const common = [
@@ -156,6 +198,9 @@ export function createEditor(
       drawSelection(),
       dropCursor(),
       highlightSelectionMatches(),
+      runtimeFacet.of(rt),
+      // the user is in this editor now (Python makes its note the active one)
+      EditorView.domEventHandlers({ focus: () => { emit("focus", { docId }); return false; } }),
       EditorState.allowMultipleSelections.of(true),
       optionsSlot.of(optionsExt(currentOptions)),
       keymap.of([
@@ -167,17 +212,31 @@ export function createEditor(
             return true;
           },
         },
+        // Ctrl+Enter: a page break here (like Word); Python inserts it (the slash command's rules).
+        // Before the default keymap, which uses Mod-Enter for "insert blank line".
+        {
+          key: "Mod-Enter",
+          run: (v) => {
+            if (isPlainDoc()) return false;
+            const r = v.state.selection.main;
+            flush();
+            emit("page_break", { docId, from: r.from, to: r.to });
+            return true;
+          },
+        },
         ...defaultKeymap,
         ...historyKeymap,
         ...searchKeymap,
+        { key: "Mod-h", run: (v) => openSearch(v, true) },
         indentWithTab,
       ]),
       themeSlot.of(themeFacet.of(currentTheme)),
       EditorView.updateListener.of((u) => {
-        if (u.docChanged) {
+        if (u.docChanged && !u.transactions.some((tr) => tr.annotation(mirrored))) {
           clearTimeout(timer);
           timer = setTimeout(flush, CHANGE_DEBOUNCE_MS);
         }
+        if ((u.selectionSet || u.docChanged) && u.view.hasFocus) reportCaret(u.state);
       }),
     ];
     const onBlur = () => {
@@ -197,7 +256,7 @@ export function createEditor(
           syntaxHighlighting(sourceStyle),
           syntaxHighlighting(classHighlighter), // `tok-*` classes inside code blocks; colours live in CSS
           modeSlot.of(modeExt(currentMode)),
-          slashExtension({ emit, getDocId: () => docId }),
+          slashExtension(),
           selectionSync({ emit, getDocId: () => docId }),
           EditorView.domEventHandlers({
             paste: handlePaste,
@@ -219,6 +278,12 @@ export function createEditor(
             // selection, which un-hides the link's syntax and rebuilds its DOM before `click` fires.
             mousedown: (e) => {
               const ctrl = e.ctrlKey || e.metaKey;
+              const tagEl = e.target.closest ? e.target.closest("[data-tag]") : null;
+              if (tagEl && e.button === 0 && (ctrl || tagEl.hasAttribute("data-tag-open"))) {
+                e.preventDefault();
+                emit("tag", { tag: tagEl.getAttribute("data-tag") });
+                return true;
+              }
               const wiki = e.target.closest ? e.target.closest("[data-wiki-note]") : null;
               if (wiki && !ctrl && (e.button !== 0 || !wiki.hasAttribute("data-wiki-open"))) return false;
               if (!ctrl && !wiki) return false;
@@ -262,10 +327,28 @@ export function createEditor(
 
   const view = new EditorView({ parent, state: makeState(doc, docId) });
 
+  // A click below the end of a note that ends with a block (table, image, heading, list, …) would
+  // put the caret inside that block: give the note an empty last line and put the caret there.
+  view.scrollDOM.addEventListener(
+    "mousedown",
+    (e) => {
+      if (e.button !== 0 || e.ctrlKey || e.metaKey || e.shiftKey || isPlainDoc()) return;
+      const { doc: d } = view.state;
+      const last = d.line(d.lines);
+      if (!last.text.trim()) return; // there already is an empty line to go to
+      if (e.clientY <= view.documentTop + view.lineBlockAt(last.to).bottom) return;
+      if (!endsWithBlock(view.state)) return;
+      e.preventDefault();
+      view.dispatch({ changes: { from: last.to, insert: "\n" }, selection: { anchor: last.to + 1 }, scrollIntoView: true, userEvent: "input" });
+      view.focus();
+    },
+    true,
+  );
+
   // Put `text` on screen for doc `id` with a fresh state (history dropped).
   const replaceText = (text, id, path, keepCaret) => {
     const head = view.state.selection.main.head;
-    editorContext.notePath = path;
+    rt.notePath = path;
     if (id !== docId) park();
     else flush();
     clearTimeout(timer);
@@ -277,10 +360,12 @@ export function createEditor(
   };
 
   return {
-    getText: () => view.state.doc.toString(),
+    // The text on screen; with `expectedId`, only if that doc is the one on screen (else null), so
+    // Python can never file one note's text under another.
+    getText: (expectedId = null) => (expectedId === null || expectedId === docId ? view.state.doc.toString() : null),
     // Show tab `id`: its parked state if it has one, else a fresh state made from `text`.
     showDoc(id, text, path = "") {
-      editorContext.notePath = path; // before the state swap: widgets built next read it
+      rt.notePath = path; // before the state swap: widgets built next read it
       if (id === docId) return;
       park();
       clearTimeout(timer);
@@ -304,7 +389,7 @@ export function createEditor(
     // Replace tab `id`'s content outright (restored text): fresh state, history dropped.
     // The note on screen was renamed/moved: relative image URLs must be recomputed.
     setPath(path) {
-      editorContext.notePath = path;
+      rt.notePath = path;
       if (docId !== -1 && isPlainPath(path) !== isPlainDoc()) {
         // renamed across .md <-> .txt: the note changes kind, so rebuild its state in place
         replaceText(view.state.doc.toString(), docId, path, true);
@@ -313,14 +398,45 @@ export function createEditor(
       view.dispatch({ effects: refreshEffect.of(null) });
     },
     // `keepCaret`: an outside change was reloaded into the note on screen; stay where the user was.
-    setText(text, id = docId, path = editorContext.notePath, keepCaret = false) {
+    setText(text, id = docId, path = rt.notePath, keepCaret = false) {
       replaceText(text, id, path, keepCaret);
+    },
+    // The same note is open in the other editor of a split and changed there: take its text as a
+    // minimal change that stays out of this side's undo history and is not reported back.
+    syncText(id, text) {
+      const spec = (state) => {
+        const old = state.doc.toString();
+        if (old === text) return null;
+        const max = Math.min(old.length, text.length);
+        let a = 0;
+        while (a < max && old.charCodeAt(a) === text.charCodeAt(a)) a++;
+        let b = 0;
+        while (b < max - a && old.charCodeAt(old.length - 1 - b) === text.charCodeAt(text.length - 1 - b)) b++;
+        return {
+          changes: { from: a, to: old.length - b, insert: text.slice(a, text.length - b) },
+          annotations: [Transaction.addToHistory.of(false), mirrored.of(true)],
+        };
+      };
+      if (id === docId) {
+        const s = spec(view.state);
+        if (s) view.dispatch(s);
+        return;
+      }
+      const state = parked.get(id);
+      const s = state && spec(state);
+      if (s) parked.set(id, state.update(s).state);
+    },
+    // Find (and replace) in the note on screen: CodeMirror's search panel.
+    openSearch(replace = false) {
+      openSearch(view, replace);
     },
     // The tab was closed: forget its parked state.
     closeDoc(id) {
       parked.delete(id);
       if (id === docId) {
-        // the tab on screen was closed: show an empty, unowned document so nothing is parked for it
+        // the tab on screen was closed: report any typing not yet sent (Python drops it if the
+        // tab is gone), then show an empty, unowned document so nothing is parked for it
+        flush();
         clearTimeout(timer);
         timer = null;
         docId = -1;
@@ -394,6 +510,12 @@ export function createEditor(
     setOptions(o) {
       currentOptions = { ...currentOptions, ...o };
       view.dispatch({ effects: optionsSlot.reconfigure(optionsExt(currentOptions)) });
+      // page view just came on: a caret inside the (now hidden) properties moves below them
+      view.dispatch({ selection: view.state.selection });
+    },
+    // Python's answer to a `print_layout` request: the print page to lay out (page view).
+    printLayoutReady(seq, url) {
+      printLayoutReady(view, seq, url);
     },
     setMode(m) {
       currentMode = m;

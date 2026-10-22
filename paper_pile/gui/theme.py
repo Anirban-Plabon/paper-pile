@@ -1,4 +1,4 @@
-"""Light / dark / system themes, accent colour, density and the editor font (PLAN §4.12).
+"""Light / dark / system themes, accent colour, density and the editor and code fonts (PLAN §4.12).
 
 The look is CSS variables (``static/app.css``) switched by ``static/theme.js``; this module turns
 the configuration into what that script needs and reacts when it reports whether the result is
@@ -13,6 +13,7 @@ from typing import Any
 from nicegui import Client, ui
 
 from paper_pile.core.config import Config
+from paper_pile.core.printdoc import MARGIN_MM, paper, text_width_mm
 from paper_pile.core.settings import accent_colors, hex_to_rgb, sanitized
 from paper_pile.gui.static_files import static_url
 
@@ -31,19 +32,39 @@ def theme_payload(config: Config | None) -> dict[str, Any]:
         "accentDarkRgb": hex_to_rgb(dark),
         "density": v["appearance.density"],
         "fontFamily": v["editor.font_family"],
+        "codeFont": v["editor.code_font_family"],
         "fontSize": v["editor.font_size"],
         "lineHeight": v["editor.line_height"],
     }
 
 
+# settings that change the editor options below
+EDITOR_OPTION_KEYS = frozenset(
+    {
+        "editor.word_wrap",
+        "editor.tab_size",
+        "editor.spell_check",
+        "general.language",
+        "editor.page_view",
+        "print.paper",
+    }
+)
+
+
 def editor_options(config: Config | None) -> dict[str, Any]:
-    """Word wrap, tab size and spell check for the editor."""
+    """Word wrap, tab size, spell check and page view (PLAN §4.17) for the editor."""
     v = sanitized(config.values if config is not None else {})
     return {
         "wordWrap": v["editor.word_wrap"],
         "tabSize": v["editor.tab_size"],
         "spellCheck": v["editor.spell_check"],
         "lang": v["general.language"],
+        "pageView": v["editor.page_view"] != "off",
+        "pageStyle": v["editor.page_view"],
+        "paper": v["print.paper"],
+        "textWidthMm": text_width_mm(str(v["print.paper"])),
+        "paperHeightMm": paper(str(v["print.paper"])).height_mm,
+        "marginMm": MARGIN_MM,
     }
 
 

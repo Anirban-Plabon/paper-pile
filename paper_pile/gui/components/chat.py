@@ -6,6 +6,11 @@ files), a ``+`` menu (open tabs, other notes, the editor's selection, upload, in
 tabs), the input with its ``@`` picker, the model picker and Send. What the model sees is built
 by :mod:`paper_pile.core.ai.context`; the provider is :mod:`paper_pile.core.ai`. If Ollama is
 not running the pane says so and everything else keeps working.
+
+A header row shows the chat's title; its ⋮ button opens the chat menu: New chat, the latest
+saved chats (*Memories*, one line each; older ones under *More chats*) and *AI settings*. Chats
+are saved per vault by :mod:`paper_pile.core.ai.chats` after every message (unless turned off);
+Settings → AI → Memories browses, reads and deletes them.
 """
 
 import asyncio
@@ -16,10 +21,24 @@ import re
 import time
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
+from pathlib import Path
 
 from nicegui import Client, background_tasks, ui
 
 from paper_pile.core.ai.attachments import AttachmentError, FileRef, read_text_file
+from paper_pile.core.ai.chats import (
+    SavedChat,
+    chat_title,
+    chats_folder,
+    delete_chat,
+    delete_chats,
+    expired_chats,
+    list_chats,
+    load_chat,
+    new_chat_id,
+    save_chat,
+)
+from paper_pile.core.ai.chats import SavedTurn as Turn
 from paper_pile.core.ai.context import (
     Context,
     EditorSnapshot,
@@ -27,7 +46,12 @@ from paper_pile.core.ai.context import (
     extract_mentions,
     source_view,
 )
-from paper_pile.core.ai.factory import chat_model, make_provider
+from paper_pile.core.ai.factory import (
+    chat_model,
+    generation_options,
+    make_provider,
+)
+from paper_pile.core.ai.instructions import system_instruction
 from paper_pile.core.ai.provider import (
     ChatMessage,
     Health,
@@ -42,12 +66,15 @@ from paper_pile.core.parser import render_html
 from paper_pile.core.picker import search_notes
 from paper_pile.core.settings import language_name
 from paper_pile.core.vault import Vault
+from paper_pile.gui.icons import ico, icon_button, line_icon, set_icon
+from paper_pile.gui.tips import tip
 
 log = logging.getLogger("paper_pile.chat")
 
-HISTORY_TURNS = 12  # earlier messages sent along with a new one
+HISTORY_TURNS = 12  # earlier messages sent along with a new one (ai.history_turns)
 RENDER_EVERY_S = 0.08  # how often a streaming reply is redrawn
 HEALTH_EVERY_S = 30.0
+RECENT_CHATS = 5  # shown in the ⋮ menu; older ones under "More chats"
 _MENTION_TAIL = re.compile(r"@([^\s@\[\]]*)$")
 
 
@@ -72,15 +99,6 @@ class Selection:
         return t if len(t) <= limit else t[:limit] + "…"
 
 
-@dataclass(slots=True)
-class Turn:
-    role: str  # "user" | "assistant"
-    text: str
-    attachment: str = ""  # the one-line label of an attached selection
-    summary: str = ""  # what context an assistant reply was given
-    error: bool = False
-
-
 class ChatPane:
     def __init__(
         self,
@@ -93,6 +111,7 @@ class ChatPane:
         user_name: Callable[[], str] = lambda: "",
         open_paths: Callable[[], list[str]] = lambda: [],
         active_path: Callable[[], str | None] = lambda: None,
+        open_settings: Callable[[], None] = lambda: None,
     ) -> None:
         self.vault = vault
         self.config = config
@@ -103,8 +122,11 @@ class ChatPane:
         self._user_name = user_name
         self._open_paths = open_paths
         self._active_path = active_path
+        self._open_settings = open_settings
         self.provider: Provider = make_provider(config)
         self.history: list[Turn] = []
+        self._chat_id = new_chat_id()
+        self._created = time.time()
         self.health = Health(False, "Checking Ollama…")
         self._task: asyncio.Task[None] | None = None
         self._include_tabs = False
@@ -123,6 +145,7 @@ class ChatPane:
         self._model_label: ui.label
         self._model_chev: ui.icon
         self._model_menu: ui.menu
+        self._title: ui.label
         self._model_names: dict[str, str] = {}  # model -> what the button shows
         self._model_details: dict[str, str] = {}
         self._mentions: ui.column
@@ -140,6 +163,9 @@ class ChatPane:
     def build(self) -> None:
         self._client = ui.context.client
         with ui.column().classes("pp-pane pp-chat"):
+            with ui.row().classes("pp-chat-head items-center no-wrap"):
+                self._title = ui.label("").classes("pp-chat-title")
+                self._menu_button()
             self._banner = ui.row().classes("pp-chat-banner items-center no-wrap")
             with self._banner:
                 self._banner_text = ui.label("").classes("pp-chat-banner-text")
@@ -147,8 +173,10 @@ class ChatPane:
                     "Retry", on_click=lambda: background_tasks.create(self.check_health())
                 ).props("flat dense no-caps size=sm")
             self._banner.set_visibility(False)
-            self._log = ui.column().classes("pp-chat-log")
-            self._render_log()
+            with ui.element("div").classes("pp-chat-logwrap"):
+                self._log = ui.column().classes("pp-chat-log")
+                self._render_log()
+                self._jump_buttons()
             with ui.column().classes("pp-chat-compose"):
                 self._mentions = ui.column().classes("pp-chat-mentions")
                 self._mentions.set_visibility(False)
@@ -171,7 +199,7 @@ class ChatPane:
                         self._input.on_value_change(lambda e: self._input_changed(e.value or ""))
                         self._model_button()
                         self._send = ui.button(
-                            icon="fa-solid fa-arrow-up", on_click=self.send_or_stop, color=None
+                            icon=ico("arrow-up"), on_click=self.send_or_stop, color=None
                         )
                         self._send.props("round unelevated dense").classes("pp-chat-send")
                 self._upload = ui.upload(
@@ -186,6 +214,7 @@ class ChatPane:
         ui.on("pp_open_url", lambda e: self._open_url(e.args))
         ui.timer(HEALTH_EVERY_S, lambda: background_tasks.create(self.check_health()))
         background_tasks.create(self.check_health())
+        self.prune_chats()
 
     # ---- provider state ------------------------------------------------------------------
 
@@ -196,6 +225,21 @@ class ChatPane:
     def refresh_names(self) -> None:
         """The profile name changed: show it on the user's messages."""
         self._render_log()
+
+    def _setting(self, key: str, default: object) -> object:
+        return self.config.get(key, default) if self.config else default
+
+    def chats_dir(self) -> Path:
+        """Where chats are saved (``ai.chats_folder``, else the vault's ``.paper-pile/chats``)."""
+        return chats_folder(self.vault.root, str(self._setting("ai.chats_folder", "") or ""))
+
+    def prune_chats(self) -> None:
+        """Move chats older than ``ai.keep_chats_days`` to the trash (never the open one)."""
+        days = int(str(self._setting("ai.keep_chats_days", 0) or 0))
+        old = [c.id for c in expired_chats(list_chats(self.chats_dir()), days, time.time())]
+        moved = delete_chats(self.vault, self.chats_dir(), [c for c in old if c != self._chat_id])
+        if moved:
+            log.info("moved %d old chats to the trash", moved)
 
     def reload_provider(self) -> None:
         """The AI settings changed (host / model): build the provider again."""
@@ -233,7 +277,7 @@ class ChatPane:
         self._model = ui.button(color=None).props("flat no-caps dense").classes("pp-chat-model")
         with self._model:
             self._model_label = ui.label("").classes("pp-chat-model-name")
-            self._model_chev = ui.icon("fa-solid fa-chevron-down").classes("pp-chat-model-chev")
+            self._model_chev = line_icon("chevron-down", "s").classes("pp-chat-model-chev")
             self._model_menu = ui.menu().props(
                 'anchor="top right" self="bottom right" :offset="[0, 8]"'
             )
@@ -241,10 +285,9 @@ class ChatPane:
         self._model_menu.on("before-show", lambda _e: self._build_model_menu())
         for event, icon, open_ in (("show", "up", True), ("hide", "down", False)):
             self._model_menu.on(event, lambda _e, i=icon, o=open_: self._model_open(i, o))
-        self._model.tooltip("Model")
 
     def _model_open(self, chevron: str, is_open: bool) -> None:
-        self._model_chev.props(f'name="fa-solid fa-chevron-{chevron}"')
+        set_icon(self._model_chev, f"chevron-{chevron}", prop="name")
         self._model.classes(
             add="pp-chat-model-open" if is_open else "",
             remove="" if is_open else "pp-chat-model-open",
@@ -271,7 +314,7 @@ class ChatPane:
                         if detail:
                             ui.label(detail).classes("pp-model-detail")
                     if model == current:
-                        ui.icon("fa-solid fa-check").classes("pp-model-check")
+                        line_icon("check", "s").classes("pp-model-check")
 
     def _model_changed(self, value: str | None) -> None:
         self._model_menu.close()
@@ -294,9 +337,135 @@ class ChatPane:
         if safe:
             webbrowser.open(safe)
 
+    # ---- the ⋮ menu: new chat, saved chats, AI settings ----------------------------------
+
+    def _menu_button(self) -> None:
+        button = icon_button("ellipsis-vertical", lambda: None, "Chats and settings")
+        button.classes("pp-chat-more-btn")
+        with button:
+            menu = ui.menu().props('anchor="bottom right" self="top right" :offset="[0, 6]"')
+            menu.classes("pp-chat-menu")
+        menu.on("before-show", lambda _e: self._build_chat_menu(menu))
+
+    def _build_chat_menu(self, menu: ui.menu) -> None:
+        busy = self._task is not None  # no switching while a reply streams in
+        chats = list_chats(self.chats_dir())
+        menu.clear()
+        with menu:
+            with ui.menu_item(on_click=lambda _e=None: self.new_chat()) as item:
+                line_icon("square-pen").classes("pp-menu-icon")
+                ui.label("New chat").classes("pp-menu-title")
+            if busy or not self.history:
+                item.props("disable")
+            ui.separator()
+            ui.label("Memories").classes("pp-menu-caption")
+            if not chats:
+                ui.label("No saved chats yet").classes("pp-muted pp-menu-empty")
+            for chat in chats[:RECENT_CHATS]:
+                self._chat_item(chat, menu, busy)
+            if len(chats) > RECENT_CHATS:
+                with ui.menu_item(auto_close=False):
+                    line_icon("history").classes("pp-menu-icon")
+                    ui.label(f"More chats ({len(chats) - RECENT_CHATS})").classes("pp-menu-title")
+                    line_icon("chevron-right", "s").classes("pp-menu-check")
+                    self._more_chats_menu(chats[RECENT_CHATS:], menu, busy)
+            ui.separator()
+            with ui.menu_item(on_click=lambda _e=None: self._open_settings()):
+                line_icon("settings").classes("pp-menu-icon")
+                ui.label("AI settings").classes("pp-menu-title")
+
+    def _chat_item(self, chat: SavedChat, root: ui.menu, busy: bool) -> None:
+        item = ui.menu_item(on_click=lambda _e=None, c=chat.id: self.open_chat(c))
+        item.classes("pp-chat-saved")
+        if busy:
+            item.props("disable")
+        with item:
+            ui.label(chat.title or "Untitled chat").classes("pp-menu-title")
+            if chat.id == self._chat_id:
+                line_icon("check", "s").classes("pp-menu-check")
+            remove = line_icon("trash-2", "s").classes("pp-chat-saved-del")
+            tip(remove, "Delete chat")
+            remove.on("click.stop", lambda _e, c=chat.id: self._delete_chat(c, root))
+
+    def _more_chats_menu(self, chats: list[SavedChat], root: ui.menu, busy: bool) -> None:
+        with ui.menu().props('anchor="top end" self="top start"').classes("pp-chat-menu"):
+            results = ui.column().classes("pp-chat-more")
+
+            def fill(query: str) -> None:
+                words = query.lower().split()
+                results.clear()
+                with results:
+                    for chat in chats:
+                        if all(w in chat.title.lower() for w in words):
+                            self._chat_item(chat, root, busy)
+
+            ui.input(placeholder="Search chats", on_change=lambda e: fill(e.value or "")).props(
+                "dense borderless autofocus"
+            ).classes("pp-chat-more-search")
+            fill("")
+
+    def new_chat(self) -> None:
+        """Start an empty chat (the current one is saved after every message)."""
+        if self._task is not None:
+            return
+        self.history = []
+        self._chat_id, self._created = new_chat_id(), time.time()
+        self._render_log()
+
+    def open_chat(self, chat_id: str) -> bool:
+        """Show a saved chat; False while a reply streams in (or when it cannot be read)."""
+        if self._task is not None:
+            return False
+        if chat_id == self._chat_id:
+            return True
+        chat = load_chat(self.chats_dir(), chat_id)
+        if chat is None:
+            ui.notify("That chat could not be read.", type="warning")
+            return False
+        self.history = list(chat.turns)
+        self._chat_id, self._created = chat.id, chat.created
+        self._render_log()
+        return True
+
+    @property
+    def chat_id(self) -> str:
+        return self._chat_id
+
+    def chats_deleted(self, chat_ids: set[str]) -> None:
+        """Settings moved chats to the trash: start afresh if the open one was among them."""
+        if self._chat_id in chat_ids and self._task is None:
+            self.history = []
+            self._chat_id, self._created = new_chat_id(), time.time()
+            self._render_log()
+
+    def _delete_chat(self, chat_id: str, root: ui.menu) -> None:
+        root.close()
+        try:
+            delete_chat(self.vault, self.chats_dir(), chat_id)
+        except OSError:
+            log.exception("could not delete chat %s", chat_id)
+            ui.notify("Could not delete the chat.", type="negative")
+            return
+        if chat_id == self._chat_id:
+            self.history = []
+            self._chat_id, self._created = new_chat_id(), time.time()
+            self._render_log()
+        ui.notify("Chat moved to the trash", timeout=1500, position="bottom")
+
+    def _save(self) -> None:
+        """Write the current chat out (nothing for an empty one)."""
+        if not any(t.text.strip() for t in self.history):
+            return
+        if not self._setting("ai.save_chats", True):
+            return
+        turns = list(self.history)
+        chat = SavedChat(self._chat_id, chat_title(turns), self._created, time.time(), turns)
+        save_chat(self.chats_dir(), chat)
+
     # ---- the message log -----------------------------------------------------------------
 
     def _render_log(self) -> None:
+        self._title.set_text(chat_title(self.history) or "New chat")
         self._log.clear()
         with self._log:
             if not self.history:
@@ -320,18 +489,32 @@ class ChatPane:
                 ui.label(turn.summary).classes("pp-muted pp-msg-ctx")
             if not turn.error and turn.text.strip():
                 with ui.row().classes("pp-msg-actions items-center"):
+                    ui.button(icon=ico("copy"), on_click=lambda t=turn: self._copy(t.text)).props(
+                        "flat dense size=xs"
+                    ).props('data-tip="Copy"')
                     ui.button(
-                        icon="fa-regular fa-copy", on_click=lambda t=turn: self._copy(t.text)
-                    ).props("flat dense size=xs").tooltip("Copy")
-                    ui.button(
-                        icon="fa-solid fa-file-circle-plus",
+                        icon=ico("file-plus"),
                         on_click=lambda t=turn: self._insert_reply(t.text),
-                    ).props("flat dense size=xs").tooltip("Insert into note")
+                    ).props("flat dense size=xs").props('data-tip="Insert into note"')
             self._typeset(body)
         return body
 
     def _typeset(self, body: ui.html) -> None:
         self._js(f"window.ppTypeset && window.ppTypeset(document.getElementById('c{body.id}'))")
+
+    def _jump_buttons(self) -> None:
+        """Floating to-the-top / to-the-bottom buttons; ``static/chat.js`` shows each only when
+        there is somewhere to go and scrolls in the page (no round trip)."""
+        log_id = f"c{self._log.id}"
+        with ui.column().classes("pp-chat-jumps"):
+            for where, icon, label in (
+                ("top", "arrow-up-to-line", "Scroll to top"),
+                ("bottom", "arrow-down-to-line", "Scroll to bottom"),
+            ):
+                button = ui.button(icon=ico(icon), color=None).props("round flat dense")
+                button.classes(f"pp-fab pp-chat-jump pp-chat-jump-{where}")
+                button.on("click", js_handler=f"() => window.ppChatJump('{log_id}', '{where}')")
+                tip(button, label)
 
     def _scroll_down(self) -> None:
         self._js(f"window.ppChatScroll && window.ppChatScroll('c{self._log.id}')")
@@ -355,6 +538,25 @@ class ChatPane:
             self._render_refs()
         else:
             ui.notify("Already attached", timeout=1200, position="bottom")
+
+    def ask(self, path: str, prompt: str, *, send: bool) -> None:
+        """The note menu's AI items: attach ``path`` and put ``prompt`` in the composer; send it
+        right away, or leave it for the user to finish (caret at the end)."""
+        if path not in self._notes and path in set(self.vault.walk_notes()):
+            self._notes.append(path)
+            self._render_refs()
+        self._input.set_value(prompt)
+        if send:
+            background_tasks.create(self.send())
+            return
+        self.focus_input()
+
+    def focus_input(self) -> None:
+        """Put the caret at the end of the composer."""
+        self._js(
+            "const t = document.querySelector('.pp-chat-input textarea');"
+            "if (t) { t.focus(); t.setSelectionRange(t.value.length, t.value.length); }"
+        )
 
     def _remove_note(self, path: str) -> None:
         if path in self._notes:
@@ -386,13 +588,15 @@ class ChatPane:
         with self._refs:
             if self._include_tabs:
                 n = len(self._open_paths())
-                self._ref_chip("tab", f"All open tabs ({n})", lambda: self._set_include_tabs(False))
+                self._ref_chip(
+                    "app-window", f"All open tabs ({n})", lambda: self._set_include_tabs(False)
+                )
             for path in self._notes:
                 name = path.rsplit("/", 1)[-1].rsplit(".", 1)[0]
-                self._ref_chip("description", name, lambda p=path: self._remove_note(p), path)
+                self._ref_chip("file-text", name, lambda p=path: self._remove_note(p), path)
             for ref in self._files:
                 label = f"{ref.name} · {ref.size()}"
-                self._ref_chip("attach_file", label, lambda r=ref: self._remove_file(r))
+                self._ref_chip("paperclip", label, lambda r=ref: self._remove_file(r))
 
     def _sync_strip(self) -> None:
         """The chip strip (and the divider under it) shows only while something is attached."""
@@ -403,19 +607,17 @@ class ChatPane:
     def _ref_chip(self, icon: str, label: str, remove: Callable[[], None], tip: str = "") -> None:
         row = ui.row().classes("pp-chat-ref items-center no-wrap")
         with row:
-            ui.icon(icon).classes("pp-chat-ref-icon")
+            line_icon(icon).classes("pp-chat-ref-icon")
             ui.label(label).classes("pp-chat-ref-text" + (" pp-chat-ref-note" if tip else ""))
-            ui.button(icon="fa-solid fa-xmark", on_click=lambda _e=None: remove()).props(
-                "flat round dense size=xs"
-            ).tooltip("Remove")
-        if tip:
-            row.tooltip(tip)
+            ui.button(icon=ico("x"), on_click=lambda _e=None: remove()).props(
+                "flat dense size=xs"
+            ).classes("pp-i-s")
 
     # ---- the + menu ----------------------------------------------------------------------
 
     def _plus_button(self) -> None:
-        self._plus = ui.button(icon="fa-solid fa-plus", color=None).props(
-            "round flat dense aria-label='Add context'"
+        self._plus = ui.button(icon=ico("plus"), color=None).props(
+            "flat round dense aria-label='Add context'"  # a circle, like the send button
         )
         self._plus.classes("pp-chat-plus")
         with self._plus:
@@ -427,8 +629,8 @@ class ChatPane:
             menu.classes("pp-chat-menu")
         self._plus.on_click(menu.toggle)  # only a click on the button opens it, never the card
         menu.on("before-show", lambda _e: self._build_menu(menu))
-        menu.on("show", lambda _e: self._plus.props('icon="fa-solid fa-xmark"'))
-        menu.on("hide", lambda _e: self._plus.props('icon="fa-solid fa-plus"'))
+        menu.on("show", lambda _e: set_icon(self._plus, "x"))
+        menu.on("hide", lambda _e: set_icon(self._plus, "plus"))
 
     def _build_menu(self, menu: ui.menu) -> None:
         menu.clear()
@@ -438,27 +640,27 @@ class ChatPane:
             for path in paths:
                 title = path.rsplit("/", 1)[-1].rsplit(".", 1)[0]
                 with ui.menu_item(on_click=lambda _e=None, p=path: self.add_notes([p])):
-                    ui.icon("fa-regular fa-file-lines").classes("pp-menu-icon")
+                    line_icon("file-text").classes("pp-menu-icon")
                     ui.label(title).classes("pp-menu-title")
                     if path == active:
-                        ui.icon("fa-regular fa-circle-check").classes("pp-menu-check")
+                        line_icon("circle-check").classes("pp-menu-check")
             with ui.menu_item(auto_close=False):
-                ui.icon("fa-solid fa-ellipsis").classes("pp-menu-icon")
+                line_icon("ellipsis").classes("pp-menu-icon")
                 ui.label("Add more notes").classes("pp-menu-title")
-                ui.icon("fa-solid fa-chevron-right").classes("pp-menu-check")
+                line_icon("chevron-right", "s").classes("pp-menu-check")
                 self._more_notes_menu(menu)
             ui.separator()
             with ui.menu_item(
                 on_click=lambda _e=None: background_tasks.create(self._from_screen())
             ):
-                ui.icon("fa-regular fa-square").classes("pp-menu-icon")
+                line_icon("text-select").classes("pp-menu-icon")
                 ui.label("Select from screen").classes("pp-menu-title")
             with ui.menu_item(on_click=lambda _e=None: self._upload.run_method("pickFiles")):
-                ui.icon("fa-solid fa-paperclip").classes("pp-menu-icon")
+                line_icon("paperclip").classes("pp-menu-icon")
                 ui.label("Upload files").classes("pp-menu-title")
             ui.separator()
             with ui.menu_item(auto_close=False):
-                ui.icon("fa-regular fa-window-restore").classes("pp-menu-icon")
+                line_icon("app-window").classes("pp-menu-icon")
                 ui.label("Include open tabs").classes("pp-menu-title")
                 ui.switch(
                     value=self._include_tabs, on_change=lambda e: self._set_include_tabs(e.value)
@@ -552,19 +754,18 @@ class ChatPane:
                 if picked is self._open:
                     row.classes("pp-chat-chip-open")
                 with row:
-                    ui.icon("fa-solid fa-quote-left").classes("pp-chat-ref-icon")
+                    line_icon("quote").classes("pp-chat-ref-icon")
                     text = f"[{picked.kind} · {picked.size()}]"
                     if picked.note:
                         note = html.escape(picked.note)
                         text = f'From <span class="pp-chat-ref-note">{note}</span>: {text}'
                     label = ui.html(text, sanitize=False)
                     label.classes("pp-chat-ref-text pp-chat-chip-text")
-                    label.tooltip("Show or hide the text")
                     label.on("click", lambda _e=None, s=picked: self._toggle_chip(s))
                     ui.button(
-                        icon="fa-solid fa-xmark",
+                        icon=ico("x"),
                         on_click=lambda _e=None, p=picked: self._remove_selection(p),
-                    ).props("flat round dense size=xs").tooltip("Remove")
+                    ).props("flat dense size=xs").classes("pp-i-s")
         if self._open is not None:  # the unfolded text sits under all the chips, above the divider
             with self._preview:
                 body = ui.html(render_html(source_view(self._open.text.strip())), sanitize=False)
@@ -588,9 +789,12 @@ class ChatPane:
             add="pp-chat-send-ready" if value.strip() else "",
             remove="" if value.strip() else "pp-chat-send-ready",
         )
-        if not value:  # cleared (sent): back to one line; typing is handled in chat.js
+        if (
+            not value
+        ):  # cleared (sent): fit again (by the placeholder); typing is handled in chat.js
             ui.run_javascript(
-                f"document.getElementById('c{self._card.id}')?.classList.remove('pp-chat-multi')"
+                f"(a => a && window.ppChatFit && window.ppChatFit(a))"
+                f"(document.querySelector('#c{self._card.id} textarea'))"
             )
         self._update_mentions(value)
 
@@ -659,8 +863,9 @@ class ChatPane:
             + [f"File {f.name}:\n{f.text.strip()}" for f in files]
         )
         self.history.append(Turn("user", text, label))
+        self._save()
         self._task = background_tasks.create(self._answer(text, attached, names))
-        self._send.props('icon="fa-solid fa-stop"')
+        set_icon(self._send, "square")
 
     async def _answer(
         self, question: str, attached: str = "", notes: list[str] | None = None
@@ -694,8 +899,9 @@ class ChatPane:
             self._fail(reply, "Something went wrong; see the log.")
         finally:
             self._task = None
-            self._send.props('icon="fa-solid fa-arrow-up"')
+            set_icon(self._send, "arrow-up")
             self._render_log()
+            self._save()
 
     def _fail(self, reply: Turn, message: str, *, unavailable: bool = False) -> None:
         reply.error, reply.text = True, message
@@ -706,9 +912,14 @@ class ChatPane:
             self._on_health(self.health)
 
     def _messages(self, context: Context, question: str) -> list[ChatMessage]:
-        past = [t for t in self.history[:-2] if not t.error and t.text.strip()][-HISTORY_TURNS:]
+        keep = int(str(self._setting("ai.history_turns", HISTORY_TURNS)))
+        past = [t for t in self.history[:-2] if not t.error and t.text.strip()]
+        past = past[-keep:] if keep > 0 else []
+        system = context.system_prompt(
+            self._user_name(), self._language(), system_instruction(self.config, self.vault.root)
+        )
         return [
-            ChatMessage("system", context.system_prompt(self._user_name(), self._language())),
+            ChatMessage("system", system),
             *(ChatMessage("user" if t.role == "user" else "assistant", t.text) for t in past),
             ChatMessage("user", question),
         ]
@@ -722,7 +933,8 @@ class ChatPane:
     async def _stream(self, reply: Turn, body: ui.html | None, messages: list[ChatMessage]) -> None:
         last = 0.0
         model = chat_model(self.provider, self.config)
-        async for piece in self.provider.chat(messages, model=model):
+        options = generation_options(self.config)
+        async for piece in self.provider.chat(messages, model=model, options=options):
             reply.text += piece
             now = time.monotonic()
             if body is not None and now - last >= RENDER_EVERY_S:

@@ -11,6 +11,7 @@ from paper_pile.core.settings import (
     hex_to_rgb,
     parse_value,
     sanitized,
+    stepped,
     validate,
 )
 
@@ -26,7 +27,7 @@ def test_every_setting_has_a_default_that_is_valid() -> None:
 
 
 def test_sections_cover_the_spec() -> None:
-    assert list(SECTIONS) == ["General", "Appearance", "Editor", "AI"]
+    assert list(SECTIONS) == ["General", "Appearance", "Editor", "Print", "AI"]
     keys = set(ALL)
     assert {"appearance.theme", "appearance.accent", "appearance.density"} <= keys
     assert {
@@ -36,6 +37,7 @@ def test_sections_cover_the_spec() -> None:
         "editor.word_wrap",
     } <= keys
     assert {"editor.tab_size", "editor.spell_check", "editor.default_mode"} <= keys
+    assert {"editor.page_view", "print.paper"} <= keys
     assert {"vault.templates_folder", "vault.daily_notes_folder"} <= keys
     assert {
         "ai.host",
@@ -44,7 +46,7 @@ def test_sections_cover_the_spec() -> None:
         "ai.context_budget",
         "paste.smart_paste",
     } <= keys
-    assert len(ACCENTS) == 8  # "6-8 preset palette"
+    assert len(ACCENTS) == 12  # the preset grid (2 rows of 6)
 
 
 @pytest.mark.parametrize(
@@ -53,6 +55,10 @@ def test_sections_cover_the_spec() -> None:
         ("appearance.theme", "dark", True, "dark"),
         ("appearance.theme", "purple", False, None),
         ("appearance.accent", "teal", True, "teal"),
+        ("appearance.accent", "Teal", True, "teal"),
+        ("appearance.accent", "#F97316", True, "#f97316"),
+        ("appearance.accent", "rgb(1, 2, 3)", True, "#010203"),
+        ("appearance.accent", "not a colour", False, None),
         ("editor.font_size", "16", True, 16),
         ("editor.font_size", 16, True, 16),
         ("editor.font_size", "7", False, None),
@@ -118,6 +124,7 @@ def test_sanitized_replaces_bad_values_with_defaults() -> None:
 
 def test_accent_colours() -> None:
     assert accent_colors("pink") == ACCENTS["pink"] and accent_colors("nope") == ACCENTS["blue"]
+    assert accent_colors("#000000") == ("#000000", "#595959")  # custom: lifted for dark
     assert hex_to_rgb("#3b82f6") == "59, 130, 246"
     for light, dark in ACCENTS.values():
         assert len(light) == 7 and len(dark) == 7
@@ -161,9 +168,32 @@ def test_language_is_a_known_code_and_defaults_to_english() -> None:
     assert sanitized({})["general.language"] == "en" and "en" in LANGUAGES
 
 
-def test_general_groups_language_paste_and_vault() -> None:
+def test_general_groups_language_paste_folders_daily() -> None:
     groups = [s.group for s in SECTIONS["General"]]
-    assert groups == ["Language", "Paste", "Vault", "Daily notes", "Daily notes", "Daily notes"]
+    assert groups == [
+        "Language",
+        "Paste",
+        "Images",
+        *["Daily notes"] * 4,
+        "Templates",
+        "Templates",
+    ]
+    assert "ai.chats_folder" not in {s.key for s in SECTIONS["General"]}  # it is under AI
+
+
+def test_folder_settings_allow_the_app_folders_only() -> None:
+    from paper_pile.core.settings import ALL, parse_value
+
+    images, chats = ALL["vault.images_folder"], ALL["ai.chats_folder"]
+    assert parse_value(images, ".image").value == ".image"
+    assert parse_value(images, "Pictures/2026/").value == "Pictures/2026"
+    assert not parse_value(images, ".trash").ok and not parse_value(images, "a/.hidden").ok
+    assert not parse_value(images, ".paper-pile").ok
+    assert parse_value(chats, "/data/chats/").value == "/data/chats"  # outside the vault: kept
+    assert parse_value(chats, "~/chats").value == "~/chats"
+    assert not parse_value(images, "/data/pics").value.startswith("/")  # images stay inside
+    tpl = ALL["vault.daily_notes_template"]
+    assert parse_value(tpl, ".template/Daily.md").ok
 
 
 def test_daily_note_settings_are_checked() -> None:
@@ -174,3 +204,32 @@ def test_daily_note_settings_are_checked() -> None:
     assert not parse_value(fmt, "YYYY-MM").ok and not parse_value(fmt, "").ok
     assert parse_value(tpl, "Templates/Daily.md").value == "Templates/Daily.md"
     assert parse_value(tpl, "").value == "" and not parse_value(tpl, "../x.md").ok
+
+
+def test_steps_stay_on_the_grid_and_within_limits() -> None:
+    size, height = ALL["editor.font_size"], ALL["editor.line_height"]
+    assert stepped(size, 14, 1) == 15
+    assert stepped(size, "14", -1) == 13
+    assert stepped(size, 40, 1) == 40
+    assert stepped(size, 8, -1) == 8
+    assert stepped(height, 1.6, 1) == 1.7
+    assert stepped(height, 1.65, -1) == 1.5  # snaps to the 0.1 grid first (1.65 -> 1.6)
+    assert stepped(height, 3.0, 1) == 3.0
+    assert stepped(height, "junk", 1) == 1.1
+
+
+def test_code_font_is_a_setting_with_a_default() -> None:
+    code = ALL["editor.code_font_family"]
+    assert sanitized({})["editor.code_font_family"] == DEFAULTS["editor"]["code_font_family"]
+    assert parse_value(code, "'Fira Code', monospace").ok
+    assert not parse_value(code, "").ok
+    assert not parse_value(code, "x; color: red").ok
+
+
+def test_page_view_is_off_lines_or_pages_and_reads_the_old_switch() -> None:
+    setting = ALL["editor.page_view"]
+    assert setting.choices == ("off", "lines", "pages")
+    assert parse_value(setting, True).value == "lines"  # before Real pages it was on / off
+    assert parse_value(setting, False).value == "off"
+    assert not parse_value(setting, "maybe").ok
+    assert sanitized({})["editor.page_view"] == "off"

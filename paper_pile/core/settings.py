@@ -10,22 +10,32 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any, Literal
 
-Kind = Literal["choice", "int", "float", "bool", "text", "url"]
+from paper_pile.core.colors import lighten, parse_color
+from paper_pile.core.vault import is_hidden_part
 
-# accent colour presets: name -> (light theme colour, dark theme colour)
+Kind = Literal["choice", "int", "float", "bool", "text", "longtext", "url", "color"]
+
+# accent colour presets (the grid in Settings): name -> (light theme colour, dark theme colour).
+# The accent may also be any colour code (see core/colors.py); it is then stored as #rrggbb.
 ACCENTS: dict[str, tuple[str, str]] = {
     "blue": ("#3b82f6", "#6ea8fe"),
-    "indigo": ("#6366f1", "#a5a8ff"),
-    "violet": ("#8b5cf6", "#b79cff"),
-    "pink": ("#ec4899", "#f59bc8"),
-    "red": ("#ef4444", "#ff8a8a"),
-    "orange": ("#f97316", "#ffb06b"),
-    "green": ("#16a34a", "#5fd98a"),
+    "sky": ("#0284c7", "#5cc4f5"),
     "teal": ("#0d9488", "#4fd1c5"),
+    "green": ("#16a34a", "#5fd98a"),
+    "lime": ("#65a30d", "#a3e05a"),
+    "amber": ("#d97706", "#fbbf47"),
+    "orange": ("#f97316", "#ffb06b"),
+    "red": ("#ef4444", "#ff8a8a"),
+    "pink": ("#ec4899", "#f59bc8"),
+    "violet": ("#8b5cf6", "#b79cff"),
+    "indigo": ("#6366f1", "#a5a8ff"),
+    "slate": ("#64748b", "#a3b1c6"),
 }
 THEMES = ("light", "dark", "system")
 DENSITIES = ("comfortable", "compact")
 MODES = ("live", "source")
+PAPER_SIZES = ("A4", "Letter")  # core/printdoc.py PAPERS
+PAGE_VIEWS = {"off": "Off", "lines": "Page lines", "pages": "Real pages"}  # value -> shown
 # editor fonts: (name shown, CSS font-family); any other CSS list can be typed in
 FONTS: tuple[tuple[str, str], ...] = (
     ("Monospace", "monospace"),
@@ -36,6 +46,17 @@ FONTS: tuple[tuple[str, str], ...] = (
     ("Book", "'Iowan Old Style', 'Palatino Linotype', Palatino, Georgia, serif"),
 )
 FONT_FAMILIES = tuple(css for _name, css in FONTS)
+# code fonts (code blocks, inline code, code in chat): installed fonts only, falling back to the
+# system monospace when one is missing; any other CSS list can be typed in
+CODE_FONTS: tuple[tuple[str, str], ...] = (
+    ("Monospace", "monospace"),
+    ("System mono", "ui-monospace, Menlo, Consolas, monospace"),
+    ("JetBrains Mono", "'JetBrains Mono', ui-monospace, monospace"),
+    ("Fira Code", "'Fira Code', ui-monospace, monospace"),
+    ("Cascadia Code", "'Cascadia Code', 'Cascadia Mono', Consolas, monospace"),
+    ("Source Code Pro", "'Source Code Pro', ui-monospace, monospace"),
+    ("DejaVu Sans Mono", "'DejaVu Sans Mono', monospace"),
+)
 # writing languages: code -> name (spell checking, and the language the AI answers in)
 LANGUAGES: dict[str, str] = {
     "en": "English",
@@ -51,6 +72,8 @@ LANGUAGES: dict[str, str] = {
     "ja": "日本語 (Japanese)",
 }
 
+MAX_LONGTEXT = 4000  # the system instruction
+
 
 @dataclass(frozen=True, slots=True)
 class Setting:
@@ -63,6 +86,7 @@ class Setting:
     help: str = ""
     placeholder: str = ""
     group: str = ""  # a heading shown above it inside its section
+    step: float | None = None  # numbers with a step get − / + buttons
 
 
 @dataclass(frozen=True, slots=True)
@@ -72,6 +96,15 @@ class Parsed:
     error: str = ""
 
 
+_CHATS_FOLDER = Setting(
+    "ai.chats_folder",
+    "Memories",
+    "text",
+    placeholder=".memory",
+    help="Saved AI chats",
+    group="Memories",
+)
+
 SECTIONS: dict[str, tuple[Setting, ...]] = {
     "General": (
         Setting(
@@ -79,30 +112,36 @@ SECTIONS: dict[str, tuple[Setting, ...]] = {
             "Writing language",
             "choice",
             tuple(LANGUAGES),
-            help="Spell checking and the language the AI answers in (the interface is English)",
+            help="Spell check and AI replies",
             group="Language",
         ),
         Setting(
             "paste.smart_paste",
             "Smart Paste",
             "bool",
-            help="Clean markdown from copied web pages and AI chats",
+            help="Tidy pasted web text",
             group="Paste",
         ),
         Setting(
-            "vault.templates_folder",
-            "Templates folder",
+            "vault.images_folder",
+            "Folder",
             "text",
-            placeholder="e.g. Templates",
-            help="Notes in it are offered by /template",
-            group="Vault",
+            placeholder=".image",
+            help="Pasted pictures",
+            group="Images",
         ),
         Setting(
             "vault.daily_notes_folder",
-            "New daily notes go in",
+            "Folder",
             "text",
-            placeholder="e.g. Daily",
-            help="The folder the calendar creates daily notes in",
+            placeholder=".daily-notes",
+            help="New daily notes",
+            group="Daily notes",
+        ),
+        Setting(
+            "vault.show_daily_notes",
+            "Show in file tree",
+            "bool",
             group="Daily notes",
         ),
         Setting(
@@ -110,44 +149,59 @@ SECTIONS: dict[str, tuple[Setting, ...]] = {
             "Date format",
             "text",
             placeholder="YYYY-MM-DD",
-            help="Names the note: YYYY MM DD ddd dddd MMM MMMM [text]; a / makes subfolders",
+            help="/ makes subfolders",
             group="Daily notes",
         ),
         Setting(
             "vault.daily_notes_template",
             "Template",
             "text",
-            placeholder="None",
-            help="A note copied into each new daily note; {{date}} {{date:dddd}} {{title}} work",
+            placeholder="e.g. .template/daily/Day.md",
+            help="Copied into new ones",
             group="Daily notes",
+        ),
+        Setting(
+            "vault.templates_folder",
+            "Folder",
+            "text",
+            placeholder=".template",
+            help="Used by /template",
+            group="Templates",
+        ),
+        Setting(
+            "vault.show_templates",
+            "Show in file tree",
+            "bool",
+            group="Templates",
         ),
     ),
     "Appearance": (
-        Setting("appearance.theme", "Theme", "choice", THEMES, help="System follows your desktop"),
+        Setting("appearance.theme", "Mode", "choice", THEMES, help="System follows the OS"),
         Setting(
             "appearance.accent",
             "Accent colour",
-            "choice",
+            "color",
             tuple(ACCENTS),
-            help="Used for links, bullets, callouts and highlights",
+            help="Links and highlights",
         ),
         Setting(
             "appearance.density",
             "Density",
             "choice",
             DENSITIES,
-            help="How much space the interface uses",
+            help="Interface spacing",
         ),
     ),
     "Editor": (
-        Setting("editor.font_family", "Font family", "text", help="Any CSS font-family list"),
+        Setting("editor.font_family", "Font family", "text", help="Any CSS font list"),
         Setting(
             "editor.font_size",
             "Font size (px)",
             "int",
             minimum=8,
             maximum=40,
-            help="Text size in the editor",
+            help="Editor text size",
+            step=1,
         ),
         Setting(
             "editor.line_height",
@@ -155,39 +209,75 @@ SECTIONS: dict[str, tuple[Setting, ...]] = {
             "float",
             minimum=1.0,
             maximum=3.0,
-            help="Space between lines, as a multiple of the text size",
+            help="× text size",
+            step=0.1,
+        ),
+        Setting(
+            "editor.code_font_family",
+            "Code font",
+            "text",
+            help="Code and inline code",
         ),
         Setting(
             "editor.word_wrap",
             "Wrap long lines",
             "bool",
-            help="Break long lines instead of scrolling sideways",
+            help="Wrap long lines",
         ),
         Setting(
             "editor.tab_size",
             "Tab size",
             "choice",
             ("2", "3", "4", "8"),
-            help="Width of a Tab in code blocks",
+            help="In code blocks",
         ),
         Setting(
             "editor.spell_check",
             "Check spelling",
             "bool",
-            help="Underline misspelled words while you write",
+            help="Underline misspellings",
         ),
         Setting(
             "editor.auto_title",
             "Title property from the note name",
             "bool",
-            help="Writes title: <name> into a note's properties on open; a rename updates it",
+            help="Adds title: to properties",
+        ),
+        Setting(
+            "editor.tidy_button",
+            "Tidy note button",
+            "bool",
+            help="Floating tidy button",
+        ),
+        Setting(
+            "editor.page_view",
+            "Page view",
+            "choice",
+            tuple(PAGE_VIEWS),
+            help="Pages as in the PDF",
         ),
         Setting(
             "editor.default_mode",
             "Starting mode",
             "choice",
             MODES,
-            help="Live preview or plain source, for a vault opened the first time",
+            help="For new vaults",
+        ),
+        Setting(
+            "editor.block_spacing",
+            "Blank lines around blocks",
+            "bool",
+            help="Around tables, images, lists",
+            group="Advanced",
+        ),
+    ),
+    "Print": (
+        Setting(
+            "print.paper",
+            "Paper size",
+            "choice",
+            PAPER_SIZES,
+            help="Page view and PDF",
         ),
     ),
     "AI": (
@@ -196,14 +286,13 @@ SECTIONS: dict[str, tuple[Setting, ...]] = {
             "Ollama address",
             "url",
             placeholder="http://localhost:11434",
-            help="Where the local Ollama server runs",
         ),
         Setting(
             "ai.model",
             "Chat model",
             "text",
             placeholder="gemma4:12b",
-            help="The model used by the chat and the AI commands",
+            help="Chat and AI commands",
         ),
         Setting("ai.embed_model", "Embedding model", "text", help="Not used yet"),
         Setting(
@@ -212,7 +301,93 @@ SECTIONS: dict[str, tuple[Setting, ...]] = {
             "int",
             minimum=500,
             maximum=200000,
-            help="How much of your notes the model may see per message",
+            help="Note text per message",
+        ),
+        Setting(
+            "ai.instructions",
+            "System instruction",
+            "longtext",
+            placeholder="e.g. Answer briefly. Use bullet points.",
+            help="Sent with every request",
+        ),
+        Setting(
+            "ai.instructions_from",
+            "System instruction from",
+            "choice",
+            ("text", "file"),
+        ),
+        Setting(
+            "ai.instructions_file",
+            "System instruction file",
+            "text",
+            placeholder="e.g. AI/instruction.md",
+        ),
+        Setting(
+            "ai.save_chats",
+            "Save chats",
+            "bool",
+            group="Memories",
+        ),
+        Setting(
+            "ai.keep_chats_days",
+            "Auto-delete after (days)",
+            "int",
+            minimum=0,
+            maximum=3650,
+            step=30,
+            help="0 = never",
+            group="Memories",
+        ),
+        _CHATS_FOLDER,
+        Setting(
+            "ai.temperature",
+            "Temperature",
+            "float",
+            minimum=0,
+            maximum=2,
+            step=0.1,
+            help="Low = focused, high = creative",
+            group="Advanced",
+        ),
+        Setting(
+            "ai.top_p",
+            "Top-p",
+            "float",
+            minimum=0.05,
+            maximum=1,
+            step=0.05,
+            help="Word variety",
+            group="Advanced",
+        ),
+        Setting(
+            "ai.num_ctx",
+            "Context window (tokens)",
+            "int",
+            minimum=0,
+            maximum=262144,
+            step=2048,
+            help="0 = model default",
+            group="Advanced",
+        ),
+        Setting(
+            "ai.history_turns",
+            "Chat history sent",
+            "int",
+            minimum=0,
+            maximum=50,
+            step=2,
+            help="Past messages per reply",
+            group="Advanced",
+        ),
+        Setting(
+            "ai.keep_alive",
+            "Keep model loaded (min)",
+            "int",
+            minimum=0,
+            maximum=1440,
+            step=5,
+            help="Faster replies, uses RAM",
+            group="Advanced",
         ),
     ),
 }
@@ -245,6 +420,22 @@ def get_nested(values: Mapping[str, Any], key: str, default: Any = None) -> Any:
     return node
 
 
+def stepped(setting: Setting, value: Any, direction: int) -> int | float:
+    """``value`` moved one ``setting.step`` up (+1) or down (-1), on the step grid and within the
+    setting's limits (what the − / + buttons do). An unreadable value starts from the minimum."""
+    step = setting.step or 1
+    try:
+        number = float(str(value).strip())
+    except ValueError:
+        number = setting.minimum if setting.minimum is not None else 0.0
+    moved = round(round(number / step) * step + direction * step, 6)
+    if setting.minimum is not None:
+        moved = max(moved, setting.minimum)
+    if setting.maximum is not None:
+        moved = min(moved, setting.maximum)
+    return int(round(moved)) if setting.kind == "int" else round(moved, 2)
+
+
 def parse_value(setting: Setting, raw: Any) -> Parsed:
     """Check ``raw`` (what a form field or a config file holds) against ``setting``."""
     kind = setting.kind
@@ -261,6 +452,8 @@ def parse_value(setting: Setting, raw: Any) -> Parsed:
         if (lo is not None and number < lo) or (hi is not None and number > hi):
             return Parsed(False, error=f"Between {lo:g} and {hi:g}")
         return Parsed(True, number)
+    if setting.key == "editor.page_view" and isinstance(raw, bool):
+        return Parsed(True, "lines" if raw else "off")  # before Real pages it was on / off
     text = str(raw if raw is not None else "").strip()
     if kind == "choice":
         if setting.key == "editor.tab_size":
@@ -272,12 +465,29 @@ def parse_value(setting: Setting, raw: Any) -> Parsed:
         return (
             Parsed(True, text) if text in setting.choices else Parsed(False, error="Not an option")
         )
+    if kind == "color":
+        if text.lower() in setting.choices:
+            return Parsed(True, text.lower())
+        color = parse_color(text)
+        return (
+            Parsed(True, color)
+            if color
+            else Parsed(False, error="A colour: #f97316, rgb(…), hsl(…)")
+        )
     if kind == "url":
         if not text:
             return Parsed(False, error="An address is needed")
         if not text.lower().startswith(("http://", "https://")) or " " in text:
             return Parsed(False, error="Start with http:// or https://")
         return Parsed(True, text.rstrip("/"))
+    if kind == "longtext":
+        if len(text) > MAX_LONGTEXT:
+            return Parsed(False, error=f"At most {MAX_LONGTEXT} characters")
+        return Parsed(True, text)
+    if setting.key == "ai.instructions_file" and text:
+        if not text.lower().endswith((".md", ".txt")) or any(ord(c) < 32 for c in text):
+            return Parsed(False, error="A .md or .txt file")
+        return Parsed(True, text)
     if setting.key == "vault.daily_notes_format":
         from paper_pile.core.daily import format_problem
 
@@ -285,21 +495,23 @@ def parse_value(setting: Setting, raw: Any) -> Parsed:
         return Parsed(False, error=problem) if problem else Parsed(True, text)
     if setting.key == "vault.daily_notes_template":
         path = text.strip("/")
-        if (
-            any(part in {"", ".", ".."} or part.startswith(".") for part in path.split("/"))
-            and path
+        if path and any(
+            part in {"", ".", ".."} or is_hidden_part(part, depth)
+            for depth, part in enumerate(path.split("/"))
         ):
             return Parsed(False, error="A note inside the vault")
         return Parsed(True, path)
+    if setting.key == "ai.chats_folder" and text.startswith(("/", "~")):
+        return Parsed(True, text.rstrip("/") or "/")  # memories may live outside the vault
     if setting.key.endswith("_folder"):
         folder = text.strip("/")
-        if (
-            any(part in {"", ".", ".."} or part.startswith(".") for part in folder.split("/"))
-            and folder
+        if folder and any(
+            part in {"", ".", ".."} or is_hidden_part(part, depth)
+            for depth, part in enumerate(folder.split("/"))
         ):
             return Parsed(False, error="A folder inside the vault")
         return Parsed(True, folder)
-    if setting.key in {"editor.font_family", "ai.model"} and not text:
+    if setting.key in {"editor.font_family", "editor.code_font_family", "ai.model"} and not text:
         return Parsed(False, error="Cannot be empty")
     if len(text) > 200 or any(c in text for c in "{};\n\r<>"):
         return Parsed(False, error="Contains characters that are not allowed")
@@ -346,9 +558,14 @@ def language_name(code: str) -> str:
     return m.group(1) if m else shown
 
 
-def accent_colors(name: str) -> tuple[str, str]:
-    """``(light, dark)`` colour of an accent preset (blue for an unknown name)."""
-    return ACCENTS.get(name, ACCENTS["blue"])
+def accent_colors(value: str) -> tuple[str, str]:
+    """``(light, dark)`` colour of an accent: a preset, or a colour code (lightened for dark).
+
+    Anything else falls back to blue."""
+    if value in ACCENTS:
+        return ACCENTS[value]
+    color = parse_color(value)
+    return (color, lighten(color)) if color else ACCENTS["blue"]
 
 
 def hex_to_rgb(color: str) -> str:

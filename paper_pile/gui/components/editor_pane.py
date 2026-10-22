@@ -29,7 +29,8 @@ from paper_pile.core import (
     commands_builtin,  # noqa: F401  (registers the slash commands)
 )
 from paper_pile.core.ai.context import EditorSnapshot, build_context
-from paper_pile.core.ai.factory import chat_model
+from paper_pile.core.ai.factory import chat_model, generation_options
+from paper_pile.core.ai.instructions import system_instruction
 from paper_pile.core.ai.provider import ChatMessage, Provider, ProviderError
 from paper_pile.core.buffer import NoteBuffer, Outcome, content_hash, find_recoverable
 from paper_pile.core.command_actions import TextChange, TextEdit, remove_range, resolve
@@ -43,7 +44,7 @@ from paper_pile.core.commands import (
     UnknownCommandError,
     groups_json,
 )
-from paper_pile.core.config import Config
+from paper_pile.core.config import Config, Scope
 from paper_pile.core.events import EventBus
 from paper_pile.core.index import Index
 from paper_pile.core.links import (
@@ -59,19 +60,27 @@ from paper_pile.core.paste import smart_paste
 from paper_pile.core.picker import search_notes
 from paper_pile.core.recovery import RecoveryEntry, RecoveryStore
 from paper_pile.core.rewrite import Edit, plan_rewrites
-from paper_pile.core.settings import language_name
+from paper_pile.core.settings import PAGE_VIEWS, get_nested, language_name, sanitized
 from paper_pile.core.snippets import Snippet, link_snippet
+from paper_pile.core.spacing import spaced_block
+from paper_pile.core.stats import word_count
 from paper_pile.core.tables import apply_op, table_extent
 from paper_pile.core.tabs import TabList
 from paper_pile.core.templates import render_template
 from paper_pile.core.textpos import codepoint_index, utf16_index
+from paper_pile.core.tidy import tidy
 from paper_pile.core.titles import note_name, retitle_edit, with_title
-from paper_pile.core.vault import Vault, VaultError, is_plain_text
+from paper_pile.core.vault import Vault, VaultError, is_note_name, is_plain_text
 from paper_pile.core.watcher import FsEvent
+from paper_pile.gui import printing
 from paper_pile.gui.components.backlinks import BacklinkItem, BacklinksPane
 from paper_pile.gui.components.editor import Editor, Mode
-from paper_pile.gui.components.tabs import TabBar
+from paper_pile.gui.components.note_actions import note_actions, pick_split_note
+from paper_pile.gui.components.note_menu import NoteMenu
+from paper_pile.gui.components.tabs import SplitTabs, TabBar
+from paper_pile.gui.icons import ico, icon_button
 from paper_pile.gui.theme import editor_options
+from paper_pile.gui.tips import tip
 
 log = logging.getLogger("paper_pile.editor_pane")
 
@@ -105,7 +114,12 @@ class EditorPane:
         on_command_used: Callable[[str], None] = lambda command_id: None,
         selection_changed: Callable[[str, str], None] = lambda text, path: None,
         add_note_to_chat: Callable[[str], None] = lambda path: None,
+        ask_chat: Callable[[str, str, bool], None] = lambda path, prompt, send: None,
+        open_tag: Callable[[str], None] = lambda tag: None,
+        on_stats: Callable[[int | None, int, int], None] = lambda words, line, col: None,
         block_to_chat: Callable[[str, str, str, str], None] = lambda kind, lang, text, path: None,
+        on_toggle_pane: Callable[[str], None] = lambda pane: None,
+        on_settings_changed: Callable[[set[str]], None] = lambda keys: None,
     ) -> None:
         self.vault = vault
         self.bus = bus
@@ -128,22 +142,58 @@ class EditorPane:
         self._ai_selection: dict[str, Any] | None = None  # set by Ctrl+J in the editor
         self._streams = 0
         self._table_lock = asyncio.Lock()  # table edits apply one after the other
+        self._insert_lock = asyncio.Lock()  # inserted blocks (images, embeds) too
+        self._awaiting_recovery: set[str] = set()  # notes with crash text not decided on yet
         self._on_command_used = on_command_used
         self._selection_changed = selection_changed
         self._add_note_to_chat = add_note_to_chat
+        self.ask_chat = ask_chat
+        self._open_tag = open_tag
+        self._on_stats = on_stats
+        self._caret = (1, 1)  # Ln, Col of the active note
         self._block_to_chat = block_to_chat
+        self._on_toggle_pane = on_toggle_pane
+        self._on_settings_changed = on_settings_changed
         self._reindex_handle: asyncio.TimerHandle | None = None
         self._backlinks: BacklinksPane
         self._timer: asyncio.TimerHandle | None = None
         self._failure_toasted = False
         self._rendered: tuple[tuple[int, str], ...] = ()
         self._banner_key: tuple[int, str] | None = None
-        self._rendered_active: int | None = None
+        self._rendered_active: object = None  # (active tab, split sides) last drawn
         self._tabbar: TabBar
+        # Split view: editor 0 is the main one, editor 1 the right side (shown while split).
+        # `_editor` is the one the user is in (its note is the active tab); `_shown` is which tab
+        # each editor has on screen.
+        self._editors: list[Editor] = []
         self._editor: Editor
-        self._empty: ui.label
+        self._slot = 0
+        self._shown: list[int | None] = [None, None]
+        self._split_open = False
+        self._side: ui.element
+        self._split_box: ui.element  # gets `pp-split-on` while split (shows the divider)
+        self._chips: list[ui.row] = []  # per side: the note's name (click: choose another) + ✕
+        self._chip_titles: list[ui.label] = []
+        self._tidy_buttons: list[ui.button] = []  # per side: floats above its name island
+        self.note_menu: NoteMenu
+        self._empty: ui.element  # shown while no tab is open; MainLayout fills it
         self._banner: ui.element
         self._host: ui.element  # holds dialogs and notifications
+
+    @property
+    def status_host(self) -> ui.element:
+        """Where the status bar goes: the right side of the footer under the editor."""
+        return self._backlinks.status_host
+
+    @property
+    def empty_host(self) -> ui.element:
+        """The centre of the editor area shown while no note is open (the start actions)."""
+        return self._empty
+
+    @property
+    def pane_toggles(self) -> dict[str, ui.button]:
+        """The left/right collapse buttons that live at the ends of the tab strip."""
+        return self._tabbar.toggles
 
     # ---- building ------------------------------------------------------------------------
 
@@ -155,46 +205,281 @@ class EditorPane:
                 on_close=lambda tab_id: self._spawn(self.close_tab(tab_id)),
                 on_move=self._move_tab,
                 on_add_to_chat=self._add_note_to_chat,
+                on_toggle_pane=self._on_toggle_pane,
+                on_activate_side=self._activate_side,
             )
             self._tabbar.build()
+            with self._tabbar.menu_host:
+                self.note_menu = NoteMenu(note_actions(self))
+                self.note_menu.build()
             self._banner = ui.row().classes("pp-banner items-center no-wrap")
             self._banner.set_visibility(False)
             with ui.element("div").classes("pp-editor-area"):
-                self._empty = ui.label("Open a note to start writing").classes("pp-muted pp-empty")
-                self._editor = Editor(
-                    mode=self.mode,
-                    link_target="python" if self._native else "window",
-                    options=editor_options(self._config),
-                    on_link=lambda e: self._on_link(e.args),
-                    on_wikilink=lambda e: self._on_wikilink(e.args),
-                    on_slash_query=lambda e: self._on_slash_query(e.args),
-                    on_slash_run=lambda e: self._spawn(self._on_slash_run(e.args)),
-                    on_table_op=lambda e: self._spawn(self._on_table_op(e.args)),
-                    on_paste=lambda e: self._on_paste(e.args),
-                    on_ai_selection=lambda e: self._on_ai_selection(e.args),
-                    on_selection=lambda e: self._on_selection(e.args),
-                    on_block_to_chat=lambda e: self._on_block_to_chat(e.args),
-                    on_image_saved=lambda e: self._on_image_saved(e.args),
-                    on_image_error=lambda e: self._toast(
-                        str(e.args.get("message", "")), error=True
-                    ),
-                    on_image_resize=lambda e: self._spawn(self._on_image_resize(e.args)),
-                    image_upload_url="/_pp/upload",
-                    on_change=lambda e: self._on_change(e.args),
-                    on_blur=lambda e: self._on_flush(e.args),
-                    on_save=lambda e: self._on_flush(e.args),
-                ).classes("pp-fill")
+                self._empty = ui.column().classes("pp-empty")
+                with ui.element("div").classes("pp-split") as self._split_box:
+                    for slot in (0, 1):
+                        if slot == 1:  # dragged by static/split.js; double-click: half and half
+                            ui.element("div").classes("pp-split-handle")
+                        pane = ui.element("div").classes("pp-split-pane")
+                        if slot == 1:
+                            self._side = pane
+                        with pane:
+                            self._editors.append(self._make_editor(slot).classes("pp-fill"))
+                            self._split_chip(slot)
+                            self._tidy_fab(slot)
+                self._side.set_visibility(False)
+                self._editor = self._editors[0]
                 self._editor.set_visibility(False)
             self._backlinks = BacklinksPane(
                 lambda path, line: self._spawn(self.open_link(path, line=line))
             )
             self._backlinks.build()
-        self._host = ui.element("div")
+        self._host = ui.element("div").classes("pp-host")  # dialogs + toasts; takes no space
         self.bus.subscribe("tree.open", lambda path: self._spawn(self.open(path)))
+        ui.on("pp_note_drop", lambda e: self._spawn(self._on_note_drop(e.args)))
         self.bus.subscribe("vault.created", lambda path: self._reindex_soon())
         self.bus.subscribe("vault.renamed", self._renamed_in_app)
         self.bus.subscribe("vault.deleted", lambda path, **_: self._on_deleted(path))
         ui.context.client.on_disconnect(self._on_disconnect)
+
+    def _make_editor(self, slot: int) -> Editor:
+        """One editor; both editors of a split report to the same handlers (``slot`` says which
+        one a text event came from, and focusing one makes it the active editor)."""
+        return Editor(
+            mode=self.mode,
+            link_target="python" if self._native else "window",
+            options=editor_options(self._config),
+            on_link=lambda e: self._on_link(e.args),
+            on_wikilink=lambda e: self._on_wikilink(e.args),
+            on_slash_query=lambda e: self._on_slash_query(e.args),
+            on_slash_run=lambda e: self._spawn(self._on_slash_run(e.args)),
+            on_table_op=lambda e: self._spawn(self._on_table_op(e.args)),
+            on_paste=lambda e: self._on_paste(e.args),
+            on_ai_selection=lambda e: self._on_ai_selection(e.args),
+            on_selection=lambda e: self._on_selection(e.args),
+            on_block_to_chat=lambda e: self._on_block_to_chat(e.args),
+            on_image_saved=lambda e: self._on_image_saved(e.args),
+            on_image_error=lambda e: self._toast(str(e.args.get("message", "")), error=True),
+            on_image_resize=lambda e: self._spawn(self._on_image_resize(e.args)),
+            image_upload_url="/_pp/upload",
+            on_change=lambda e: self._on_change(e.args, slot),
+            on_blur=lambda e: self._on_flush(e.args, slot),
+            on_save=lambda e: self._on_flush(e.args, slot),
+            on_focus=lambda e: self._focused(slot),
+            on_tag=lambda e: self._open_tag(str(e.args.get("tag", ""))),
+            on_caret=lambda e: self._on_caret(e.args),
+            on_print_layout=lambda e: self._on_print_layout(e.args, slot),
+            on_page_break=lambda e: self._spawn(self._on_page_break(e.args)),
+        )
+
+    # ---- split view ----------------------------------------------------------------------
+
+    @property
+    def split_open(self) -> bool:
+        return self._split_open
+
+    def _other(self) -> Editor | None:
+        """The editor the user is not in, while the view is split."""
+        return self._editors[1 - self._slot] if self._split_open else None
+
+    def _editor_for(self, tab_id: int) -> Editor:
+        """The editor to apply a change to tab ``tab_id`` in: the one showing it (the active one
+        first); else the active one (it holds the tab's parked state, if any)."""
+        if self._shown[self._slot] == tab_id or not self._split_open:
+            return self._editor
+        other = self._other()
+        if other is not None and self._shown[1 - self._slot] == tab_id:
+            return other
+        return self._editor
+
+    async def _live_text(self, tab_id: int | None) -> str | None:
+        """The freshest text of tab ``tab_id`` from the editor showing it (the browser may hold
+        keystrokes not reported yet). ``None`` when no editor shows it: callers then keep the
+        buffer's text. The editor itself checks that it still shows that doc."""
+        if tab_id is None:
+            return None
+        for slot in (self._slot, 1 - self._slot):
+            if self._shown[slot] == tab_id and (slot == 0 or self._split_open):
+                return await self._editors[slot].get_text(tab_id)
+        return None
+
+    def _mirror(self, tab_id: int, text: str, source: int) -> None:
+        """Tab ``tab_id`` changed in editor ``source``: the other editor follows (it ignores notes
+        it has never shown)."""
+        if self._split_open:
+            self._editors[1 - source].sync_text(tab_id, text)
+
+    def _split_chip(self, slot: int) -> None:
+        """The floating name of the note in one side of the split: click it to show another
+        note there, ✕ to close that side."""
+        with ui.row().classes("pp-split-head items-center no-wrap") as chip:
+            title = ui.label("").classes("pp-split-title")
+            title.on("click", lambda _e: self._spawn(self.choose_for(slot)))
+            tip(title, "Show another note here")
+            icon_button("x", lambda: self.close_side(slot), "Close this side", size="m")
+        self._chips.append(chip)
+        self._chip_titles.append(title)
+        chip.set_visibility(False)
+
+    def _tidy_fab(self, slot: int) -> None:
+        """A floating button that tidies the note on this side (``core/tidy.py``): bottom right
+        of the editor, or just above the side's name island in split view (Settings → Editor →
+        "Tidy note button")."""
+
+        def tidy() -> None:
+            self._spawn(self.tidy_side(slot))
+
+        button = ui.button(icon=ico("brush-cleaning"), on_click=tidy, color=None)
+        button.props("round flat dense")
+        button.classes("pp-fab pp-tidy-fab")
+        tip(button, "Tidy note (Shift+Alt+F)")
+        button.set_visibility(False)
+        self._tidy_buttons.append(button)
+
+    def show_tidy_buttons(self) -> None:
+        """Each side's tidy button shows for a markdown note, when the setting is on."""
+        on = bool(self._config.get("editor.tidy_button", True))
+        for slot, button in enumerate(self._tidy_buttons):
+            tab = next((t for t in self.tabs.tabs if t.id == self._shown[slot]), None)
+            shown = slot == 0 or self._split_open
+            button.set_visibility(on and shown and tab is not None and not is_plain_text(tab.path))
+
+    def toggle_split(self) -> None:
+        if self._split_open:
+            self.close_split()
+        else:
+            self._spawn(self.split_right())
+
+    async def split_right(self) -> None:
+        """A second editor on the right, on a note the user picks (an open tab or any note)."""
+        if self.tabs.active is None or self._split_open:
+            return
+        path = await pick_split_note(self, "Open on the right")
+        if path is None or self._split_open:
+            return
+        await self._open_split(path)
+
+    async def open_in_split(self, path: str) -> None:
+        """Show ``path`` on the right side of the split (opening the split if needed)."""
+        if self._split_open:
+            await self._show_in(1, path)
+        elif self.tabs.active is None:
+            await self.open(path)  # nothing to split from: just open it
+        else:
+            await self._open_split(path)
+
+    async def _open_split(self, path: str) -> None:
+        self._split_open = True
+        self._side.set_visibility(True)
+        self._split_box.classes("pp-split-on")
+        side = self._editors[1]
+        side.set_mode(self.mode)
+        side.set_theme("dark" if self.theme_name == "dark" else "light")
+        await self._show_in(1, path)
+
+    async def choose_for(self, slot: int) -> None:
+        """Show another note in one side of the split."""
+        path = await pick_split_note(self, "Show here")
+        if path is not None and self._split_open:
+            await self._show_in(slot, path)
+
+    async def _show_in(self, slot: int, path: str) -> None:
+        """Open ``path`` in editor ``slot`` (its tab if it has one) and make that side active."""
+        self._slot, self._editor = slot, self._editors[slot]
+        tab = self.tabs.find(path)
+        if tab is not None and tab.id in self.buffers:
+            self._activate(tab.id)
+        else:
+            await self.open(path)
+        self._show_split_titles()
+
+    def close_side(self, slot: int) -> None:
+        """Close one side of the split; the other side's note stays."""
+        if self._split_open:
+            self._focused(1 - slot)
+            self.close_split()
+
+    def close_split(self) -> None:
+        """Back to one editor, keeping the note of the side the user was in."""
+        if not self._split_open:
+            return
+        keep = self._shown[self._slot]
+        main, side = self._editors
+        for tab_id in {t for t in self._shown if t is not None}:
+            buf = self.buffers.get(tab_id)
+            if buf is not None:
+                self._save_buffer(buf, refresh=False)
+        self._split_open = False
+        self._side.set_visibility(False)
+        self._split_box.classes(remove="pp-split-on")
+        for chip in self._chips:
+            chip.set_visibility(False)
+        for tab in self.tabs.tabs:
+            side.close_doc(tab.id)  # its parked states would go stale while it is hidden
+        self._shown[1] = None
+        self._slot, self._editor = 0, main
+        if keep is not None and keep in self.buffers and self._shown[0] != keep:
+            self._shown[0] = keep
+            main.show_doc(keep, self.buffers[keep].text, self.buffers[keep].path)
+        main.focus()
+        self._refresh()
+
+    def _activate_side(self, tab_id: int, side: int) -> None:
+        """A tab clicked while split: show it on the side whose tab row it is in."""
+        tab = next((t for t in self.tabs.tabs if t.id == tab_id), None)
+        if tab is not None and self._split_open:
+            self._spawn(self._show_in(side, tab.path))
+        elif tab is not None:
+            self._activate(tab_id)
+
+    async def _on_note_drop(self, args: dict[str, Any]) -> None:
+        """A note dragged from the file tree or a tab onto an editor (``static/notedrop.js``):
+        open it on that side; dropped on the right half of a single editor: in a split."""
+        path = str(args.get("path") or "")
+        if not path and args.get("doc") is not None:
+            tab = next((t for t in self.tabs.tabs if str(t.id) == str(args["doc"])), None)
+            path = tab.path if tab else ""
+        if not path or not is_note_name(path) or not self.vault.exists(path):
+            return
+        if self._split_open:
+            await self._show_in(1 if int(args.get("slot", 0)) == 1 else 0, path)
+        elif args.get("split"):
+            await self.open_in_split(path)
+        else:
+            await self.open(path)
+
+    def _split_tabs(self) -> SplitTabs | None:
+        if not self._split_open:
+            return None
+        return SplitTabs(self._shown[0], self._shown[1], self._slot)
+
+    def _focused(self, slot: int) -> None:
+        """The user clicked into editor ``slot``: its note becomes the active tab."""
+        if slot == self._slot or not self._split_open:
+            return
+        self._slot, self._editor = slot, self._editors[slot]
+        self._show_split_titles()
+        tab_id = self._shown[slot]
+        if tab_id is None or tab_id == self.tabs.active or tab_id not in self.buffers:
+            self._refresh()  # the tab row marks the side being typed in
+            return
+        self.tabs.activate(tab_id)
+        self.refresh_links()
+        self.refresh_backlinks()
+        self._refresh()
+        self._notify_tabs()
+
+    def _show_split_titles(self) -> None:
+        """Each side's chip names its note; the side being typed in is highlighted."""
+        for slot, (chip, title) in enumerate(zip(self._chips, self._chip_titles, strict=True)):
+            tab = next((t for t in self.tabs.tabs if t.id == self._shown[slot]), None)
+            title.set_text(note_name(tab.path) if tab else "")
+            chip.set_visibility(self._split_open)
+            if slot == self._slot:
+                chip.classes("pp-split-head-active")
+            else:
+                chip.classes(remove="pp-split-head-active")
+        self.show_tidy_buttons()
 
     def start(self, paths: list[str], active: str | None) -> None:
         """Reopen the tabs of the last session, then offer any crash recovery."""
@@ -213,6 +498,10 @@ class EditorPane:
     # ---- opening, activating, closing tabs -----------------------------------------------
 
     async def _restore(self, paths: list[str], active: str | None) -> None:
+        # Crash leftovers are read before any tab opens: opening a note can write its own
+        # recovery entry (auto-title), which must neither be mistaken for a crash nor overwrite one.
+        entries = find_recoverable(self.vault, self.recovery)
+        self._awaiting_recovery = {entry.path for entry in entries}
         if self.index is not None:
             await asyncio.to_thread(self.index.sync)  # backlinks need it before the first tab
         for path in paths:
@@ -224,7 +513,7 @@ class EditorPane:
             self._activate(target.id)
         else:
             self._notify_tabs()
-        entries = find_recoverable(self.vault, self.recovery)
+        self._awaiting_recovery = set()
         if entries:
             self._ask_recovery(entries, then_open=None)
 
@@ -255,7 +544,14 @@ class EditorPane:
             self._toast(str(exc), error=True)  # the tabs that are open stay as they are
             return
         auto_title = self._config.get("editor.auto_title", True) if self._config else True
-        if auto_title and recovered is None and path.lower().endswith(".md"):
+        waiting = path in self._awaiting_recovery  # its crash text must stay as it is
+        if (
+            auto_title
+            and recovered is None
+            and not waiting
+            and path.lower().endswith(".md")
+            and not self._shaped_by_template(path)
+        ):
             titled = with_title(buffer.text, note_name(path))  # the note's name as its title
             if titled is not None:
                 buffer.set_text(titled)  # dirty: the autosave below writes it
@@ -265,6 +561,18 @@ class EditorPane:
             self._activate(tab.id)
         if buffer.dirty:  # restored text: the editor reports no change for it, so schedule a save
             self._schedule_save(AUTOSAVE_AFTER_CHANGE_S)
+
+    def _shaped_by_template(self, path: str) -> bool:
+        """Daily notes look like their template and templates are copied into other notes: neither
+        gets the automatic ``title:`` property (a folder setting of "" = the vault root counts
+        as none)."""
+        if self._config is None:
+            return False
+        for key in ("vault.daily_notes_folder", "vault.templates_folder"):
+            folder = str(self._config.get(key, "") or "").strip().strip("/")
+            if folder and path.startswith(folder + "/"):
+                return True
+        return False
 
     def _differs_from_disk(self, entry: RecoveryEntry) -> bool:
         try:
@@ -278,6 +586,7 @@ class EditorPane:
         self._editor.close_doc(tab_id)  # drop its parked state so the new text is what shows
         if tab_id == self.tabs.active:
             self._editor.set_text(text, tab_id, self.buffers[tab_id].path)
+        self._mirror(tab_id, text, self._slot)
         self._schedule_save(AUTOSAVE_AFTER_CHANGE_S)
         self._refresh()
 
@@ -286,9 +595,13 @@ class EditorPane:
         if previous is not None and previous != tab_id and previous in self.buffers:
             self._save_buffer(self.buffers[previous])  # leaving a tab saves it
         self.tabs.activate(tab_id)
+        self._caret = (1, 1)  # until the editor reports where the caret is in this note
         self._empty.set_visibility(False)
-        self._editor.set_visibility(True)
+        self._editors[0].set_visibility(True)
         self._editor.show_doc(tab_id, self.buffers[tab_id].text, self.buffers[tab_id].path)
+        self._shown[self._slot] = tab_id
+        if self._split_open:
+            self._show_split_titles()
         self._editor.focus()
         self.refresh_links()
         self.refresh_backlinks()
@@ -299,17 +612,56 @@ class EditorPane:
         """``"light"`` or ``"dark"``: the editor, its code colours and diagrams follow."""
         if name in {"light", "dark"}:
             self.theme_name = name
-            self._editor.set_theme("dark" if name == "dark" else "light")
+            for editor in self._editors:
+                editor.set_theme("dark" if name == "dark" else "light")
 
     def set_options(self, options: dict[str, Any]) -> None:
-        self._editor.set_options(options)
+        for editor in self._editors:
+            editor.set_options(options)
+        self.note_menu.set_page_view(bool(options.get("pageView")))
+
+    # ---- page view (PLAN §4.17) ---------------------------------------------------------
+
+    def page_view_on(self) -> bool:
+        return sanitized(self._config.values if self._config else {})["editor.page_view"] != "off"
+
+    def toggle_page_view(self) -> None:
+        """The ⋯ menu's Page view: on in the style used last (Page lines first) or off. The same
+        setting as Settings → Editor → Page view, in the layer that sets it now (so the change is
+        not hidden by the other layer)."""
+        if self._config is None:
+            return
+        key = "editor.page_view"
+        in_vault = get_nested(self._config.layer("vault"), key) is not None
+        scope: Scope = "vault" if in_vault else "global"
+        last = str(self._config.get("editor.page_view_last", "lines"))
+        style = last if last in PAGE_VIEWS and last != "off" else "lines"
+        self._config.set(key, "off" if self.page_view_on() else style, scope)
+        try:
+            self._config.save(scope)
+        except OSError:
+            log.exception("could not save the settings")
+            self._toast("Could not save the settings.", error=True)
+        self._on_settings_changed({key})
+
+    def _on_print_layout(self, args: dict[str, Any], slot: int) -> None:
+        """Page view wants the pages of the text it shows: render its print page."""
+        shown = self._shown[slot] if slot == 0 or self._split_open else None
+        tab = next((t for t in self.tabs.tabs if t.id == args.get("docId") == shown), None)
+        if tab is None or is_plain_text(tab.path):
+            return  # a hidden editor, or a note that is not markdown: no pages
+        html = printing.build_print_page(
+            self.vault, self._config, tab.path, str(args.get("text", "")), note_name(tab.path)
+        )
+        self._editors[slot].print_layout_ready(int(args.get("seq", 0)), printing.store(html))
 
     def toggle_mode(self) -> None:
         """Live Preview <-> Source. Same text and undo history; only the rendering changes."""
         if self._active_is_plain():
             return  # a .txt note is always plain: there is nothing to toggle
         self.mode = "source" if self.mode == "live" else "live"
-        self._editor.set_mode(self.mode)
+        for editor in self._editors:
+            editor.set_mode(self.mode)
         self._on_mode_changed(self.mode)
 
     def close_active(self) -> None:
@@ -323,7 +675,7 @@ class EditorPane:
             return
         if tab_id == self.tabs.active:
             self._cancel_timer()
-            text = await self._editor.get_text()
+            text = await self._live_text(tab_id)
             if text is not None:
                 buf.set_text(text)
         if not buf.save():
@@ -342,6 +694,14 @@ class EditorPane:
 
     def _drop_tab(self, tab_id: int) -> None:
         """Remove a tab (its buffer is already saved or deliberately discarded)."""
+        if self._split_open and tab_id in self._shown:
+            # one side showed the closed tab: back to one editor, on the other side's note
+            self._slot = 1 - self._shown.index(tab_id) if self._shown.count(tab_id) == 1 else 0
+            self._editor = self._editors[self._slot]
+            survivor = self._shown[self._slot]
+            if survivor is not None and survivor != tab_id and survivor in self.buffers:
+                self.tabs.activate(survivor)
+            self.close_split()
         was_active = tab_id == self.tabs.active
         self.buffers.pop(tab_id, None)
         next_active = self.tabs.close(tab_id)
@@ -350,6 +710,7 @@ class EditorPane:
         elif next_active is None:
             self._editor.set_visibility(False)
             self._empty.set_visibility(True)
+            self._shown[0] = None
         self._editor.close_doc(tab_id)  # only now: the closed tab's state must not be parked again
         self._refresh()
         self._notify_tabs()
@@ -366,24 +727,27 @@ class EditorPane:
 
     # ---- events from the editor ----------------------------------------------------------
 
-    def _on_change(self, args: dict[str, Any]) -> None:
+    def _on_change(self, args: dict[str, Any], slot: int = 0) -> None:
         tab_id = int(args.get("docId", -1))
         buf = self.buffers.get(tab_id)
         if buf is None:
             return  # a late event from a tab that has since been closed
         buf.set_text(str(args["text"]))
+        self._mirror(tab_id, buf.text, slot)
         if tab_id == self.tabs.active:
             self._schedule_save(AUTOSAVE_AFTER_CHANGE_S)
         else:  # the editor flushed a tab we just left: save it right away
             self._save_buffer(buf)
         self._refresh()
 
-    def _on_flush(self, args: dict[str, Any]) -> None:
+    def _on_flush(self, args: dict[str, Any], slot: int = 0) -> None:
         """Blur / Ctrl+S: take the text and save right now."""
-        buf = self.buffers.get(int(args.get("docId", -1)))
+        tab_id = int(args.get("docId", -1))
+        buf = self.buffers.get(tab_id)
         if buf is None:
             return
         buf.set_text(str(args["text"]))
+        self._mirror(tab_id, buf.text, slot)
         self._save_buffer(buf)
         self._refresh()
 
@@ -422,7 +786,7 @@ class EditorPane:
         path = self._active_path()
         if tab_id is None or path is None or args.get("docId") != tab_id:
             return
-        text = await self._editor.get_text()  # the browser may hold keystrokes we have not seen
+        text = await self._live_text(tab_id)  # the browser may hold keystrokes we have not seen
         if text is None:
             return
         start = codepoint_index(text, int(args["from"]))
@@ -454,6 +818,22 @@ class EditorPane:
             self._open_picker(action, path)
         elif isinstance(action, StreamInsert):
             await self._run_stream(action, tab_id, text, start, end, selection)
+
+    async def _on_page_break(self, args: dict[str, Any]) -> None:
+        """Ctrl+Enter: a page break at the caret (in place of a selection), as ``/page break``."""
+        tab_id = self.tabs.active
+        path = self._active_path()
+        if tab_id is None or path is None or args.get("docId") != tab_id or is_plain_text(path):
+            return
+        text = await self._live_text(tab_id)
+        if text is None:
+            return
+        start = codepoint_index(text, int(args["from"]))
+        end = codepoint_index(text, int(args["to"]))
+        ctx = CommandContext(path, text, start, vault=self.vault, config=self._config, end=end)
+        edit = resolve(REGISTRY.run("page-break", ctx), text, start, end)
+        if edit is not None:
+            await self._apply_edit(tab_id, text, edit)
 
     # ---- the note picker (link to note, embed note, templates) ---------------------------
 
@@ -529,7 +909,10 @@ class EditorPane:
             text = render_template(body, title=stem, now=datetime.now())
         else:
             link = f"[[{wikilink_to(picked, source, notes)}]]"
-            text = "!" + link if action.command_id == "embed" else link
+            if action.command_id == "embed":  # an embed is a block: its own lines
+                self._spawn(self._insert_block("!" + link))
+                return
+            text = link
         self._editor.insert_at_cursor(text)
 
     def _on_paste(self, args: dict[str, Any]) -> None:
@@ -563,7 +946,7 @@ class EditorPane:
         path = self._active_path()
         if path is None:
             return EditorSnapshot()
-        fresh = await self._editor.get_text()
+        fresh = await self._live_text(self.tabs.active)
         text = fresh if fresh is not None else self.buffers[self.tabs.active or 0].text
         picked = await self._editor.get_selection()
         tabs = [(b.path, b.text) for b in self.buffers.values()]
@@ -591,16 +974,34 @@ class EditorPane:
             self._toast(str(exc), error=True)
             return
         width = args.get("width")
-        self._editor.insert_at_cursor(
-            assets.image_markdown(ref, width if isinstance(width, int) else None)
-        )
+        markdown = assets.image_markdown(ref, width if isinstance(width, int) else None)
+        self._spawn(self._insert_block(markdown))
+
+    async def _insert_block(self, body: str) -> None:
+        """Insert a block (image, embed) at the caret on lines of its own, with empty lines
+        around it when "Blank lines around blocks" is on (``core/spacing.py``)."""
+        async with self._insert_lock:  # several dropped images: one after the other
+            tab_id = self.tabs.active
+            text = await self._live_text(tab_id)
+            selection = await self._editor_for(tab_id).get_selection() if tab_id else None
+            if tab_id is None or text is None or selection is None:
+                self._editor.insert_at_cursor(body)
+                return
+            start = codepoint_index(text, selection[1])
+            end = codepoint_index(text, selection[2])
+            spacing = bool(self._config.get("editor.block_spacing", True)) if self._config else True
+            insert, at = spaced_block(text, start, end, body, blank_lines=spacing)
+            caret = start + at + len(body)
+            edit = TextEdit((TextChange(start, end, insert),), caret)
+            if not await self._apply_edit(tab_id, text, edit):
+                self._editor.insert_at_cursor(body)
 
     async def _on_image_resize(self, args: dict[str, Any]) -> None:
         """The user dragged an image's corner: rewrite only the ``|width`` in its markdown."""
         tab_id = self.tabs.active
         if tab_id is None or args.get("docId") != tab_id:
             return
-        text = await self._editor.get_text()
+        text = await self._live_text(tab_id)
         if text is None:
             return
         start = codepoint_index(text, int(args["from"]))
@@ -618,7 +1019,7 @@ class EditorPane:
             op = args.get("op")
             if tab_id is None or args.get("docId") != tab_id or not isinstance(op, dict):
                 return
-            text = await self._editor.get_text()
+            text = await self._live_text(tab_id)
             if text is None:
                 return
             start = codepoint_index(text, int(args["from"]))
@@ -737,7 +1138,13 @@ class EditorPane:
         )
         messages = [
             ChatMessage(
-                "system", context.system_prompt(self._user_name(), self._language()) + rules
+                "system",
+                context.system_prompt(
+                    self._user_name(),
+                    self._language(),
+                    system_instruction(self._config, self.vault.root),
+                )
+                + rules,
             ),
             ChatMessage("user", user),
         ]
@@ -758,20 +1165,22 @@ class EditorPane:
         pending = ""
         last = time.monotonic()
         live = not spec.replace_selection
+        editor = self._editor  # the answer goes where it was asked for, even if focus moves
         try:
             if live:
-                await self._editor.stream_begin(stream_id, utf16_index(body_text, anchor))
-                if spec.lead and not await self._editor.stream_append(stream_id, spec.lead):
+                await editor.stream_begin(stream_id, utf16_index(body_text, anchor))
+                if spec.lead and not await editor.stream_append(stream_id, spec.lead):
                     return
-            async for piece in provider.chat(messages, model=chat_model(provider, self._config)):
+            model, options = chat_model(provider, self._config), generation_options(self._config)
+            async for piece in provider.chat(messages, model=model, options=options):
                 collected += piece
                 pending += piece
                 if live and time.monotonic() - last >= STREAM_FLUSH_S:
-                    if not await self._editor.stream_append(stream_id, pending):
+                    if not await editor.stream_append(stream_id, pending):
                         return  # another note was opened: the answer stops here
                     pending, last = "", time.monotonic()
             if live and pending:
-                await self._editor.stream_append(stream_id, pending)
+                await editor.stream_append(stream_id, pending)
             elif spec.replace_selection and selection:
                 await self._replace_selection(tab_id, selected, collected.strip("\n"), selection[0])
         except ProviderError as exc:
@@ -780,13 +1189,13 @@ class EditorPane:
             finished = True
             note.dismiss()
             if live:
-                self._editor.stream_end(stream_id)
+                editor.stream_end(stream_id)
 
     async def _replace_selection(self, tab_id: int, original: str, result: str, start: int) -> None:
         """Replace the selected text by the AI's version, as one undo step."""
         if not result.strip():
             return
-        text = await self._editor.get_text()
+        text = await self._live_text(tab_id)
         if text is None or text[start : start + len(original)] != original:
             self._toast(
                 "The text changed while the AI was writing; nothing was replaced.", error=True
@@ -811,7 +1220,7 @@ class EditorPane:
             for c in edit.changes
         ]
         cursor = utf16_index(after, edit.cursor) if move_caret else None
-        if not await self._editor.apply_changes(tab_id, changes, before, cursor):
+        if not await self._editor_for(tab_id).apply_changes(tab_id, changes, before, cursor):
             return False
         self.buffers[tab_id].set_text(after)
         self._schedule_save(AUTOSAVE_AFTER_CHANGE_S)
@@ -925,7 +1334,9 @@ class EditorPane:
 
     def refresh_links(self) -> None:
         """Tell the editor which notes exist, so links to missing ones are styled."""
-        self._editor.set_known_notes(link_keys(self.vault.walk_notes()))
+        keys = link_keys(self.vault.walk_notes())
+        for editor in self._editors:
+            editor.set_known_notes(keys)
 
     def _on_disconnect(self) -> None:
         self._cancel_timer()
@@ -987,12 +1398,18 @@ class EditorPane:
     def _refresh(self) -> None:
         unsaved = self._unsaved()
         if self._structure_changed():
-            self._tabbar.render(unsaved)
+            self._tabbar.render(unsaved, self._split_tabs())
         else:
             self._tabbar.set_unsaved(unsaved)
         self._show_state()
         self._update_banner()
+        self.note_menu.update(
+            has_note=self.tabs.active is not None,
+            split_open=self._split_open,
+            page_view=self.page_view_on(),
+        )
         plain = self._active_is_plain()
+        self.show_tidy_buttons()
         if plain != self._plain_shown:
             self._plain_shown = plain
             self._on_plain_changed(plain)
@@ -1000,14 +1417,26 @@ class EditorPane:
     def _structure_changed(self) -> bool:
         """Re-render the bar only when tabs, titles or the active tab changed (not on typing)."""
         shape = tuple((t.id, t.path) for t in self.tabs.tabs)
-        if shape == self._rendered and self.tabs.active == self._rendered_active:
+        active = (self.tabs.active, self._split_tabs())
+        if shape == self._rendered and active == self._rendered_active:
             return False
-        self._rendered, self._rendered_active = shape, self.tabs.active
+        self._rendered, self._rendered_active = shape, active
         return True
+
+    def _on_caret(self, args: dict[str, Any]) -> None:
+        if args.get("docId") == self.tabs.active:
+            self._caret = (int(args.get("line", 1)), int(args.get("col", 1)))
+            self._show_stats()
+
+    def _show_stats(self) -> None:
+        tab = self.tabs.active_tab
+        buf = self.buffers.get(tab.id) if tab else None
+        self._on_stats(word_count(buf.text) if buf else None, *self._caret)
 
     def _show_state(self) -> None:
         tab = self.tabs.active_tab
         buf = self.buffers.get(tab.id) if tab else None
+        self._show_stats()
         if buf is None:
             self._on_state("Ready", False)
         elif buf.conflict is not None:
@@ -1052,7 +1481,7 @@ class EditorPane:
             return
         if tab_id == self.tabs.active:
             # the browser may hold keystrokes we have not been told about yet
-            text = await self._editor.get_text()
+            text = await self._live_text(tab_id)
             buf = self.buffers.get(tab_id)
             if buf is None:
                 return
@@ -1077,6 +1506,7 @@ class EditorPane:
             self._editor.set_text(buf.text, tab_id, buf.path, keep_caret=keep_caret)
         else:
             self._editor.close_doc(tab_id)  # drop the parked state; the next switch shows buf.text
+        self._mirror(tab_id, buf.text, self._slot)
 
     def _update_banner(self) -> None:
         """The conflict banner above the editor, for the active tab only."""
@@ -1151,8 +1581,11 @@ class EditorPane:
         changed = self.tabs.rename_prefix(old, new)
         for tab in changed:
             self.buffers[tab.id].rename(tab.path)
-            if tab.id == self.tabs.active:
-                self._editor.set_path(tab.path)  # relative image URLs depend on the note's folder
+            for slot, shown in enumerate(self._shown):
+                if shown == tab.id:  # relative image URLs depend on the note's folder
+                    self._editors[slot].set_path(tab.path)
+        if self._split_open:
+            self._show_split_titles()
         self.refresh_links()
         self._reindex_soon()
         if changed:
@@ -1179,7 +1612,7 @@ class EditorPane:
             open_tab = next((t for t in self.tabs.tabs if t.path == now), None)
             if open_tab is not None and open_tab.id in self.buffers:
                 if open_tab.id == self.tabs.active:
-                    fresh = await self._editor.get_text()
+                    fresh = await self._live_text(open_tab.id)
                     if fresh is not None:
                         self.buffers[open_tab.id].set_text(fresh)
                 before = self.buffers[open_tab.id].text.replace("\r\n", "\n")
@@ -1207,7 +1640,7 @@ class EditorPane:
             return
         active = self.tabs.active
         if active in self.buffers:
-            text = await self._editor.get_text()  # the browser may hold unreported keystrokes
+            text = await self._live_text(active)  # the browser may hold unreported keystrokes
             if text is not None:
                 self.buffers[active].set_text(text)
         await asyncio.to_thread(self.index.sync)
@@ -1223,7 +1656,8 @@ class EditorPane:
                     texts[path] = self.vault.read_text(path)
             except VaultError:
                 continue
-        plan = plan_rewrites(moves, set(self.index.paths()), texts)
+        media = str(self._config.get("vault.images_folder", ".image") or "")
+        plan = plan_rewrites(moves, set(self.index.paths()), texts, media)
         links = notes = 0
         skipped = plan.skipped
         for path, edits in plan.edits.items():
@@ -1266,7 +1700,7 @@ class EditorPane:
             }
             for e in edits
         ]
-        if not await self._editor.apply_changes(tab_id, changes, before):
+        if not await self._editor_for(tab_id).apply_changes(tab_id, changes, before):
             return False
         self.buffers[tab_id].set_text(after)
         self._schedule_save(AUTOSAVE_AFTER_CHANGE_S)
@@ -1335,3 +1769,104 @@ class EditorPane:
     def _toast(self, message: str, *, error: bool = False) -> None:
         with self._host:
             ui.notify(message, type="negative" if error else None)
+
+    # ---- for the note menu (gui/components/note_actions.py) --------------------------------
+
+    @property
+    def host(self) -> ui.element:
+        """Where dialogs and toasts are created."""
+        return self._host
+
+    @property
+    def native(self) -> bool:
+        return self._native
+
+    @property
+    def config(self) -> Config | None:
+        return self._config
+
+    def add_to_chat(self, path: str) -> None:
+        self._add_note_to_chat(path)
+
+    def toast(self, message: str, *, error: bool = False) -> None:
+        self._toast(message, error=error)
+
+    def active_note(self) -> str | None:
+        return self._active_path()
+
+    async def save_now(self) -> bool:
+        """Take the freshest text of the note on screen and write every open note now."""
+        tab_id = self.tabs.active
+        if tab_id in self.buffers:
+            text = await self._live_text(tab_id)
+            if text is not None and tab_id in self.buffers:
+                self.buffers[tab_id].set_text(text)
+        self._save_all()
+        return not any(b.dirty for b in self.buffers.values())
+
+    async def tidy_active(self) -> None:
+        """Tidy the note being edited (the one-editor button, Shift+Alt+F, the ⋯ menu)."""
+        await self.tidy_tab(self.tabs.active)
+
+    async def tidy_side(self, slot: int) -> None:
+        """Tidy the note shown on one side of the split (its name island's button)."""
+        await self.tidy_tab(self._shown[slot])
+
+    async def tidy_tab(self, tab_id: int | None) -> None:
+        """Lay out note ``tab_id`` cleanly (``core/tidy.py``): one undo step, caret kept."""
+        tab = next((t for t in self.tabs.tabs if t.id == tab_id), None)
+        if tab_id is None or tab is None or tab_id not in self.buffers or is_plain_text(tab.path):
+            return
+        text = await self._live_text(tab_id)
+        if text is None:
+            text = self.buffers[tab_id].text
+        tidied = tidy(text)
+        if tidied == text:
+            self._toast("Already tidy")
+            return
+        start = 0
+        while start < min(len(text), len(tidied)) and text[start] == tidied[start]:
+            start += 1
+        end_old, end_new = len(text), len(tidied)
+        while end_old > start and end_new > start and text[end_old - 1] == tidied[end_new - 1]:
+            end_old, end_new = end_old - 1, end_new - 1
+        edit = TextEdit((TextChange(start, end_old, tidied[start:end_new]),), start)
+        if await self._apply_edit(tab_id, text, edit, move_caret=False):
+            self._toast("Note tidied (Ctrl+Z undoes it)")
+        else:
+            self._toast("The note changed meanwhile: try again", error=True)
+
+    def note_text(self, path: str) -> str:
+        """A note's current text: the open tab's buffer, else the file."""
+        tab = next((t for t in self.tabs.tabs if t.path == path and t.id in self.buffers), None)
+        if tab is not None:
+            return self.buffers[tab.id].text.replace("\r\n", "\n")
+        return self.vault.read_text(path)
+
+    def replace_note(self, path: str, text: str) -> None:
+        """Give a note a new text (outside the user's typing): the open tab shows it, the file is
+        written now."""
+        tab = next((t for t in self.tabs.tabs if t.path == path and t.id in self.buffers), None)
+        if tab is None:
+            self.vault.write_text(path, text)
+        else:
+            self.buffers[tab.id].set_text(text)
+            self._save_buffer(self.buffers[tab.id], refresh=False)
+            self._show_text(tab.id, keep_caret=True)
+        if self.index is not None:
+            self.index.update_note(path)
+
+    def close_note(self, path: str) -> None:
+        """Close the tab of ``path`` without saving (its text was saved or moved elsewhere)."""
+        for tab in [t for t in self.tabs.tabs if t.path == path]:
+            self._drop_tab(tab.id)
+
+    def open_search(self, replace: bool) -> None:
+        self._editor.open_search(replace)
+
+    def after_merge(self) -> None:
+        """Links and the index changed under us: bring every view up to date."""
+        self._reindex_soon()
+        self.refresh_links()
+        self.refresh_backlinks()
+        self._refresh()

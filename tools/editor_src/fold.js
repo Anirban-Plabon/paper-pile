@@ -34,7 +34,7 @@ export const headingFolding = [
       const el = document.createElement("span");
       el.className = "pp-fold-placeholder";
       el.textContent = "…";
-      el.title = "Unfold";
+      el.dataset.tip = "Unfold";
       el.addEventListener("click", onclick);
       return el;
     },
@@ -63,7 +63,7 @@ export class FoldToggle extends WidgetType {
     const el = document.createElement("span");
     el.className = "pp-fold" + (this.folded ? " pp-fold-folded" : "");
     el.setAttribute("aria-hidden", "true"); // drawn by CSS, so it is not part of the line text
-    el.title = this.folded ? "Unfold" : "Fold";
+    el.dataset.tip = this.folded ? "Unfold" : "Fold";
     el.addEventListener("mousedown", (e) => {
       e.preventDefault();
       e.stopPropagation();

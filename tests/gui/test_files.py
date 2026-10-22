@@ -101,7 +101,7 @@ def test_upload_saves_the_image_and_answers_with_its_reference(upload_client) ->
     r = post(client, PNG)
     assert r.status_code == 200
     body = r.json()
-    assert body["ref"] == f".n.assets/{body['name']}" and body["width"] == 10
+    assert body["ref"] == f".image/{body['name']}" and body["width"] == 10  # the images folder
     assert vault.asset_path("n.md", body["ref"]).read_bytes() == PNG
     assert post(client, PNG).json() == body  # the same picture again: same file
 
@@ -110,7 +110,7 @@ def test_upload_refuses_non_images(upload_client) -> None:  # type: ignore[no-un
     client, vault = upload_client
     r = post(client, b"MZ this is an exe")
     assert r.status_code == 400 and "not a supported image" in r.json()["error"]
-    assert not (vault.root / ".n.assets").exists()
+    assert not (vault.root / ".n.assets").exists() and not (vault.root / ".image").exists()
 
 
 def test_upload_needs_the_custom_header_and_a_local_origin(upload_client) -> None:  # type: ignore[no-untyped-def]
@@ -137,4 +137,4 @@ def test_upload_rejects_bad_notes_and_huge_bodies(upload_client, monkeypatch) ->
         assert post(client, PNG, note=bad).status_code == 400
     monkeypatch.setattr("paper_pile.core.assets.MAX_IMAGE_BYTES", 20)
     assert post(client, PNG + b"y" * 50).status_code == 413
-    assert not (vault.root / ".n.assets").exists()
+    assert not (vault.root / ".n.assets").exists() and not (vault.root / ".image").exists()

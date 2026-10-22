@@ -31,6 +31,7 @@ module-root = ""
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 asyncio_mode = "auto"
+markers = ["nicegui_main_file(path): main file for NiceGUI User tests"]
 
 [tool.ruff]
 line-length = 100

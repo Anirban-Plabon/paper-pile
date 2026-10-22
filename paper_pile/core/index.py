@@ -14,6 +14,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from urllib.parse import unquote
 
+from markdown_it.token import Token
+
 from paper_pile.core.links import (
     link_keys,
     norm_name,
@@ -21,12 +23,13 @@ from paper_pile.core.links import (
     resolve_md_link,
     resolve_wikilink,
 )
-from paper_pile.core.parser import LinkRef, front_matter, note_links
+from paper_pile.core.parser import LinkRef, front_matter, note_links, note_tags, parse
+from paper_pile.core.tags import norm_tag
 from paper_pile.core.vault import META_DIR, Vault, VaultError
 
 log = logging.getLogger("paper_pile.index")
 
-SCHEMA_VERSION = "2"
+SCHEMA_VERSION = "3"  # 3: tags
 _SCHEMA = """
 CREATE TABLE notes(id INTEGER PRIMARY KEY, path TEXT UNIQUE NOT NULL, title TEXT NOT NULL,
                    mtime REAL NOT NULL, hash TEXT NOT NULL);
@@ -37,6 +40,9 @@ CREATE INDEX links_src ON links(src_id);
 CREATE INDEX links_key ON links(dst_key);
 CREATE VIRTUAL TABLE notes_fts USING fts5(
     path, title, body, tokenize='unicode61 remove_diacritics 2');
+CREATE TABLE tags(note_id INTEGER NOT NULL REFERENCES notes(id) ON DELETE CASCADE,
+                  tag TEXT NOT NULL, norm TEXT NOT NULL);
+CREATE INDEX tags_norm ON tags(norm);
 CREATE TABLE meta(key TEXT PRIMARY KEY, value TEXT NOT NULL);
 """
 _HEADING = re.compile(r"^\s{0,3}#{1,6}\s+(.+?)\s*#*\s*$", re.MULTILINE)
@@ -67,6 +73,13 @@ class Backlink:
 
 
 @dataclass(frozen=True, slots=True)
+class TaggedNote:
+    path: str
+    title: str
+    tags: tuple[str, ...]  # the matching tags as written in the note (``a/b`` for ``#a``)
+
+
+@dataclass(frozen=True, slots=True)
 class LinkRow:
     src: str
     dst_raw: str
@@ -75,9 +88,9 @@ class LinkRow:
     line: int
 
 
-def note_title(rel: str, text: str) -> str:
+def note_title(rel: str, text: str, tokens: list[Token] | None = None) -> str:
     """Front-matter ``title``, else the first heading, else the file name without extension."""
-    fm = front_matter(text)
+    fm = front_matter(text, tokens)
     if fm and isinstance(fm.data.get("title"), str) and fm.data["title"].strip():
         return str(fm.data["title"]).strip()
     m = _HEADING.search(text)
@@ -245,7 +258,8 @@ class Index:
         if known and known[1] == digest:
             self._db.execute("UPDATE notes SET mtime=? WHERE path=?", (mtime, rel))
             return "same"
-        title = note_title(rel, text)
+        tokens = parse(text)  # once: title, links and tags all read it
+        title = note_title(rel, text, tokens)
         if known:
             self._remove(rel)
         cur = self._db.execute(
@@ -259,8 +273,16 @@ class Index:
         self._db.executemany(
             "INSERT INTO links(src_id, dst_raw, dst_key, dst_path, kind, line) "
             "VALUES(?,?,?,NULL,?,?)",
-            [(note_id, ref.raw, _dst_key(ref), ref.kind, ref.line) for ref in note_links(text)],
+            [
+                (note_id, ref.raw, _dst_key(ref), ref.kind, ref.line)
+                for ref in note_links(text, tokens)
+            ],
         )
+        if rel.lower().endswith(".md"):
+            self._db.executemany(
+                "INSERT INTO tags(note_id, tag, norm) VALUES(?,?,?)",
+                [(note_id, tag, norm_tag(tag)) for tag in note_tags(text, tokens)],
+            )
         return "updated" if known else "added"
 
     # ---- reading ---------------------------------------------------------------------------
@@ -282,6 +304,30 @@ class Index:
                 (rel,),
             ).fetchall()
         return [LinkRow(*r) for r in rows]
+
+    def notes_with_tag(self, tag: str) -> list[TaggedNote]:
+        """Notes tagged ``tag`` or a tag nested in it (``a`` finds ``a/b``), by title."""
+        norm = norm_tag(tag)
+        if not norm:
+            return []
+        with self._lock:
+            rows = self._db.execute(
+                "SELECT n.path, n.title, group_concat(DISTINCT t.tag) FROM tags t "
+                "JOIN notes n ON n.id=t.note_id "
+                "WHERE t.norm=? OR substr(t.norm, 1, ?)=? "
+                "GROUP BY n.id ORDER BY lower(n.title), n.path",
+                (norm, len(norm) + 1, norm + "/"),
+            ).fetchall()
+        return [TaggedNote(r[0], r[1], tuple(str(r[2]).split(","))) for r in rows]
+
+    def tags_of(self, rel: str) -> list[str]:
+        with self._lock:
+            rows = self._db.execute(
+                "SELECT t.tag FROM tags t JOIN notes n ON n.id=t.note_id WHERE n.path=? "
+                "ORDER BY t.rowid",
+                (rel,),
+            ).fetchall()
+        return [r[0] for r in rows]
 
     def link_sources(self, keys: Collection[str]) -> set[str]:
         """Notes holding a link that names any of ``keys`` (see :func:`links.link_keys`)."""

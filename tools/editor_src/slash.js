@@ -8,6 +8,7 @@
 import { syntaxTree } from "@codemirror/language";
 import { Prec, StateEffect, StateField } from "@codemirror/state";
 import { EditorView, ViewPlugin, keymap, showTooltip } from "@codemirror/view";
+import { rtOf } from "./context.js";
 
 const NO_SLASH_NODES = new Set(["FencedCode", "CodeBlock", "InlineCode", "URL", "CodeText"]);
 const MAX_QUERY = 40;
@@ -122,8 +123,9 @@ function createMenu(view) {
           row.id = `pp-slash-${i}`;
           row.dataset.index = String(i);
           row.setAttribute("role", "option");
-          if (item.icon) row.append(el("span", "material-icons pp-slash-icon", item.icon));
-          else row.append(el("span", "pp-slash-icon"));
+          const icon = el("span", "pp-slash-icon");
+          if (item.icon && window.ppIconSvg) icon.innerHTML = window.ppIconSvg(item.icon);
+          row.append(icon);
           const text = el("span", "pp-slash-text");
           text.append(el("span", "pp-slash-title", item.title));
           if (item.subtitle) text.append(el("span", "pp-slash-subtitle", item.subtitle));
@@ -160,14 +162,16 @@ function createMenu(view) {
 
 // ---- running and keys -------------------------------------------------------------------------
 
-let emitRef = () => {};
-let docIdRef = () => 0;
+const emitFrom = (state, name, payload) => {
+  const rt = rtOf(state);
+  rt.emit(name, { docId: rt.getDocId(), ...payload });
+};
 
 function runItem(view, index) {
   const v = view.state.field(slashField, false);
   const item = v && v.items[index];
   if (!item) return false;
-  emitRef("slash_run", { docId: docIdRef(), id: item.id, from: v.from, to: view.state.selection.main.head });
+  emitFrom(view.state, "slash_run", { id: item.id, from: v.from, to: view.state.selection.main.head });
   view.dispatch({ effects: closeEffect.of(null) });
   return true;
 }
@@ -186,7 +190,7 @@ function openOnSelection(view) {
   const { state } = view;
   if (state.selection.ranges.length !== 1) return false;
   const sel = state.selection.main;
-  emitRef("ai_selection", { docId: docIdRef(), from: sel.from, to: sel.to, text: state.sliceDoc(sel.from, sel.to) });
+  emitFrom(state, "ai_selection", { from: sel.from, to: sel.to, text: state.sliceDoc(sel.from, sel.to) });
   view.dispatch({
     changes: { from: sel.to, insert: "/" },
     selection: { anchor: sel.to + 1 },
@@ -226,14 +230,12 @@ const queryPlugin = ViewPlugin.fromClass(
       if (this.last && this.last.from === v.from && this.last.query === v.query) return;
       this.last = { from: v.from, query: v.query };
       this.seq += 1;
-      emitRef("slash_query", { docId: docIdRef(), q: v.query, seq: this.seq, from: v.from });
+      emitFrom(u.state, "slash_query", { q: v.query, seq: this.seq, from: v.from });
     }
   },
 );
 
-export function slashExtension({ emit, getDocId }) {
-  emitRef = emit;
-  docIdRef = getDocId;
+export function slashExtension() {
   return [
     slashField,
     queryPlugin,

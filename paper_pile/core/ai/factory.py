@@ -4,7 +4,7 @@ import os
 
 from paper_pile.core.ai.fake import FakeProvider
 from paper_pile.core.ai.ollama import DEFAULT_HOST, OllamaProvider
-from paper_pile.core.ai.provider import Provider
+from paper_pile.core.ai.provider import GenerationOptions, Provider
 from paper_pile.core.config import Config
 
 
@@ -26,3 +26,20 @@ def chat_model(provider: Provider, config: Config | None) -> str:
     """The model chat uses: ``ai.model`` from the configuration."""
     value = config.get("ai.model", "gemma4:12b") if config is not None else "gemma4:12b"
     return str(value or "gemma4:12b")
+
+
+def generation_options(config: Config | None) -> GenerationOptions:
+    """Temperature, top-p, context window and keep-alive from Settings → AI → Advanced. A context
+    window of 0 means the model's own default."""
+    from paper_pile.core.settings import sanitized  # settings imports config, not the reverse
+
+    if config is None:
+        return GenerationOptions()
+    values = sanitized(config.values)
+    num_ctx = int(values["ai.num_ctx"])
+    return GenerationOptions(
+        temperature=float(values["ai.temperature"]),
+        top_p=float(values["ai.top_p"]),
+        num_ctx=num_ctx or None,
+        keep_alive_min=int(values["ai.keep_alive"]),
+    )

@@ -42,7 +42,7 @@ def test_corrupt_state_is_ignored(tmp_path: Path) -> None:
 def test_session_defaults_when_missing(tmp_path: Path) -> None:
     s = load_session(tmp_path)
     assert s == SessionState()
-    assert s.pane_widths == {"left": 260, "right": 340}
+    assert s.pane_widths == {"left": 260, "right": 340, "settings": 720}
     assert s.panes_open == {"left": True, "right": True}
     assert s.mode == "live"
 
@@ -51,7 +51,7 @@ def test_session_round_trip(tmp_path: Path) -> None:
     state = SessionState(
         tabs=["a.md", "d/b.md"],
         active="d/b.md",
-        pane_widths={"left": 300, "right": 410},
+        pane_widths={"left": 300, "right": 410, "settings": 600},
         panes_open={"left": False, "right": True},
         mode="source",
     )
@@ -78,7 +78,7 @@ def test_session_corrupt_or_wrong_types_fall_back_per_field(tmp_path: Path) -> N
     )
     s = load_session(tmp_path)
     assert s.tabs == [] and s.active is None and s.mode == "live"
-    assert s.pane_widths == {"left": 260, "right": 340}
+    assert s.pane_widths == {"left": 260, "right": 340, "settings": 720}
     assert s.panes_open == {"left": True, "right": False}
     (meta / "session.json").write_text("[1, 2]")
     assert load_session(tmp_path) == SessionState()
@@ -86,3 +86,36 @@ def test_session_corrupt_or_wrong_types_fall_back_per_field(tmp_path: Path) -> N
 
 def test_save_session_failure_is_not_fatal(tmp_path: Path) -> None:
     save_session(tmp_path / "does-not-exist" / "deeper", SessionState())  # no raise
+
+
+def test_recent_vaults_newest_first_without_duplicates_or_missing(tmp_path: Path) -> None:
+    from paper_pile.core.session import MAX_RECENT_VAULTS, load_recent_vaults
+
+    state = tmp_path / "state"
+    assert load_recent_vaults(state) == []
+    a, b, c = (tmp_path / n for n in "abc")
+    for v in (a, b, c):
+        v.mkdir()
+    save_last_vault(a, state)
+    save_last_vault(b, state)
+    save_last_vault(a, state)
+    assert load_recent_vaults(state) == [a, b]
+    save_last_vault(c, state)
+    c.rmdir()  # gone since: not listed
+    assert load_recent_vaults(state) == [a, b]
+    assert load_last_vault(state) is None
+    for i in range(MAX_RECENT_VAULTS + 3):
+        (tmp_path / f"v{i}").mkdir()
+        save_last_vault(tmp_path / f"v{i}", state)
+    assert len(load_recent_vaults(state)) == MAX_RECENT_VAULTS
+
+
+def test_recent_vaults_reads_the_old_file_format(tmp_path: Path) -> None:
+    from paper_pile.core.session import load_recent_vaults
+
+    state = tmp_path / "state"
+    state.mkdir()
+    (state / "last_vault.json").write_text(json.dumps({"vault": str(tmp_path)}))
+    assert load_recent_vaults(state) == [tmp_path]
+    (state / "last_vault.json").write_text("[1, 2]")
+    assert load_recent_vaults(state) == []

@@ -2,7 +2,7 @@
 // which dispatches a one-character change through the normal editor path (undo, autosave).
 import { WidgetType } from "@codemirror/view";
 import katex from "katex";
-import { editorContext } from "./context.js";
+import { measureAgain, rtOf } from "./context.js";
 
 export class MathWidget extends WidgetType {
   constructor(src) {
@@ -139,12 +139,12 @@ const REMOTE = /^([a-zA-Z][a-zA-Z0-9+.-]*:|\/\/)/;
 // `![alt|300](.note.assets/x.png)`. Only vault images are loaded (through Python's /_pp/asset
 // route); a remote URL is shown as a chip and never fetched (offline rule, no tracking pixels).
 export class ImageWidget extends WidgetType {
-  constructor(src, alt, width) {
+  constructor(src, alt, width, note) {
     super();
     this.src = src;
     this.alt = alt;
     this.width = width;
-    this.note = editorContext.notePath;
+    this.note = note;
   }
   eq(other) {
     return other.src === this.src && other.alt === this.alt && other.width === this.width && other.note === this.note;
@@ -153,7 +153,7 @@ export class ImageWidget extends WidgetType {
     const el = document.createElement("span");
     el.className = "pp-image-chip";
     el.textContent = text;
-    if (title) el.title = title;
+    if (title) el.dataset.tip = title;
     return el;
   }
   toDOM(view) {
@@ -168,10 +168,10 @@ export class ImageWidget extends WidgetType {
     img.loading = "lazy";
     img.src = `/_pp/asset?note=${encodeURIComponent(this.note)}&path=${encodeURIComponent(this.src)}`;
     if (this.width) img.style.width = `${this.width}px`;
-    img.addEventListener("load", () => view.requestMeasure());
+    img.addEventListener("load", () => measureAgain(view));
     img.addEventListener("error", () => {
       wrap.replaceChildren(this.chip(`image not found: ${this.src}`));
-      view.requestMeasure();
+      measureAgain(view);
     });
     wrap.appendChild(img);
     wrap.appendChild(this.handle(wrap, img, view));
@@ -182,7 +182,7 @@ export class ImageWidget extends WidgetType {
   handle(wrap, img, view) {
     const handle = document.createElement("span");
     handle.className = "pp-image-handle";
-    handle.title = "Drag to resize";
+    handle.dataset.tip = "Drag to resize";
     handle.addEventListener("mousedown", (e) => {
       if (e.button !== 0) return;
       e.preventDefault();
@@ -201,7 +201,7 @@ export class ImageWidget extends WidgetType {
         wrap.classList.remove("pp-image-resizing");
         const width = widthAt(ev.clientX);
         if (Math.abs(width - startWidth) < 2) return;
-        editorContext.emit("image_resize", { docId: editorContext.getDocId(), from: view.posAtDOM(wrap), width });
+        rtOf(view.state).emit("image_resize", { docId: rtOf(view.state).getDocId(), from: view.posAtDOM(wrap), width });
       };
       document.addEventListener("mousemove", move, true);
       document.addEventListener("mouseup", up, true);
@@ -220,6 +220,23 @@ export class HrWidget extends WidgetType {
   toDOM() {
     const el = document.createElement("span");
     el.className = "pp-hr";
+    return el;
+  }
+}
+
+// A manual page break (`<div style="page-break-after: always;"></div>`, PLAN §4.17): a dashed
+// line with its name in the middle.
+export class PageBreakWidget extends WidgetType {
+  eq() {
+    return true;
+  }
+  toDOM() {
+    const el = document.createElement("span");
+    el.className = "pp-page-break-line";
+    const label = document.createElement("span");
+    label.className = "pp-page-break-label";
+    label.textContent = "Page break";
+    el.appendChild(label);
     return el;
   }
 }

@@ -7,7 +7,7 @@ back word by word.
 import asyncio
 from collections.abc import AsyncIterator, Sequence
 
-from paper_pile.core.ai.provider import ChatMessage, Health
+from paper_pile.core.ai.provider import ChatMessage, GenerationOptions, Health
 
 
 class FakeProvider:
@@ -18,11 +18,17 @@ class FakeProvider:
         self.reply = reply
         self.calls: list[list[ChatMessage]] = []
         self.up = True
+        self.options: GenerationOptions | None = None
 
     async def chat(
-        self, messages: Sequence[ChatMessage], *, model: str | None = None
+        self,
+        messages: Sequence[ChatMessage],
+        *,
+        model: str | None = None,
+        options: GenerationOptions | None = None,
     ) -> AsyncIterator[str]:
         self.calls.append(list(messages))
+        self.options = options
         last = next((m.content for m in reversed(messages) if m.role == "user"), "")
         text = self.reply if self.reply is not None else f"You said: {last.strip()[:200]}"
         for word in text.split(" "):

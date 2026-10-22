@@ -1,20 +1,22 @@
 // The copy button on code, math and diagram blocks. One click copies the block's source to the
 // clipboard and tells Python to attach it to the chat (JS only captures; Python decides).
 import { WidgetType } from "@codemirror/view";
-import { editorContext } from "./context.js";
+import { EditorView } from "@codemirror/view";
+import { rtOf } from "./context.js";
 
+// Line icons come from the page (window.ppIconSvg, static/icons.js): one style app-wide.
 const ICON = {
-  copy: '<svg viewBox="0 0 24 24" width="15" height="15"><path fill="currentColor" d="M16 1H4a2 2 0 0 0-2 2v14h2V3h12V1zm3 4H8a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h11a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2zm0 16H8V7h11v14z"/></svg>',
-  done: '<svg viewBox="0 0 24 24" width="15" height="15"><path fill="currentColor" d="M9 16.2 4.8 12l-1.4 1.4L9 19 21 7l-1.4-1.4z"/></svg>',
+  copy: () => window.ppIconSvg?.("copy", "s") ?? "",
+  done: () => window.ppIconSvg?.("check", "s") ?? "",
 };
 
 export function copyButton(kind, lang, text) {
   const btn = document.createElement("button");
   btn.type = "button";
   btn.className = "pp-blockcopy";
-  btn.title = "Copy, and add to the chat";
-  btn.setAttribute("aria-label", btn.title);
-  btn.innerHTML = ICON.copy;
+  btn.dataset.tip = "Copy, and add to the chat";
+  btn.setAttribute("aria-label", btn.dataset.tip);
+  btn.innerHTML = ICON.copy();
   // never let the editor see the press: it would move the caret into the block and reveal it
   for (const type of ["mousedown", "pointerdown"]) {
     btn.addEventListener(type, (e) => {
@@ -30,11 +32,12 @@ export function copyButton(kind, lang, text) {
     } catch (_) {
       /* the chat attachment still happens */
     }
-    editorContext.emit("block_to_chat", { docId: editorContext.getDocId(), kind, lang, text });
-    btn.innerHTML = ICON.done;
+    const view = EditorView.findFromDOM(btn.closest(".cm-editor"));
+    if (view) rtOf(view.state).emit("block_to_chat", { docId: rtOf(view.state).getDocId(), kind, lang, text });
+    btn.innerHTML = ICON.done();
     btn.classList.add("pp-blockcopy-done");
     setTimeout(() => {
-      btn.innerHTML = ICON.copy;
+      btn.innerHTML = ICON.copy();
       btn.classList.remove("pp-blockcopy-done");
     }, 1200);
   });

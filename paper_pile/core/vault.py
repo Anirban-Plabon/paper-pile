@@ -105,6 +105,17 @@ def join_rel(folder: str | PurePosixPath, name: str) -> str:
     return (PurePosixPath(str(folder)) / name).as_posix() if str(folder) not in {"", "."} else name
 
 
+# The app's own folders (P13.5): hidden by name, but at the vault's top level they are ordinary
+# folders for the vault (notes in them are listed, opened, indexed and watched). Every other
+# dot entry (.trash, .paper-pile, .<note>.assets, ...) stays out of reach.
+PUBLIC_DIRS = frozenset({".memory", ".image", ".daily-notes", ".template"})
+
+
+def is_hidden_part(part: str, depth: int) -> bool:
+    """Is a path part at ``depth`` (0 = the vault's top level) hidden from the vault?"""
+    return part.startswith(".") and not (depth == 0 and part in PUBLIC_DIRS)
+
+
 @dataclass(frozen=True, slots=True)
 class TreeEntry:
     name: str
@@ -127,7 +138,7 @@ class Vault:
         parts = [p for p in pure.parts if p != "."]
         if any(p == ".." for p in parts):
             raise InvalidPathError(f"path escapes the vault: {text!r}")
-        if any(p.startswith(".") for p in parts):
+        if any(is_hidden_part(p, i) for i, p in enumerate(parts)):
             raise InvalidPathError(f"hidden paths are not accessible: {text!r}")
         if not parts and not allow_root:
             raise InvalidPathError("empty path")
@@ -174,10 +185,11 @@ class Vault:
         folder = self.resolve(rel, allow_root=True)
         if not folder.is_dir():
             raise NotFoundError(f"not a folder: {rel!r}")
+        depth = len(folder.relative_to(self.root).parts)
         entries: list[TreeEntry] = []
         with os.scandir(folder) as it:
             for e in it:
-                if e.name.startswith("."):
+                if is_hidden_part(e.name, depth):
                     continue
                 path = Path(e.path)
                 if e.is_symlink() and not self._inside(path):
@@ -191,7 +203,8 @@ class Vault:
     def walk_notes(self) -> Iterator[str]:
         """Every note path in the vault (for the indexer), skipping hidden folders."""
         for dirpath, dirnames, filenames in os.walk(self.root):
-            dirnames[:] = sorted(d for d in dirnames if not d.startswith("."))
+            depth = len(Path(dirpath).relative_to(self.root).parts)
+            dirnames[:] = sorted(d for d in dirnames if not is_hidden_part(d, depth))
             for name in sorted(filenames):
                 path = Path(dirpath) / name
                 if name.startswith(".") or not is_note_name(name):
@@ -200,11 +213,30 @@ class Vault:
                     continue
                 yield self._rel(path)
 
+    def recent_notes(self, limit: int = 50) -> list[str]:
+        """Note paths, most recently modified first (at most ``limit``)."""
+        stamped: list[tuple[float, str]] = []
+        for rel in self.walk_notes():
+            try:
+                stamped.append((self.resolve(rel).stat().st_mtime, rel))
+            except OSError:  # vanished while walking
+                continue
+        stamped.sort(key=lambda s: (-s[0], s[1].lower()))
+        return [rel for _t, rel in stamped[:limit]]
+
+    def free_numbered_name(self, folder: str | PurePosixPath, base: str, suffix: str = "") -> str:
+        """First of ``base 1``, ``base 2``, ... that does not exist in ``folder`` (suffix aside)."""
+        n = 1
+        while self.resolve(join_rel(folder, f"{base} {n}{suffix}")).exists():
+            n += 1
+        return f"{base} {n}"
+
     def folders(self) -> list[str]:
         """Every visible folder of the vault as a relative path (hidden folders are skipped)."""
         found: list[str] = []
         for dirpath, dirnames, _files in os.walk(self.root):
-            dirnames[:] = sorted(d for d in dirnames if not d.startswith("."))
+            depth = len(Path(dirpath).relative_to(self.root).parts)
+            dirnames[:] = sorted(d for d in dirnames if not is_hidden_part(d, depth))
             for name in dirnames:
                 path = Path(dirpath) / name
                 if not (path.is_symlink() and not self._inside(path)):
@@ -236,8 +268,8 @@ class Vault:
         if joined in {"", "."} or joined == ".." or joined.startswith("../"):
             raise InvalidPathError(f"image path escapes the vault: {ref!r}")
         parts = PurePosixPath(joined).parts
-        for part in parts[:-1]:
-            if part.startswith(".") and not _ASSET_DIR.match(part):
+        for depth, part in enumerate(parts[:-1]):
+            if is_hidden_part(part, depth) and not _ASSET_DIR.match(part):
                 raise InvalidPathError(f"hidden folder is not accessible: {part!r}")
         name = parts[-1]
         if name.startswith(".") or PurePosixPath(name).suffix.lower() not in IMAGE_SUFFIXES:
@@ -373,7 +405,7 @@ class Vault:
         while dst.exists():  # same-microsecond collision: effectively never, but never overwrite
             dst = dst.with_name(dst.name + "_")
         dst.parent.mkdir(parents=True, exist_ok=True)
-        src.rename(dst)
+        shutil.move(src, dst)  # a rename, or copy + remove from another file system
         return self._rel(dst)
 
     def delete(self, rel: str | PurePosixPath) -> str:

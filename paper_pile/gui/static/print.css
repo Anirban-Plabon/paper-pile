@@ -1,0 +1,78 @@
+/* The print layout (PLAN §4.17): a note on sheets of paper, looking like the editor on light
+   paper. Paper size, margins, fonts and the accent come from the page's own <style>
+   (core/printdoc.py). The sheets are filled by paginate.js; what is measured is what prints, so
+   nothing here may differ between screen and print except the grey desk around the sheets. */
+
+:root {
+  --pp-fg: #1f2328;
+  --pp-muted: #6b7280;
+  --pp-border: #d8dade;
+  --pp-code-bg: #f3f4f6;
+  --pp-quote-bar: #c3c8d0;
+  --pp-wiki: #7c3aed;
+  --pp-gap: calc(var(--pp-lh) * 1rem);  /* an empty line in the editor */
+  font-size: var(--pp-size);
+  color-scheme: light;
+}
+html, body { margin: 0; padding: 0; }
+body.pp-print { font-family: var(--pp-font); font-size: var(--pp-size); line-height: var(--pp-lh); color: var(--pp-fg); background: #fff; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+
+/* the note before it is laid out: already at the text width, so measuring is exact */
+#pp-source { width: calc(var(--pp-paper-w) - 2 * var(--pp-margin)); }
+
+.pp-sheet { box-sizing: border-box; width: var(--pp-paper-w); height: calc(var(--pp-paper-h) - .3mm); padding: var(--pp-margin); position: relative; overflow: hidden; background: #fff; break-after: page; }
+.pp-sheet:last-child { break-after: auto; }
+.pp-sheet-body { height: 100%; overflow: hidden; display: flow-root; }
+.pp-sheet-foot { position: absolute; left: 0; right: 0; bottom: calc(var(--pp-margin) / 2 - .5em); text-align: center; font-size: 9pt; line-height: 1; color: var(--pp-muted); }
+@media screen {
+  body.pp-print { background: #e5e7eb; padding: 16px 0; }
+  .pp-sheet { margin: 0 auto 16px; box-shadow: 0 1px 4px rgba(0, 0, 0, .18); }
+}
+
+/* blocks: one empty line between them, as in the editor; nothing at the top of a sheet */
+#pp-source > *, .pp-sheet-body > * { margin: 0 0 var(--pp-gap); }
+.pp-sheet-body > :first-child { margin-top: 0; }
+.pp-sheet-body > :last-child { margin-bottom: 0; }
+/* an empty line beyond the usual gap (printdoc.py): one line of space */
+#pp-source > .pp-blank, .pp-sheet-body > .pp-blank { height: calc(var(--pp-lh) * 1rem); margin: 0; }
+p, li { overflow-wrap: anywhere; }
+h1, h2, h3, h4, h5, h6 { font-weight: 700; line-height: 1.3; margin: 0 0 var(--pp-gap); break-after: avoid; }
+h1 { font-size: 1.7em; padding-bottom: .18em; border-bottom: 1px solid rgba(var(--pp-accent-rgb), .55); }
+h2 { font-size: 1.4em; }
+h3 { font-size: 1.2em; }
+h4, h5, h6 { font-size: 1em; }
+strong { font-weight: 700; }
+a { color: var(--pp-accent); text-decoration: underline; text-decoration-color: rgba(var(--pp-accent-rgb), .4); text-underline-offset: 2px; }
+a.wikilink { color: var(--pp-wiki); text-decoration-color: rgba(124, 58, 237, .4); }
+a.tag { display: inline-block; padding: 0 7px; margin: 0 1px; border-radius: 999px; line-height: 1.45; font-size: .9em; color: rgb(var(--pp-accent-rgb)); background: rgba(var(--pp-accent-rgb), .12); text-decoration: none; }
+code { font-family: var(--pp-code-font); color: var(--pp-accent); background: rgba(var(--pp-accent-rgb), .12); border-radius: 4px; padding: 2px 7px; margin: 0 1px; }
+pre { font-family: var(--pp-code-font); font-size: .92em; background: var(--pp-code-bg); border-radius: 6px; padding: 4px 12px; white-space: pre-wrap; overflow-wrap: anywhere; }
+pre code { color: inherit; background: none; padding: 0; margin: 0; border-radius: 0; }
+hr { border: none; border-top: 1px solid rgba(var(--pp-accent-rgb), .45); margin-top: calc(var(--pp-gap) / 2); }
+img { max-width: 100%; height: auto; border-radius: 4px; vertical-align: middle; }
+ul, ol { padding-left: 1.6em; }
+li > ul, li > ol, li > p { margin: 0; }
+li > p + * { margin-top: var(--pp-gap); }
+li.pp-cont { list-style: none; }
+ul.contains-task-list { list-style: none; padding-left: .4em; }
+li.task-list-item input { margin: 0 .5em 0 0; vertical-align: middle; }
+blockquote { padding: 0 0 0 1.6ch; border-left: 3px solid var(--pp-quote-bar); color: var(--pp-muted); margin-left: 6px; }
+blockquote > * { margin: 0; }
+blockquote > * + * { margin-top: var(--pp-gap); }
+blockquote.pp-callout { color: var(--pp-fg); border-left-color: var(--pp-accent); background: rgba(var(--pp-accent-rgb), .13); border-radius: 6px; padding: 4px 12px 4px 1.6ch; }
+blockquote.pp-callout-ok { border-left-color: #22a06b; background: rgba(34, 160, 107, .14); }
+blockquote.pp-callout-warn { border-left-color: #d9822b; background: rgba(217, 130, 43, .15); }
+blockquote.pp-callout-bad { border-left-color: #d64545; background: rgba(214, 69, 69, .13); }
+table { border-collapse: collapse; }
+th, td { border: 1px solid var(--pp-border); padding: 4px 10px; text-align: left; }
+th { background: var(--pp-code-bg); font-weight: 600; }
+.math.block { text-align: center; overflow: hidden; }
+.pp-diagram { text-align: center; }
+.pp-diagram svg { max-width: 100%; height: auto; }
+.pp-embed { border: 1px solid var(--pp-border); border-left: 3px solid var(--pp-wiki); border-radius: 8px; padding: 4px 12px 8px; }
+.pp-embed-title { font-size: 11px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; color: var(--pp-muted); }
+.pp-embed-body > * { margin: .4em 0 0; }
+.pp-embed-missing { color: var(--pp-muted); }
+.footnotes-sep { border-top-color: var(--pp-border); }
+.footnotes { font-size: .9em; color: var(--pp-muted); }
+.pp-page-break { display: none; }
