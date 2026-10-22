@@ -90,7 +90,10 @@ class RightPane:
         self._settings_open = False
         self._active = "chat"
         self.settings_host.clear()
-        self._render()
+        # the click may have come from inside Settings (its ×), which is gone now: draw from the
+        # tab strip's slot, which lives on
+        with self._bar:
+            self._render()
 
     def open_tag(self, tag: str) -> None:
         """Show the ``#tag`` tab (one at a time: a new tag replaces the shown one)."""
@@ -102,7 +105,8 @@ class RightPane:
         self._tag = ""
         if self._active == "tag":
             self._active = "chat"
-        self._render()
+        with self._bar:  # as in close_settings: the click's own element may be gone
+            self._render()
 
     # ---- drawing -------------------------------------------------------------------------
 

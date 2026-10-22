@@ -853,6 +853,11 @@ body.body--dark .pp-instr-box textarea { color-scheme: dark; }  /* the corner gr
 /* Folded left pane: settings above the avatar, at the bottom of the icon column */
 .pp-ribbon-bottom { width: 100%; flex: none; gap: 6px; padding: 6px 0 0; }
 .pp-ribbon-foot { width: 100%; height: var(--pp-foot-h); box-sizing: border-box; display: flex; align-items: center; justify-content: center; border-top: 1px solid var(--pp-border); }
+/* open vault · command palette · settings: one box like the Light / Dark switch (profile.py) */
+.pp-tools { display: flex; align-items: center; }
+.pp-tools-column { flex-direction: column; }
+.pp-tools .pp-icon-btn.q-btn { width: 28px; height: 26px; min-width: 28px; min-height: 26px; }
+.pp-tools .pp-icon-btn.q-btn:hover { background: var(--pp-bg); color: var(--pp-fg); box-shadow: 0 1px 3px rgba(0, 0, 0, .15); }
 .pp-avatar-mini { cursor: pointer; }
 
 /* Footer under the editor: Backlinks toggle (left) + status (right), as tall as the profile row

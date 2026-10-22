@@ -74,7 +74,7 @@ themselves there (Ctrl+W, Ctrl+Tab, Ctrl+N): use the Alt alternatives below.
 
 | Key | Action |
 |---|---|
-| Ctrl+P | Command palette |
+| Ctrl+P | Command palette (also the ⌘ button bottom-left, between Open vault and Settings) |
 | Ctrl+O | Quick switcher (Ctrl+Enter opens in the split) |
 | Ctrl+Shift+F | Search in all notes |
 | Ctrl+Shift+O | Outline of the note |

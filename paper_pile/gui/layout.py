@@ -408,6 +408,7 @@ class MainLayout:
                 on_changed=self._profile_changed,
                 vault_name=self.vault.name,
                 open_vault=self.open_vault,
+                open_palette=self.open_palette,
             )
             self.profile.build()
         with self._ribbon_bottom:  # outline, settings + avatar stay reachable while folded

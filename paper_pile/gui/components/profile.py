@@ -1,4 +1,5 @@
-"""Bottom of the left pane: your avatar and name, and the settings button."""
+"""Bottom of the left pane: your avatar and name, and a box of three buttons (like the
+Light / Dark switch): open vault, command palette, settings."""
 
 import logging
 from collections.abc import Callable
@@ -28,9 +29,11 @@ class ProfileBlock:
         on_changed: Callable[[], None] = lambda: None,
         vault_name: str = "",
         open_vault: Callable[[], object] = lambda: None,
+        open_palette: Callable[[], None] = lambda: None,
     ) -> None:
         self._vault_name = vault_name
         self._open_vault = open_vault
+        self._open_palette = open_palette
         self.config = config
         self._open_settings = open_settings
         self._on_changed = on_changed
@@ -48,16 +51,19 @@ class ProfileBlock:
                 self._name = ui.label("").classes("pp-profile-name")
             who.on("click", lambda _e: self._open_dialog())
             ui.space()
-            icon_button("folder-open", self._open_vault, "Open vault").classes("pp-profile-btn")
-            icon_button("settings", self._open_settings, "Settings (Ctrl+,)").classes(
-                "pp-profile-btn"
-            )
+            self._tools("row")
         self.refresh()
 
+    def _tools(self, direction: str) -> None:
+        """Open vault, command palette, settings, in one box (a row, or a column on the rail)."""
+        with ui.element("div").classes(f"pp-seg pp-tools pp-tools-{direction}"):
+            icon_button("folder-open", self._open_vault, "Open vault", size="m")
+            icon_button("command", self._open_palette, "Command palette (Ctrl+P)", size="m")
+            icon_button("settings", self._open_settings, "Settings (Ctrl+,)", size="m")
+
     def build_mini(self) -> None:
-        """The folded-pane version: open vault and settings above the avatar, in one column."""
-        icon_button("folder-open", self._open_vault, "Open vault")
-        icon_button("settings", self._open_settings, "Settings (Ctrl+,)")
+        """The folded-pane version: the same box, standing, above the avatar."""
+        self._tools("column")
         with ui.element("div").classes("pp-ribbon-foot"):  # level with the footer and profile row
             avatar = ui.element("div").classes("pp-avatar pp-avatar-mini")
         avatar.on("click", lambda _e: self._open_dialog())
