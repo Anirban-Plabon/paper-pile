@@ -15,8 +15,13 @@ deleted note goes to `<vault>/.trash/`.
   page breaks. Ctrl+E switches to the raw source.
 - **Links**: `[[wikilinks]]`, backlinks, rename-safe (links and images follow a renamed note).
 - **Find things**: quick switcher (Ctrl+O), full-text search over every note (Ctrl+Shift+F),
-  command palette (Ctrl+P), outline of the current note (Ctrl+Shift+O), tags.
-- **Slash menu** (`/`): blocks, templates, links, embeds, page breaks, and AI commands.
+  command palette (Ctrl+P), outline of the current note under the file tree (Ctrl+Shift+O),
+  tags.
+- **Slash menu**: type `/`, right-click in the note (with Cut / Copy / Paste on top), or put the
+  caret after a `/` that stands alone — blocks, templates, links, embeds, page breaks, AI
+  commands.
+- **Tabs**: right-click a tab to split, rename, move, merge, see its history, copy its path or
+  close others; the buttons beside ⋯ split the editor and (with AI on) ask the AI about the note.
 - **Safety**: autosave with crash recovery, outside edits detected (conflicts never overwrite),
   **version history** of every note (⋯ → Version history, restore with one click, Ctrl+Z undoes
   it), a **Trash** you can restore from (Ctrl+P → Open trash).
@@ -81,7 +86,7 @@ themselves there (Ctrl+W, Ctrl+Tab, Ctrl+N): use the Alt alternatives below.
 | Ctrl+Enter | Page break at the caret |
 | Ctrl+Shift+V | Paste without Smart Paste |
 | Ctrl+F / Ctrl+H | Find / replace in the note |
-| `/` | Slash menu |
+| `/` or right-click | Slash menu |
 
 In the file tree (click it first): ↑/↓ move, Shift+↑/↓ select, ←/→ fold/unfold, Enter opens,
 F2 renames, Delete moves to the trash, Ctrl+A selects all, Esc clears. Ctrl+click and

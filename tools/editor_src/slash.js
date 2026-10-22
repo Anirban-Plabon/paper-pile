@@ -5,8 +5,14 @@
 // State lives in a StateField: the position of the typed "/", the current query (the text between
 // the "/" and the caret) and the results Python last sent. The menu is a CM6 tooltip, so
 // positioning, flipping above the caret near the bottom and scroll tracking come for free.
+//
+// Ways in (PLAN §4.18): typing "/" where it triggers; Ctrl+J / Alt+/ (keeps the selection); the
+// caret put right after a "/" that stands alone (a click or an arrow key, not typing); a
+// right-click. A right-click puts a *temporary* "/" at the click: it is kept out of the undo
+// history and removed again if the menu closes without running a command, and the menu then
+// starts with Cut / Copy (with a selection) / Paste.
 import { syntaxTree } from "@codemirror/language";
-import { Prec, StateEffect, StateField } from "@codemirror/state";
+import { Prec, StateEffect, StateField, Transaction } from "@codemirror/state";
 import { EditorView, ViewPlugin, keymap, showTooltip } from "@codemirror/view";
 import { rtOf } from "./context.js";
 
@@ -28,12 +34,24 @@ function triggers(state, pos) {
   return (before === "" || /\s$/.test(before)) && !inNoSlashContext(state, pos);
 }
 
+// A "/" that stands alone: it triggers, and nothing but a space or the line end follows it
+// (so a caret after "and/or" or "/table" typed earlier does not open the menu).
+function loneSlashBefore(state, pos) {
+  if (pos < 1 || state.sliceDoc(pos - 1, pos) !== "/" || !triggers(state, pos - 1)) return false;
+  const line = state.doc.lineAt(pos);
+  return pos === line.to || /\s/.test(state.sliceDoc(pos, pos + 1));
+}
+
+const RAN = "ran"; // closeEffect's value when a command (or a clipboard button) took over
 const closeEffect = StateEffect.define();
-const forceOpenEffect = StateEffect.define(); // position of a "/" that opens the menu regardless of the trigger rule
+const forceOpenEffect = StateEffect.define(); // {pos, temp, clip}: opens at the "/" at pos regardless of the trigger rule
 const resultsEffect = StateEffect.define(); // {groups}
 const moveEffect = StateEffect.define(); // {delta} or {to}
 
 const flatten = (groups) => groups.flatMap((g) => g.items);
+const fresh = (from, extra = {}) => ({
+  from, query: "", groups: [], items: [], selected: 0, hasResults: false, temp: false, clip: null, ...extra,
+});
 
 const slashField = StateField.define({
   create: () => null,
@@ -43,8 +61,8 @@ const slashField = StateField.define({
     for (const e of tr.effects) if (e.is(closeEffect)) v = null;
     for (const e of tr.effects) {
       if (e.is(forceOpenEffect)) {
-        v = { from: e.value, query: "", groups: [], items: [], selected: 0, hasResults: false };
-        from = e.value; // already in the new document's coordinates
+        v = fresh(e.value.pos, { temp: !!e.value.temp, clip: e.value.clip || null });
+        from = e.value.pos; // already in the new document's coordinates
       }
     }
     if (tr.docChanged && tr.isUserEvent("input.type") && !tr.isUserEvent("input.type.ai")) {
@@ -53,8 +71,16 @@ const slashField = StateField.define({
         if (fa === ta && inserted.length === 1 && inserted.sliceString(0) === "/") at = fb;
       });
       if (at !== null && triggers(tr.state, at)) {
-        v = { from: at, query: "", groups: [], items: [], selected: 0, hasResults: false };
+        v = fresh(at);
         from = at; // already in the new document's coordinates
+      }
+    }
+    // the caret was put (click / arrow key) right after a "/" that stands alone
+    if (!v && !value && !tr.docChanged && tr.selection && tr.isUserEvent("select")) {
+      const head = tr.state.selection.main;
+      if (head.empty && loneSlashBefore(tr.state, head.head)) {
+        v = fresh(head.head - 1);
+        from = head.head - 1;
       }
     }
     if (!v) return null;
@@ -102,6 +128,8 @@ function createMenu(view) {
   const footer = el("div", "pp-slash-footer");
   footer.append(el("span", "", "Close menu"), el("span", "pp-slash-dot", "·"), el("kbd", "", "esc"));
   body.setAttribute("role", "listbox");
+  const start = view.state.field(slashField, false);
+  if (start && start.temp) dom.append(clipboardRow(view, start));
   dom.append(header, body, footer);
   let drawn = null;
 
@@ -172,7 +200,138 @@ function runItem(view, index) {
   const item = v && v.items[index];
   if (!item) return false;
   emitFrom(view.state, "slash_run", { id: item.id, from: v.from, to: view.state.selection.main.head });
-  view.dispatch({ effects: closeEffect.of(null) });
+  view.dispatch({ effects: closeEffect.of(RAN) });
+  return true;
+}
+
+// ---- right-click: a temporary "/" and the clipboard row ------------------------------------
+
+const noHistory = Transaction.addToHistory.of(false);
+
+// Open the menu at `pos` with a "/" that goes away again unless a command runs.
+function openTemp(view, pos, clip) {
+  view.dispatch({
+    changes: { from: pos, insert: "/" },
+    selection: { anchor: pos + 1 },
+    effects: forceOpenEffect.of({ pos, temp: true, clip }),
+    annotations: noHistory,
+    userEvent: "input.slashmenu",
+  });
+}
+
+// Close the menu and take its temporary "/" (and what was typed after it) out; returns where the
+// "/" was.
+function dropTemp(view) {
+  const v = open(view);
+  if (!v) return null;
+  view.dispatch({
+    changes: { from: v.from, to: v.from + 1 + v.query.length },
+    effects: closeEffect.of(RAN),
+    annotations: noHistory,
+  });
+  return v.from;
+}
+
+async function writeClipboard(text) {
+  try {
+    await navigator.clipboard.writeText(text);
+  } catch {
+    const box = document.createElement("textarea"); // older or locked-down clipboards
+    box.value = text;
+    document.body.append(box);
+    box.select();
+    document.execCommand("copy");
+    box.remove();
+  }
+}
+
+function clipboardRow(view, v) {
+  const row = el("div", "pp-slash-tools");
+  const button = (label, icon, run) => {
+    const b = el("button", "pp-slash-tool");
+    const i = el("span", "pp-slash-tool-icon");
+    if (window.ppIconSvg) i.innerHTML = window.ppIconSvg(icon);
+    b.append(i, el("span", "", label));
+    // mousedown only keeps the editor's focus; acting on click keeps the whole click on the
+    // button (acting on mousedown closes the menu and the mouseup lands in the text)
+    b.addEventListener("mousedown", (e) => e.preventDefault());
+    b.addEventListener("click", (e) => {
+      e.preventDefault();
+      run(b);
+    });
+    row.append(b);
+  };
+  const clip = v.clip;
+  if (clip) {
+    const copy = (cut) => {
+      const text = view.state.sliceDoc(clip.from, clip.to);
+      writeClipboard(text);
+      dropTemp(view);
+      if (cut) view.dispatch({ changes: { from: clip.from, to: clip.to }, userEvent: "delete.cut" });
+      else view.dispatch({ selection: { anchor: clip.from, head: clip.to } });
+    };
+    button("Cut", "scissors", () => copy(true));
+    button("Copy", "copy", () => copy(false));
+  }
+  button("Paste", "clipboard-paste", async (b) => {
+    let text;
+    try {
+      text = await navigator.clipboard.readText();
+    } catch {
+      b.lastChild.textContent = "Press Ctrl+V";
+      return;
+    }
+    const at = dropTemp(view);
+    if (at === null) return;
+    const from = clip ? clip.from : at;
+    const to = clip ? clip.to : at;
+    view.dispatch({
+      changes: { from, to, insert: text },
+      selection: { anchor: from + text.length },
+      userEvent: "input.paste",
+    });
+  });
+  return row;
+}
+
+// The menu closed without a command: a temporary "/" goes (with the query typed after it, unless
+// the user went on typing words and the menu closed on its own).
+const tempCleanup = ViewPlugin.fromClass(
+  class {
+    update(u) {
+      const before = u.startState.field(slashField, false);
+      if (!before || !before.temp || u.state.field(slashField, false)) return;
+      if (u.transactions.some((tr) => tr.effects.some((e) => e.is(closeEffect) && e.value === RAN))) return;
+      const typing = u.transactions.some((tr) => tr.docChanged && tr.isUserEvent("input"));
+      const at = u.changes.mapPos(before.from, -1);
+      const query = typing ? "" : before.query;
+      const view = u.view;
+      queueMicrotask(() => {
+        const doc = view.state.doc;
+        if (doc.sliceString(at, at + 1) !== "/") return;
+        const end = doc.sliceString(at + 1, at + 1 + query.length) === query ? at + 1 + query.length : at + 1;
+        view.dispatch({ changes: { from: at, to: end }, annotations: noHistory });
+      });
+    }
+  },
+);
+
+function onContextMenu(e, view) {
+  const pos = view.posAtCoords({ x: e.clientX, y: e.clientY });
+  if (pos === null) return false;
+  e.preventDefault();
+  if (open(view)) {
+    view.dispatch({ effects: closeEffect.of(null) }); // a second right-click just closes it
+    return true;
+  }
+  view.focus();
+  const sel = view.state.selection.main;
+  if (!sel.empty && pos >= sel.from && pos <= sel.to && view.state.selection.ranges.length === 1) {
+    emitFrom(view.state, "ai_selection", { from: sel.from, to: sel.to, text: view.state.sliceDoc(sel.from, sel.to) });
+    openTemp(view, sel.to, { from: sel.from, to: sel.to });
+  } else {
+    openTemp(view, pos, null);
+  }
   return true;
 }
 
@@ -194,7 +353,7 @@ function openOnSelection(view) {
   view.dispatch({
     changes: { from: sel.to, insert: "/" },
     selection: { anchor: sel.to + 1 },
-    effects: forceOpenEffect.of(sel.to),
+    effects: forceOpenEffect.of({ pos: sel.to }),
     userEvent: "input.type",
   });
   return true;
@@ -239,12 +398,14 @@ export function slashExtension() {
   return [
     slashField,
     queryPlugin,
+    tempCleanup,
     slashKeys,
     EditorView.domEventHandlers({
       blur: (_e, view) => {
         if (open(view)) view.dispatch({ effects: closeEffect.of(null) });
         return false;
       },
+      contextmenu: onContextMenu,
     }),
   ];
 }

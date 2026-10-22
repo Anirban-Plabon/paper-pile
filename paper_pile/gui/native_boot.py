@@ -192,14 +192,21 @@ def _install_pdf_printer() -> None:
 def _fix_permission_requests() -> None:
     """pywebview 6.2.1 answers a page's permission request (clipboard read, notifications, …)
     with a plain int, which PyQt6 rejects with a TypeError that takes the whole window down.
-    Re-wire the signal to an answer of the right type: every request is denied (the app needs
-    none of them)."""
+    Re-wire the signal to an answer of the right type: every request is denied except reading
+    the clipboard by the app's own page (the slash menu's Paste, PLAN §4.18); page scripts may
+    also paste."""
     import webview
     from qtpy import QtCore, QtWidgets
-    from qtpy.QtWebEngineCore import QWebEnginePage
+    from qtpy.QtWebEngineCore import QWebEnginePage, QWebEngineSettings
     from webview.platforms.qt import BrowserView
 
     deny = QWebEnginePage.PermissionPolicy.PermissionDeniedByUser
+    grant = QWebEnginePage.PermissionPolicy.PermissionGrantedByUser
+    clipboard = getattr(QWebEnginePage.Feature, "ClipboardReadWrite", None)
+
+    def answer(page: QWebEnginePage, url: QtCore.QUrl, feature: object) -> None:
+        own = url.host() in {"127.0.0.1", "localhost"}
+        page.setFeaturePermission(url, feature, grant if own and feature == clipboard else deny)
 
     class OnGui(QtCore.QObject):
         run = QtCore.Signal(object)
@@ -222,8 +229,12 @@ def _fix_permission_requests() -> None:
             with contextlib.suppress(TypeError, RuntimeError):
                 page.featurePermissionRequested.disconnect()
             page.featurePermissionRequested.connect(
-                lambda url, feature, p=page: p.setFeaturePermission(url, feature, deny)
+                lambda url, feature, p=page: answer(p, url, feature)
             )
+            attrs = QWebEngineSettings.WebAttribute
+            for attr in ("JavascriptCanAccessClipboard", "JavascriptCanPaste"):
+                if hasattr(attrs, attr):
+                    page.settings().setAttribute(getattr(attrs, attr), True)
 
     def start() -> None:
         for window in list(webview.windows):

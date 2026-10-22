@@ -192,11 +192,18 @@ export function createEditor(
 
   // Slash menu / autocomplete stay out of the strip a maximized WSL window has under the
   // Windows taskbar (--pp-inset-*, set by native_boot.py); CodeMirror only knows innerHeight.
+  // Sideways they stay inside the editor's own box: the pane clips anything past its edges.
   const tooltipSpace = (view) => {
     const css = getComputedStyle(document.documentElement);
     const inset = (name) => parseFloat(css.getPropertyValue(name)) || 0;
     const win = view.dom.ownerDocument.defaultView;
-    return { top: inset("--pp-inset-top"), left: 0, right: win.innerWidth, bottom: win.innerHeight - inset("--pp-inset-bottom") };
+    const box = view.dom.getBoundingClientRect();
+    return {
+      top: inset("--pp-inset-top"),
+      left: Math.max(0, box.left),
+      right: Math.min(win.innerWidth, box.right),
+      bottom: win.innerHeight - inset("--pp-inset-bottom"),
+    };
   };
 
   // A note switch builds a fresh state, which also drops the undo history: Ctrl+Z must never
