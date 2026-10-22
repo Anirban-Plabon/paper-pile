@@ -647,6 +647,7 @@ P9.1–P9.3 and P9.5–P9.6 are built in this phase (order: P14.1, P9.1, P9.2, P
 | P14.14 | Page view: break lines hidden, drag limits, rest onto new pages | no break line drawn; down stops where the page is full, up stops below the previous page; auto-scroll; message when the page count changes (real app); qa_editor passes |
 | P14.15 | Vault row adapts to the pane width | Change… inside the pane at every width, never over the path; after fold/unfold (real app) |
 | P14.16 | Command palette button | in the vault · palette · settings box, row and folded rail; each opens its thing (real app) |
+| P14.17 | `--debug` window log | every window change logged with state, size, screen, zoom, taskbar strips |
 
 ### P10 — Note menu (⋯) (user request 2026-10-17)
 | ID | Task | Acceptance |

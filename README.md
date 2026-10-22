@@ -65,6 +65,7 @@ or any chat model — pick it in the chat's model menu). The app works fully wit
 uv run paper-pile ~/notes        # open ~/notes as the vault in a native window
 uv run paper-pile                # reopen the last vault (asks for one the first time)
 uv run paper-pile --serve ~/notes [--port 8080]   # web mode: prints a 127.0.0.1 URL with a token
+uv run paper-pile --debug ~/notes  # also log window sizes / screens / scale on the terminal
 ```
 
 Web mode only listens on `127.0.0.1` and needs the printed token. Browsers keep some keys for

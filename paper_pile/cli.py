@@ -1,6 +1,7 @@
 """Command-line entry point."""
 
 import argparse
+import os
 import secrets
 import sys
 from collections.abc import Sequence
@@ -21,6 +22,9 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("vault", nargs="?", help="vault directory (default: last vault)")
     parser.add_argument("--serve", action="store_true", help="web mode on 127.0.0.1 (needs token)")
     parser.add_argument("--port", type=int, help=f"port for --serve (default {DEFAULT_PORT})")
+    parser.add_argument(
+        "--debug", action="store_true", help="log details on stderr (window sizes, screens)"
+    )
     parser.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
     return parser
 
@@ -53,7 +57,12 @@ def main(argv: Sequence[str] | None = None) -> int:
     ensure_vault_dir(vault)
     save_last_vault(vault)
 
+    if args.debug:
+        os.environ["PAPER_PILE_DEBUG"] = "1"  # the window's own process inherits it
     from paper_pile.gui import app  # imported late: keeps --help fast and core UI-free
+    from paper_pile.gui.native_boot import debug_logging
+
+    debug_logging()
 
     try:
         if args.serve:

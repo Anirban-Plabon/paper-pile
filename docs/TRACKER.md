@@ -13,6 +13,7 @@ Legend: 🧠 = needs Opus (see PLAN §6 model guidance) · ⬜ todo · 🔄 in p
 
 ## Open issues
 <!-- - [ ] YYYY-MM-DD · task ID · what's blocking · what's needed -->
+- 2026-10-22 · Maximized window covers only the top half of the laptop screen (user: clicked the □ button / double-clicked the top bar). Not reproduced: a fresh window on the same laptop panel (1920×1200 at 150 %, work area 1128) maximizes to 1920×1128 every way (button ×2, restore, double-click). Waiting for the user's `paper-pile --debug` log of the bad case (state, size, screen, zoom, taskbar strips per change)
 - (none)  <!-- 2026-10-14 · P2.5 external edits: resolved (content-hash sync + conflict banner), see Decision log -->
 
 ## Task status
@@ -175,6 +176,7 @@ Legend: 🧠 = needs Opus (see PLAN §6 model guidance) · ⬜ todo · 🔄 in p
 | P14.14 | Page view: break lines hidden, drag limits, rest onto new pages | ✅ | `pageview.js` `hiddenBreaks` (block replace + atomic), `pageStartLines`, `probeLayout` (second hidden frame), `watchPageCount` → `page_count` → toast; `pagedrag.js` `bounds` (earliest / furthest, trial layout without the break), auto-scroll at the edges; live preview skips the break widget in page view; 15 real-app checks (2-page note: furthest = paragraph 23, Ctrl+Z, drag up with auto-scroll → "now has N pages", page 3 not above page 2) |
 | P14.15 | Vault row adapts to the pane width | ✅ | `SettingsPane._vault_row` (a normal row: text + control), `.pp-set-control` `justify-content: safe flex-end`; stacked fields `min-width: min(200px, 100%)`; 6 real-app checks at 1000/800/560/480/420 px and after fold/unfold |
 | P14.16 | Command palette button | ✅ | `ProfileBlock._tools(direction)` (`pp-seg pp-tools`), `open_palette` param; 6 real-app checks (row + rail, each button). Also fixed: Settings' own × left an empty Settings tab (dead slot) |
+| P14.17 | `--debug`: window sizing log | ✅ | `cli --debug` → `PAPER_PILE_DEBUG` → `native_boot.debug_logging` (both processes); window state / size / screen / zoom / taskbar strips logged on every change; real run on the user's laptop panel checked |
 | P14.7 | Slash menu on right-click and on a lone `/` | ✅ | `slash.js`: `loneSlashBefore`, temporary `/` (`openTemp` / `dropTemp`, kept out of undo history, `tempCleanup`), `clipboardRow` (Cut / Copy / Paste, buttons act on click), right-click handler; native window: the app's own page may read the clipboard (`native_boot._fix_permission_requests`, everything else still denied); editor tooltips kept inside the editor's box sideways (the pane clipped a menu opened near its right edge); 17 real-app checks with real right-clicks / clicks / keys |
 
 ## Decision log
@@ -539,3 +541,4 @@ Legend: 🧠 = needs Opus (see PLAN §6 model guidance) · ⬜ todo · 🔄 in p
 - 2026-10-22 · P14.14 page view: break lines hidden, drag limits + auto-scroll + page-count message; P14.15 vault row adapts · 21 real-app checks
 - 2026-10-22 · fix: Settings rows flip-flopping (flicker) after P14.15 · flip check at 52 widths × 2 pages
 - 2026-10-22 · P14.16 command palette button (vault · palette · settings box); Settings × fix · 6 + 1 real-app checks
+- 2026-10-22 · P14.17 `--debug` window log; half-screen maximize not reproduced (open issue) · real-window runs on the laptop panel

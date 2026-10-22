@@ -14,17 +14,55 @@ maximize / restore button shows the real state whoever changed it (button, doubl
 On WSL it also fixes the size per screen: WSLg reports every monitor at 100 %, so each window
 is zoomed to the scale Windows uses for the monitor it is on (see ``core/display.py``), and
 re-zoomed when it moves to another monitor.
+
+With ``paper-pile --debug`` (env ``PAPER_PILE_DEBUG``) every window change is logged: state,
+size, screen, scale and the taskbar strip (to diagnose sizing on a user's screens).
 """
 
 import contextlib
+import logging
+import os
 import threading
 from collections.abc import Callable
 from pathlib import Path
+from typing import Any
 
 EDGES = {"n": "TopEdge", "s": "BottomEdge", "e": "RightEdge", "w": "LeftEdge"}
 _KEEP: list[object] = []  # Qt helper objects that must live as long as the window (or the job)
+log = logging.getLogger("paper_pile.native")
 PDF_TIMEOUT_MS = 90_000
 LAYOUT_POLL_MS = 150
+
+
+def debug_logging() -> None:
+    """``--debug``: the app's own log lines (``paper_pile.*``) at DEBUG on stderr, in whichever
+    process calls this (the app, and the window's process through the inherited env)."""
+    if not os.environ.get("PAPER_PILE_DEBUG"):
+        return
+    handler = logging.StreamHandler()
+    handler.setFormatter(logging.Formatter("%(asctime)s %(name)s: %(message)s", "%H:%M:%S"))
+    root = logging.getLogger("paper_pile")
+    root.addHandler(handler)
+    root.setLevel(logging.DEBUG)
+
+
+def _describe(view: object) -> str:
+    """The window as Qt sees it: state, logical size and position, screen and its scale."""
+    v: Any = view
+    handle = v.windowHandle()
+    screen = handle.screen() if handle is not None else None
+    g = screen.geometry() if screen is not None else None
+    where = (
+        f"screen {screen.name()} {g.x()},{g.y()} {g.width()}x{g.height()} "
+        f"dpr {screen.devicePixelRatio()}"
+        if screen is not None and g is not None
+        else "no screen"
+    )
+    return (
+        f"maximized={v.isMaximized()} fullscreen={v.isFullScreen()} "
+        f"pos {v.x()},{v.y()} size {v.width()}x{v.height()} "
+        f"zoom {v.webview.zoomFactor():.2f}; {where}"
+    )
 
 
 def install() -> None:
@@ -60,6 +98,7 @@ def install() -> None:
         mover.requested.emit(self.uid, edge)
 
     webview.Window.start_system_gesture = start_system_gesture  # type: ignore[attr-defined]
+    debug_logging()
     _install_pdf_printer()
     _fix_permission_requests()
     _install_window_state()
@@ -92,6 +131,7 @@ def _install_window_state() -> None:
         @staticmethod
         def _tell(view: BrowserView) -> None:
             on = "true" if view.isMaximized() or view.isFullScreen() else "false"
+            log.debug("window state: %s", _describe(view))
             view.webview.page().runJavaScript(
                 f"document.body && document.body.classList.toggle('pp-maximized', {on})"
             )
@@ -268,6 +308,7 @@ def _install_screen_scale() -> None:
         @QtCore.Slot(object)
         def _set(self, monitors: list[display.Monitor]) -> None:  # on the GUI thread
             self._monitors = monitors
+            log.debug("windows monitors: %s", monitors)
             for view in list(BrowserView.instances.values()):
                 self._hook(view)
                 self._apply(view)
@@ -284,6 +325,7 @@ def _install_screen_scale() -> None:
             # BEFORE the new size, so the height change is what gives the right strip.
             handle.windowStateChanged.connect(lambda _state, v=view: self._apply(v, fit=False))
             handle.heightChanged.connect(lambda _h, v=view: self._apply(v, fit=False))
+            handle.widthChanged.connect(lambda _w, v=view: log.debug("width: %s", _describe(v)))
             view.webview.page().loadFinished.connect(lambda _ok, v=view: self._apply(v))
 
         def _apply(self, view: BrowserView, *, fit: bool = True) -> None:
@@ -308,6 +350,14 @@ def _install_screen_scale() -> None:
                 # keep the page's own size (like Windows does on a DPI change)
                 width, height = round(width * zoom / old), round(height * zoom / old)
             self._insets(view, monitor, dpr, zoom)
+            log.debug(
+                "apply(fit=%s): %s; windows monitor %s; zoom %.2f -> %.2f",
+                fit,
+                _describe(view),
+                monitor,
+                old,
+                zoom,
+            )
             if not fit or view.isMaximized() or view.isFullScreen():
                 return
             # never taller or wider than the monitor without the Windows taskbar: WSLg's own idea
@@ -319,6 +369,7 @@ def _install_screen_scale() -> None:
                 room_w, room_h = min(room_w, round(work_w / dpr)), min(room_h, round(work_h / dpr))
             fitted = (min(width, room_w), min(height, room_h))
             if fitted != (view.width(), view.height()):
+                log.debug("fit to the work area: %sx%s", *fitted)
                 view.resize(*fitted)
 
         def _insets(
@@ -328,6 +379,7 @@ def _install_screen_scale() -> None:
             top = bottom = 0
             if monitor is not None and view.isMaximized():
                 top, bottom = display.taskbar_insets(monitor, round(view.height() * dpr))
+                log.debug("taskbar strips (physical px): top %s, bottom %s", top, bottom)
             root = "document.documentElement.style"
             view.webview.page().runJavaScript(
                 f"{root}.setProperty('--pp-inset-top', '{top / dpr / zoom:.1f}px');"
