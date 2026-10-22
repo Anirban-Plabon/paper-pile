@@ -111,3 +111,48 @@ async def test_deleting_the_selection_trashes_each_item_once(user: User, tree_pa
     assert not (vault.root / "box").exists() and not (vault.root / "c.md").exists()
     assert [e for e in events if e[0] == "deleted"] == [("deleted", "box"), ("deleted", "c.md")]
     assert _shown(tree) == set()
+
+
+async def test_keyboard_moves_extends_folds_and_selects_all(user: User, tree_page: Page) -> None:
+    vault, events = tree_page
+    (vault.root / "box" / "in.md").write_text("x")
+    tree = await _tree(user)
+    order = list(tree._rows)  # box, a.md, b.md, c.md, d.md
+    assert order[:2] == ["box", "a.md"]
+    await tree._on_key({"key": "ArrowDown"})  # no cursor yet: the first row
+    assert _shown(tree) == {"box"}
+    await tree._on_key({"key": "ArrowRight"})  # unfold
+    assert "box" in tree._expanded and "box/in.md" in tree._rows
+    await tree._on_key({"key": "ArrowRight"})  # step in
+    assert _shown(tree) == {"box/in.md"}
+    await tree._on_key({"key": "ArrowLeft"})  # out to the folder
+    assert _shown(tree) == {"box"}
+    await tree._on_key({"key": "ArrowLeft"})  # fold
+    assert "box" not in tree._expanded
+    await tree._on_key({"key": "ArrowDown"})
+    await tree._on_key({"key": "ArrowDown", "shift": True})
+    await tree._on_key({"key": "ArrowDown", "shift": True})
+    assert _shown(tree) == {"a.md", "b.md", "c.md"}
+    await tree._on_key({"key": "ArrowUp", "shift": True})
+    assert _shown(tree) == {"a.md", "b.md"}
+    await tree._on_key({"key": "Enter"})  # opens the cursor row
+    assert events[-1] == ("open", "b.md")
+    await tree._on_key({"key": "a", "ctrl": True})
+    assert _shown(tree) == set(tree._rows)
+    await tree._on_key({"key": "Escape"})
+    assert _shown(tree) == set()
+    await tree._on_key({"key": "End"})
+    assert _shown(tree) == {"d.md"}
+
+
+async def test_delete_key_trashes_the_selection(user: User, tree_page: Page) -> None:
+    import asyncio
+
+    vault, _events = tree_page
+    tree = await _tree(user)
+    await tree._on_band({"paths": ["a.md", "b.md"], "add": False})
+    task = asyncio.create_task(tree._on_key({"key": "Delete"}))
+    await user.should_see("Move 2 items to the trash?")
+    user.find(kind=ui.button, content="Delete").click()
+    await task
+    assert not (vault.root / "a.md").exists() and not (vault.root / "b.md").exists()

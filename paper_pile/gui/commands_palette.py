@@ -86,6 +86,7 @@ def palette_commands(layout: "MainLayout") -> list[PaletteCommand]:
         ),
         C("settings", "Settings", layout.open_settings, "Ctrl+,", "settings", "preferences"),
         C("open-vault", "Open vault…", layout.open_vault, "", "folder-open", "switch folder"),
+        C("trash", "Open trash", layout.open_trash, "", "trash", "restore deleted bin"),
         C("close-tab", "Close tab", layout.close_tab, "Ctrl+W", "x", when=note),
         C(
             "next-tab",
@@ -131,6 +132,15 @@ def palette_commands(layout: "MainLayout") -> list[PaletteCommand]:
             "",
             "file-text",
             "print pages",
+            when=note,
+        ),
+        C(
+            "outline",
+            "Outline",
+            layout.toggle_outline,
+            "Ctrl+Shift+O",
+            "list-tree",
+            "headings contents",
             when=note,
         ),
         C("move", "Move note to…", actions.move, "", "folder-input", when=note),

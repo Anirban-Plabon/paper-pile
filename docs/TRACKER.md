@@ -100,8 +100,8 @@ Legend: 🧠 = needs Opus (see PLAN §6 model guidance) · ⬜ todo · 🔄 in p
 | ID | Task | Status | Notes |
 |---|---|---|---|
 | P9.1 | Palette + switcher | ✅ | `PickerPopup`, `core.picker.switcher_notes`, `SessionState.recent_notes`, `gui/commands_palette.py` (33 commands, `when` per command); Ctrl+P, Ctrl+Shift+F wired; 2 tests; 18 real-app checks with key events (filter, ↑/↓, Enter, Ctrl+Enter → split, Create, Esc, palette theme / file tree, note commands hidden without a note). Also (P14.1 gap): a tab's right-click menu (only *Add note to chat*) is gone while AI is off |
-| P9.2 | Vault search | ⬜ | |
-| P9.3 | Outline panel | ⬜ | |
+| P9.2 | Vault search | ✅ | `FileTree._render_hits` over `Index.search`; `index.search_body` (schema 4); editor `openSearch(replace, query)`; selection-sync ignores `select.search`; 2 tests; 10 real-app checks (Ctrl+Shift+F, hits + marks, click → note open, panel query + match selected, no chat chip, prefix, empty box → recent); qa_editor 358/358 |
+| P9.3 | Outline panel | ✅ | `OutlinePane`, `parser.section_at`, right-pane Outline tab, Ctrl+Shift+O / ⋯ / palette; fixed: `gotoLine` focused AFTER moving the caret, so the caret (status bar Ln, outline mark) was never reported after a jump; two-line underlined headings joined without a space; 1 test; 10 real-app checks |
 | P9.4 | Status bar | ✅ | word count (`core/stats.py`: body only, words = tokens with a letter/digit, any script) + Ln/Col reported by the editor (debounced 120 ms); was a hard-coded placeholder until 2026-10-20 |
 | P9.5 | Shortcuts | ⬜ | |
 | P9.6 | Final QA + README | ⬜ | |
@@ -161,9 +161,9 @@ Legend: 🧠 = needs Opus (see PLAN §6 model guidance) · ⬜ todo · 🔄 in p
 | ID | Task | Status | Notes |
 |---|---|---|---|
 | P14.1 | Feature switches + Minimal settings | ✅ | `features.ai` / `features.calendar` / `settings.minimal` + `Setting.essential`, `core.settings.is_shown` / `shown_sections` / `feature_on`; AI slash commands `when=_ai_on`; `RightPane.tabs()` / `on_empty`; `MainLayout._features_changed`; 2 tests; 20 real-app checks (fake Ollama counts requests: none while off). Also fixed: a folded right pane's resize strip stuck out past the window and made the editor column scroll sideways |
-| P14.2 | File tree keyboard | ⬜ | |
-| P14.3 | Trash popup + restore | ⬜ | |
-| P14.4 🧠 | Version history (diff chain) | ⬜ | |
+| P14.2 | File tree keyboard | ✅ | `FileTree._on_key` / `_move_cursor` / `_fold_key`, `tree.js` keys only while the tree itself has focus; 2 tests; 12 real-app checks with real key events |
+| P14.3 | Trash popup + restore | ✅ | `core/trash.py` (manifest, list, restore, free name, image links), `TrashDialog`; 6 tests; 9 real-app checks (Delete key → trash, blank-space menu Trash…, restore folder whole, clash → `(restored)`, tree reveals it, palette) |
+| P14.4 🧠 | Version history (diff chain) | 🔄 | |
 
 ## Decision log
 <!-- YYYY-MM-DD · decision · reason · (who: user / claude) -->
@@ -318,11 +318,14 @@ Legend: 🧠 = needs Opus (see PLAN §6 model guidance) · ⬜ todo · 🔄 in p
 | 2026-10-21 | Empty editor area (user request, reference screenshot): "Open a note to start writing" replaced by four centred pill buttons: New note (Ctrl+N), New folder, Open note (Ctrl+O; unfolds the file tree on its recent-notes search until the P9.1 switcher exists), Ask AI (opens the chat and focuses the composer). New shortcuts Ctrl+N / Ctrl+O; in `--serve` mode browsers may keep Ctrl+N for themselves | Faster start from an empty window | user |
 | 2026-10-22 | Tree multi-select (user request: Ctrl+click and drag over notes). Rows are already drag-to-move, so the selection box starts only on blank tree space, like Windows Explorer (user's choice); dragging a selected row moves the whole selection. Also added Shift+click range and a group context menu (Add to chat / Delete N items) | A drag on a row can't both move and select | user |
 | 2026-10-22 | New phase P14 (user request): switches Enable AI / Enable Calendar / Minimal settings (minimal on by default, switches at the top of General), quick switcher + palette, vault search, outline, tree keys, Trash popup, version history; the AI's use of the vault stays as it is (user has own plan). History stores reverse line diffs + a full copy every 25 versions in `.paper-pile/history.db`, thinned and capped at 50 MB (user rejected full copies as too heavy) | Find notes, recover from mistakes, simpler app for most users | user |
+| 2026-10-22 | Trash entries get a `.trash.json` description (`{path, dir}`), written by `Vault.delete` | `.trash/<stamp>/a/b.md` cannot tell a deleted note from a deleted folder; older entries still list (note by note) | claude |
+| 2026-10-22 | Outline uses the existing `parser.headings` (no `core/outline.py`); the quick switcher uses `core.picker` (no `core/fuzzy.py`) | Both already existed and were tested | claude |
 
 ## Issues log
 <!-- YYYY-MM-DD · task · symptom → root cause → fix · (gotcha added? y/n) -->
 | Date | Task | Symptom | Root cause | Fix | Gotcha? |
 |---|---|---|---|---|---|
+| 2026-10-22 | P9.3 | After clicking an outline heading the caret's section was not marked (and the status bar's Ln stayed old after any jump) | the editor reports the caret only while it has focus (`u.view.hasFocus`), and `gotoLine` moved the caret before `view.focus()` | focus first, then dispatch | n |
 | 2026-10-22 | P14.1 | Closing Settings (AI + Calendar off) did not fold the right pane; `RuntimeError: The parent element this slot belongs to has been deleted` | the close icon's click handler ran in the icon's slot; redrawing the tab strip deleted the icon, and folding then called `ui.query` in that dead slot | `_right_emptied` runs inside `with self._splitters["right"]:` | y |
 | 2026-10-22 | P13.15 | Chat + menu (and the model menu) opened partly or wholly below the window / behind the Windows taskbar; only the first notes showed | 1) Quasar places a q-menu once when it opens, but these menus are filled by Python on `before-show` (a server round trip), so it was placed while empty/stale and then grew downward; 2) Quasar and CodeMirror fit popups to `window.innerHeight`, which in a maximized WSL window includes the strip under the taskbar (`--pp-inset-bottom`) | `static/menus.js`: a ResizeObserver on every `.q-menu` / `.pp-ctxmenu` re-places it (`getElement(menu).updatePosition()`) and lifts it above the inset strip; editor `tooltips({ tooltipSpace })` subtracts the insets | y |
 | 2026-10-22 | P13.12 | A settings row flipped between its field beside the text and under it | marking a row "stacked" let its field shrink below 200 px (flex-basis with `width: auto`), so it fitted back beside the text while the mark stayed; the mark was also computed before the row's layout settled | the stacked field keeps `min-width: 200px`; rows are re-checked by a per-row ResizeObserver | y |
@@ -504,3 +507,4 @@ Legend: 🧠 = needs Opus (see PLAN §6 model guidance) · ⬜ todo · 🔄 in p
 - 2026-10-22 · P13.15 popups stay on screen (menus filled by Python re-placed; taskbar strip respected by menus and editor tooltips) · 12 real-app checks
 - 2026-10-22 · P14.1 feature switches (AI, Calendar) + Minimal settings (on by default) · 1057 tests; 20 real-app checks
 - 2026-10-22 · P9.1 quick switcher (Ctrl+O) + command palette (Ctrl+P) · 1058 tests; 18 real-app checks
+- 2026-10-22 · P9.2 vault search, P9.3 outline, P14.2 tree keys, P14.3 trash · tests + 10 + 10 + 12 + 9 real-app checks

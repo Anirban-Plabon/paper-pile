@@ -424,9 +424,22 @@ def headings(text: str) -> list[Heading]:
         if tok.type == "heading_open" and tok.map and i + 1 < len(tokens):
             inline = tokens[i + 1]
             plain = "".join(
-                c.content for c in (inline.children or []) if c.type in {"text", "code_inline"}
+                " " if c.type == "softbreak" else c.content
+                for c in (inline.children or [])
+                if c.type in {"text", "code_inline", "softbreak"}
             )
             found.append(Heading(int(tok.tag[1:]), plain.strip(), tok.map[0] + 1))
+    return found
+
+
+def section_at(heads: list[Heading], line: int) -> int | None:
+    """Index of the heading whose section holds 1-based ``line`` (the last one at or above it);
+    ``None`` above the first heading."""
+    found = None
+    for i, head in enumerate(heads):
+        if head.line > line:
+            break
+        found = i
     return found
 
 

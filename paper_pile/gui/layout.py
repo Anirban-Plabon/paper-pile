@@ -35,12 +35,14 @@ from paper_pile.gui.components.chat import ChatPane
 from paper_pile.gui.components.editor_pane import EditorPane
 from paper_pile.gui.components.gallery import Gallery
 from paper_pile.gui.components.memories import MemoriesPanel
+from paper_pile.gui.components.outline import OutlinePane
 from paper_pile.gui.components.picker_popup import PickerPopup, PickItem
 from paper_pile.gui.components.profile import ProfileBlock
 from paper_pile.gui.components.right_pane import RightPane
 from paper_pile.gui.components.settings import SettingsPane
 from paper_pile.gui.components.statusbar import StatusBar, status_bar
 from paper_pile.gui.components.tag_pane import TagPane
+from paper_pile.gui.components.trash_dialog import TrashDialog
 from paper_pile.gui.components.tree import FileTree
 from paper_pile.gui.components.vault_dialog import ask_vault
 from paper_pile.gui.icons import icon_button, line_icon, set_icon
@@ -103,6 +105,8 @@ class MainLayout:
         self.right: RightPane | None = None
         self.calendar: CalendarPane | None = None
         self.tags: TagPane | None = None
+        self.outline: OutlinePane | None = None
+        self._caret_line = 1
         self._settings_wide = (
             False  # the right pane shows Settings (own width: pane_widths["settings"])
         )
@@ -137,6 +141,7 @@ class MainLayout:
         self._ribbon_bottom: ui.element
         self._save_handle: asyncio.TimerHandle | None = None
         self._picker: PickerPopup
+        self._popups: ui.element
 
     # ---- building ------------------------------------------------------------------------
 
@@ -145,7 +150,8 @@ class MainLayout:
         if self.can_reveal:  # the native window has no OS title bar: draw our own controls
             ui.query("body").classes("pp-native")
             WindowChrome().build()
-        self._picker = PickerPopup(ui.element("div").classes("pp-host"))
+        self._popups = ui.element("div").classes("pp-host")  # popups opened from menus
+        self._picker = PickerPopup(self._popups)
         with ui.element("div").classes("pp-root"):
             self._ribbon_column()
             outer = self._make_splitter("left", reverse=False)
@@ -263,6 +269,19 @@ class MainLayout:
         if self.tree is not None:
             self.tree.show_search()
 
+    async def _open_found(self, path: str, term: str) -> None:
+        if self.editor_pane is not None:
+            await self.editor_pane.open_found(path, term)
+
+    async def open_trash(self) -> None:
+        """The Trash popup: what was deleted, each with Restore."""
+        await TrashDialog(Vault(self.vault), self._popups, self._restored).open()
+
+    def _restored(self, path: str) -> None:
+        self.bus.publish("vault.created", path=path)
+        if self.tree is not None:
+            self.tree.reveal(path)
+
     def show_calendar(self) -> None:
         if self.right is None or "calendar" not in self.right.tabs():
             return
@@ -345,6 +364,9 @@ class MainLayout:
                     can_reveal=self.can_reveal,
                     hidden=self._tree_hidden,
                     ai_on=self.ai_on,
+                    search=self.index.search,
+                    open_found=self._open_found,
+                    open_trash=self.open_trash,
                 )
                 self.tree.build()
             self.profile = ProfileBlock(
@@ -592,6 +614,9 @@ class MainLayout:
         self.tags = TagPane(self.index, self.editor_pane.open, self.editor_pane.open_in_split)
         with self.right.tag_host:
             self.tags.build()
+        self.outline = OutlinePane(self._jump_to_line)
+        with self.right.outline_host:
+            self.outline.build()
 
     def _chat_pane(self) -> None:
         assert self.editor_pane is not None
@@ -639,6 +664,7 @@ class MainLayout:
             on_stats=self._set_stats,
             block_to_chat=self._chat_block,
             on_toggle_pane=self.toggle,
+            on_outline=self.toggle_outline,
         )
         self.editor_pane.build()
         with self.editor_pane.empty_host:
@@ -692,6 +718,7 @@ class MainLayout:
     def _on_tabs_changed(self, paths: list[str], active: str | None) -> None:
         self.state.tabs = paths
         self.state.active = active
+        self._update_outline()
         if active is not None:
             self.state.recent_notes = push_recent(self.state.recent_notes, active, MAX_RECENT_NOTES)
         self._save_soon(immediately=True)
@@ -715,6 +742,32 @@ class MainLayout:
     def _set_stats(self, words: int | None, line: int, col: int) -> None:
         if self._status is not None:
             self._status.set_stats(words, line, col)
+        self._caret_line = line
+        self._update_outline()
+
+    def toggle_outline(self) -> None:
+        """Ctrl+Shift+O / ⋯ → Outline: show the Outline tab, or close it if it is showing."""
+        if self.right is None:
+            return
+        if self.right.active == "outline" and self.state.panes_open["right"]:
+            self.right.close_outline()
+            return
+        if not self.state.panes_open["right"]:
+            self.state.panes_open["right"] = True  # (toggle() would refuse an empty pane)
+            self._apply("right")
+            self._save_soon(immediately=True)
+        self.right.open_outline()
+        self._update_outline()
+
+    def _jump_to_line(self, line: int) -> None:
+        if self.editor_pane is not None:
+            self.editor_pane.goto_line(line)
+
+    def _update_outline(self) -> None:
+        if self.outline is None or self.right is None or self.right.active != "outline":
+            return
+        text = self.editor_pane.active_text() if self.editor_pane else None
+        self.outline.show(text, self._caret_line)
 
     def _set_save_state(self, text: str, error: bool) -> None:
         if self._status is not None:

@@ -119,6 +119,7 @@ class EditorPane:
         on_stats: Callable[[int | None, int, int], None] = lambda words, line, col: None,
         block_to_chat: Callable[[str, str, str, str], None] = lambda kind, lang, text, path: None,
         on_toggle_pane: Callable[[str], None] = lambda pane: None,
+        on_outline: Callable[[], None] = lambda: None,
         on_settings_changed: Callable[[set[str]], None] = lambda keys: None,
     ) -> None:
         self.vault = vault
@@ -153,6 +154,7 @@ class EditorPane:
         self._caret = (1, 1)  # Ln, Col of the active note
         self._block_to_chat = block_to_chat
         self._on_toggle_pane = on_toggle_pane
+        self.show_outline = on_outline  # the ⋯ menu's Outline (the layout owns the tab)
         self._on_settings_changed = on_settings_changed
         self._reindex_handle: asyncio.TimerHandle | None = None
         self._backlinks: BacklinksPane
@@ -1804,6 +1806,16 @@ class EditorPane:
     def active_note(self) -> str | None:
         return self._active_path()
 
+    def active_text(self) -> str | None:
+        """The text of the note on screen as last reported by the editor (None: no note)."""
+        tab_id = self.tabs.active
+        return self.buffers[tab_id].text if tab_id in self.buffers else None
+
+    def goto_line(self, line: int) -> None:
+        """Caret to the start of 1-based ``line`` of the note on screen, scrolled to the top."""
+        if self.tabs.active is not None:
+            self._editor.goto_line(line)
+
     async def save_now(self) -> bool:
         """Take the freshest text of the note on screen and write every open note now."""
         tab_id = self.tabs.active
@@ -1871,8 +1883,14 @@ class EditorPane:
         for tab in [t for t in self.tabs.tabs if t.path == path]:
             self._drop_tab(tab.id)
 
-    def open_search(self, replace: bool) -> None:
-        self._editor.open_search(replace)
+    def open_search(self, replace: bool, query: str = "") -> None:
+        self._editor.open_search(replace, query)
+
+    async def open_found(self, path: str, term: str) -> None:
+        """A vault-search hit was clicked: open the note with ``term`` found in it."""
+        await self.open(path)
+        if self.active_note() == path:
+            self.open_search(False, term)
 
     def after_merge(self) -> None:
         """Links and the index changed under us: bring every view up to date."""

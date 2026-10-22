@@ -418,6 +418,9 @@ class Vault:
         stamp = datetime.now().strftime("%Y-%m-%dT%H-%M-%S-%f")
         is_note = src.is_file()
         trashed = self.trash_move(src, relpath, stamp)
+        from paper_pile.core import trash
+
+        trash.write_manifest(self, stamp, relpath, is_dir=not is_note)  # what the Trash lists
         if is_note:
             from paper_pile.core import assets
 

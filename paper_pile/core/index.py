@@ -29,7 +29,7 @@ from paper_pile.core.vault import META_DIR, Vault, VaultError
 
 log = logging.getLogger("paper_pile.index")
 
-SCHEMA_VERSION = "3"  # 3: tags
+SCHEMA_VERSION = "4"  # 3: tags; 4: search body without front matter / heading marks
 _SCHEMA = """
 CREATE TABLE notes(id INTEGER PRIMARY KEY, path TEXT UNIQUE NOT NULL, title TEXT NOT NULL,
                    mtime REAL NOT NULL, hash TEXT NOT NULL);
@@ -97,6 +97,17 @@ def note_title(rel: str, text: str, tokens: list[Token] | None = None) -> str:
     if m:
         return m.group(1).strip()
     return rel.rsplit("/", 1)[-1].rsplit(".", 1)[0]
+
+
+_HEADING_MARK = re.compile(r"(?m)^ {0,3}#{1,6}[ \t]+")
+
+
+def search_body(text: str, tokens: list[Token]) -> str:
+    """What the full-text search reads (and quotes in snippets): the note without its front
+    matter and without the ``#`` marks of headings."""
+    if tokens and tokens[0].type == "front_matter" and tokens[0].map:
+        text = "\n".join(text.split("\n")[tokens[0].map[1] :])
+    return _HEADING_MARK.sub("", text)
 
 
 def _dst_key(ref: LinkRef) -> str:
@@ -268,7 +279,8 @@ class Index:
         )
         note_id = cur.lastrowid
         self._db.execute(
-            "INSERT INTO notes_fts(path, title, body) VALUES(?,?,?)", (rel, title, text)
+            "INSERT INTO notes_fts(path, title, body) VALUES(?,?,?)",
+            (rel, title, search_body(text, tokens)),
         )
         self._db.executemany(
             "INSERT INTO links(src_id, dst_raw, dst_key, dst_path, kind, line) "

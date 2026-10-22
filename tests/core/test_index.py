@@ -209,3 +209,13 @@ def test_tags_are_indexed_nested_and_case_insensitive(tmp_path: Path) -> None:
     ix.sync()
     assert ix.notes_with_tag("work") == []
     assert ix.notes_with_tag("") == []
+
+
+def test_search_snippets_leave_out_front_matter_and_heading_marks(vault: Vault) -> None:
+    vault.write_text("fm.md", "---\ntitle: Pie\ntags: [x]\n---\n# Pie\n\n## Filling\nbanana pie\n")
+    ix = Index(vault)
+    ix.sync()
+    hit = next(h for h in ix.search("banana") if h.path == "fm.md")
+    assert "title:" not in hit.snippet and "---" not in hit.snippet and "#" not in hit.snippet
+    assert "Filling" in hit.snippet
+    assert [h.path for h in ix.search("Pie")][:1] == ["fm.md"]  # the title still counts

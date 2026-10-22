@@ -23,6 +23,8 @@ export function selectionSync({ emit, getDocId }) {
   };
   return [
     EditorView.updateListener.of((u) => {
+      // a match the search panel selected is not the user choosing text for the chat
+      if (u.transactions.some((tr) => tr.isUserEvent("select.search"))) return;
       if (u.selectionSet || u.docChanged) report(u.view);
     }),
     EditorView.domEventHandlers({

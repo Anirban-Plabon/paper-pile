@@ -90,3 +90,41 @@ async def test_new_folder_asks_for_name_and_location(
     user.find(kind=ui.button, content="Create").click()
     await task
     assert (vault.root / "Ideas").is_dir()  # location not chosen: the vault itself
+
+
+async def test_search_box_lists_full_text_hits_and_a_click_finds_the_word(
+    user: User, tmp_path: Path
+) -> None:
+    from paper_pile.core.index import SearchHit
+
+    root = tmp_path / "v"
+    root.mkdir()
+    (root / "a.md").write_text("x")
+    found: list[tuple[str, str]] = []
+
+    async def open_found(path: str, term: str) -> None:
+        found.append((path, term))
+
+    @ui.page("/")
+    def page() -> None:
+        tree = FileTree(
+            Vault(root),
+            EventBus(),
+            can_reveal=False,
+            search=lambda q: [SearchHit("d/b.md", "b", "a \x02banana\x03 <i>pie</i>")],
+            open_found=open_found,
+        )
+        tree.build()
+        STATE["tree"] = tree
+
+    await user.open("/")
+    tree: FileTree = STATE["tree"]  # type: ignore[assignment]
+    tree.toggle_search()
+    tree._set_filter("bana")
+    assert list(tree._rows) == ["d/b.md"]
+    row = tree._rows["d/b.md"]
+    assert row._props["data-find"] == "banana"
+    snippet = next(e for e in row.descendants() if isinstance(e, ui.html))
+    assert snippet.content == "a <mark>banana</mark> &lt;i&gt;pie&lt;/i&gt;"  # escaped, not markup
+    await tree._on_click({"path": "d/b.md", "isDir": False, "find": "banana"})
+    assert found == [("d/b.md", "banana")]

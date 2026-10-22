@@ -100,8 +100,8 @@ export default {
     async syncText(docId, text) {
       (await this.ready).syncText(docId, text);
     },
-    async openSearch(replace) {
-      (await this.ready).openSearch(replace);
+    async openSearch(replace, query) {
+      (await this.ready).openSearch(replace, query || "");
     },
     async printLayoutReady(seq, url) {
       (await this.ready).printLayoutReady(seq, url);

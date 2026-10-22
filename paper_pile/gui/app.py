@@ -66,6 +66,7 @@ def _build_pages(host: VaultHost, *, native: bool) -> None:
                 "ctrl+o": layout.open_note,
                 "ctrl+p": layout.open_palette,
                 "ctrl+shift+f": layout.search_vault,
+                "ctrl+shift+o": layout.toggle_outline,
                 "alt+shift+f": lambda: background_tasks.create(layout.tidy_note()),
             }
         )

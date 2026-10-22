@@ -21,6 +21,7 @@ class NoteActions:
     tidy: Action
     toggle_split: Action
     toggle_page_view: Action
+    outline: Action
     move: Action
     merge: Action
     add_to_chat: Action
@@ -57,6 +58,7 @@ class NoteMenu:
             with self._last_item:  # a check mark while page view is on
                 self._page_view_check = line_icon("check").classes("pp-note-menu-check")
                 self._page_view_check.set_visibility(False)
+            self._item("list-tree", "Outline", a.outline, "Ctrl+Shift+O")
             self._item("folder-input", "Move to…", a.move)
             self._item("merge", "Merge into…", a.merge)
             self._ai_parts.append(ui.separator())

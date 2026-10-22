@@ -10,17 +10,24 @@ through the event bus:
   ``vault.renamed``  (old, new)          rename or move (a folder path covers its children)
   ``vault.deleted``  (path, trashed)     moved to ``.trash/``
 
-The header above the tree has three buttons: search (swaps the tree for the most recently
-changed notes, with a filter box), new folder (a dialog asking for the name and where to put
-it) and new note (no questions asked: ``Untitled 1``, ``Untitled 2``, ... in the selected folder).
+The header above the tree has three buttons: search (swaps the tree for a search box over the
+full text of every note — the SQLite index — listing hits with a highlighted snippet; with an
+empty box, the most recently changed notes), new folder (a dialog asking for the name and where
+to put it) and new note (no questions asked: ``Untitled 1``, ``Untitled 2``, ... in the selected
+folder).
 
 Several rows can be selected: Ctrl/Cmd+click toggles a row, Shift+click picks the range from the
 last clicked row, and a drag that starts on blank tree space draws a selection box (Ctrl adds to
 the selection). Dragging a selected row moves the whole selection; the context menu of a
 selected row offers Delete / Add to chat for all of them.
+
+Keyboard (while the tree has focus; a click gives it): ↑/↓ move, Shift+↑/↓ extend the selection,
+←/→ fold / unfold a folder (← on a note goes to its folder), Home/End, Enter opens, F2 renames,
+Delete trashes the selection, Ctrl+A selects every shown row, Esc clears the selection.
 """
 
 import asyncio
+import html
 import logging
 from collections.abc import Awaitable, Callable
 from typing import Any
@@ -29,6 +36,7 @@ from nicegui import background_tasks, ui
 
 from paper_pile.core.events import EventBus
 from paper_pile.core.fsutil import reveal_in_file_manager
+from paper_pile.core.index import SearchHit
 from paper_pile.core.vault import TreeEntry, Vault, VaultError
 from paper_pile.gui.icons import ico, icon_button, line_icon
 
@@ -38,7 +46,7 @@ INDENT_PX = 14
 BASE_PAD_PX = 6  # rows are inset 6 px (rounded hover), so names line up with "Files"
 MENU_W, MENU_H = 210, 250  # rough size, only used to keep the menu on screen
 RECENT_SHOWN = 50  # notes listed in search mode
-RECENT_SCANNED = 500  # notes the filter looks through
+HITS_SHOWN = 50  # vault-search hits listed
 VAULT_ROOT = ""  # the location value that means "the vault itself"
 
 
@@ -51,7 +59,13 @@ class FileTree:
         can_reveal: bool,
         hidden: Callable[[], set[str]] = set,
         ai_on: Callable[[], bool] = lambda: True,
+        search: Callable[[str], list[SearchHit]] = lambda query: [],
+        open_found: Callable[[str, str], Awaitable[None]] | None = None,
+        open_trash: Callable[[], Awaitable[None]] | None = None,
     ) -> None:
+        self._open_trash = open_trash  # the vault menu's Trash…
+        self._search = search  # full-text search (core.index.Index.search)
+        self._open_found = open_found  # open a hit with its word found in the note
         self.vault = vault
         self._ai_on = ai_on  # "Add to chat" only while the AI feature is on
         self._hidden = hidden  # folders not shown (the app's own; Settings → General → Folders)
@@ -60,6 +74,7 @@ class FileTree:
         self._expanded: set[str] = set()
         self._selected: str | None = None  # the last clicked row (anchor of Shift+click)
         self._picked: set[str] = set()  # every selected row
+        self._cursor: str | None = None  # the keyboard's row (moves with ↑/↓)
         self._rows: dict[str, ui.element] = {}
         self._searching = False
         self._filter = ""
@@ -79,13 +94,14 @@ class FileTree:
             icon_button("folder-plus", self.new_folder, "New folder")
             icon_button("file-plus", self.new_note, "New note")
         self._search_box = (
-            ui.input(placeholder="Filter recent notes")
+            ui.input(placeholder="Search all notes")
             .props("outlined dense clearable debounce=150")
             .classes("pp-files-search")
         )
         self._search_box.on_value_change(lambda e: self._set_filter(e.value))
         self._search_box.set_visibility(False)
         self._root = ui.element("div").classes("pp-tree")
+        self._root._props["tabindex"] = "0"  # takes focus on a click: the keys below work
         with ui.teleport("body"):  # outside the splitter panels, which would clip/overlap it
             self._menu = ui.column().classes("pp-ctxmenu")
         self._host = ui.element("div").classes("pp-host")  # dialogs + toasts; takes no space
@@ -93,6 +109,7 @@ class FileTree:
         ui.on("pp_tree_context", lambda e: self._guard(self._on_context(e.args)))
         ui.on("pp_tree_move", lambda e: self._guard(self._on_move(e.args)))
         ui.on("pp_tree_band", lambda e: self._guard(self._on_band(e.args)))
+        ui.on("pp_tree_key", lambda e: self._guard(self._on_key(e.args)))
         ui.on("pp_ctx_close", lambda _e: self._close_menu())
         # the note menu (⋯) moves notes through the tree, like a drag would
         self.bus.subscribe(
@@ -108,9 +125,12 @@ class FileTree:
         self._rows.clear()
         self._root.clear()
         with self._root:
-            if self._searching:
+            if self._searching and self._filter.strip():
+                count = self._render_hits()
+                empty = "No notes contain that."
+            elif self._searching:
                 count = self._render_recent()
-                empty = "No notes match." if self._filter.strip() else "No notes yet."
+                empty = "No notes yet."
             else:
                 count = self._render_folder("", 0)
                 empty = "No notes yet. Use the buttons above to create one."
@@ -127,9 +147,12 @@ class FileTree:
         return self._guard(self._new_folder())
 
     def show_search(self) -> None:
-        """Make sure search mode is on (the folded-pane ribbon uses this)."""
+        """Make sure search mode is on, with the caret in the box (Ctrl+Shift+F)."""
         if not self._searching:
             self.toggle_search()
+        else:
+            self._search_box.run_method("focus")
+        self._search_box.run_method("select")
 
     def toggle_search(self) -> None:
         self._searching = not self._searching
@@ -147,11 +170,36 @@ class FileTree:
             self.refresh()
 
     def _render_recent(self) -> int:
-        needle = self._filter.strip().lower()
-        paths = [p for p in self.vault.recent_notes(RECENT_SCANNED) if needle in p.lower()]
-        for path in paths[:RECENT_SHOWN]:
+        paths = self.vault.recent_notes(RECENT_SHOWN)
+        for path in paths:
             self._recent_row(path)
-        return min(len(paths), RECENT_SHOWN)
+        return len(paths)
+
+    def _render_hits(self) -> int:
+        """The notes whose text matches the search box, best first, each with a snippet."""
+        hits = self._search(self._filter)[:HITS_SHOWN]
+        for hit in hits:
+            self._hit_row(hit)
+        return len(hits)
+
+    def _hit_row(self, hit: SearchHit) -> None:
+        folder, _, name = hit.path.rpartition("/")
+        found = hit.snippet.partition("\x02")[2].partition("\x03")[0]  # the first matched word
+        row = ui.element("div").classes("pp-tree-row pp-tree-hit")
+        row._props["data-path"] = hit.path
+        row._props["data-dir"] = "0"
+        row._props["data-find"] = found
+        row.style(f"padding-left: {BASE_PAD_PX}px")
+        with row:
+            with ui.row().classes("pp-tree-hit-head items-center no-wrap"):
+                line_icon("file-text").classes("pp-ico pp-ico-note")
+                ui.label(name.removesuffix(".md")).classes("pp-tree-name")
+                if folder:
+                    ui.label(folder).classes("pp-muted pp-tree-sub")
+            text = html.escape(hit.snippet.replace("\n", " "))
+            text = text.replace("\x02", "<mark>").replace("\x03", "</mark>")
+            ui.html(text).classes("pp-tree-snippet")
+        self._rows[hit.path] = row
 
     def _recent_row(self, path: str) -> None:
         folder, _, name = path.rpartition("/")
@@ -204,10 +252,14 @@ class FileTree:
                 row.classes("pp-tree-selected")
             else:
                 row.classes(remove="pp-tree-selected")
+            if path == self._cursor:
+                row.classes("pp-tree-cursor")
+            else:
+                row.classes(remove="pp-tree-cursor")
 
     def _select(self, path: str | None) -> None:
         """Select just this row (or nothing)."""
-        self._selected = path
+        self._selected = self._cursor = path
         self._picked = set() if path is None else {path}
         self._apply_selection()
 
@@ -244,13 +296,15 @@ class FileTree:
             return
         if args.get("toggle"):
             self._picked ^= {path}
-            self._selected = path
+            self._selected = self._cursor = path
             self._apply_selection()
             return
         self._select(path)
         if args["isDir"]:
             self._expanded.symmetric_difference_update({path})
             self.refresh()
+        elif args.get("find") and self._open_found is not None:
+            await self._open_found(path, str(args["find"]))
         else:
             self.bus.publish("tree.open", path=path)
 
@@ -264,8 +318,78 @@ class FileTree:
             self._picked = set(paths)
             self._selected = None
         if paths:
-            self._selected = paths[-1]
+            self._selected = self._cursor = paths[-1]
         self._apply_selection()
+
+    async def _on_key(self, args: dict[str, Any]) -> None:
+        """A key pressed while the tree has focus (``static/tree.js`` sends only these)."""
+        self._close_menu()
+        key, shift = str(args.get("key", "")), bool(args.get("shift"))
+        order = list(self._rows)
+        if not order:
+            return
+        cursor = self._cursor if self._cursor in self._rows else None
+        if key == "Escape":
+            self._picked = set()
+        elif key == "a" and args.get("ctrl"):
+            self._picked = set(order)
+        elif key in {"ArrowDown", "ArrowUp", "Home", "End"}:
+            if cursor is None:
+                to = order[0] if key in {"ArrowDown", "Home"} else order[-1]
+            else:
+                i = order.index(cursor)
+                step = {"ArrowDown": i + 1, "ArrowUp": i - 1, "Home": 0, "End": len(order) - 1}
+                to = order[max(0, min(len(order) - 1, step[key]))]
+            self._move_cursor(to, extend=shift)
+            return
+        elif cursor is None:
+            return
+        elif key in {"ArrowRight", "ArrowLeft"}:
+            self._fold_key(cursor, opening=key == "ArrowRight")
+            return
+        elif key == "Enter":
+            await self._on_click({"path": cursor, "isDir": self._is_dir(cursor)})
+            return
+        elif key == "F2":
+            await self._rename(cursor)
+            return
+        elif key == "Delete":
+            paths = self._selection() or [cursor]
+            await self._delete(*paths)
+            return
+        self._apply_selection()
+
+    def _is_dir(self, path: str) -> bool:
+        return self._rows[path]._props.get("data-dir") == "1"
+
+    def _move_cursor(self, path: str, *, extend: bool) -> None:
+        """↑/↓: the cursor row becomes the selection; with Shift, the rows from the anchor."""
+        self._cursor = path
+        if extend and self._selected in self._rows:
+            order = list(self._rows)
+            a, b = sorted((order.index(self._selected or path), order.index(path)))
+            self._picked = set(order[a : b + 1])
+        else:
+            self._selected, self._picked = path, {path}
+        self._apply_selection()
+        self._rows[path].run_method("scrollIntoView", {"block": "nearest"})
+
+    def _fold_key(self, path: str, *, opening: bool) -> None:
+        """→ unfolds a folder (or steps into it); ← folds it (or steps out to the parent)."""
+        is_dir = self._is_dir(path)
+        if opening and is_dir and path not in self._expanded:
+            self._expanded.add(path)
+            self.refresh()
+        elif opening and is_dir:
+            order = list(self._rows)
+            nxt = order[order.index(path) + 1] if order.index(path) + 1 < len(order) else None
+            if nxt is not None and nxt.startswith(path + "/"):
+                self._move_cursor(nxt, extend=False)
+        elif not opening and is_dir and path in self._expanded:
+            self._expanded.discard(path)
+            self.refresh()
+        elif not opening and "/" in path:
+            self._move_cursor(path.rpartition("/")[0], extend=False)
 
     async def _on_context(self, args: dict[str, Any]) -> None:
         path, on_row, is_dir = str(args["path"]), bool(args["onRow"]), bool(args["isDir"])
@@ -300,6 +424,8 @@ class FileTree:
             folder = path if on_row else ""
             self._item("New note", "file-plus", lambda: self._new_note(folder))
             self._item("New folder", "folder-plus", lambda: self._new_folder(folder))
+        if not on_row and self._open_trash is not None:
+            self._item("Trash…", "trash", self._open_trash)
         if on_row and not is_dir and self._ai_on():
             self._item("Add to chat", "messages-square", lambda: self._add_to_chat(path))
         if on_row:
@@ -339,7 +465,7 @@ class FileTree:
         parts = path.split("/")[:-1]
         for i in range(1, len(parts) + 1):
             self._expanded.add("/".join(parts[:i]))
-        self._selected = path
+        self._selected = self._cursor = path
         self._picked = {path}
         self.refresh()
 
@@ -354,6 +480,10 @@ class FileTree:
         except VaultError:
             return VAULT_ROOT
         return sel.rpartition("/")[0]
+
+    def reveal(self, path: str) -> None:
+        """Unfold the folders down to ``path`` and select it (a note put back from the trash)."""
+        self._reveal_and_select(path)
 
     def create_note(self, name: str) -> str:
         """A note called ``name`` in the selected folder (the quick switcher's *Create*); it is

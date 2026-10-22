@@ -221,6 +221,7 @@ class Editor(
         """The print page for page view's request ``seq`` (see ``static/print.js``)."""
         self.run_method("printLayoutReady", seq, url)
 
-    def open_search(self, replace: bool = False) -> None:
-        """Find (``replace``: and replace) in the note on screen."""
-        self.run_method("openSearch", replace)
+    def open_search(self, replace: bool = False, query: str = "") -> None:
+        """Find (``replace``: and replace) in the note on screen; ``query`` fills the search box
+        and selects its first match."""
+        self.run_method("openSearch", replace, query)

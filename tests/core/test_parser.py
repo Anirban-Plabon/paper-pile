@@ -153,3 +153,21 @@ def test_broken_yaml_reports_an_error_instead_of_raising() -> None:
 def test_non_mapping_front_matter() -> None:
     fm = front_matter("---\n- just\n- a list\n---\nbody")
     assert fm is not None and fm.data == {} and "mapping" in (fm.error or "")
+
+
+def test_outline_headings_skip_code_and_sections_follow_the_caret() -> None:
+    from paper_pile.core.parser import headings, section_at
+
+    text = "intro\n# One\ntext\n```\n# not a heading\n```\n## Two **bold**\n\nThree\n===\n"
+    heads = headings(text)
+    assert [(h.level, h.text, h.line) for h in heads] == [
+        (1, "One", 2),
+        (2, "Two bold", 7),
+        (1, "Three", 9),
+    ]
+    assert section_at(heads, 1) is None
+    assert section_at(heads, 2) == 0
+    assert section_at(heads, 5) == 0
+    assert section_at(heads, 8) == 1
+    assert section_at(heads, 99) == 2
+    assert headings("one\ntwo\n===\n")[0].text == "one two"  # a two-line underlined heading

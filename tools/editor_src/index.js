@@ -3,7 +3,7 @@
 import { defaultKeymap, history, isolateHistory, historyKeymap, indentWithTab } from "@codemirror/commands";
 import { markdown, markdownLanguage } from "@codemirror/lang-markdown";
 import { HighlightStyle, indentUnit, syntaxHighlighting, syntaxTree } from "@codemirror/language";
-import { highlightSelectionMatches, openSearchPanel, searchKeymap } from "@codemirror/search";
+import { SearchQuery, findNext, highlightSelectionMatches, openSearchPanel, searchKeymap, setSearchQuery } from "@codemirror/search";
 import { Annotation, Compartment, EditorSelection, EditorState, Transaction } from "@codemirror/state";
 import { EditorView, drawSelection, dropCursor, keymap, tooltips } from "@codemirror/view";
 import { classHighlighter, tags as t } from "@lezer/highlight";
@@ -66,9 +66,14 @@ function endsWithBlock(state) {
   return node.name !== "Paragraph" && node.name !== "Document";
 }
 
-// Open the search panel; with `replace`, put the caret in its replace field.
-function openSearch(view, replace) {
+// Open the search panel; with `replace`, put the caret in its replace field. With `query` (a
+// vault-search hit), search for it and select the first match after the caret.
+function openSearch(view, replace, query = "") {
   openSearchPanel(view);
+  if (query) {
+    view.dispatch({ effects: setSearchQuery.of(new SearchQuery({ search: query })) });
+    findNext(view);
+  }
   const name = replace ? "replace" : "search";
   const grab = () => {
     const field = view.dom.querySelector(`.cm-search input[name=${name}]`);
@@ -437,8 +442,8 @@ export function createEditor(
       if (s) parked.set(id, state.update(s).state);
     },
     // Find (and replace) in the note on screen: CodeMirror's search panel.
-    openSearch(replace = false) {
-      openSearch(view, replace);
+    openSearch(replace = false, query = "") {
+      openSearch(view, replace, query);
     },
     // The tab was closed: forget its parked state.
     closeDoc(id) {
@@ -503,15 +508,16 @@ export function createEditor(
       editorContext.known = new Set(names);
       view.dispatch({ effects: refreshEffect.of(null) });
     },
-    // Put the caret on 1-based `line` and bring it to the top of the view.
+    // Put the caret on 1-based `line` and bring it to the top of the view. Focus first: the
+    // caret position (status bar, outline) is only reported while the editor has focus.
     gotoLine(line) {
       const doc = view.state.doc;
       const pos = doc.line(Math.max(1, Math.min(line, doc.lines))).from;
+      view.focus();
       view.dispatch({
         selection: { anchor: pos },
         effects: EditorView.scrollIntoView(pos, { y: "start", yMargin: 24 }),
       });
-      view.focus();
     },
     insertAtCursor(text) {
       view.dispatch(view.state.replaceSelection(text), { userEvent: "input.paste", scrollIntoView: true });

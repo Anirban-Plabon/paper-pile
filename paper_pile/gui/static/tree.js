@@ -126,12 +126,26 @@
     document.addEventListener('mouseup', bandEnd);
   });
 
+  // Keys while the tree has focus (a click on it gives it): Python moves the cursor / selection.
+  const TREE_KEYS = new Set(['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Home', 'End',
+    'Enter', 'F2', 'Delete', 'Escape']);
+  document.addEventListener('keydown', (e) => {
+    const tree = treeOf(document.activeElement);
+    if (!tree || document.activeElement !== tree || menuOpen()) return;
+    const ctrlA = (e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'a';
+    if (!TREE_KEYS.has(e.key) && !ctrlA) return;
+    if ((e.ctrlKey || e.metaKey || e.altKey) && !ctrlA) return;
+    e.preventDefault();
+    emitEvent('pp_tree_key', { key: ctrlA ? 'a' : e.key, shift: e.shiftKey, ctrl: ctrlA });
+  });
+
   document.addEventListener('click', (e) => {
     const row = rowOf(e.target);
     if (row) {
+      treeOf(row).focus({ preventScroll: true });
       emitEvent('pp_tree_click', {
         path: row.dataset.path, isDir: row.dataset.dir === '1',
-        toggle: e.ctrlKey || e.metaKey, range: e.shiftKey,
+        toggle: e.ctrlKey || e.metaKey, range: e.shiftKey, find: row.dataset.find || '',
       });
       if (e.shiftKey) window.getSelection().removeAllRanges();
     }

@@ -49,6 +49,7 @@ def note_actions(pane: "EditorPane") -> NoteActions:
         tidy=pane.tidy_active,
         toggle_split=pane.toggle_split,
         toggle_page_view=pane.toggle_page_view,
+        outline=pane.show_outline,
         move=with_note(lambda p: _move(pane, p)),
         merge=with_note(lambda p: _merge(pane, p)),
         add_to_chat=with_note(pane.add_to_chat),
