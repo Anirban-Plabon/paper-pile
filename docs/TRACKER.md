@@ -6,7 +6,7 @@
 Legend: 🧠 = needs Opus (see PLAN §6 model guidance) · ⬜ todo · 🔄 in progress · ✅ done · ⛔ blocked · ⏭️ skipped/deferred
 
 ## Current focus
-- **Phase:** P11 — Tags done; next P9 (navigation & polish) unless the user says otherwise
+- **Phase:** P14 — Features, navigation & safety (user request 2026-10-22; includes P9.1–P9.3, P9.5, P9.6)
 - **Task:** P10 done except the native Save dialog check (P10.5); auto-title-on-open decision still pending with the user
 - **Now:** P13 done (window, folders, images, split)
 - **Next up:** P9.1 palette + switcher → P9.2 vault search → P9.3 outline → P9.4/P9.5 → P9.6 QA + README; then the Tauri v2 spike
@@ -156,6 +156,14 @@ Legend: 🧠 = needs Opus (see PLAN §6 model guidance) · ⬜ todo · 🔄 in p
 | P13.13 | Daily notes follow their template | ✅ | `EditorPane._shaped_by_template`, `daily.untouched_daily`, `MainLayout._remake_daily`; 1 test (6 cases); 7 real-app checks (calendar clicks: untouched note re-made, new day, written-in day kept, template opened, ordinary note still titled) |
 | P13.14 | Tree multi-select | ✅ | `FileTree._picked` + `_on_band` / `_pick_range` / `_selection`, group `_on_move` / `_delete`; `tree.js` selection box (drawn fixed in `<body>`, not inside the Vue-managed tree); 5 tests; 16 real-app checks with CDP mouse events incl. a real HTML5 drag of 2 notes into a folder |
 | P13.15 | Popups stay on screen | ✅ | `static/menus.js` + editor `tooltipSpace`; 12 real-app checks with a 48 px taskbar strip and the server's replies slowed by 400 ms (chat +, model, ⋮, + again, tree menus, slash menu on the last line); control run without the fix: + menu ends 130 px past the visible area, model menu off screen |
+
+### P14 — Features, navigation & safety (user request 2026-10-22)
+| ID | Task | Status | Notes |
+|---|---|---|---|
+| P14.1 | Feature switches + Minimal settings | ⬜ | |
+| P14.2 | File tree keyboard | ⬜ | |
+| P14.3 | Trash popup + restore | ⬜ | |
+| P14.4 🧠 | Version history (diff chain) | ⬜ | |
 
 ## Decision log
 <!-- YYYY-MM-DD · decision · reason · (who: user / claude) -->
@@ -309,6 +317,7 @@ Legend: 🧠 = needs Opus (see PLAN §6 model guidance) · ⬜ todo · 🔄 in p
 | 2026-10-21 | Chat ⋮ menu (user request: "vertical 3 dot … show memories (5 and more chat) and setting → AI settings"). Read "memories" as the user's earlier chats, so chats are now saved: one JSON file per chat in `<vault>/.paper-pile/chats/` (plain files, per vault, no index; deletes go to `.trash/`). The ⋮ sits in a header row at the top of the chat pane (with the chat's title), not floating over the log (it covered the first message) and not in the tab strip (user: it must be inside the chat pane). `SettingsPane.open` / `RightPane.open_settings` / `Layout.open_settings` take an optional section name | Earlier chats were lost on every reload; quick way to the AI settings | user |
 | 2026-10-21 | Empty editor area (user request, reference screenshot): "Open a note to start writing" replaced by four centred pill buttons: New note (Ctrl+N), New folder, Open note (Ctrl+O; unfolds the file tree on its recent-notes search until the P9.1 switcher exists), Ask AI (opens the chat and focuses the composer). New shortcuts Ctrl+N / Ctrl+O; in `--serve` mode browsers may keep Ctrl+N for themselves | Faster start from an empty window | user |
 | 2026-10-22 | Tree multi-select (user request: Ctrl+click and drag over notes). Rows are already drag-to-move, so the selection box starts only on blank tree space, like Windows Explorer (user's choice); dragging a selected row moves the whole selection. Also added Shift+click range and a group context menu (Add to chat / Delete N items) | A drag on a row can't both move and select | user |
+| 2026-10-22 | New phase P14 (user request): switches Enable AI / Enable Calendar / Minimal settings (minimal on by default, switches at the top of General), quick switcher + palette, vault search, outline, tree keys, Trash popup, version history; the AI's use of the vault stays as it is (user has own plan). History stores reverse line diffs + a full copy every 25 versions in `.paper-pile/history.db`, thinned and capped at 50 MB (user rejected full copies as too heavy) | Find notes, recover from mistakes, simpler app for most users | user |
 
 ## Issues log
 <!-- YYYY-MM-DD · task · symptom → root cause → fix · (gotcha added? y/n) -->

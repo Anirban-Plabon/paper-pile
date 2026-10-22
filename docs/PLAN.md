@@ -347,8 +347,7 @@ On paste into the editor:
 - **Implemented (P8):** schema/validation in `core/settings.py`, dialog `gui/components/settings.py` ("Save for: All vaults / This vault", Restore defaults), theme `static/theme.js` + `gui/theme.py`, profile `gui/components/profile.py` + `core/profile.py`. **Ctrl+,** opens the settings.
 
 ### 4.13 Navigation & status
-- Ctrl+P command palette (all commands incl. settings actions), Ctrl+O quick switcher (fuzzy note open), Ctrl+Shift+F vault search (FTS5, results with snippets).
-- Outline panel (headings of current note) — toggle, can live in left pane as a tab.
+- Ctrl+P command palette, Ctrl+O quick switcher, Ctrl+Shift+F vault search, Ctrl+Shift+O outline: see §4.18.
 - Status bar: word count, Ln/Col, save state, Ollama status.
 
 ### 4.14 Keyboard shortcuts (defaults)
@@ -366,6 +365,7 @@ On paste into the editor:
 | Ctrl+B | Toggle left pane |
 | Ctrl+L | Toggle AI chat |
 | Ctrl+Shift+F | Vault search |
+| Ctrl+Shift+O | Outline |
 | Ctrl+Shift+V | Raw paste |
 | Shift+Alt+F | Tidy note |
 | Ctrl+Enter | Page break at the caret (§4.17; the editor's own key) |
@@ -459,6 +459,32 @@ Output: the page boxes (printed as is) and the list of `{line, page}` starts (se
 **Implementation.** Print pages are served from memory at `/_pp/print/<key>` (`gui/printing.py`, newest 24 kept, behind the token gate in `--serve`). Page view (`tools/editor_src/pageview.js`, in the editor options) emits `print_layout` {docId, seq, text} ~500 ms after typing stops; `EditorPane` answers only for the editor that shows that note (a hidden split side gets nothing) with the page's URL; the editor loads it in its own hidden frame (`.pp-print-frame`) and maps the returned lines through any typing done meanwhile. Mermaid diagrams are cached by the page (`mermaidrender.js`), so the frame does not redraw them on every layout. Real pages: a widget at each page start draws the end of the sheet before (padding + bottom margin + page number), the desk and the top of the next sheet; a top widget and an end widget close the first and last sheet; `sizer` measures each page's text with CodeMirror's height map (widget heights known, so left out) and pads the sheet to the paper's height (changes ≤ 1 px ignored, a few corrections a second at most). Checked end to end by `tools/qa_print.py` (real app: page view toggle and styles, fixture notes, page lines / sheets = page starts, sheet heights, PDF text per page, properties, paper switch, Enter / Ctrl+Enter, typing cost).
 
 **Export as PDF** (⋯ menu → Share). Native window: Save dialog, then the print page is loaded in an off-screen Qt WebEngine page and saved with `printToPdf` (`native_boot.print_to_pdf`, called through the window's method queue as `print_pdf`). `--serve`: the print page is loaded in a hidden frame with `?mode=print` and opens the browser's print dialog itself (a new tab would be stopped by popup blockers, as the call does not come from a click in the page); the user picks "Save as PDF" (margins default, scale 100 %). Both use the same page boxes, so pages match the editor's page lines.
+
+### 4.18 Features, navigation & safety — user request 2026-10-22
+**Feature switches** (Settings → General, a *Features* group at the top, shown in every view):
+- **AI** (`features.ai`, default on). Off: the app never talks to Ollama (no provider, no health checks) and shows nothing AI: no AI chat tab, no *Ask AI* start button, no AI group in the ⋯ menu, no AI slash commands, no *Add to chat* (tree, ⋯ menu, block buttons only copy), no Ollama dot, no AI settings section, no *Write with AI*. Turning it on brings all of it back without a restart. How the AI reads the vault is out of scope (user has their own plan).
+- **Calendar** (`features.calendar`, default on). Off: no Calendar tab; the Daily notes settings group is hidden.
+- **Minimal settings** (`settings.minimal`, default **on**). On: each page lists only the essential settings (flag `essential` in `core/settings.py`): Features, Version, Vault, Writing language, Smart Paste, Mode, Accent colour, Font family, Font size, Wrap long lines, Check spelling, Page view, Paper size, Ollama address, Chat model, Save chats. Sections with nothing to show leave the list; hand-made panels (templates, memories browser, gallery folders, Advanced) are hidden. Search always finds every setting.
+- The right pane shows only the tabs that are on (AI chat, Calendar, plus Settings / #tag / Outline while open). With AI and Calendar both off, the right pane folds away unless one of those tabs is open, and its toggle button only shows while it has something to show.
+
+**Quick switcher** (Ctrl+O, replaces the recent-notes stand-in): a centred popup with a search box over every note of the vault, fuzzy (`core/fuzzy.py`: letters in order; word starts, consecutive letters and the file name score higher). Empty query: recently opened notes first. ↑/↓ move, Enter opens, Ctrl+Enter opens in the split, Esc closes; no match → *Create “query”*.
+
+**Command palette** (Ctrl+P): the same popup over the app's commands (`gui/commands_palette.py`: name, shortcut, action; only commands that make sense now — e.g. no note commands without a note, no AI without AI), fuzzy-filtered, shortcut shown on the right.
+
+**Vault search** (Ctrl+Shift+F, or the search button of the Files header): the Files pane's search mode searches the full text of every note (the SQLite FTS index, `Index.search`); each hit shows the note name, folder and a snippet with the words highlighted. Empty box: recently changed notes, as before. Clicking a hit opens the note with the editor's search panel on the query.
+
+**Outline** (Ctrl+Shift+O, ⋯ menu, palette): a closable right-pane tab listing the headings of the active note (indented by level; headings inside code blocks ignored, `core/outline.py`). A click scrolls the editor to that heading and puts the caret there; the section holding the caret is marked.
+
+**File tree keyboard:** the tree takes focus on click. ↑/↓ move, Shift+↑/↓ extend the selection, ←/→ fold / unfold a folder (← on a note goes to its folder), Enter opens, F2 renames, Delete moves the selection to the trash (one confirm), Ctrl+A selects every shown row, Esc clears.
+
+**Trash** (palette, the vault context menu of the tree): a popup listing what is in `.trash/` (newest first: name, original folder, when). *Restore* puts it back at its old path (a free name like `Note (restored).md` if that is taken) with its images; nothing is ever deleted for good from the app.
+
+**Version history** (⋯ menu → *Version history*, palette): earlier versions of a note, kept in `<vault>/.paper-pile/history.db` (SQLite, separate from the rebuildable `index.db`).
+- *When:* the note's text before the first save of an editing session (first save after opening it, or after 30 min without saving), and before every bulk change: AI writing into it, merge, tidy, restoring a version, reloading a change made outside the app.
+- *Storage (diffs, not copies):* per note, the newest version is stored in full; every older one as a reverse line diff (`difflib`, JSON ops `keep n` / `replace n with lines`, zlib-compressed) against the next newer one, and a full copy every 25 versions. Each version keeps the SHA-256 of its text; a rebuilt version that does not match is shown as damaged, never as text. Identical text is not stored twice.
+- *Thinning:* everything from the last 24 h; then one per day for 7 days, one per week for 30 days, one per month after that (the newest in each slot). Dropping versions re-encodes the note's chain. *Cap:* when the history passes 50 MB, the oldest versions go first.
+- *Follows the note:* rename/move re-keys it; a deleted note keeps its history (restoring it from the trash brings it back).
+- *Popup:* versions newest first (when, why, lines added/removed against the current text); the selected one shown as a diff against the current note or as plain text; *Restore* replaces the note's text (an undoable editor change, after recording the current text), *Copy* copies it.
 
 ## 5. Data formats
 
@@ -574,12 +600,22 @@ on Sonnet. Only mark a task 🧠 when it is genuinely this specialized.
 ### P9 — Navigation & polish
 | ID | Task | Acceptance |
 |---|---|---|
-| P9.1 | Ctrl+P palette, Ctrl+O switcher | fuzzy, keyboard-only usable |
-| P9.2 | Vault search (FTS) with snippets | manual QA |
-| P9.3 | Outline panel | click heading → jumps |
+| P9.1 | Ctrl+P palette, Ctrl+O switcher (§4.18) | fuzzy, keyboard-only usable |
+| P9.2 | Vault search (FTS) with snippets (§4.18) | hits with highlighted snippets; click opens with the query found (real app) |
+| P9.3 | Outline panel (§4.18) | click heading → jumps; caret's section marked |
 | P9.4 | Status bar complete | word count, Ln/Col, save state, ollama dot |
 | P9.5 | Shortcut table §4.14 all wired | each verified |
 | P9.6 | Full manual QA pass + README (install, run, shortcuts) | checklist below all ✅ |
+
+### P14 — Features, navigation & safety (user request 2026-10-22, §4.18)
+P9.1–P9.3 and P9.5–P9.6 are built in this phase (order: P14.1, P9.1, P9.2, P9.3, P14.2, P14.3, P14.4, P9.5, P9.6).
+
+| ID | Task | Acceptance |
+|---|---|---|
+| P14.1 | Feature switches (AI, Calendar) + Minimal settings | each switch hides/shows its parts at once (real app); AI off → no Ollama request; minimal shows only essential rows; tests |
+| P14.2 | File tree keyboard | every key in §4.18 works with real key events; tests |
+| P14.3 | Trash popup + restore | restore puts a note (with images) and a folder back, free name on clash; core tests; real app |
+| P14.4 🧠 | Version history (diff chain) | core: record/rebuild/thin/cap/rename tests incl. damaged diff; popup restore is undoable; real app |
 
 ### P10 — Note menu (⋯) (user request 2026-10-17)
 | ID | Task | Acceptance |
