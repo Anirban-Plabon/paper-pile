@@ -307,19 +307,28 @@ class SettingsPane:
         self._info("paper-pile", f"Version {__version__}")
         if self._vault_root is not None:
             self._group("Vault")
-            row = self._info(self._vault_root.name or "Vault", str(self._vault_root))
-            if self._open_vault is not None:
-                with row:
-                    change = ui.button("Change…", on_click=self._open_vault)
-                    change.props("flat dense no-caps").classes("pp-set-vault-change")
+            self._vault_row(self._vault_root)
 
-    def _info(self, label: str, value: str) -> ui.row:
-        """A read-only row (the version, where the vault is)."""
-        with ui.row().classes("pp-set-row items-center no-wrap") as row:
+    def _vault_row(self, root: Path) -> None:
+        """The vault's name and folder, with Change… (a normal row: the button drops under the
+        text when the pane is narrow, and shows only its icon when even that is too narrow)."""
+        path = str(root)
+        with ui.row().classes("pp-set-row items-center"):
+            with ui.column().classes("pp-set-text pp-set-vault"):
+                ui.label(root.name or "Vault").classes("pp-set-label")
+                tip(ui.label(path).classes("pp-set-help pp-set-path"), path)
+            if self._open_vault is not None:
+                with ui.row().classes("pp-set-control items-center no-wrap"):
+                    ui.button(
+                        "Change…", icon=ico("folder-open"), on_click=self._open_vault, color=None
+                    ).props("flat dense no-caps").classes("pp-instr-btn pp-set-vault-change")
+
+    def _info(self, label: str, value: str) -> None:
+        """A read-only row (the version)."""
+        with ui.row().classes("pp-set-row items-center no-wrap"):
             with ui.column().classes("pp-set-text"):
                 ui.label(label).classes("pp-set-label")
-            tip(ui.label(value).classes("pp-set-info"), value)  # the path may be cut off
-        return row
+            tip(ui.label(value).classes("pp-set-info"), value)
 
     # ---- one row ---------------------------------------------------------------------------
 

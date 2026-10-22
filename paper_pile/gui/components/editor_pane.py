@@ -289,6 +289,7 @@ class EditorPane:
             on_print_layout=lambda e: self._on_print_layout(e.args, slot),
             on_page_break=lambda e: self._spawn(self._on_page_break(e.args)),
             on_page_break_move=lambda e: self._spawn(self._on_page_break_move(e.args)),
+            on_page_count=lambda e: self._on_page_count(e.args),
         )
 
     # ---- split view ----------------------------------------------------------------------
@@ -869,6 +870,16 @@ class EditorPane:
         new = move_page_break(text, line or None, int(args["target"]))
         if new is not None:
             await self._apply_edit(tab_id, text, whole_text_edit(text, new), move_caret=False)
+
+    def _on_page_count(self, args: dict[str, Any]) -> None:
+        """A dragged page break changed how many pages the note has (``pagedrag.js``)."""
+        if args.get("docId") != self.tabs.active:
+            return
+        before, after = int(args.get("before", 0)), int(args.get("after", 0))
+        if after > before:
+            self._toast(f"The rest of the note moved on: it now has {after} pages")
+        elif after < before:
+            self._toast(f"The note now fits on {after} pages")
 
     # ---- the note picker (link to note, embed note, templates) ---------------------------
 

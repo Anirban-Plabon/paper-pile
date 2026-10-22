@@ -9,6 +9,7 @@
 import { syntaxTree } from "@codemirror/language";
 import { Decoration, ViewPlugin } from "@codemirror/view";
 import { editorContext, normNote, rtOf } from "./context.js";
+import { pageViewFacet } from "./pageview.js";
 import { parseWikilink } from "./wikilink.js";
 import { activeLines, refreshEffect, touches } from "./reveal.js";
 import { CodeCopyWidget } from "./blockactions.js";
@@ -234,6 +235,7 @@ const handlers = {
 
   // A manual page break: the drawn line off-line, the raw (dimmed) `<div …>` on the caret's line.
   PageBreak: (cx, node) => {
+    if (cx.state.facet(pageViewFacet)) return; // page view hides the whole line (pageview.js)
     const line = cx.doc.lineAt(node.from);
     if (cx.active.has(line.number)) cx.out.push(PAGE_BREAK_RAW.range(line.from));
     else cx.out.push(Decoration.replace({ widget: new PageBreakWidget() }).range(node.from, node.to));
@@ -409,7 +411,7 @@ export const livePreview = ViewPlugin.fromClass(
       const refresh = u.transactions.some((tr) =>
         tr.effects.some((e) => e.is(refreshEffect) || e.is(foldEffects.foldEffect) || e.is(foldEffects.unfoldEffect)),
       );
-      if (refresh || u.docChanged || u.selectionSet || u.viewportChanged || syntaxTree(u.startState) !== syntaxTree(u.state)) {
+      if (refresh || u.docChanged || u.startState.facet(pageViewFacet) !== u.state.facet(pageViewFacet) || u.selectionSet || u.viewportChanged || syntaxTree(u.startState) !== syntaxTree(u.state)) {
         this.decorations = build(u.view);
       }
     }

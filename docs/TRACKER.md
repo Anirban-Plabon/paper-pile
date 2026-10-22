@@ -7,7 +7,7 @@ Legend: 🧠 = needs Opus (see PLAN §6 model guidance) · ⬜ todo · 🔄 in p
 
 ## Current focus
 - **Phase:** P14 — Features, navigation & safety (user request 2026-10-22; includes P9.1–P9.3, P9.5, P9.6)
-- **Task:** P14 built (P14.1–P14.13, P9.1–P9.3, P9.5); P9.6 README done, its manual QA items wait for the user; P10.5 / P12.4 native Save dialog checks still manual
+- **Task:** P14 built (P14.1–P14.15, P9.1–P9.3, P9.5); P9.6 README done, its manual QA items wait for the user; P10.5 / P12.4 native Save dialog checks still manual
 - **Now:** P14 done (switches, switcher + palette, vault search, outline, tree keys, trash, version history; tab overflow, split backlinks, line numbers, draggable page breaks)
 - **Next up:** the user's manual QA pass (PLAN §6 checklist); then the user's AI-with-notes plan; then the Tauri v2 spike
 
@@ -172,6 +172,8 @@ Legend: 🧠 = needs Opus (see PLAN §6 model guidance) · ⬜ todo · 🔄 in p
 | P14.11 | Line numbers setting | ✅ | `editor.line_numbers` (essential, default off) → editor option `lineNumbers` (CM `lineNumbers()`); page view's page shrinks beside the gutter; 3 real-app checks |
 | P14.12 | Drag page breaks / page lines | ✅ | `core/page_move.py` `move_page_break` (6 tests), `pagedrag.js` (draws the drag, sends `page_break_move`), `EditorPane._on_page_break_move`; 9 real-app checks with real mouse drags (move down, Ctrl+Z, click reveals, page line down = nothing, up = new break) |
 | P14.13 | Settings: Version + Vault first, Change… | ✅ | `SettingsPane._about` before the first group, `open_vault` param; 2 real-app checks |
+| P14.14 | Page view: break lines hidden, drag limits, rest onto new pages | ✅ | `pageview.js` `hiddenBreaks` (block replace + atomic), `pageStartLines`, `probeLayout` (second hidden frame), `watchPageCount` → `page_count` → toast; `pagedrag.js` `bounds` (earliest / furthest, trial layout without the break), auto-scroll at the edges; live preview skips the break widget in page view; 15 real-app checks (2-page note: furthest = paragraph 23, Ctrl+Z, drag up with auto-scroll → "now has N pages", page 3 not above page 2) |
+| P14.15 | Vault row adapts to the pane width | ✅ | `SettingsPane._vault_row` (a normal row: text + control), `.pp-set-control` `justify-content: safe flex-end`; stacked fields `min-width: min(200px, 100%)`; 6 real-app checks at 1000/800/560/480/420 px and after fold/unfold |
 | P14.7 | Slash menu on right-click and on a lone `/` | ✅ | `slash.js`: `loneSlashBefore`, temporary `/` (`openTemp` / `dropTemp`, kept out of undo history, `tempCleanup`), `clipboardRow` (Cut / Copy / Paste, buttons act on click), right-click handler; native window: the app's own page may read the clipboard (`native_boot._fix_permission_requests`, everything else still denied); editor tooltips kept inside the editor's box sideways (the pane clipped a menu opened near its right edge); 17 real-app checks with real right-clicks / clicks / keys |
 
 ## Decision log
@@ -331,11 +333,13 @@ Legend: 🧠 = needs Opus (see PLAN §6 model guidance) · ⬜ todo · 🔄 in p
 | 2026-10-22 | Outline uses the existing `parser.headings` (no `core/outline.py`); the quick switcher uses `core.picker` (no `core/fuzzy.py`) | Both already existed and were tested | claude |
 | 2026-10-22 | Outline moves to a section under the file tree (user picked option 1, icon kept); slash menu also on right-click (with Cut/Copy/Paste, since the native window has no context menu) and on a caret after a lone `/`; tab right-click menu with split/rename/move/merge/history/copy/reveal/close; split + AI buttons beside ⋯ (AI button = menu: ask, summarize, rewrite, write — my reading of "ai button") | User request | user |
 | 2026-10-22 | Six more (user request): Outline button on the folded rail above Open vault; many tabs → shrink + scroll (wheel, ‹ › arrows) + a list of all tabs (user's choice); backlinks split per side; line numbers (setting, off by default); page breaks and page view's page lines draggable with the mouse; Version + Vault first in General, with *Change…* on the Vault row. Moving a break is worked out in Python (`core/page_move.py`); the editor only draws the drag. A page line the layout drew only moves up (a break further down would not change where the page ends) | User request | user |
+| 2026-10-22 | Page view no longer draws page break lines (user: "not required"); the Page N line stands for the break and is what you drag. Drag limits: earliest = one line below the previous page's start, furthest = where the page would end by itself (trial layout without the break); after a drop the layout runs again and the user is told when the page count changed (user: a 2-page note may need a 3rd page after a move). Real pages style: breaks hidden too, no dragging there (not asked) | User request | user |
 
 ## Issues log
 <!-- YYYY-MM-DD · task · symptom → root cause → fix · (gotcha added? y/n) -->
 | Date | Task | Symptom | Root cause | Fix | Gotcha? |
 |---|---|---|---|---|---|
+| 2026-10-22 | P14.15 | In a very narrow Settings pane the vault row's Change… stuck out past the pane's left edge instead of showing only its icon | the control is right-aligned (`justify-content: flex-end`): what does not fit overflows to the LEFT, which `scrollWidth` does not count, so tabs.js never saw it as squeezed | `justify-content: safe flex-end` (overflow goes right, where it is measured) | y |
 | 2026-10-22 | P14.13 | Settings → Vault → Change… did nothing; `RuntimeError: The current slot cannot be determined` | the button ran `open_vault` through `background_tasks.create`, a task with no slot, and the picker builds a dialog | pass the async method as `on_click` (NiceGUI awaits it in the button's slot) | y |
 | 2026-10-22 | P14.11 | Page view with line numbers scrolled sideways | the page's width was `min(page, 100% - 56px)` of the scroller, and the gutter takes room beside it | the page may shrink (`flex: 0 1 auto; min-width: 0`) | n |
 | 2026-10-22 | P14.7 | The right-click menu's Copy button did nothing (menu closed, nothing copied) | the slash menu (320 px) ran past a narrow editor's right edge, which clips it: the button's visible half was elsewhere and the click hit the chat pane; also, acting on mousedown let the mouseup land in the text | editor `tooltipSpace` uses the editor's box sideways (CodeMirror shifts the menu to fit); menu buttons act on click | y |
@@ -528,3 +532,4 @@ Legend: 🧠 = needs Opus (see PLAN §6 model guidance) · ⬜ todo · 🔄 in p
 - 2026-10-22 · P14.6 tab right-click menu, split + AI buttons beside ⋯ · 15 real-app checks
 - 2026-10-22 · P14.7 slash menu on right-click (Cut/Copy/Paste) and on a lone `/` · 17 real-app checks
 - 2026-10-22 · P14.8–P14.13 outline on rail, many tabs, split backlinks, line numbers, draggable page breaks, settings order · 6 core tests; 34 real-app checks
+- 2026-10-22 · P14.14 page view: break lines hidden, drag limits + auto-scroll + page-count message; P14.15 vault row adapts · 21 real-app checks

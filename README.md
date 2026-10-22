@@ -12,7 +12,7 @@ deleted note goes to `<vault>/.trash/`.
 
 - **Live-preview editor** (CodeMirror 6): headings, tables you edit in place, math (KaTeX),
   Mermaid diagrams, images (paste / drop / resize), code blocks, callouts, task lists, tags,
-  page breaks (drag one with the mouse to move it), optional line numbers. Ctrl+E switches to
+  page breaks, optional line numbers. Ctrl+E switches to
   the raw source.
 - **Links**: `[[wikilinks]]`, backlinks (one list per side while split), rename-safe (links and images follow a renamed note).
 - **Find things**: quick switcher (Ctrl+O), full-text search over every note (Ctrl+Shift+F),
@@ -28,8 +28,9 @@ deleted note goes to `<vault>/.trash/`.
   **version history** of every note (⋯ → Version history, restore with one click, Ctrl+Z undoes
   it), a **Trash** you can restore from (Ctrl+P → Open trash).
 - **Side pane**: AI chat, calendar with daily notes, settings.
-- **Print / export**: page view (page lines or real pages; drag a page line up to start the page
-  earlier), export as PDF, HTML or Markdown.
+- **Print / export**: page view (page lines or real pages; drag a *Page N* line to start that page
+  elsewhere — as far as the pages allow; the rest flows onto new pages), export as PDF, HTML or
+  Markdown.
 - **Smart Paste**: tidy markdown from web pages and AI chat answers (Ctrl+Shift+V pastes raw).
 
 ### Turning things off

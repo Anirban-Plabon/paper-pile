@@ -14,7 +14,9 @@
 //     on screen (CodeMirror's own line heights) and gives the widget below it the rest.
 //
 // The properties block (front matter) is not printed, so in page view it is hidden (blocks.js)
-// and the caret and typing are kept out of it.
+// and the caret and typing are kept out of it. Page break lines are hidden too: the page line
+// (or sheet edge) below them already shows the break, and dragging it moves the break
+// (pagedrag.js, which also asks for trial layouts through `probeLayout`).
 import { syntaxTree } from "@codemirror/language";
 import { ChangeSet, EditorSelection, EditorState, Facet, StateEffect, StateField } from "@codemirror/state";
 import { Decoration, EditorView, ViewPlugin, WidgetType } from "@codemirror/view";
@@ -47,6 +49,13 @@ const pagesField = StateField.define({
     return starts.map((s) => ({ pos: tr.changes.mapPos(s.pos, -1), page: s.page }));
   },
 });
+
+// The page starts as line numbers, in order: `[{ line, page }]` (pages 2 onwards); none outside
+// page view.
+export function pageStartLines(state) {
+  if (!state.facet(pageViewFacet) || !state.field(pagesField, false)) return [];
+  return pageStarts(state).map((s) => ({ line: state.doc.lineAt(s.from).number, page: s.page }));
+}
 
 // The page starts as line starts, in order (pages 2 onwards; one per line).
 function pageStarts(state) {
@@ -268,7 +277,9 @@ const controller = ViewPlugin.fromClass(
       this.view = view;
       this.pending = null; // { seq, doc, changes }: the request in flight and typing since
       this.timer = null;
-      this.frame = null;
+      this.frames = {}; // "main", "probe": hidden frames the print page is laid out in
+      this.probes = new Map(); // seq → resolve, for trial layouts (probe)
+      this.pagesBefore = null; // a page break was dragged: the page count before it
       this.schedule(50);
     }
     update(u) {
@@ -295,12 +306,32 @@ const controller = ViewPlugin.fromClass(
       this.pending = { seq, doc: state.doc, changes: ChangeSet.empty(state.doc.length) };
       rt.emit("print_layout", { docId: rt.getDocId(), seq, text: state.doc.toString() });
     }
+    // A trial layout of `text` (not shown): its pages `[{ page, line }]`, or null.
+    probe(text) {
+      const rt = rtOf(this.view.state);
+      const seq = ++seqCounter;
+      return new Promise((resolve) => {
+        this.probes.set(seq, resolve);
+        setTimeout(() => this.probes.delete(seq) && resolve(null), LAYOUT_TIMEOUT_MS);
+        rt.emit("print_layout", { docId: rt.getDocId(), seq, text });
+      });
+    }
+    // A page break is being moved: once the new layout is in, say if the rest needs more pages.
+    watchPageCount() {
+      this.pagesBefore = pageStarts(this.view.state).length + 1;
+    }
     // Python's answer: the URL of the print page for request `seq`.
     async ready(seq, url) {
+      const probe = this.probes.get(seq);
+      if (probe) {
+        this.probes.delete(seq);
+        this.layout(url, "probe").then(probe, () => probe(null));
+        return;
+      }
       if (!this.pending || this.pending.seq !== seq) return;
       let pages;
       try {
-        pages = await this.layout(url);
+        pages = await this.layout(url, "main");
       } catch {
         return; // the lines stay as they were; the next pause in typing tries again
       }
@@ -311,16 +342,26 @@ const controller = ViewPlugin.fromClass(
         .map((p) => ({ pos: pending.changes.mapPos(pending.doc.line(p.line).from, -1), page: p.page }));
       this.pending = null;
       this.view.dispatch({ effects: setPages.of(starts) });
-    }
-    layout(url) {
-      if (!this.frame) {
-        this.frame = document.createElement("iframe");
-        this.frame.className = "pp-print-frame";
-        this.frame.setAttribute("aria-hidden", "true");
-        this.frame.tabIndex = -1;
-        document.body.appendChild(this.frame);
+      if (this.pagesBefore !== null) {
+        const before = this.pagesBefore;
+        const after = pageStarts(this.view.state).length + 1;
+        this.pagesBefore = null;
+        if (after !== before) {
+          const rt = rtOf(this.view.state);
+          rt.emit("page_count", { docId: rt.getDocId(), before, after });
+        }
       }
-      const frame = this.frame;
+    }
+    layout(url, which) {
+      if (!this.frames[which]) {
+        const frame = document.createElement("iframe");
+        frame.className = "pp-print-frame";
+        frame.setAttribute("aria-hidden", "true");
+        frame.tabIndex = -1;
+        document.body.appendChild(frame);
+        this.frames[which] = frame;
+      }
+      const frame = this.frames[which];
       return new Promise((resolve, reject) => {
         const timer = setTimeout(() => reject(new Error("layout timed out")), LAYOUT_TIMEOUT_MS);
         frame.onload = async () => {
@@ -339,7 +380,8 @@ const controller = ViewPlugin.fromClass(
     }
     destroy() {
       clearTimeout(this.timer);
-      this.frame?.remove();
+      Object.values(this.frames).forEach((f) => f.remove());
+      this.probes.forEach((resolve) => resolve(null));
     }
   },
 );
@@ -354,6 +396,27 @@ const hiddenProperties = StateField.define({
 function hide(state) {
   const end = frontMatterEnd(state);
   return end < 0 ? Decoration.none : Decoration.set([Decoration.replace({ block: true }).range(0, end)]);
+}
+
+// Page break lines are hidden (the page line or sheet edge under them shows the break); the caret
+// steps over them (atomic), so nothing is typed into a line no one sees.
+const hiddenBreaks = StateField.define({
+  create: (state) => breakLines(state),
+  update: (value, tr) => (tr.docChanged || syntaxTree(tr.startState) !== syntaxTree(tr.state) ? breakLines(tr.state) : value),
+  provide: (f) => [EditorView.decorations.from(f), EditorView.atomicRanges.of((view) => view.state.field(f))],
+});
+
+function breakLines(state) {
+  const out = [];
+  syntaxTree(state).topNode.cursor().iterate((node) => {
+    if (node.name === "PageBreak") {
+      const line = state.doc.lineAt(node.from);
+      out.push(Decoration.replace({ block: true }).range(line.from, line.to));
+      return false;
+    }
+    return node.name === "Document";
+  });
+  return Decoration.set(out, true);
 }
 
 // The caret and selections never enter the hidden properties block.
@@ -382,6 +445,7 @@ export function pageView(config) {
     pagesField,
     real ? [fillerField, sheets, sizer] : pageLines,
     hiddenProperties,
+    hiddenBreaks,
     controller,
     keepOutOfProperties,
     protectProperties,
@@ -390,6 +454,17 @@ export function pageView(config) {
       style: `--pp-page-text: ${config.textWidthMm}mm; --pp-margin: ${config.marginMm}mm`,
     }),
   ];
+}
+
+// A trial layout of `text` in this editor's page view: `[{ page, line }]`, or null.
+export function probeLayout(view, text) {
+  const c = view.plugin(controller);
+  return c ? c.probe(text) : Promise.resolve(null);
+}
+
+// A page break was dragged: report a change in the page count once it is laid out again.
+export function watchPageCount(view) {
+  view.plugin(controller)?.watchPageCount();
 }
 
 // Python's answer to a `print_layout` request (the editor's API calls this).
