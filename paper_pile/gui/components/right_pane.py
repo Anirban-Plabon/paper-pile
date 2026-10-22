@@ -1,5 +1,6 @@
 """The right pane: a tab strip (AI chat, Calendar, and Settings / a ``#tag`` list while they
-are open) over the active view.
+are open) over the active view. AI chat and Calendar are listed only while their feature is on
+(``features``); with neither on and nothing else open the pane has nothing to show.
 
 Settings is a tab, not a dialog: it opens here, can be closed with its cross like an editor tab,
 and keeps the chat (and its attachments) alive underneath. Icons are Font Awesome (vendored).
@@ -24,7 +25,11 @@ class RightPane:
         on_open_settings: Callable[[ui.column, str | None], None],
         on_wide: Callable[[bool], None] = lambda wide: None,
         on_show_calendar: Callable[[], None] = lambda: None,
+        features: Callable[[], set[str]] = lambda: {"chat", "calendar"},
+        on_empty: Callable[[], None] = lambda: None,
     ) -> None:
+        self._features = features
+        self._on_empty = on_empty  # the last tab went away: the pane has nothing to show
         self._open_settings_into = on_open_settings
         self._on_wide = on_wide
         self._on_show_calendar = on_show_calendar
@@ -55,9 +60,20 @@ class RightPane:
     def settings_open(self) -> bool:
         return self._settings_open
 
+    def tabs(self) -> list[str]:
+        """The tabs on the strip now, left to right."""
+        names = [n for n in ("chat", "calendar") if n in self._features()]
+        if self._settings_open:
+            names.append("settings")
+        if self._tag:
+            names.append("tag")
+        return names
+
+    def has_tabs(self) -> bool:
+        return bool(self.tabs())
+
     def show(self, name: str) -> None:
-        closed = {"settings": not self._settings_open, "tag": not self._tag}.get(name, False)
-        self._active = "chat" if closed else name
+        self._active = name
         self._render()
         if self._active == "calendar":
             self._on_show_calendar()
@@ -90,20 +106,32 @@ class RightPane:
 
     # ---- drawing -------------------------------------------------------------------------
 
+    def refresh(self) -> None:
+        """A feature was switched on or off: redraw the strip."""
+        self._render()
+
     def _render(self) -> None:
+        tabs = self.tabs()
+        if self._active not in tabs:  # closed, or its feature switched off
+            self._active = tabs[0] if tabs else ""
         self._on_wide(self._active == "settings")  # Settings gets a wide pane
         self.chat_host.set_visibility(self._active == "chat")
         self.calendar_host.set_visibility(self._active == "calendar")
         self.settings_host.set_visibility(self._active == "settings")
         self.tag_host.set_visibility(self._active == "tag")
         self._bar.clear()
+        if not tabs:
+            self._on_empty()
         with self._bar:
-            self._tab("chat", "AI chat", CHAT_ICON, closable=False)
-            self._tab("calendar", "Calendar", CALENDAR_ICON, closable=False)
-            if self._settings_open:
-                self._tab("settings", "Settings", SETTINGS_ICON, closable=True)
-            if self._tag:
-                self._tab("tag", self._tag, TAG_ICON, closable=True)
+            for name in tabs:
+                if name == "chat":
+                    self._tab("chat", "AI chat", CHAT_ICON, closable=False)
+                elif name == "calendar":
+                    self._tab("calendar", "Calendar", CALENDAR_ICON, closable=False)
+                elif name == "settings":
+                    self._tab("settings", "Settings", SETTINGS_ICON, closable=True)
+                else:
+                    self._tab("tag", self._tag, TAG_ICON, closable=True)
 
     def _tab(self, name: str, title: str, icon: str, *, closable: bool) -> None:
         chip = ui.element("div").classes("pp-rtab")

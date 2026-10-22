@@ -171,6 +171,7 @@ def test_language_is_a_known_code_and_defaults_to_english() -> None:
 def test_general_groups_language_paste_folders_daily() -> None:
     groups = [s.group for s in SECTIONS["General"]]
     assert groups == [
+        *["Features"] * 3,
         "Language",
         "Paste",
         "Images",
@@ -233,3 +234,31 @@ def test_page_view_is_off_lines_or_pages_and_reads_the_old_switch() -> None:
     assert parse_value(setting, False).value == "off"
     assert not parse_value(setting, "maybe").ok
     assert sanitized({})["editor.page_view"] == "off"
+
+
+def test_feature_switches_and_minimal_settings_decide_what_is_listed() -> None:
+    from paper_pile.core.settings import SECTIONS, is_shown, search_settings, shown_sections
+
+    values = sanitized({})
+    assert values["features.ai"] and values["features.calendar"] and values["settings.minimal"]
+    general = {s.key: s for s in SECTIONS["General"]}
+    ai = {s.key: s for s in SECTIONS["AI"]}
+    assert [s.key for s in SECTIONS["General"][:3]] == [
+        "features.ai",
+        "features.calendar",
+        "settings.minimal",
+    ]
+    # minimal: essentials only, but search still finds everything
+    assert is_shown("AI", ai["ai.model"], values)
+    assert not is_shown("AI", ai["ai.temperature"], values)
+    assert is_shown("AI", ai["ai.temperature"], values, searching=True)
+    assert search_settings("temperature", values)
+    # AI off: its section is gone, even from search
+    off = {**values, "features.ai": False}
+    assert "AI" not in shown_sections(off)
+    assert not search_settings("temperature", off)
+    # calendar off: the daily-note settings go (in every view)
+    full = {**values, "settings.minimal": False, "features.calendar": False}
+    assert not is_shown("General", general["vault.daily_notes_folder"], full)
+    assert is_shown("General", general["vault.templates_folder"], full)
+    assert shown_sections({**values, "settings.minimal": False}) == list(SECTIONS)

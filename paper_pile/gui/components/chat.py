@@ -112,8 +112,10 @@ class ChatPane:
         open_paths: Callable[[], list[str]] = lambda: [],
         active_path: Callable[[], str | None] = lambda: None,
         open_settings: Callable[[], None] = lambda: None,
+        enabled: Callable[[], bool] = lambda: True,  # the AI feature switch
     ) -> None:
         self.vault = vault
+        self._enabled = enabled
         self.config = config
         self.index = index
         self._snapshot = snapshot
@@ -247,6 +249,8 @@ class ChatPane:
         background_tasks.create(self.check_health())
 
     async def check_health(self) -> None:
+        if not self._enabled():  # AI is switched off: never talk to Ollama
+            return
         health = await self.provider.health()
         self.health = health
         self.models = list(health.models)

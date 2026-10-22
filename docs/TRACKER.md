@@ -160,7 +160,7 @@ Legend: 🧠 = needs Opus (see PLAN §6 model guidance) · ⬜ todo · 🔄 in p
 ### P14 — Features, navigation & safety (user request 2026-10-22)
 | ID | Task | Status | Notes |
 |---|---|---|---|
-| P14.1 | Feature switches + Minimal settings | ⬜ | |
+| P14.1 | Feature switches + Minimal settings | ✅ | `features.ai` / `features.calendar` / `settings.minimal` + `Setting.essential`, `core.settings.is_shown` / `shown_sections` / `feature_on`; AI slash commands `when=_ai_on`; `RightPane.tabs()` / `on_empty`; `MainLayout._features_changed`; 2 tests; 20 real-app checks (fake Ollama counts requests: none while off). Also fixed: a folded right pane's resize strip stuck out past the window and made the editor column scroll sideways |
 | P14.2 | File tree keyboard | ⬜ | |
 | P14.3 | Trash popup + restore | ⬜ | |
 | P14.4 🧠 | Version history (diff chain) | ⬜ | |
@@ -323,6 +323,7 @@ Legend: 🧠 = needs Opus (see PLAN §6 model guidance) · ⬜ todo · 🔄 in p
 <!-- YYYY-MM-DD · task · symptom → root cause → fix · (gotcha added? y/n) -->
 | Date | Task | Symptom | Root cause | Fix | Gotcha? |
 |---|---|---|---|---|---|
+| 2026-10-22 | P14.1 | Closing Settings (AI + Calendar off) did not fold the right pane; `RuntimeError: The parent element this slot belongs to has been deleted` | the close icon's click handler ran in the icon's slot; redrawing the tab strip deleted the icon, and folding then called `ui.query` in that dead slot | `_right_emptied` runs inside `with self._splitters["right"]:` | y |
 | 2026-10-22 | P13.15 | Chat + menu (and the model menu) opened partly or wholly below the window / behind the Windows taskbar; only the first notes showed | 1) Quasar places a q-menu once when it opens, but these menus are filled by Python on `before-show` (a server round trip), so it was placed while empty/stale and then grew downward; 2) Quasar and CodeMirror fit popups to `window.innerHeight`, which in a maximized WSL window includes the strip under the taskbar (`--pp-inset-bottom`) | `static/menus.js`: a ResizeObserver on every `.q-menu` / `.pp-ctxmenu` re-places it (`getElement(menu).updatePosition()`) and lifts it above the inset strip; editor `tooltips({ tooltipSpace })` subtracts the insets | y |
 | 2026-10-22 | P13.12 | A settings row flipped between its field beside the text and under it | marking a row "stacked" let its field shrink below 200 px (flex-basis with `width: auto`), so it fitted back beside the text while the mark stayed; the mark was also computed before the row's layout settled | the stacked field keeps `min-width: 200px`; rows are re-checked by a per-row ResizeObserver | y |
 | 2026-10-22 | P13.12 | Settings grew when the file tree was folded in a small window, then shrank again (flicker) | its saved width (720 px) did not fit beside the open tree, so it showed narrower; folding the tree freed room and it jumped back to the saved width | before folding / unfolding, the width Settings really shows becomes its width | n |
@@ -501,3 +502,4 @@ Legend: 🧠 = needs Opus (see PLAN §6 model guidance) · ⬜ todo · 🔄 in p
 - 2026-10-22 · P13.13 daily notes follow their template (no auto-title in daily/templates folders, untouched notes re-made) · 1050 tests; 7 real-app checks
 - 2026-10-22 · P13.14 tree multi-select (Ctrl/Shift+click, selection box, group move/delete/add to chat) · 1055 tests; 16 real-app checks
 - 2026-10-22 · P13.15 popups stay on screen (menus filled by Python re-placed; taskbar strip respected by menus and editor tooltips) · 12 real-app checks
+- 2026-10-22 · P14.1 feature switches (AI, Calendar) + Minimal settings (on by default) · 1057 tests; 20 real-app checks

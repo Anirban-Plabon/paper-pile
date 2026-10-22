@@ -6,6 +6,9 @@ the control on the right). Every change is checked by ``core.settings`` and, if 
 and saved at once — to the global ``config.toml`` or, with "This vault", to the vault's own
 ``vault.toml`` (which then wins). An invalid value only shows its message.
 
+What is listed follows the feature switches and *Minimal settings* (``core.settings.is_shown``,
+PLAN §4.18): minimal shows only the essential rows and none of the hand-made panels.
+
 The AI page has three hand-made parts: the system instruction (typed in a large box with an
 drag handle at its corner and *Write with AI*, or read from a ``.md`` file), the memories browser
 (:mod:`memories`) under the Memories settings, and the Advanced settings folded at the end.
@@ -33,9 +36,11 @@ from paper_pile.core.settings import (
     SECTIONS,
     Setting,
     accent_colors,
+    is_shown,
     parse_value,
     sanitized,
     search_settings,
+    shown_sections,
     stepped,
 )
 from paper_pile.core.templates import import_template, list_templates, new_template
@@ -63,6 +68,7 @@ SECTION_ICONS = {
     "Paste": "clipboard-paste",
     "Print": "printer",
 }
+_RELAYOUT = {"features.ai", "features.calendar", "settings.minimal"}  # change what is listed
 THEME_ICONS = {
     "system": "monitor",
     "light": "sun",
@@ -132,6 +138,7 @@ class SettingsPane:
         self.scope = "global"
         self.page = page if page in SECTIONS else next(iter(SECTIONS))
         self.query = ""
+        self._keep_page_shown()
         with host, ui.row().classes("pp-set no-wrap"):
             with ui.column().classes("pp-set-nav"):
                 search = (
@@ -172,10 +179,24 @@ class SettingsPane:
         if content is not None and not content.is_deleted:
             self._render_content()
 
+    def _values(self) -> dict[str, Any]:
+        return sanitized(self.config.values)
+
+    def _minimal(self) -> bool:
+        return bool(self._values()["settings.minimal"])
+
+    def _ai_on(self) -> bool:
+        return bool(self._values()["features.ai"])
+
+    def _keep_page_shown(self) -> None:
+        """A switch can take the shown page away (AI off): fall back to the first page."""
+        if self.page not in shown_sections(self._values()):
+            self.page = next(iter(SECTIONS))
+
     def _render_nav(self) -> None:
         self._nav.clear()
         with self._nav:
-            for name in SECTIONS:
+            for name in shown_sections(self._values()):
                 on = name == self.page and not self.query
                 item = ui.row().classes("pp-set-navitem items-center no-wrap")
                 if on:
@@ -215,7 +236,7 @@ class SettingsPane:
         with self._content:
             if self.query:
                 self._title.set_text("Search results")
-                found = self._drawable(search_settings(self.query))
+                found = self._drawable(search_settings(self.query, values))
                 if not found:
                     ui.label("No settings match.").classes("pp-muted pp-set-none")
                 for setting in found:
@@ -223,14 +244,9 @@ class SettingsPane:
                 return
             self._title.set_text(self.page)
             group = None
-            if self.page == "General":
-                self._group("Version")
-                self._info("paper-pile", f"Version {__version__}")
-                if self._vault_root is not None:
-                    self._group("Vault")
-                    self._info(self._vault_root.name or "Vault", str(self._vault_root))
             box: ui.element = self._content
-            for setting in self._drawable(list(SECTIONS[self.page])):
+            listed = [s for s in SECTIONS[self.page] if is_shown(self.page, s, values)]
+            for setting in self._drawable(listed):
                 if setting.group != group:
                     self._after_group(group)
                     group = setting.group
@@ -257,6 +273,14 @@ class SettingsPane:
         return out
 
     def _after_group(self, group: str | None) -> None:
+        if self.page == "General" and group == "Features":  # the switches come first
+            self._group("Version")
+            self._info("paper-pile", f"Version {__version__}")
+            if self._vault_root is not None:
+                self._group("Vault")
+                self._info(self._vault_root.name or "Vault", str(self._vault_root))
+        if self._minimal():
+            return  # the hand-made panels are for the full settings
         if self.page == "AI" and group == "Memories" and self._memories is not None:
             self._memories.build()  # the folder and the saved chats, under their settings
         if self.page == "General" and group == "Templates":
@@ -691,7 +715,7 @@ class SettingsPane:
                 "pp-muted pp-instr-count"
             )
             ui.space()
-            if self._draft is not None:
+            if self._draft is not None and self._ai_on():
                 ui.button(
                     "Write with AI",
                     icon=ico("sparkles"),
@@ -997,6 +1021,10 @@ class SettingsPane:
             ui.notify("Could not save the settings.", type="negative")
             return False
         self._on_applied({setting.key})
+        if setting.key in _RELAYOUT:
+            self._keep_page_shown()
+            self._render_nav()
+            self._render_content()
         if setting.key == "appearance.theme":  # the sidebar buttons and the Appearance row agree
             self._render_mode()
             if self.page == "Appearance" and not self.query:
@@ -1009,6 +1037,8 @@ class SettingsPane:
             self.config.unset(key, self.scope)
         self.config.save(self.scope)
         self._on_applied(set(ALL))
+        self._keep_page_shown()
+        self._render_nav()
         self._render_mode()
         where = "this vault" if self.scope == "vault" else "all vaults"
         ui.notify(f"Defaults restored for {where}", timeout=2000, position="bottom")

@@ -41,6 +41,7 @@ class NoteMenu:
         self._split_label: ui.label
         self._page_view_check: ui.element
         self._last_item: ui.menu_item
+        self._ai_parts: list[ui.element] = []  # the AI group, hidden while AI is off
 
     def build(self) -> None:
         a = self._actions
@@ -58,12 +59,16 @@ class NoteMenu:
                 self._page_view_check.set_visibility(False)
             self._item("folder-input", "Move to…", a.move)
             self._item("merge", "Merge into…", a.merge)
-            ui.separator()
-            ui.label("AI").classes("pp-note-menu-group")
-            self._item("message-square-plus", "Add to chat", a.add_to_chat)
-            self._item("list-collapse", "Summarize", a.summarize)
-            self._item("wand-sparkles", "Rewrite", a.rewrite)
-            self._item("pen-line", "Write…", a.write)
+            self._ai_parts.append(ui.separator())
+            self._ai_parts.append(ui.label("AI").classes("pp-note-menu-group"))
+            for icon, label, action in (
+                ("message-square-plus", "Add to chat", a.add_to_chat),
+                ("list-collapse", "Summarize", a.summarize),
+                ("wand-sparkles", "Rewrite", a.rewrite),
+                ("pen-line", "Write…", a.write),
+            ):
+                self._item(icon, label, action)
+                self._ai_parts.append(self._last_item)
             ui.separator()
             self._item("link", "Copy path", a.copy_path)
             self._item("clipboard-copy", "Copy full path", a.copy_full_path)
@@ -71,6 +76,11 @@ class NoteMenu:
             self._item("file-code", "Export as HTML", a.export_html)
             self._item("printer", "Export as PDF", a.export_pdf)
             self._item("external-link", "Open in default app", None, "Soon")
+
+    def set_ai(self, on: bool) -> None:
+        """Show the AI group only while the AI feature is on."""
+        for part in self._ai_parts:
+            part.set_visibility(on)
 
     def update(self, *, has_note: bool, split_open: bool, page_view: bool) -> None:
         """Hide the button without a note; the split item names what it will do."""

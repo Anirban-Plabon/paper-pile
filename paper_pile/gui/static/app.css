@@ -98,6 +98,9 @@ html, body { overflow: hidden; }
 /* the grab strip reaches right of the line only: on its left is the pane's scrollbar (8 px), which must
    keep scrolling (Quasar centres a 12 px strip on the line) */
 .pp-root .q-splitter--vertical > .q-splitter__separator > div { left: 0; right: -7px; }
+/* a folded pane's strip does nothing; at the window's right edge it would stick out and make the
+   editor column scroll sideways */
+.pp-root .q-splitter--disabled > .q-splitter__separator > div { right: 0; }
 /* The pane itself has no padding and clips, so a collapsed (0 px) pane is truly 0 wide. */
 .pp-pane { width: 100%; height: 100%; padding: 0; gap: 0; overflow: hidden; flex-wrap: nowrap; }
 .pp-pane-body { width: 100%; height: 100%; padding: 10px 12px; gap: 6px; overflow: auto; flex-wrap: nowrap; }

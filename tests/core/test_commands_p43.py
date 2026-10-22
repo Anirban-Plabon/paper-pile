@@ -271,3 +271,13 @@ def test_ai_commands_are_found_by_their_names() -> None:
     assert first("summar") == "ai-summarize" and first("tldr") == "ai-summarize"
     assert first("continue") == "ai-continue"
     assert [c.badge for c in REGISTRY.search("ask")[0].commands][:1] == ["AI"]
+
+
+def test_ai_commands_exist_only_while_ai_is_on(tmp_path: Path) -> None:
+    config = Config(vault=tmp_path)
+    ctx = CommandContext("a.md", "some text", 0, selection=(0, 4), config=config)
+    ai_ids = {"ai-summarize", "ai-continue", "ai-explain", "ai-fix", "ai-ask"}
+    assert ai_ids <= {c.id for c in REGISTRY.all(ctx)}
+    config.set("features.ai", False)
+    assert not ai_ids & {c.id for c in REGISTRY.all(ctx)}
+    assert REGISTRY.all(ctx)  # the rest stays

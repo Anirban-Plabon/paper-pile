@@ -22,7 +22,7 @@ from paper_pile.core.daily import DEFAULT_FORMAT, daily_relpath, new_daily_text,
 from paper_pile.core.events import EventBus
 from paper_pile.core.index import Index
 from paper_pile.core.session import SessionState, load_session, save_session
-from paper_pile.core.settings import language_name, sanitized
+from paper_pile.core.settings import feature_on, language_name, sanitized
 from paper_pile.core.templates import template_draft_messages
 from paper_pile.core.vault import Vault, VaultError
 from paper_pile.core.vault_folders import ensure_folders, move_old_chats
@@ -153,6 +153,8 @@ class MainLayout:
                     self._center_pane()
                 with inner.after:
                     self._right_pane()
+        if self.right is not None and not self.right.has_tabs():
+            self.state.panes_open["right"] = False  # AI and Calendar are off: nothing to show
         for pane in WIDTH_LIMITS:
             self._apply(pane)
         ui.on("pp_pane_collapse", lambda e: self._dragged_shut(str(e.args.get("pane"))))
@@ -238,6 +240,8 @@ class MainLayout:
             await self.editor_pane.tidy_active()
 
     def ask_ai(self) -> None:
+        if not self.ai_on():
+            return
         self._open_chat()
         if self.chat is not None:
             self.chat.focus_input()
@@ -251,6 +255,8 @@ class MainLayout:
             ("folder-open", "Open vault", "", self.open_vault),
             ("sparkles", "Ask AI", "", self.ask_ai),
         )
+        if not self.ai_on():
+            actions = actions[:-1]
         for icon, label, keys, action in actions:
             with (
                 ui.button(on_click=action, color=None).props("flat no-caps").classes("pp-start-btn")
@@ -273,6 +279,7 @@ class MainLayout:
                     self.bus,
                     can_reveal=self.can_reveal,
                     hidden=self._tree_hidden,
+                    ai_on=self.ai_on,
                 )
                 self.tree.build()
             self.profile = ProfileBlock(
@@ -292,6 +299,41 @@ class MainLayout:
             self.chat.refresh_names()
 
     # ---- settings, theme, profile -----------------------------------------------------------
+
+    def ai_on(self) -> bool:
+        return feature_on(self.config.values, "features.ai")
+
+    def _right_features(self) -> set[str]:
+        """The right pane's feature tabs that are switched on."""
+        on = {"chat": self.ai_on(), "calendar": feature_on(self.config.values, "features.calendar")}
+        return {name for name, is_on in on.items() if is_on}
+
+    def _features_changed(self) -> None:
+        """AI or Calendar was switched on or off: show or hide everything that belongs to it."""
+        ai = self.ai_on()
+        if self.right is not None:
+            self.right.refresh()  # folds the pane if nothing is left to show (_right_emptied)
+        if self._status is not None:
+            self._status.show_ollama(ai)
+        if self.editor_pane is not None:
+            self.editor_pane.set_ai(ai)
+            self.editor_pane.empty_host.clear()
+            with self.editor_pane.empty_host:
+                self._start_actions()
+        if self.chat is not None and ai:
+            self.chat.reload_provider()  # checks Ollama again
+        if self.tree is not None:
+            self.tree.refresh()
+        self._sync_toggles()
+
+    def _right_emptied(self) -> None:
+        """The right pane's last tab closed (Settings, with AI and Calendar off): fold it. Runs
+        in the splitter's context: the click that got here came from a tab that is gone now."""
+        with self._splitters["right"]:
+            if self.state.panes_open["right"]:
+                self.toggle("right")
+            else:
+                self._sync_toggles()
 
     def _known_models(self) -> list[str]:
         return list(self.chat.models) if self.chat else []
@@ -449,7 +491,9 @@ class MainLayout:
             self.editor_pane.set_options(editor_options(self.config))
         if self.editor_pane is not None and "editor.tidy_button" in changed:
             self.editor_pane.show_tidy_buttons()
-        if self.chat is not None and any(k.startswith("ai.") for k in changed):
+        if changed & {"features.ai", "features.calendar"}:
+            self._features_changed()
+        elif self.chat is not None and any(k.startswith("ai.") for k in changed):
             self.chat.reload_provider()
         if self.profile is not None:
             self.profile.refresh()
@@ -460,7 +504,13 @@ class MainLayout:
             self.tree.refresh()
 
     def _right_pane(self) -> None:
-        self.right = RightPane(self.settings.open, self._settings_wide_mode, self._refresh_calendar)
+        self.right = RightPane(
+            self.settings.open,
+            self._settings_wide_mode,
+            self._refresh_calendar,
+            features=self._right_features,
+            on_empty=self._right_emptied,
+        )
         self.right.build()
         with self.right.chat_host:
             self._chat_pane()
@@ -491,6 +541,7 @@ class MainLayout:
             open_paths=lambda: self.editor_pane.open_paths() if self.editor_pane else [],
             active_path=self._active_path,
             open_settings=lambda: self.open_settings("AI"),
+            enabled=self.ai_on,
         )
         self.chat.build()
 
@@ -529,13 +580,15 @@ class MainLayout:
             self._start_actions()
         with self.editor_pane.status_host:  # the footer under the editor, beside Backlinks
             self._status = status_bar(self.toggle_mode, self.state.mode)
+            self._status.show_ollama(self.ai_on())
+        self.editor_pane.set_ai(self.ai_on())
 
     def _chat_selection(self, text: str, path: str) -> None:
-        if self.chat is not None:
+        if self.chat is not None and self.ai_on():
             self.chat.set_selection(text, path)
 
     def _chat_block(self, kind: str, lang: str, text: str, path: str) -> None:
-        if self.chat is not None:
+        if self.chat is not None and self.ai_on():
             self.chat.set_block(kind, lang, text, path)
 
     def _active_path(self) -> str | None:
@@ -543,12 +596,12 @@ class MainLayout:
         return tab.path if tab else None
 
     def _chat_add_note(self, path: str) -> None:
-        if self.chat is not None:
+        if self.chat is not None and self.ai_on():
             self.chat.add_notes([path])
             self._open_chat()
 
     def _chat_ask(self, path: str, prompt: str, send: bool) -> None:
-        if self.chat is not None:
+        if self.chat is not None and self.ai_on():
             self._open_chat()
             self.chat.ask(path, prompt, send=send)
 
@@ -608,7 +661,10 @@ class MainLayout:
         if pane == "left" and self._settings_wide and self.state.panes_open["right"]:
             background_tasks.create(self._toggle_left_keeping_settings())
             return
-        self.state.panes_open[pane] = not self.state.panes_open[pane]
+        opening = not self.state.panes_open[pane]
+        if pane == "right" and opening and self.right is not None and not self.right.has_tabs():
+            return  # AI and Calendar are off and nothing else is open there
+        self.state.panes_open[pane] = opening
         self._apply(pane)
         self._save_soon(immediately=True)
 
@@ -663,11 +719,14 @@ class MainLayout:
         self._ribbon.set_visibility(not self.state.panes_open["left"])
         if self.editor_pane is None:
             return
+        tabs = self.right.tabs() if self.right is not None else ["chat"]
+        name = {"chat": "AI chat", "calendar": "calendar"}.get(tabs[0] if tabs else "", "side pane")
         for pane, button in self.editor_pane.pane_toggles.items():
             # the icon shows what a click does: close an open pane, open a closed one
             is_open = self.state.panes_open[pane]
             set_icon(button, f"panel-{pane}-{'close' if is_open else 'open'}")
-            tip(button, f"{'Hide' if is_open else 'Show'} AI chat (Ctrl+L)")
+            tip(button, f"{'Hide' if is_open else 'Show'} {name} (Ctrl+L)")
+            button.set_visibility(is_open or bool(tabs))
 
     def _dragged_shut(self, pane: str) -> None:
         """The pane's edge was dragged on past its narrowest width (``static/panes.js``). Not

@@ -50,8 +50,10 @@ class FileTree:
         *,
         can_reveal: bool,
         hidden: Callable[[], set[str]] = set,
+        ai_on: Callable[[], bool] = lambda: True,
     ) -> None:
         self.vault = vault
+        self._ai_on = ai_on  # "Add to chat" only while the AI feature is on
         self._hidden = hidden  # folders not shown (the app's own; Settings → General → Folders)
         self.bus = bus
         self.can_reveal = can_reveal
@@ -286,7 +288,7 @@ class FileTree:
     def _group_menu(self) -> None:
         paths = self._selection()
         notes = [p for p in paths if self.vault.resolve(p).is_file()]
-        if notes:
+        if notes and self._ai_on():
             label = "Add to chat" if len(notes) == 1 else f"Add {len(notes)} notes to chat"
             self._item(label, "messages-square", lambda: self._add_to_chat(*notes))
         self._item(
@@ -298,7 +300,7 @@ class FileTree:
             folder = path if on_row else ""
             self._item("New note", "file-plus", lambda: self._new_note(folder))
             self._item("New folder", "folder-plus", lambda: self._new_folder(folder))
-        if on_row and not is_dir:
+        if on_row and not is_dir and self._ai_on():
             self._item("Add to chat", "messages-square", lambda: self._add_to_chat(path))
         if on_row:
             self._item("Rename", "square-pen", lambda: self._rename(path))

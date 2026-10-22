@@ -17,6 +17,7 @@ from paper_pile.core.commands import (
     command,
 )
 from paper_pile.core.pagebreak import PAGE_BREAK
+from paper_pile.core.settings import feature_on
 from paper_pile.core.spacing import spaced_block
 from paper_pile.core.tables import Table, format_table
 from paper_pile.core.templates import DATE_FORMAT, TIME_FORMAT
@@ -296,7 +297,15 @@ def template(ctx: CommandContext) -> Action:
 # ---- AI (streamed into the note; see EditorPane._run_stream) ----------------------------------
 
 AI = "AI"
-_has_selection = lambda ctx: bool(ctx.selection)  # noqa: E731
+
+
+def _ai_on(ctx: CommandContext) -> bool:
+    """AI commands exist only while the AI feature is on (Settings → General → Features)."""
+    return ctx.config is None or feature_on(ctx.config.values, "features.ai")
+
+
+def _ai_on_selection(ctx: CommandContext) -> bool:
+    return _ai_on(ctx) and bool(ctx.selection)
 
 
 @command(
@@ -307,6 +316,7 @@ _has_selection = lambda ctx: bool(ctx.selection)  # noqa: E731
     subtitle="The selection, or the whole note",
     badge="AI",
     aliases=("summary", "tldr", "shorten"),
+    when=_ai_on,
 )
 def ai_summarize(ctx: CommandContext) -> Action:
     return StreamInsert(
@@ -324,6 +334,7 @@ def ai_summarize(ctx: CommandContext) -> Action:
     subtitle="From where the caret is",
     badge="AI",
     aliases=("continue", "write more", "extend", "autocomplete"),
+    when=_ai_on,
 )
 def ai_continue(ctx: CommandContext) -> Action:
     return StreamInsert(
@@ -341,7 +352,7 @@ def ai_continue(ctx: CommandContext) -> Action:
     subtitle="Select text, then press Ctrl+J",
     badge="AI",
     aliases=("explain", "what does this mean"),
-    when=_has_selection,
+    when=_ai_on_selection,
 )
 def ai_explain(ctx: CommandContext) -> Action:
     return StreamInsert(
@@ -359,7 +370,7 @@ def ai_explain(ctx: CommandContext) -> Action:
     subtitle="Replaces the selection",
     badge="AI",
     aliases=("grammar", "proofread", "spelling", "correct"),
-    when=_has_selection,
+    when=_ai_on_selection,
 )
 def ai_fix(ctx: CommandContext) -> Action:
     return StreamInsert(
@@ -378,6 +389,7 @@ def ai_fix(ctx: CommandContext) -> Action:
     subtitle="Ask the AI about this note",
     badge="AI",
     aliases=("question", "ask ai", "prompt", "write"),
+    when=_ai_on,
 )
 def ai_ask(ctx: CommandContext) -> Action:
     return StreamInsert("", source="auto", ask=True)

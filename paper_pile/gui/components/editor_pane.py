@@ -1785,6 +1785,10 @@ class EditorPane:
     def config(self) -> Config | None:
         return self._config
 
+    def set_ai(self, on: bool) -> None:
+        """The AI feature was switched: the ⋯ menu shows or hides its AI group."""
+        self.note_menu.set_ai(on)
+
     def add_to_chat(self, path: str) -> None:
         self._add_note_to_chat(path)
 

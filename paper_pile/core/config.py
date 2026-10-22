@@ -69,6 +69,8 @@ DEFAULTS: dict[str, Any] = {
         "chats_folder": ".memory",  # vault-relative, or absolute
     },
     "paste": {"smart_paste": True},
+    "features": {"ai": True, "calendar": True},  # PLAN §4.18
+    "settings": {"minimal": True},  # Settings lists only the essential rows
 }
 
 

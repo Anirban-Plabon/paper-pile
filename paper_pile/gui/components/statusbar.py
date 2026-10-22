@@ -32,6 +32,10 @@ class StatusBar:
         else:
             self.mode_label.classes(remove="pp-mode-plain")
 
+    def show_ollama(self, on: bool) -> None:
+        """The dot is there only while the AI feature is on."""
+        self.ollama_dot.set_visibility(on)
+
     def set_ollama(self, ok: bool, text: str) -> None:
         """Green dot when Ollama can be reached, grey otherwise; the tooltip says why."""
         self.ollama_dot.classes(

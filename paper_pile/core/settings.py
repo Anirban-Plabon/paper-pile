@@ -87,6 +87,7 @@ class Setting:
     placeholder: str = ""
     group: str = ""  # a heading shown above it inside its section
     step: float | None = None  # numbers with a step get − / + buttons
+    essential: bool = False  # listed while Settings is minimal (PLAN §4.18)
 
 
 @dataclass(frozen=True, slots=True)
@@ -108,12 +109,37 @@ _CHATS_FOLDER = Setting(
 SECTIONS: dict[str, tuple[Setting, ...]] = {
     "General": (
         Setting(
+            "features.ai",
+            "AI",
+            "bool",
+            help="Chat, AI commands, Ollama",
+            group="Features",
+            essential=True,
+        ),
+        Setting(
+            "features.calendar",
+            "Calendar",
+            "bool",
+            help="Calendar tab, daily notes",
+            group="Features",
+            essential=True,
+        ),
+        Setting(
+            "settings.minimal",
+            "Minimal settings",
+            "bool",
+            help="Only the essentials",
+            group="Features",
+            essential=True,
+        ),
+        Setting(
             "general.language",
             "Writing language",
             "choice",
             tuple(LANGUAGES),
             help="Spell check and AI replies",
             group="Language",
+            essential=True,
         ),
         Setting(
             "paste.smart_paste",
@@ -121,6 +147,7 @@ SECTIONS: dict[str, tuple[Setting, ...]] = {
             "bool",
             help="Tidy pasted web text",
             group="Paste",
+            essential=True,
         ),
         Setting(
             "vault.images_folder",
@@ -176,13 +203,21 @@ SECTIONS: dict[str, tuple[Setting, ...]] = {
         ),
     ),
     "Appearance": (
-        Setting("appearance.theme", "Mode", "choice", THEMES, help="System follows the OS"),
+        Setting(
+            "appearance.theme",
+            "Mode",
+            "choice",
+            THEMES,
+            help="System follows the OS",
+            essential=True,
+        ),
         Setting(
             "appearance.accent",
             "Accent colour",
             "color",
             tuple(ACCENTS),
             help="Links and highlights",
+            essential=True,
         ),
         Setting(
             "appearance.density",
@@ -193,7 +228,13 @@ SECTIONS: dict[str, tuple[Setting, ...]] = {
         ),
     ),
     "Editor": (
-        Setting("editor.font_family", "Font family", "text", help="Any CSS font list"),
+        Setting(
+            "editor.font_family",
+            "Font family",
+            "text",
+            help="Any CSS font list",
+            essential=True,
+        ),
         Setting(
             "editor.font_size",
             "Font size (px)",
@@ -202,6 +243,7 @@ SECTIONS: dict[str, tuple[Setting, ...]] = {
             maximum=40,
             help="Editor text size",
             step=1,
+            essential=True,
         ),
         Setting(
             "editor.line_height",
@@ -223,6 +265,7 @@ SECTIONS: dict[str, tuple[Setting, ...]] = {
             "Wrap long lines",
             "bool",
             help="Wrap long lines",
+            essential=True,
         ),
         Setting(
             "editor.tab_size",
@@ -236,6 +279,7 @@ SECTIONS: dict[str, tuple[Setting, ...]] = {
             "Check spelling",
             "bool",
             help="Underline misspellings",
+            essential=True,
         ),
         Setting(
             "editor.auto_title",
@@ -255,6 +299,7 @@ SECTIONS: dict[str, tuple[Setting, ...]] = {
             "choice",
             tuple(PAGE_VIEWS),
             help="Pages as in the PDF",
+            essential=True,
         ),
         Setting(
             "editor.default_mode",
@@ -278,6 +323,7 @@ SECTIONS: dict[str, tuple[Setting, ...]] = {
             "choice",
             PAPER_SIZES,
             help="Page view and PDF",
+            essential=True,
         ),
     ),
     "AI": (
@@ -286,6 +332,7 @@ SECTIONS: dict[str, tuple[Setting, ...]] = {
             "Ollama address",
             "url",
             placeholder="http://localhost:11434",
+            essential=True,
         ),
         Setting(
             "ai.model",
@@ -293,6 +340,7 @@ SECTIONS: dict[str, tuple[Setting, ...]] = {
             "text",
             placeholder="gemma4:12b",
             help="Chat and AI commands",
+            essential=True,
         ),
         Setting("ai.embed_model", "Embedding model", "text", help="Not used yet"),
         Setting(
@@ -327,6 +375,7 @@ SECTIONS: dict[str, tuple[Setting, ...]] = {
             "Save chats",
             "bool",
             group="Memories",
+            essential=True,
         ),
         Setting(
             "ai.keep_chats_days",
@@ -395,20 +444,48 @@ SECTIONS: dict[str, tuple[Setting, ...]] = {
 ALL: dict[str, Setting] = {s.key: s for group in SECTIONS.values() for s in group}
 
 
-def search_settings(query: str) -> list[Setting]:
-    """The settings whose name, help text or section matches every word of ``query``."""
+def is_shown(
+    section: str, setting: Setting, values: Mapping[str, Any], *, searching: bool = False
+) -> bool:
+    """Whether Settings lists ``setting`` now (``values``: :func:`sanitized`). A switched-off
+    feature hides its settings everywhere; minimal settings hide the non-essential ones except
+    in search results (PLAN §4.18)."""
+    if section == "AI" and not values["features.ai"]:
+        return False
+    if setting.group == "Daily notes" and not values["features.calendar"]:
+        return False
+    return searching or setting.essential or not values["settings.minimal"]
+
+
+def shown_sections(values: Mapping[str, Any]) -> list[str]:
+    """The sections that have at least one setting to list."""
+    return [
+        name for name, group in SECTIONS.items() if any(is_shown(name, s, values) for s in group)
+    ]
+
+
+def search_settings(query: str, values: Mapping[str, Any] | None = None) -> list[Setting]:
+    """The settings whose name, help text or section matches every word of ``query`` (with
+    ``values``: only those of features that are on)."""
     words = query.lower().split()
     if not words:
         return []
     found: list[Setting] = []
     for section, group in SECTIONS.items():
         for setting in group:
+            if values is not None and not is_shown(section, setting, values, searching=True):
+                continue
             haystack = (
                 f"{section} {setting.group} {setting.label} {setting.help} {setting.key}".lower()
             )
             if all(w in haystack for w in words):
                 found.append(setting)
     return found
+
+
+def feature_on(values: Mapping[str, Any], key: str) -> bool:
+    """A feature switch (``features.ai``, ``features.calendar``): on unless set to false."""
+    return get_nested(values, key, True) is not False
 
 
 def get_nested(values: Mapping[str, Any], key: str, default: Any = None) -> Any:
