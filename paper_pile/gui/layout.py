@@ -175,6 +175,7 @@ class MainLayout:
         self.bus.subscribe("vault.created", lambda path: self._on_created())
         self.bus.subscribe("tree.add_to_chat", lambda path: self._chat_add_note(path))
         self.bus.subscribe("vault.renamed", lambda old, new: self._recent_renamed(old, new))
+        self.bus.subscribe("note.reveal", lambda path: self._reveal_in_tree(path))
         self._follow_external_changes()
         if self.editor_pane is not None:  # reopen last session's tabs (after the status bar exists)
             self.editor_pane.start(list(self.state.tabs), self.state.active)
@@ -276,10 +277,18 @@ class MainLayout:
         if self.editor_pane is not None:
             await self.editor_pane.open_found(path, term)
 
-    async def open_history(self) -> None:
-        """Version history of the note on screen."""
+    def _reveal_in_tree(self, path: str) -> None:
+        """A tab's "Show in file tree": unfold the tree (and its folders) and select the note."""
+        if self.tree is None:
+            return
+        if not self.state.panes_open["left"]:
+            self.toggle("left")
+        self.tree.reveal(path)
+
+    async def open_history(self, path: str | None = None) -> None:
+        """Version history of ``path`` (default: the note on screen)."""
         pane = self.editor_pane
-        path = pane.active_note() if pane else None
+        path = path or (pane.active_note() if pane else None)
         if pane is None or path is None:
             return
         current = await pane.live_text(path)
@@ -712,6 +721,7 @@ class MainLayout:
         if self.chat is not None and self.ai_on():
             self.chat.add_notes([path])
             self._open_chat()
+            self.chat.focus_input()  # ready for the question about it
 
     def _chat_ask(self, path: str, prompt: str, send: bool) -> None:
         if self.chat is not None and self.ai_on():

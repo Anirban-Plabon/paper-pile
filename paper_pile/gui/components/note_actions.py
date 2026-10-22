@@ -4,6 +4,7 @@ confirmations, a save dialog) and hands the results to the editor pane, the tree
 
 import json
 import logging
+from collections.abc import Callable
 from pathlib import PurePosixPath
 from typing import TYPE_CHECKING, Any
 
@@ -35,10 +36,14 @@ REWRITE = (
 WRITE = "Write "
 
 
-def note_actions(pane: "EditorPane") -> NoteActions:
+def note_actions(pane: "EditorPane", note: Callable[[], str | None] | None = None) -> NoteActions:
+    """The actions on note ``note()`` (default: the one on screen; the tab menu passes its
+    tab's note)."""
+    current = note or pane.active_note
+
     def with_note(run: Any) -> Any:
         def action() -> Any:
-            path = pane.active_note()
+            path = current()
             return run(path) if path is not None else None
 
         return action
@@ -50,7 +55,7 @@ def note_actions(pane: "EditorPane") -> NoteActions:
         toggle_split=pane.toggle_split,
         toggle_page_view=pane.toggle_page_view,
         outline=pane.show_outline,
-        history=pane.show_history,
+        history=with_note(pane.show_history),
         move=with_note(lambda p: _move(pane, p)),
         merge=with_note(lambda p: _merge(pane, p)),
         add_to_chat=with_note(pane.add_to_chat),

@@ -111,6 +111,11 @@ class FileTree:
         ui.on("pp_tree_band", lambda e: self._guard(self._on_band(e.args)))
         ui.on("pp_tree_key", lambda e: self._guard(self._on_key(e.args)))
         ui.on("pp_ctx_close", lambda _e: self._close_menu())
+        # a tab's menu renames through the tree (same dialog as the tree's own Rename)
+        self.bus.subscribe(
+            "note.rename",
+            lambda path: background_tasks.create(self._guard(self._rename(path))),
+        )
         # the note menu (⋯) moves notes through the tree, like a drag would
         self.bus.subscribe(
             "note.move",
@@ -482,7 +487,9 @@ class FileTree:
         return sel.rpartition("/")[0]
 
     def reveal(self, path: str) -> None:
-        """Unfold the folders down to ``path`` and select it (a note put back from the trash)."""
+        """Show the folders down to ``path`` and select it (out of search mode if needed)."""
+        if self._searching:
+            self.toggle_search()
         self._reveal_and_select(path)
 
     def create_note(self, name: str) -> str:

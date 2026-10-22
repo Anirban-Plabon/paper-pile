@@ -10,11 +10,12 @@ split divider (``static/split.js`` keeps ``--pp-split-left`` on the editor colum
 note is marked, the side being typed in more strongly.
 """
 
+import inspect
 from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
 
-from nicegui import ui
+from nicegui import background_tasks, ui
 
 from paper_pile.core.tabs import TabList
 from paper_pile.gui.icons import icon_button, line_icon
@@ -29,6 +30,16 @@ class SplitTabs:
     active_slot: int
 
 
+# a tab menu entry: (icon, label, action — may return an awaitable); None draws a divider
+TabMenuItem = tuple[str, str, Callable[[], Any]] | None
+
+
+def _run(action: Callable[[], Any]) -> None:
+    result = action()
+    if inspect.isawaitable(result):
+        background_tasks.create(result)  # type: ignore[arg-type]
+
+
 class TabBar:
     def __init__(
         self,
@@ -37,17 +48,15 @@ class TabBar:
         on_activate: Callable[[int], None],
         on_close: Callable[[int], None],
         on_move: Callable[[int, int, bool], None],
-        on_add_to_chat: Callable[[str], None] = lambda path: None,
+        menu: Callable[[int, str], list[TabMenuItem]] = lambda tab_id, path: [],
         on_toggle_pane: Callable[[str], None] = lambda pane: None,
         on_activate_side: Callable[[int, int], None] | None = None,
-        ai_on: Callable[[], bool] = lambda: True,
     ) -> None:
         self._tabs = tabs
-        self._ai_on = ai_on  # the tab menu (Add note to chat) only while AI is on
         self._on_activate = on_activate
         self._on_close = on_close
         self._on_move = on_move
-        self._on_add_to_chat = on_add_to_chat
+        self._menu = menu  # the items of a tab's right-click menu (None: a divider)
         self._on_toggle_pane = on_toggle_pane
         self._on_activate_side = on_activate_side  # (tab id, side) while split
         self._strip: ui.row
@@ -117,13 +126,19 @@ class TabBar:
             self._dots.setdefault(tab_id, dot)
             close = line_icon("x", "s").classes("pp-tab-close")
             close.on("click.stop", lambda _e, i=tab_id: self._on_close(i))
-            if not self._ai_on():
-                return
-            with (
-                ui.context_menu(),
-                ui.menu_item("Add note to chat", lambda _e=None, p=path: self._on_add_to_chat(p)),
-            ):
-                pass
+            items = self._menu(tab_id, path)
+            if items:
+                with ui.context_menu().classes("pp-note-menu"):
+                    for item in items:
+                        if item is None:
+                            ui.separator()
+                            continue
+                        icon, label, action = item
+                        with ui.menu_item(on_click=lambda _e=None, a=action: _run(a)).classes(
+                            "pp-note-menu-item"
+                        ):
+                            line_icon(icon).classes("pp-note-menu-icon")
+                            ui.label(label).classes("pp-note-menu-label")
 
     def set_unsaved(self, unsaved: dict[int, bool]) -> None:
         """Show or hide each tab's dirty dot without rebuilding the bar."""

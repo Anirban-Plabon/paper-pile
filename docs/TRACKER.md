@@ -165,8 +165,8 @@ Legend: 🧠 = needs Opus (see PLAN §6 model guidance) · ⬜ todo · 🔄 in p
 | P14.3 | Trash popup + restore | ✅ | `core/trash.py` (manifest, list, restore, free name, image links), `TrashDialog`; 6 tests; 9 real-app checks (Delete key → trash, blank-space menu Trash…, restore folder whole, clash → `(restored)`, tree reveals it, palette) |
 | P14.4 🧠 | Version history (diff chain) | ✅ | `core/history.py` (`History`: reverse line diffs + keyframe every 25, SHA-256 per version, `kept_versions` thinning, 50 MB cap, `renamed`; `Sessions`), `command_actions.whole_text_edit`, `EditorPane.keep_version` at session start / AI / tidy / merge / outside reload / restore, `HistoryDialog`; 17 tests; 11 real-app checks (edit + tidy → versions, Changes/Text views, Restore → editor, saved, Ctrl+Z undoes it, rename → history follows; whole history of the run < 2 KB) |
 | P14.5 | Outline in the Files pane | ✅ | `OutlinePane.build(is_open, height)` / `set_open`, `.pp-vsplit` handle (`panes.js` → `pp_vsplit`, tree keeps ≥ 120 px), `SessionState.outline_open` / `outline_height`; right-pane tab removed; 11 real-app checks incl. a real drag of the handle and Ctrl+Shift+O with the tree folded |
-| P14.6 | Tab menu + note buttons (split, AI) | 🔄 | |
-| P14.7 | Slash menu on right-click and on a lone `/` | ⬜ | |
+| P14.6 | Tab menu + note buttons (split, AI) | ✅ | `TabBar(menu=)` + `TabMenuItem`, `EditorPane._tab_menu` / `_note_buttons` / `_update_note_buttons`, `note_actions(pane, note=)` bound to the tab's note, bus `note.rename` (tree) / `note.reveal` (layout); Add to chat also focuses the chat box; 15 real-app checks (every menu item, split button both ways, AI menu, Close others, AI off) |
+| P14.7 | Slash menu on right-click and on a lone `/` | 🔄 | |
 
 ## Decision log
 <!-- YYYY-MM-DD · decision · reason · (who: user / claude) -->
@@ -515,3 +515,4 @@ Legend: 🧠 = needs Opus (see PLAN §6 model guidance) · ⬜ todo · 🔄 in p
 - 2026-10-22 · P14.4 version history (diffs, thinning, cap; popup with restore) · 1090 tests; 11 real-app checks
 - 2026-10-22 · P9.5 shortcuts verified (19 real-app checks), P9.6 README.md · manual QA items listed for the user
 - 2026-10-22 · P14.5 outline moved under the file tree · 11 real-app checks
+- 2026-10-22 · P14.6 tab right-click menu, split + AI buttons beside ⋯ · 15 real-app checks

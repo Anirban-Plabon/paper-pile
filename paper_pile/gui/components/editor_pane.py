@@ -14,6 +14,7 @@ own note, never the one on screen.
 """
 
 import asyncio
+import inspect
 import logging
 import os
 import time
@@ -84,8 +85,8 @@ from paper_pile.gui.components.backlinks import BacklinkItem, BacklinksPane
 from paper_pile.gui.components.editor import Editor, Mode
 from paper_pile.gui.components.note_actions import note_actions, pick_split_note
 from paper_pile.gui.components.note_menu import NoteActions, NoteMenu
-from paper_pile.gui.components.tabs import SplitTabs, TabBar
-from paper_pile.gui.icons import ico, icon_button
+from paper_pile.gui.components.tabs import SplitTabs, TabBar, TabMenuItem
+from paper_pile.gui.icons import ico, icon_button, line_icon, set_icon
 from paper_pile.gui.theme import editor_options
 from paper_pile.gui.tips import tip
 
@@ -128,7 +129,7 @@ class EditorPane:
         block_to_chat: Callable[[str, str, str, str], None] = lambda kind, lang, text, path: None,
         on_toggle_pane: Callable[[str], None] = lambda pane: None,
         on_outline: Callable[[], None] = lambda: None,
-        on_history: Callable[[], Any] = lambda: None,
+        on_history: Callable[[str], Any] = lambda path: None,
         on_settings_changed: Callable[[set[str]], None] = lambda keys: None,
     ) -> None:
         self.vault = vault
@@ -220,14 +221,14 @@ class EditorPane:
                 on_activate=self._activate,
                 on_close=lambda tab_id: self._spawn(self.close_tab(tab_id)),
                 on_move=self._move_tab,
-                on_add_to_chat=self._add_note_to_chat,
+                menu=self._tab_menu,
                 on_toggle_pane=self._on_toggle_pane,
                 on_activate_side=self._activate_side,
-                ai_on=lambda: self._ai,
             )
             self._tabbar.build()
             with self._tabbar.menu_host:
                 self.note_actions = note_actions(self)  # also the command palette's
+                self._note_buttons()
                 self.note_menu = NoteMenu(self.note_actions)
                 self.note_menu.build()
             self._banner = ui.row().classes("pp-banner items-center no-wrap")
@@ -1428,6 +1429,7 @@ class EditorPane:
             split_open=self._split_open,
             page_view=self.page_view_on(),
         )
+        self._update_note_buttons()
         plain = self._active_is_plain()
         self.show_tidy_buttons()
         if plain != self._plain_shown:
@@ -1808,10 +1810,76 @@ class EditorPane:
         return self._config
 
     def set_ai(self, on: bool) -> None:
-        """The AI feature was switched: the ⋯ menu and the tabs' menu follow."""
+        """The AI feature was switched: the ⋯ menu, the AI button and the tabs' menu follow."""
         self._ai = on
         self.note_menu.set_ai(on)
+        self._update_note_buttons()
         self._tabbar.render(self._unsaved(), self._split_tabs())
+
+    # ---- the buttons beside ⋯ and a tab's right-click menu ---------------------------------
+
+    def _note_buttons(self) -> None:
+        """Split / close split, and the AI menu (while AI is on), left of the ⋯ button."""
+        a = self.note_actions
+        self._split_button = icon_button("columns-2", self.toggle_split, "Split right")
+        self._ai_button = icon_button("sparkles", lambda: None, "AI")
+        with self._ai_button, ui.menu().props('anchor="bottom right" self="top right"') as menu:
+            menu.classes("pp-note-menu")
+            for icon, label, action in (
+                ("message-square-plus", "Ask about this note", a.add_to_chat),
+                ("list-collapse", "Summarize", a.summarize),
+                ("wand-sparkles", "Rewrite", a.rewrite),
+                ("pen-line", "Write…", a.write),
+            ):
+                with ui.menu_item(on_click=lambda _e=None, f=action: self._spawn_action(f)).classes(
+                    "pp-note-menu-item"
+                ):
+                    line_icon(icon).classes("pp-note-menu-icon")
+                    ui.label(label).classes("pp-note-menu-label")
+
+    def _spawn_action(self, action: Callable[[], Any]) -> None:
+        result = action()
+        if inspect.isawaitable(result):
+            self._spawn(result)
+
+    def _update_note_buttons(self) -> None:
+        has_note = self.tabs.active is not None
+        self._split_button.set_visibility(has_note)
+        set_icon(self._split_button, "x" if self._split_open else "columns-2")
+        tip(self._split_button, "Close split" if self._split_open else "Split right")
+        self._ai_button.set_visibility(has_note and self._ai)
+
+    def _tab_menu(self, tab_id: int, path: str) -> list[TabMenuItem]:
+        """A tab's right-click menu: what can be done with that tab's note."""
+        a = note_actions(self, lambda: path if self.tabs.find(path) else None)
+        on_right = self._split_open and self._shown[1] == tab_id
+        split: TabMenuItem = (
+            ("x", "Close split", self.toggle_split)
+            if on_right
+            else ("columns-2", "Open in split", lambda: self.open_in_split(path))
+        )
+        items: list[TabMenuItem] = [
+            split,
+            ("pencil", "Rename…", lambda: self.bus.publish("note.rename", path=path)),
+            ("folder-input", "Move to…", a.move),
+            ("merge", "Merge into…", a.merge),
+            ("history", "Version history", a.history),
+            None,
+            ("link", "Copy path", a.copy_path),
+            ("locate", "Show in file tree", lambda: self.bus.publish("note.reveal", path=path)),
+        ]
+        if self._ai:
+            items.append(("message-square-plus", "Add to chat", a.add_to_chat))
+        items += [
+            None,
+            ("x", "Close", lambda: self.close_tab(tab_id)),
+            ("copy-x", "Close others", lambda: self._close_others(tab_id)),
+        ]
+        return items
+
+    async def _close_others(self, keep: int) -> None:
+        for tab in [t for t in self.tabs.tabs if t.id != keep]:
+            await self.close_tab(tab.id)
 
     def add_to_chat(self, path: str) -> None:
         self._add_note_to_chat(path)
