@@ -67,7 +67,6 @@ class TabBar:
         self._strip: ui.row
         self._right: ui.element
         self.toggles: dict[str, ui.button] = {}
-        self.menu_host: ui.element
         self._bar: ui.element
         self._dots: dict[int, ui.label] = {}
         self._list_menu: ui.menu
@@ -89,8 +88,6 @@ class TabBar:
                 self._list_menu = ui.menu().classes("pp-note-menu pp-tabs-list-menu")
                 self._list_menu.props("anchor='bottom right' self='top right'")
             tip(list_button, "All open tabs")
-            # split, AI and the ⋯ note menu, in one box (like the vault · palette · settings box)
-            self.menu_host = ui.element("div").classes("pp-tab-more pp-seg pp-tools pp-tools-row")
             self.toggles["right"] = icon_button(
                 "panel-right-close", lambda: self._on_toggle_pane("right"), "Hide AI chat (Ctrl+L)"
             )

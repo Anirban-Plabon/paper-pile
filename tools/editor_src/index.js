@@ -16,9 +16,10 @@ import { editorExtensions } from "./grammar.js";
 import { autoBrackets, autoClose } from "./autoclose.js";
 import { headingFolding } from "./fold.js";
 import { listEditing } from "./listedit.js";
+import { noteToolsLive, noteToolsSource } from "./notetools.js";
 import { jumpTo, motion } from "./motion.js";
 import { pageDrag } from "./pagedrag.js";
-import { pageView, printLayoutReady } from "./pageview.js";
+import { frontMatterEnd, pageView, printLayoutReady } from "./pageview.js";
 import { selectionSync } from "./selectionsync.js";
 import { closeSlash, setSlashResults, slashExtension } from "./slash.js";
 import { focusTableCell, tableKeys } from "./tablewidget.js";
@@ -102,7 +103,7 @@ export function createEditor(
   let currentOptions = { wordWrap: true, lineNumbers: false, tabSize: 4, spellCheck: false, lang: "en", pageView: false, pageStyle: "lines", paper: "A4", textWidthMm: 170, paperHeightMm: 297, marginMm: 20, ...options };
   const optionsExt = (o) => [
     o.wordWrap ? EditorView.lineWrapping : [],
-    o.lineNumbers ? lineNumbers() : [],
+    o.lineNumbers ? lineNumbers({ formatNumber: (n, state) => shownLine(state, n) }) : [],
     o.highlightLine ? highlightActiveLine() : [],
     o.readableWidth ? EditorView.editorAttributes.of({ class: "pp-readable" }) : [],
     EditorState.tabSize.of(o.tabSize),
@@ -111,7 +112,7 @@ export function createEditor(
     o.pageView ? pageView({ style: o.pageStyle, paper: o.paper, textWidthMm: o.textWidthMm, paperHeightMm: o.paperHeightMm, marginMm: o.marginMm }) : [],
   ];
   const themeSlot = new Compartment();
-  const modeExt = (m) => (m === "live" ? [livePreview, blocks, tableKeys] : []);
+  const modeExt = (m) => (m === "live" ? [livePreview, blocks, tableKeys, noteToolsLive] : [noteToolsSource]);
   parent.classList.toggle("pp-dark", theme === "dark");
   let timer = null;
   let rawUntil = 0;
@@ -121,6 +122,17 @@ export function createEditor(
   // events carrying an older id, so a late "change" can never land in the wrong note.
   let docId = 0;
 
+  // Line numbers start after the properties block (its lines get none), in the gutter and in the
+  // status bar alike: `shown` is what the user sees, `line` stays the real line (outline, Python).
+  function propertyLines(state) {
+    const end = frontMatterEnd(state);
+    return end < 0 ? 0 : state.doc.lineAt(end).number;
+  }
+  function shownLine(state, n) {
+    const k = propertyLines(state);
+    return n <= k ? "" : String(n - k);
+  }
+
   // Ln / Col for the status bar, a moment after the caret stops moving
   let caretTimer = null;
   const reportCaret = (state) => {
@@ -128,7 +140,8 @@ export function createEditor(
     caretTimer = setTimeout(() => {
       const head = state.selection.main.head;
       const line = state.doc.lineAt(head);
-      emit("caret", { docId, line: line.number, col: head - line.from + 1 });
+      const shown = Math.max(0, line.number - propertyLines(state)); // 0: inside the properties
+      emit("caret", { docId, line: line.number, col: head - line.from + 1, shown });
     }, 120);
   };
 

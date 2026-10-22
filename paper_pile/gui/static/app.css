@@ -845,7 +845,9 @@ body.body--dark .pp-instr-box textarea { color-scheme: dark; }  /* the corner gr
 .pp-footer .pp-backlinks-head:hover { background: rgba(127, 127, 127, .12); }
 .pp-footer-status { display: flex; align-items: center; height: 100%; font-size: 12px; }
 .pp-backlinks { border-top: none !important; }
-.pp-backlinks-lists { width: 100%; gap: 0; border-top: 1px solid var(--pp-border); padding-top: 4px; }
+.pp-backlinks-lists { width: 100%; gap: 0; }
+.pp-backlinks-lists > .pp-backlinks-body { border-top: 1px solid var(--pp-border); padding-top: 4px; }
+.pp-backlinks-lists > .pp-backlinks-body.pp-backlinks-off { visibility: hidden; }  /* its side is closed: keep the place, show nothing */
 .pp-backlinks-lists > .pp-backlinks-body { flex: 1 1 0; min-width: 0; }
 /* split: each side's toggle and list start where its editor starts (the divider) */
 .pp-backlinks-split .pp-backlinks-lists > .pp-backlinks-body:first-child { flex: 0 0 var(--pp-split-left, 50%); }
@@ -953,7 +955,6 @@ input::selection, textarea::selection { background: rgba(var(--pp-accent-rgb), .
 .pp-step-value .q-field__native { padding: 0; min-height: 0; height: 30px; text-align: center; font-variant-numeric: tabular-nums; }
 
 /* ⋯ note menu (PLAN §4.15) */
-.pp-tab-more { display: flex; align-items: center; flex: none; }
 .pp-note-menu { min-width: 240px; background: var(--pp-bg); color: var(--pp-fg); border: 1px solid var(--pp-border); border-radius: var(--pp-r-popup); box-shadow: 0 8px 28px rgba(0, 0, 0, .2); padding: 4px; }
 .pp-note-menu .q-item.pp-note-menu-item { min-height: 32px; padding: 0 10px; gap: 10px; border-radius: var(--pp-r-ctrl); font-size: 13px; align-items: center; }
 .pp-note-menu .q-item.pp-note-menu-item:hover { background: rgba(127, 127, 127, .12); }
@@ -1279,13 +1280,41 @@ body.body--dark { --pp-set-box-bg: rgba(255, 255, 255, .035); }
 .pp-tabs-arrow-left { border-right: 1px solid var(--pp-border); }
 .pp-tabs-arrow-right { border-left: 1px solid var(--pp-border); }
 .pp-tabs-arrow.pp-on { display: flex; }
-.pp-tabs-arrow:hover { color: var(--pp-fg); background: rgba(127, 127, 127, .14); }
+/* hover: the tint is layered over the pane colour, so the area stays opaque (no tab shows through) */
+.pp-tabs-arrow:hover { color: var(--pp-fg); background: linear-gradient(rgba(127, 127, 127, .14), rgba(127, 127, 127, .14)), var(--pp-bg-side); }
 .pp-tabs-arrow.pp-off { color: var(--pp-muted); opacity: .35; cursor: default; background: var(--pp-bg-side); }
 /* command palette: a muted heading above each group */
 .pp-picker-group { width: 100%; flex: none; padding: 10px 10px 3px; font-size: 11px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; color: var(--pp-muted); user-select: none; }
 .pp-picker-list > .pp-picker-group:first-child { padding-top: 4px; }
-/* the note buttons (split · AI · ⋯) in one box, like the vault · palette · settings box */
-.pp-tab-more.pp-tools { margin: 0 4px; }
 /* editor options: readable line length and the current line's band */
 .pp-editor .cm-editor.pp-readable:not(.pp-page-view) .cm-content { max-width: 46em; margin: 0 auto; }
 .pp-editor .cm-editor .cm-activeLine { background-color: rgba(127, 127, 127, .07); }
+/* the picker (palette / quick switcher): search box and × on one line; shortcuts as key caps */
+.pp-picker-head { width: 100%; gap: 4px; border-bottom: 1px solid var(--pp-border); }
+.pp-picker-head .pp-picker-input { flex: 1 1 auto; min-width: 0; border-bottom: none; }
+.pp-picker-close.q-btn { flex: none; }
+.pp-picker-keys { flex: none; gap: 3px; }
+.pp-kbd { min-width: 20px; height: 20px; padding: 0 6px; display: inline-flex; align-items: center; justify-content: center; font-size: 11px; line-height: 1; color: var(--pp-muted); background: var(--pp-bg-side); border: 1px solid var(--pp-border); border-bottom-width: 2px; border-radius: 5px; white-space: nowrap; }
+/* slash menu (slash.js): the tooltip is a transparent box as tall as the menu can get, so
+   CodeMirror picks above / below once, from the full size; the menu hugs the caret inside it */
+.cm-editor .cm-tooltip.pp-slash-wrap { width: 320px; height: 420px; display: flex; flex-direction: column; justify-content: flex-start; background: transparent; border: none; box-shadow: none; pointer-events: none; z-index: 3000; }
+.cm-editor .cm-tooltip.pp-slash-wrap.pp-slash-wrap-tools { height: 464px; }
+.cm-editor .cm-tooltip.pp-slash-wrap.cm-tooltip-above { justify-content: flex-end; }
+.cm-editor .cm-tooltip.pp-slash-wrap > .pp-slash { pointer-events: auto; flex: none; max-height: 100%; }
+/* the note buttons (split · AI · ⋯) at the note's top right, beside its properties: placed by
+   static/panes.js from the active editor's `pp-tools-anchor` (notetools.js); the room beside
+   the properties block / first lines is kept by these paddings (no margins: CodeMirror) */
+.pp-note-tools.pp-tools { position: absolute; top: 0; left: 0; z-index: 6; visibility: hidden; }
+.pp-note-tools.pp-tools.pp-placed { visibility: visible; }
+:root { --pp-tools-room: 108px; --pp-tools-top: 36px; }
+.pp-split-pane { container: pppane / inline-size; }
+.pp-editor .pp-fm-wrap { padding-right: var(--pp-tools-room); }
+.pp-editor .cm-line.pp-tools-room { padding-right: var(--pp-tools-room); }
+/* a narrow side: the room goes above (the box sits over the block / first line), so text never
+   wraps into a thin column; decided by the side's width alone (no flip) */
+@container pppane (max-width: 520px) {
+  .pp-editor .pp-fm-wrap { padding-right: 6px; padding-top: calc(4px + var(--pp-tools-top)); }
+  .pp-editor .cm-line.pp-tools-room { padding-right: 0; }
+  .pp-editor .cm-line.pp-tools-room.pp-tools-first { padding-top: var(--pp-tools-top); }
+}
+.cm-editor .cm-tooltip.pp-slash-wrap.pp-slash-waiting > .pp-slash { visibility: hidden; }

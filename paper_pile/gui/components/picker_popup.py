@@ -11,7 +11,7 @@ from dataclasses import dataclass
 
 from nicegui import ui
 
-from paper_pile.gui.icons import line_icon
+from paper_pile.gui.icons import close_button, line_icon
 
 
 @dataclass(frozen=True, slots=True)
@@ -25,6 +25,8 @@ class PickItem:
 
 
 Picked = tuple[PickItem, bool]  # (item, aside)
+# no open / close animation: the popup is there at once (Ctrl+P, Ctrl+O)
+NO_ANIMATION = "position=top transition-show=none transition-hide=none transition-duration=0"
 
 
 class PickerPopup:
@@ -44,14 +46,19 @@ class PickerPopup:
 
         with (
             self._host,
-            ui.dialog().props("position=top") as dialog,
+            # no open / close animation: it is there at once (Ctrl+P, Ctrl+O)
+            ui.dialog().props(
+                "position=top transition-show=none transition-hide=none transition-duration=0"
+            ) as dialog,
             ui.card().classes("pp-picker"),
         ):
-            field = (
-                ui.input(placeholder=placeholder)
-                .props("dense borderless autofocus")
-                .classes("pp-picker-input")
-            )
+            with ui.row().classes("pp-picker-head items-center no-wrap"):
+                field = (
+                    ui.input(placeholder=placeholder)
+                    .props("dense borderless autofocus")
+                    .classes("pp-picker-input")
+                )
+                close_button(lambda: dialog.submit(None), "Close (Esc)").classes("pp-picker-close")
             listing = ui.column().classes("pp-picker-list")
         self._dialog = dialog
 
@@ -86,8 +93,10 @@ class PickerPopup:
                         if item.subtitle:
                             ui.label(item.subtitle).classes("pp-picker-sub")
                         ui.space()
-                        if item.hint:
-                            ui.label(item.hint).classes("pp-picker-hint")
+                        if item.hint:  # a shortcut: each key in its own rounded box
+                            with ui.row().classes("pp-picker-keys items-center no-wrap"):
+                                for part in item.hint.split("+"):
+                                    ui.label(part).classes("pp-kbd")
                     row.on("click", lambda _e, i=i: choose(i, aside=False))
                     rows.append(row)
             if rows:

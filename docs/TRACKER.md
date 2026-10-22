@@ -7,7 +7,7 @@ Legend: 🧠 = needs Opus (see PLAN §6 model guidance) · ⬜ todo · 🔄 in p
 
 ## Current focus
 - **Phase:** P14 — Features, navigation & safety (user request 2026-10-22; includes P9.1–P9.3, P9.5, P9.6)
-- **Task:** P17 tabs / tool boxes / settings boxes / palette built; P15 + P16 built; P14 built (P14.1–P14.16, P9.1–P9.3, P9.5); P9.6 README done, its manual QA items wait for the user; P10.5 / P12.4 native Save dialog checks still manual
+- **Task:** P18 note buttons / popups / window built; P17 tabs / tool boxes / settings boxes / palette built; P15 + P16 built; P14 built (P14.1–P14.16, P9.1–P9.3, P9.5); P9.6 README done, its manual QA items wait for the user; P10.5 / P12.4 native Save dialog checks still manual
 - **Now:** P15 + P16 done (motion with Animation speed setting; icons unified; small UX fixes); P14 done (switches, switcher + palette, vault search, outline, tree keys, trash, version history; tab overflow, split backlinks, line numbers, draggable page breaks)
 - **Next up:** the user's manual QA pass (incl. P15 motion feel in the native window) (PLAN §6 checklist); then the user's AI-with-notes plan; then the Tauri v2 spike
 
@@ -202,6 +202,17 @@ Legend: 🧠 = needs Opus (see PLAN §6 model guidance) · ⬜ todo · 🔄 in p
 | P17.5 | Chat disclaimer | ✅ | `.pp-chat-disclaimer` |
 | P17.6 | Palette groups + commands | ✅ | `PaletteCommand.group`, `GROUPS`, `PickItem.group` headings; 15 new commands (`open_today`, `new_chat`, `rebuild_index_now`, `close_other_tabs`) |
 
+### P18 — Note buttons, popups, window (user request 2026-10-22)
+| ID | Task | Status | Notes |
+|---|---|---|---|
+| P18.1 | Note buttons beside the properties block | ✅ | `notetools.js` (room line classes + `pp-tools-anchor`), `.pp-note-tools` in the editor area, `panes.js` places / clips it for the active side; narrow side (≤ 520 px, `pppane` container query): room above; real app: level with block, scrolls, plain note, narrow, split; qa_editor 358/358 |
+| P18.2 | Backlinks per side | ✅ | `_open` per side; closed side `pp-backlinks-off` (keeps its place, hidden); real clicks both sides |
+| P18.3 | No maximize on tab-row double-click | ✅ | window.js: no `maximize` and no second move gesture on `.pp-tabstrip` / `.pp-rtabbar`; real double-clicks |
+| P18.4 | Opaque tab-arrow hover | ✅ | layered gradient over `--pp-bg-side` |
+| P18.5 | Picker: no animation, ×, key caps | ✅ | `NO_ANIMATION` dialog props, `close_button` in `.pp-picker-head`, `.pp-kbd` per key |
+| P18.6 | Slash menu side decided once | ✅ | `.pp-slash-wrap` fixed-height transparent tooltip + `pp-slash-waiting` until results; per-frame check near the bottom: one position, above |
+| P18.7 | Line numbers after the properties | ✅ | `lineNumbers({formatNumber})` + caret `shown`; status bar "Properties" inside them |
+
 ## Decision log
 <!-- YYYY-MM-DD · decision · reason · (who: user / claude) -->
 | Date | Decision | Reason | By |
@@ -365,6 +376,7 @@ Legend: 🧠 = needs Opus (see PLAN §6 model guidance) · ⬜ todo · 🔄 in p
 | 2026-10-22 | Motion speed reaches the editor through `--pp-motion` / `window.ppMotion` (theme.js), not an editor option; Off keeps a still jump highlight; the file tree's chevrons still swap (rows are redrawn); popups only animate in (no fade-out) | Simplest live path for both split editors; a fading-out menu would take clicks; animating a redrawn row is impossible without keeping its DOM | claude |
 | 2026-10-22 | P16 icon / UX fixes (§4.20) from the survey, built with P15 (user: "implement all of them") | User request | user |
 | 2026-10-22 | Settings: boxed groups (Obsidian style), Paper size under Page view (Print page removed), new settings (reopen tabs, confirm delete, readable width, current line, word count, rebuild index), AI embedding model moved to AI → Advanced (unused); row stacking is CSS-only (box container query) — the JS `pp-set-stacked` measuring is removed; tab arrows get their own areas and step one tab; palette grouped | User request (second polish round); CSS-only stacking cannot flip at any width, which the user asked not to see again | user / claude |
+| 2026-10-22 | Backlinks: each split side opens on its own (reverses the P14.10 "open together"); note buttons move from the tab strip into the note (beside the properties block, above it on a narrow side); line numbers count after the properties (gutter + status bar, Python keeps real lines); picker without animation; slash menu side fixed at open | User request (third round) | user |
 
 ## Issues log
 <!-- YYYY-MM-DD · task · symptom → root cause → fix · (gotcha added? y/n) -->
@@ -442,6 +454,7 @@ Legend: 🧠 = needs Opus (see PLAN §6 model guidance) · ⬜ todo · 🔄 in p
 | 2026-10-14 | P1.3 | `xdotool` keys sent to the native window had no effect (worked in S3) | Desktop-level key injection on Wayland/XWayland is focus-dependent and not reliable | Verified inside the native renderer instead: QtWebEngine exposed via `QTWEBENGINE_REMOTE_DEBUGGING=9222`, raw CDP `Input.dispatchKeyEvent`/mouse events (Playwright cannot attach: no browser-context support) | n |
 | 2026-10-14 | P1.1 | `test_websocket_with_cookie_ok` got `WebSocketDisconnect` although cookie was valid | Starlette `TestClient` neither replays its cookie jar nor uses `base_url`'s host on websocket handshakes (sends `Host: testserver`, rejected by the loopback check) — test artifact, gate was right | Pass `host` + `cookie` headers explicitly in websocket tests | n |
 | 2026-10-14 | P0.6 | `xdotool key` reached nothing in the Qt window | `windowactivate` did not move keyboard focus under XWayland; page handler itself was fine (proved with a synthetic key from headless Chrome) | `xdotool windowfocus <id>` + click into the page first | n (test tooling only) |
+| 2026-10-22 | P18.1 | qa_editor: 13 caret checks failed (ArrowDown stayed on line 1 when the note starts with a block) after the note-buttons room was added | in the narrow QA window the 108 px right padding on line 1 left a column a few px wide: the heading wrapped one letter per row (398 px tall), so ArrowDown moved inside that one line | the room goes ABOVE the first line / block on a side ≤ 520 px (container query on `.pp-split-pane`), beside it only when there is width | y |
 
 ## Session log
 <!-- YYYY-MM-DD · tasks completed · short note -->
@@ -571,3 +584,4 @@ Legend: 🧠 = needs Opus (see PLAN §6 model guidance) · ⬜ todo · 🔄 in p
 - 2026-10-22 · P14.17 `--debug` window log; half-screen maximize not reproduced (open issue) · real-window runs on the laptop panel
 - 2026-10-22 · P15.1–P15.6 motion + Animation speed; P16.1–P16.2 icon / UX fixes · 3 new tests; 26 real-app checks (+ real-pages run); qa_editor 358/358
 - 2026-10-22 · P17.1–P17.6 tab arrows, tool boxes, settings boxes + groups + new settings, chat disclaimer, palette groups · 2 new core tests; 20 real-app checks (settings 1400→600 px, no overflow / no flip)
+- 2026-10-22 · P18.1–P18.7 note buttons beside properties, split backlinks per side, no tab-row maximize, opaque arrow hover, picker ×/caps/no animation, slash menu side fixed, line numbers after properties · 20 real-app checks; qa_editor fix (narrow room)

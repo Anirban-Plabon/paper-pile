@@ -3,7 +3,8 @@ link. The toggle sits in the footer bar (left; the status bar fills its right si
 list opens above that bar, so the bar's top edge stays level with the profile row's.
 
 While the editor is split, each side has its own toggle and list (the right one starts at the
-split divider, like the tab row): the lists open and close together.
+split divider, like the tab row): each side opens and closes on its own; a closed side keeps
+its place empty, so the open one stays under its own note.
 It only displays what :mod:`paper_pile.core.index` found."""
 
 from collections.abc import Callable
@@ -38,7 +39,7 @@ class _Side:
 class BacklinksPane:
     def __init__(self, on_open: Callable[[str, int, int], None]) -> None:
         self._on_open = on_open  # (path, line, side)
-        self._open = False  # closed: the footer line stays level with the profile divider
+        self._open = [False, False]  # per side; closed: the footer stays level with the profile row
         self._split = False
         self._sides: list[_Side] = []
         self._bodies: list[ui.column] = []
@@ -52,19 +53,18 @@ class BacklinksPane:
             with ui.row().classes("pp-backlinks-lists no-wrap") as self._lists:
                 self._bodies = [ui.column().classes("pp-backlinks-body") for _ in range(2)]
             with ui.row().classes("pp-footer items-center no-wrap"):
-                with ui.row().classes("pp-backlinks-side no-wrap items-center"):
-                    self._sides.append(_Side(self.toggle))
-                with ui.row().classes("pp-backlinks-side no-wrap items-center"):
-                    self._sides.append(_Side(self.toggle))
+                for side in range(2):
+                    with ui.row().classes("pp-backlinks-side no-wrap items-center"):
+                        self._sides.append(_Side(lambda s=side: self.toggle(s)))
                 ui.space()
                 self.status_host = ui.element("div").classes("pp-footer-status")
         self._sides[1].head.set_visibility(False)
         self.set_items([])
 
-    def toggle(self) -> None:
-        self._open = not self._open
-        for side in range(2):
-            self._render(side)
+    def toggle(self, side: int = 0) -> None:
+        """Open or close one side's list (only that side, also while split)."""
+        self._open[side] = not self._open[side]
+        self._render(side)
 
     def set_items(self, items: list[BacklinkItem], right: list[BacklinkItem] | None = None) -> None:
         """The left (or only) note's backlinks; ``right``: the split's right note's (``None``:
@@ -77,7 +77,9 @@ class BacklinksPane:
             else:
                 self._root.classes(remove="pp-backlinks-split")
             self._sides[1].head.set_visibility(split)
-            self._bodies[1].set_visibility(split and self._open)
+            if not split:
+                self._open[1] = False
+            self._render(1)
         for side, side_items in enumerate((items, right or [])):
             if side_items != self._sides[side].items:
                 self._sides[side].items = side_items
@@ -88,11 +90,15 @@ class BacklinksPane:
         items = side.items or []
         count = len(items)
         side.title.set_text(f"Backlinks ({count})" if count else "Backlinks")
-        side.icon.classes(
-            add="pp-open" if self._open else "", remove="" if self._open else "pp-open"
+        is_open = self._open[index] and (index == 0 or self._split)
+        side.icon.classes(add="pp-open" if is_open else "", remove="" if is_open else "pp-open")
+        # a closed side keeps its place (empty) while the other is open, so lists stay under
+        # their own notes; the right one is gone when not split
+        body.set_visibility(index == 0 or self._split)
+        body.classes(
+            add="" if is_open else "pp-backlinks-off", remove="pp-backlinks-off" if is_open else ""
         )
-        body.set_visibility(self._open and (index == 0 or self._split))
-        self._lists.set_visibility(self._open)
+        self._lists.set_visibility(self._open[0] or (self._split and self._open[1]))
         body.clear()
         with body:
             if not items:

@@ -809,10 +809,11 @@ class MainLayout:
         """One validated setting value (its default when unset or invalid)."""
         return sanitized(self.config.values)[key]
 
-    def _set_stats(self, words: int | None, line: int, col: int) -> None:
+    def _set_stats(self, words: int | None, line: int, col: int, shown: int) -> None:
+        """``line``: the real line (outline); ``shown``: counted after the properties block."""
         if self._status is not None:
             self._status.stats_label.set_visibility(bool(self._setting("editor.word_count")))
-            self._status.set_stats(words, line, col)
+            self._status.set_stats(words, shown, col)
         self._caret_line = line
         self._update_outline()
 
