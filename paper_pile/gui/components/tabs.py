@@ -84,7 +84,7 @@ class TabBar:
                 .props("flat dense no-caps")
                 .classes("pp-icon-btn pp-tabs-list") as list_button
             ):
-                line_icon("chevrons-down", "s")
+                line_icon("chevrons-down")
                 self._list_count = ui.label("").classes("pp-tabs-list-count")
                 self._list_menu = ui.menu().classes("pp-note-menu pp-tabs-list-menu")
                 self._list_menu.props("anchor='bottom right' self='top right'")

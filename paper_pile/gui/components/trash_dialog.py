@@ -11,7 +11,7 @@ from nicegui import ui
 
 from paper_pile.core.trash import TrashItem, list_trash, restore
 from paper_pile.core.vault import Vault, VaultError
-from paper_pile.gui.icons import line_icon
+from paper_pile.gui.icons import close_button, line_icon
 
 
 def when(deleted: datetime | None, now: datetime) -> str:
@@ -37,8 +37,7 @@ class TrashDialog:
             with ui.row().classes("items-center no-wrap w-full"):
                 ui.label("Trash").classes("pp-dialog-title")
                 ui.space()
-                close = line_icon("x", "s").classes("pp-set-close")
-                close.on("click", lambda _e: dialog.close())
+                close_button(dialog.close)
             ui.label("Restore puts a note or folder back where it was.").classes("pp-muted")
             search = ui.input(placeholder="Filter").props("outlined dense clearable")
             search.classes("w-full").on_value_change(lambda e: self._set_filter(e.value))

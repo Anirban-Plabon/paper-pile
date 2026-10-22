@@ -21,7 +21,7 @@ from paper_pile.core.config import Config
 from paper_pile.core.gallery import ImageInfo, group_by_day, list_images, trash_image
 from paper_pile.core.settings import sanitized
 from paper_pile.core.vault import Vault, VaultError
-from paper_pile.gui.icons import icon_button, line_icon
+from paper_pile.gui.icons import close_button, icon_button, line_icon
 from paper_pile.gui.tips import tip
 
 log = logging.getLogger("paper_pile.gallery")
@@ -94,7 +94,7 @@ class Gallery:
                 self._choice(FILTERS, "filter")
                 self._choice(SORTS, "sort")
                 self._choice(tuple(SIZES), "size")
-                icon_button("x", self._dialog.close, "Close")
+                close_button(self._dialog.close)
             with ui.row().classes("pp-gal-body no-wrap w-full"):
                 self._grid = ui.column().classes("pp-gal-grid")
                 self._side = ui.column().classes("pp-gal-side")
@@ -251,7 +251,7 @@ class Gallery:
         button = ui.button(label, on_click=on_click, color=None).props("flat dense no-caps")
         button.classes("pp-gal-action" + (" pp-gal-danger" if danger else ""))
         with button:
-            line_icon(icon, "s").classes("order-first")
+            line_icon(icon).classes("order-first")
 
     def _markdown(self, info: ImageInfo) -> str:
         width = min(info.width, 640) if info.width else None

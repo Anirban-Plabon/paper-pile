@@ -20,7 +20,7 @@ import os
 import time
 import webbrowser
 from collections.abc import Awaitable, Callable
-from datetime import datetime
+from datetime import date, datetime
 from typing import Any
 
 from nicegui import ui
@@ -109,7 +109,7 @@ class EditorPane:
         self,
         vault: Vault,
         bus: EventBus,
-        on_state: Callable[[str, bool], None] = lambda text, error: None,
+        on_state: Callable[[str, bool, str], None] = lambda text, error, hint: None,
         on_tabs_changed: Callable[[list[str], str | None], None] = lambda paths, active: None,
         mode: Mode = "live",
         on_mode_changed: Callable[[Mode], None] = lambda mode: None,
@@ -1501,16 +1501,25 @@ class EditorPane:
         tab = self.tabs.active_tab
         buf = self.buffers.get(tab.id) if tab else None
         self._show_stats()
-        if buf is None:
-            self._on_state("Ready", False)
+        if buf is None or tab is None:
+            self._on_state("", False, "")  # no note open: nothing to report
         elif buf.conflict is not None:
-            self._on_state("Changed on disk", True)
+            self._on_state("Changed on disk", True, "")
         elif buf.error:
-            self._on_state("Save failed", True)
+            self._on_state("Save failed", True, "")
         elif buf.dirty:
-            self._on_state("Editing…", False)
+            self._on_state("Editing…", False, "")
         else:
-            self._on_state("Saved", False)
+            self._on_state("Saved", False, self._saved_hint(tab.path))
+
+    def _saved_hint(self, path: str) -> str:
+        """ "Saved at 14:32" (or with the date when not today), from the file itself."""
+        try:
+            when = datetime.fromtimestamp(self.vault.resolve(path).stat().st_mtime)
+        except (OSError, VaultError):
+            return ""
+        fmt = "%H:%M" if when.date() == date.today() else "%b %d, %H:%M"
+        return f"Saved at {when.strftime(fmt)}"
 
     def _notify_tabs(self) -> None:
         active = self.tabs.active_tab

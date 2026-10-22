@@ -14,7 +14,7 @@ from nicegui import ui
 
 from paper_pile.core.history import DamagedVersion, History, Version
 from paper_pile.gui.components.trash_dialog import when
-from paper_pile.gui.icons import line_icon
+from paper_pile.gui.icons import close_button
 
 MAX_DIFF_LINES = 600  # lines drawn in the Changes view
 
@@ -70,8 +70,7 @@ class HistoryDialog:
             with ui.row().classes("items-center no-wrap w-full"):
                 ui.label(f"Version history — {name}").classes("pp-dialog-title")
                 ui.space()
-                close = line_icon("x", "s").classes("pp-set-close")
-                close.on("click", lambda _e: dialog.close())
+                close_button(dialog.close)
             if not self._versions:
                 ui.label(
                     "No earlier versions yet. One is kept when you start editing the note, and "

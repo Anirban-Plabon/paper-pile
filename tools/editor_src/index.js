@@ -16,6 +16,7 @@ import { editorExtensions } from "./grammar.js";
 import { autoBrackets, autoClose } from "./autoclose.js";
 import { headingFolding } from "./fold.js";
 import { listEditing } from "./listedit.js";
+import { jumpTo, motion } from "./motion.js";
 import { pageDrag } from "./pagedrag.js";
 import { pageView, printLayoutReady } from "./pageview.js";
 import { selectionSync } from "./selectionsync.js";
@@ -223,6 +224,7 @@ export function createEditor(
       tooltips({ tooltipSpace }),
       highlightSelectionMatches(),
       pageDrag,
+      motion,
       runtimeFacet.of(rt),
       // the user is in this editor now (Python makes its note the active one)
       EditorView.domEventHandlers({ focus: () => { emit("focus", { docId }); return false; } }),
@@ -518,16 +520,13 @@ export function createEditor(
       editorContext.known = new Set(names);
       view.dispatch({ effects: refreshEffect.of(null) });
     },
-    // Put the caret on 1-based `line` and bring it to the top of the view. Focus first: the
-    // caret position (status bar, outline) is only reported while the editor has focus.
+    // Put the caret on 1-based `line`, glide it to the top of the view and flash it (motion.js).
+    // Focus first: the caret position (status bar, outline) is only reported while focused.
     gotoLine(line) {
       const doc = view.state.doc;
       const pos = doc.line(Math.max(1, Math.min(line, doc.lines))).from;
       view.focus();
-      view.dispatch({
-        selection: { anchor: pos },
-        effects: EditorView.scrollIntoView(pos, { y: "start", yMargin: 24 }),
-      });
+      jumpTo(view, pos);
     },
     insertAtCursor(text) {
       view.dispatch(view.state.replaceSelection(text), { userEvent: "input.paste", scrollIntoView: true });

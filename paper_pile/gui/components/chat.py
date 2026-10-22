@@ -69,6 +69,7 @@ from paper_pile.core.vault import Vault
 from paper_pile.gui.icons import ico, icon_button, line_icon, set_icon
 from paper_pile.gui.tips import tip
 
+THINKING_HTML = '<span class="pp-thinking" aria-label="Thinking"><i></i><i></i><i></i></span>'
 log = logging.getLogger("paper_pile.chat")
 
 HISTORY_TURNS = 12  # earlier messages sent along with a new one (ai.history_turns)
@@ -287,12 +288,11 @@ class ChatPane:
             )
             self._model_menu.classes("pp-model-menu")
         self._model_menu.on("before-show", lambda _e: self._build_model_menu())
-        for event, icon, open_ in (("show", "up", True), ("hide", "down", False)):
-            self._model_menu.on(event, lambda _e, i=icon, o=open_: self._model_open(i, o))
+        for event, open_ in (("show", True), ("hide", False)):
+            self._model_menu.on(event, lambda _e, o=open_: self._model_open(o))
 
-    def _model_open(self, chevron: str, is_open: bool) -> None:
-        set_icon(self._model_chev, f"chevron-{chevron}", prop="name")
-        self._model.classes(
+    def _model_open(self, is_open: bool) -> None:
+        self._model.classes(  # the chevron turns by CSS
             add="pp-chat-model-open" if is_open else "",
             remove="" if is_open else "pp-chat-model-open",
         )
@@ -318,7 +318,7 @@ class ChatPane:
                         if detail:
                             ui.label(detail).classes("pp-model-detail")
                     if model == current:
-                        line_icon("check", "s").classes("pp-model-check")
+                        line_icon("check", "s").classes("pp-model-check pp-check")
 
     def _model_changed(self, value: str | None) -> None:
         self._model_menu.close()
@@ -386,10 +386,12 @@ class ChatPane:
         with item:
             ui.label(chat.title or "Untitled chat").classes("pp-menu-title")
             if chat.id == self._chat_id:
-                line_icon("check", "s").classes("pp-menu-check")
+                line_icon("check", "s").classes("pp-menu-check pp-check")
             remove = line_icon("trash-2", "s").classes("pp-chat-saved-del")
             tip(remove, "Delete chat")
+            remove.props("tabindex=0 role=button aria-label='Delete chat'")  # reachable by Tab
             remove.on("click.stop", lambda _e, c=chat.id: self._delete_chat(c, root))
+            remove.on("keydown.enter.stop", lambda _e, c=chat.id: self._delete_chat(c, root))
 
     def _more_chats_menu(self, chats: list[SavedChat], root: ui.menu, busy: bool) -> None:
         with ui.menu().props('anchor="top end" self="top start"').classes("pp-chat-menu"):
@@ -488,7 +490,14 @@ class ChatPane:
             return None
         with ui.column().classes("pp-msg pp-msg-ai" + (" pp-msg-error" if turn.error else "")):
             ui.label("Assistant").classes("pp-msg-who")
-            body = ui.html(render_html(turn.text), sanitize=False).classes("pp-msg-body")
+            waiting = not turn.text and not turn.error and self._task is not None
+            if waiting and self.history and turn is self.history[-1]:  # until the first words
+                content = (
+                    '<span class="pp-thinking" aria-label="Thinking"><i></i><i></i><i></i></span>'
+                )
+            else:
+                content = render_html(turn.text)
+            body = ui.html(content, sanitize=False).classes("pp-msg-body")
             if turn.summary:
                 ui.label(turn.summary).classes("pp-muted pp-msg-ctx")
             if not turn.error and turn.text.strip():
@@ -647,7 +656,7 @@ class ChatPane:
                     line_icon("file-text").classes("pp-menu-icon")
                     ui.label(title).classes("pp-menu-title")
                     if path == active:
-                        line_icon("circle-check").classes("pp-menu-check")
+                        line_icon("check", "s").classes("pp-menu-check pp-check")
             with ui.menu_item(auto_close=False):
                 line_icon("ellipsis").classes("pp-menu-icon")
                 ui.label("Add more notes").classes("pp-menu-title")

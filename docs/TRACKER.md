@@ -7,13 +7,14 @@ Legend: 🧠 = needs Opus (see PLAN §6 model guidance) · ⬜ todo · 🔄 in p
 
 ## Current focus
 - **Phase:** P14 — Features, navigation & safety (user request 2026-10-22; includes P9.1–P9.3, P9.5, P9.6)
-- **Task:** P14 built (P14.1–P14.16, P9.1–P9.3, P9.5); P9.6 README done, its manual QA items wait for the user; P10.5 / P12.4 native Save dialog checks still manual
-- **Now:** P14 done (switches, switcher + palette, vault search, outline, tree keys, trash, version history; tab overflow, split backlinks, line numbers, draggable page breaks)
-- **Next up:** P15 Motion (§4.19, planned); the user's manual QA pass (PLAN §6 checklist); then the user's AI-with-notes plan; then the Tauri v2 spike
+- **Task:** P15 Motion + P16 icon/UX fixes built; P14 built (P14.1–P14.16, P9.1–P9.3, P9.5); P9.6 README done, its manual QA items wait for the user; P10.5 / P12.4 native Save dialog checks still manual
+- **Now:** P15 + P16 done (motion with Animation speed setting; icons unified; small UX fixes); P14 done (switches, switcher + palette, vault search, outline, tree keys, trash, version history; tab overflow, split backlinks, line numbers, draggable page breaks)
+- **Next up:** the user's manual QA pass (incl. P15 motion feel in the native window) (PLAN §6 checklist); then the user's AI-with-notes plan; then the Tauri v2 spike
 
 ## Open issues
 <!-- - [ ] YYYY-MM-DD · task ID · what's blocking · what's needed -->
 - 2026-10-22 · Maximized window covers only the top half of the laptop screen (user: clicked the □ button / double-clicked the top bar). Not reproduced: a fresh window on the same laptop panel (1920×1200 at 150 %, work area 1128) maximizes to 1920×1128 every way (button ×2, restore, double-click). Waiting for the user's `paper-pile --debug` log of the bad case (state, size, screen, zoom, taskbar strips per change)
+- 2026-10-22 · P15.2 (found while testing) · Real pages: a jump (`gotoLine`) leaves the target line ~17 px above the top of the editor instead of 24 px below it; same with the pre-P15 instant scroll, so not caused by the glide. Likely the sheet's top margin vs `scrollIntoView` yMargin; not investigated yet
 - (none)  <!-- 2026-10-14 · P2.5 external edits: resolved (content-hash sync + conflict banner), see Decision log -->
 
 ## Task status
@@ -182,12 +183,14 @@ Legend: 🧠 = needs Opus (see PLAN §6 model guidance) · ⬜ todo · 🔄 in p
 ### P15 — Motion (user request 2026-10-22)
 | ID | Task | Status | Notes |
 |---|---|---|---|
-| P15.1 | Motion tokens + Animation speed setting | ⬜ | |
-| P15.2 🧠 | Jump: smooth scroll + target flash | ⬜ | |
-| P15.3 🧠 | Page number moves + block jump tint | ⬜ | |
-| P15.4 | Break drop glide + block move slide | ⬜ | |
-| P15.5 | Popups fade (context menu, tooltip, banners, chat jumps) | ⬜ | |
-| P15.6 | State polish (chevrons, hovers, tab ×, checkbox, chat dots) | ⬜ | |
+| P15.1 | Motion tokens + Animation speed setting | ✅ | `appearance.motion` off/fast/normal/slow (`MOTION_FACTORS` ×0/0.6/1/1.6), essential; `theme_payload` `motion` + `motionSet`; theme.js `--pp-motion`, `window.ppMotion`, `body.pp-no-motion` (OS reduce-motion while untouched); `--pp-dur-fast/--pp-dur/--pp-dur-flash`; old literal transitions use the tokens; 2 core tests; real app: segments, Off → zero transitions, saved |
+| P15.2 🧠 | Jump: smooth scroll + target flash | ✅ | `motion.js` (marks field per editor, `glideTo` rAF glide with exact scrollIntoView at the end, wheel cancels; `jumpTo`); `gotoLine` uses it; Off: `pp-jump-static` until next key/click; real app: glide samples, flash on/off, lands at top, Off path |
+| P15.3 🧠 | Page number moves + block jump tint | ✅ | `pageview.js` `pageSnapshot` / `animatePageMoves`: markers keyed by aria-label, slide via `--pp-from` (transform only), crossed lines `pp-page-crossed`, new markers fade; real app in both page-lines and real-pages styles |
+| P15.4 | Break drop glide + block move slide | ✅ | Alt+↑/↓ (`move.line`) lines slide by the jumped line's height + flash (`movedLines`); dropped page break: drag mark fades, the page line then slides there (P15.3); real app (Alt+Down) |
+| P15.5 | Popups fade (context menu, tooltip, banners, chat jumps) | ✅ | CSS-only (keyframes on open; no fade-out, so a hidden menu never takes clicks); real app: context menu `pp-pop` |
+| P15.6 | State polish (chevrons, hovers, tab ×, checkbox, chat dots) | ✅ | outline / backlinks / model-picker chevrons turn by class (no `set_icon` round trip); fold toggle + checkbox keep their DOM (`updateDOM`) so only a real toggle animates; chat `THINKING_HTML` until the first chunk; real app: chevron, tick, dots (fake AI); qa_editor 358/358; native-window feel left to the user's QA |
+| P16.1 | Icons: one set, token sizes, one close button, one check | ✅ | fold / tab arrows / table + → Lucide; 13/15 px → tokens; tree chevron box 14 px; `icons.close_button` in 5 dialogs; `pp-check`; row icons 16 px |
+| P16.2 | Small UX fixes | ✅ | tooltip warm-up; tree 🔎 tooltip; `:focus-visible`; deletes reachable by Tab; tab × 3 px padding; empty tree New note (NiceGUI test); status bar: no "Ready", "Saved at" tip; fold "N lines hidden". Survey items found already done: middle-click closes a tab; both 🔎 buttons open the same search (only the tooltip was wrong) |
 
 ## Decision log
 <!-- YYYY-MM-DD · decision · reason · (who: user / claude) -->
@@ -349,6 +352,8 @@ Legend: 🧠 = needs Opus (see PLAN §6 model guidance) · ⬜ todo · 🔄 in p
 | 2026-10-22 | Command palette button: in the bottom row of the Files pane, Open vault · Command palette · Settings grouped in one box like the Light / Dark switch (user's placement and order); the folded rail shows the same box upright | User request | user |
 | 2026-10-22 | Page view no longer draws page break lines (user: "not required"); the Page N line stands for the break and is what you drag. Drag limits: earliest = one line below the previous page's start, furthest = where the page would end by itself (trial layout without the break); after a drop the layout runs again and the user is told when the page count changed (user: a 2-page note may need a 3rd page after a move). Real pages style: breaks hidden too, no dragging there (not asked) | User request | user |
 | 2026-10-22 | P15 Motion (§4.19): page-number moves slide + crossed lines tinted, jump flash + smooth scroll, block-move slide, popups/chevrons/hover polish; setting *Animation speed* Off/Fast/Normal/Slow (×0/0.6/1/1.6), OS reduced motion = Off while untouched. Only opacity/transform animate; measured sizes (sheet padding, widget/line heights, pane widths) never do | User request (animations survey + "animation to moving page no" + speed setting); CodeMirror measures heights, so animating them makes clicks drift | user / claude |
+| 2026-10-22 | Motion speed reaches the editor through `--pp-motion` / `window.ppMotion` (theme.js), not an editor option; Off keeps a still jump highlight; the file tree's chevrons still swap (rows are redrawn); popups only animate in (no fade-out) | Simplest live path for both split editors; a fading-out menu would take clicks; animating a redrawn row is impossible without keeping its DOM | claude |
+| 2026-10-22 | P16 icon / UX fixes (§4.20) from the survey, built with P15 (user: "implement all of them") | User request | user |
 
 ## Issues log
 <!-- YYYY-MM-DD · task · symptom → root cause → fix · (gotcha added? y/n) -->
@@ -553,3 +558,4 @@ Legend: 🧠 = needs Opus (see PLAN §6 model guidance) · ⬜ todo · 🔄 in p
 - 2026-10-22 · fix: Settings rows flip-flopping (flicker) after P14.15 · flip check at 52 widths × 2 pages
 - 2026-10-22 · P14.16 command palette button (vault · palette · settings box); Settings × fix · 6 + 1 real-app checks
 - 2026-10-22 · P14.17 `--debug` window log; half-screen maximize not reproduced (open issue) · real-window runs on the laptop panel
+- 2026-10-22 · P15.1–P15.6 motion + Animation speed; P16.1–P16.2 icon / UX fixes · 3 new tests; 26 real-app checks (+ real-pages run); qa_editor 358/358

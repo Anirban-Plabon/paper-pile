@@ -199,7 +199,12 @@ export const pageDrag = ViewPlugin.fromClass(
       if (d) {
         cancelAnimationFrame(d.frame);
         d.el.classList.remove("pp-page-drag-source");
-        d.mark?.remove();
+        // the mark fades out where it was dropped; the page line then slides there (pageview.js)
+        const mark = d.mark;
+        if (mark) {
+          mark.classList.add("pp-page-drag-done");
+          setTimeout(() => mark.remove(), 400);
+        }
       }
     }
     destroy() {

@@ -14,7 +14,13 @@ from nicegui import Client, ui
 
 from paper_pile.core.config import Config
 from paper_pile.core.printdoc import MARGIN_MM, paper, text_width_mm
-from paper_pile.core.settings import accent_colors, hex_to_rgb, sanitized
+from paper_pile.core.settings import (
+    MOTION_FACTORS,
+    accent_colors,
+    get_nested,
+    hex_to_rgb,
+    sanitized,
+)
 from paper_pile.gui.static_files import static_url
 
 log = logging.getLogger("paper_pile.theme")
@@ -31,11 +37,18 @@ def theme_payload(config: Config | None) -> dict[str, Any]:
         "accentLightRgb": hex_to_rgb(light),
         "accentDarkRgb": hex_to_rgb(dark),
         "density": v["appearance.density"],
+        "motion": MOTION_FACTORS[str(v["appearance.motion"])],
+        # untouched: the OS "reduce motion" wish counts as Off (PLAN §4.19)
+        "motionSet": config is not None and _is_set(config, "appearance.motion"),
         "fontFamily": v["editor.font_family"],
         "codeFont": v["editor.code_font_family"],
         "fontSize": v["editor.font_size"],
         "lineHeight": v["editor.line_height"],
     }
+
+
+def _is_set(config: Config, key: str) -> bool:
+    return any(get_nested(config.layer(scope), key) is not None for scope in ("global", "vault"))
 
 
 # settings that change the editor options below

@@ -262,3 +262,31 @@ def test_feature_switches_and_minimal_settings_decide_what_is_listed() -> None:
     assert not is_shown("General", general["vault.daily_notes_folder"], full)
     assert is_shown("General", general["vault.templates_folder"], full)
     assert shown_sections({**values, "settings.minimal": False}) == list(SECTIONS)
+
+
+def test_animation_speed_setting(tmp_path: Path) -> None:
+    from paper_pile.core.settings import MOTION_FACTORS, MOTIONS
+
+    setting = ALL["appearance.motion"]
+    assert setting.choices == MOTIONS == ("off", "fast", "normal", "slow")
+    assert setting.essential
+    assert sanitized({})["appearance.motion"] == "normal"
+    assert sanitized({"appearance": {"motion": "warp"}})["appearance.motion"] == "normal"
+    assert MOTION_FACTORS == {"off": 0.0, "fast": 0.6, "normal": 1.0, "slow": 1.6}
+
+
+def test_theme_payload_motion_and_whether_it_was_set(tmp_path: Path) -> None:
+    from paper_pile.gui.theme import theme_payload
+
+    cfg = Config(global_path=tmp_path / "g.toml", vault=tmp_path)
+    payload = theme_payload(cfg)
+    assert payload["motion"] == 1.0
+    assert payload["motionSet"] is False  # untouched: the OS reduce-motion wish may count
+    cfg.set("appearance.motion", "slow", "vault")
+    payload = theme_payload(cfg)
+    assert payload["motion"] == 1.6
+    assert payload["motionSet"] is True
+    cfg.set("appearance.motion", "off", "global")
+    cfg.unset("appearance.motion", "vault")
+    assert theme_payload(cfg)["motion"] == 0.0
+    assert theme_payload(None)["motionSet"] is False

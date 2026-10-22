@@ -140,10 +140,13 @@ export class TableWidget extends WidgetType {
       cells.push(line);
       (r === 0 ? (table._head ??= table.appendChild(el("thead"))) : (table._body ??= table.appendChild(el("tbody")))).appendChild(tr);
     });
-    const addRow = el("button", "pp-table-add pp-table-addrow", "+");
+    const plus = window.ppIconSvg?.("plus", "s") ?? "+";
+    const addRow = el("button", "pp-table-add pp-table-addrow");
+    addRow.innerHTML = plus;
     addRow.dataset.tip = "Add row";
     addRow.type = "button";
-    const addCol = el("button", "pp-table-add pp-table-addcol", "+");
+    const addCol = el("button", "pp-table-add pp-table-addcol");
+    addCol.innerHTML = plus;
     addCol.dataset.tip = "Add column";
     addCol.type = "button";
     const grid = el("div", "pp-table-grid");

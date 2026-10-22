@@ -52,19 +52,28 @@ export class CheckboxWidget extends WidgetType {
   }
   toDOM(view) {
     const el = document.createElement("span");
-    el.className = "pp-task" + (this.checked ? " pp-task-checked" : "");
     el.setAttribute("role", "checkbox");
-    el.setAttribute("aria-checked", String(this.checked));
     const box = document.createElement("span");
     box.className = "pp-box";
     el.appendChild(box);
     el.addEventListener("mousedown", (e) => {
       e.preventDefault(); // the caret must not jump into the line
-      const pos = view.posAtDOM(el) + this.offset;
-      view.dispatch({ changes: { from: pos, to: pos + 1, insert: this.checked ? " " : "x" } });
+      const pos = view.posAtDOM(el) + el._offset;
+      view.dispatch({ changes: { from: pos, to: pos + 1, insert: el._checked ? " " : "x" } });
       view.focus(); // preventDefault kept focus where it was; Ctrl+Z must reach the editor
     });
+    this.updateDOM(el);
     return el;
+  }
+  // Kept in place on a toggle, so only a box the user just ticked plays its tick (`pp-task-pop`),
+  // never one that merely scrolls into view.
+  updateDOM(el) {
+    const ticked = el._checked === false && this.checked;
+    el._checked = this.checked;
+    el._offset = this.offset;
+    el.className = "pp-task" + (this.checked ? " pp-task-checked" : "") + (ticked ? " pp-task-pop" : "");
+    el.setAttribute("aria-checked", String(this.checked));
+    return true;
   }
   ignoreEvent() {
     return true; // handled above; keep the editor from also acting on the click

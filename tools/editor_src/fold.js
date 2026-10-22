@@ -30,11 +30,12 @@ export function sectionRange(state, line) {
 
 export const headingFolding = [
   codeFolding({
-    placeholderDOM: (view, onclick) => {
+    preparePlaceholder: (state, range) => state.doc.lineAt(range.to).number - state.doc.lineAt(range.from).number,
+    placeholderDOM: (view, onclick, hidden) => {
       const el = document.createElement("span");
       el.className = "pp-fold-placeholder";
       el.textContent = "…";
-      el.dataset.tip = "Unfold";
+      el.dataset.tip = `${hidden} line${hidden === 1 ? "" : "s"} hidden — click to unfold`;
       el.addEventListener("click", onclick);
       return el;
     },
@@ -59,20 +60,27 @@ export class FoldToggle extends WidgetType {
   eq(other) {
     return other.lineFrom === this.lineFrom && other.folded === this.folded;
   }
+  // One chevron, turned by CSS (`pp-fold-folded`): updateDOM keeps the element, so it can rotate.
   toDOM(view) {
     const el = document.createElement("span");
-    el.className = "pp-fold" + (this.folded ? " pp-fold-folded" : "");
-    el.setAttribute("aria-hidden", "true"); // drawn by CSS, so it is not part of the line text
-    el.dataset.tip = this.folded ? "Unfold" : "Fold";
+    el.innerHTML = window.ppIconSvg?.("chevron-down", "s") ?? "";
     el.addEventListener("mousedown", (e) => {
       e.preventDefault();
       e.stopPropagation();
-      const line = view.state.doc.lineAt(this.lineFrom);
+      const line = view.state.doc.lineAt(el._from);
       const range = sectionRange(view.state, line);
       if (!range) return;
       view.dispatch({ effects: (isFolded(view.state, range) ? unfoldEffect : foldEffect).of(range) });
     });
+    this.updateDOM(el);
     return el;
+  }
+  updateDOM(el) {
+    el._from = this.lineFrom;
+    el.className = "pp-fold" + (this.folded ? " pp-fold-folded" : "");
+    el.setAttribute("aria-hidden", "true"); // not part of the line text
+    el.dataset.tip = this.folded ? "Unfold" : "Fold";
+    return true;
   }
   ignoreEvent() {
     return true;

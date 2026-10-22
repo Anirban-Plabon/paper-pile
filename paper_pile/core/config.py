@@ -24,7 +24,12 @@ Scope = Literal["global", "vault"]
 
 DEFAULTS: dict[str, Any] = {
     "profile": {"name": "", "avatar": ""},
-    "appearance": {"theme": "system", "accent": "blue", "density": "comfortable"},
+    "appearance": {
+        "theme": "system",
+        "accent": "blue",
+        "density": "comfortable",
+        "motion": "normal",  # off | fast | normal | slow (PLAN §4.19)
+    },
     "editor": {
         "font_family": "monospace",
         "code_font_family": "monospace",

@@ -32,6 +32,7 @@ from paper_pile.core.settings import (
     CODE_FONTS,
     FONTS,
     LANGUAGES,
+    MOTION_LABELS,
     PAGE_VIEWS,
     SECTIONS,
     Setting,
@@ -54,7 +55,7 @@ from paper_pile.core.vault_folders import (
     folder_path,
 )
 from paper_pile.gui.components.memories import MemoriesPanel
-from paper_pile.gui.icons import ico, line_icon
+from paper_pile.gui.icons import close_button, ico, line_icon
 from paper_pile.gui.tips import tip
 
 log = logging.getLogger("paper_pile.settings")
@@ -76,6 +77,7 @@ THEME_ICONS = {
 }
 _SEGMENTED = {
     "appearance.density",
+    "appearance.motion",
     "editor.default_mode",
     "editor.tab_size",
     "appearance.theme",
@@ -169,8 +171,7 @@ class SettingsPane:
                             self.scope,
                             lambda value: setattr(self, "scope", value),
                         )
-                    close = line_icon("x", "s").classes("pp-set-close")
-                    close.on("click", lambda _e: self._close())
+                    close_button(self._close).classes("pp-set-close")
                 self._content = ui.column().classes("pp-set-content")
         self._render_nav()
         self._render_content()
@@ -357,7 +358,9 @@ class SettingsPane:
             self._accent_picker(setting, str(current))
         elif setting.key in _SEGMENTED:
             icons = THEME_ICONS if setting.key == "appearance.theme" else {}
-            labels = PAGE_VIEWS if setting.key == "editor.page_view" else {}
+            labels = {"editor.page_view": PAGE_VIEWS, "appearance.motion": MOTION_LABELS}.get(
+                setting.key, {}
+            )
             self._segmented(
                 [(c, labels.get(c, c) if not icons else "", icons.get(c)) for c in setting.choices],
                 str(current),
@@ -558,7 +561,7 @@ class SettingsPane:
                         ui.label(name).style(f"font-family:{css}").classes("pp-fontname")
                         ui.label("Aa 123").style(f"font-family:{css}").classes("pp-fontsample")
                         if css == current:
-                            line_icon("check", "s").classes("pp-menu-check")
+                            line_icon("check", "s").classes("pp-menu-check pp-check")
                 ui.separator()
                 custom = (
                     ui.input(

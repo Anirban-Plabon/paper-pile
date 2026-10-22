@@ -13,7 +13,7 @@ from html import escape
 from nicegui import ui
 
 from paper_pile.core.snippets import Snippet
-from paper_pile.gui.icons import line_icon, set_icon
+from paper_pile.gui.icons import line_icon
 
 
 @dataclass(frozen=True, slots=True)
@@ -30,7 +30,7 @@ class _Side:
     def __init__(self, on_toggle: Callable[[], None]) -> None:
         self.items: list[BacklinkItem] | None = None  # None: never drawn
         with ui.row().classes("pp-backlinks-head items-center no-wrap") as self.head:
-            self.icon = line_icon("chevron-right", "s").classes("pp-muted")
+            self.icon = line_icon("chevron-right", "s").classes("pp-muted pp-chev")
             self.title = ui.label("Backlinks").classes("pp-backlinks-title")
         self.head.on("click", lambda _e: on_toggle())
 
@@ -88,7 +88,9 @@ class BacklinksPane:
         items = side.items or []
         count = len(items)
         side.title.set_text(f"Backlinks ({count})" if count else "Backlinks")
-        set_icon(side.icon, "chevron-up" if self._open else "chevron-right", prop="name")
+        side.icon.classes(
+            add="pp-open" if self._open else "", remove="" if self._open else "pp-open"
+        )
         body.set_visibility(self._open and (index == 0 or self._split))
         self._lists.set_visibility(self._open)
         body.clear()

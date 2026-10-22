@@ -90,7 +90,9 @@ class FileTree:
         with ui.row().classes("pp-files-head items-center no-wrap"):
             ui.label("Files").classes("pp-pane-title")
             ui.space()
-            self._search_button = icon_button("search", self.toggle_search, "Recent notes")
+            self._search_button = icon_button(
+                "search", self.toggle_search, "Search in all notes (Ctrl+Shift+F)"
+            )
             icon_button("folder-plus", self.new_folder, "New folder")
             icon_button("file-plus", self.new_note, "New note")
         self._search_box = (
@@ -138,9 +140,15 @@ class FileTree:
                 empty = "No notes yet."
             else:
                 count = self._render_folder("", 0)
-                empty = "No notes yet. Use the buttons above to create one."
+                empty = "No notes yet."
             if count == 0:
-                ui.label(empty).classes("pp-muted pp-tree-empty")
+                with ui.column().classes("pp-tree-empty"):
+                    ui.label(empty).classes("pp-muted")
+                    if not self._searching:  # the first note is one click away
+                        button = ui.button(
+                            "New note", icon=ico("file-plus"), on_click=self.new_note, color=None
+                        )
+                        button.props("flat dense no-caps").classes("pp-tree-empty-new")
         self._apply_selection()
 
     # ---- search: recent notes ------------------------------------------------------------

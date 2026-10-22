@@ -811,9 +811,9 @@ class MainLayout:
         text = self.editor_pane.active_text() if self.editor_pane else None
         self.outline.show(text, self._caret_line)
 
-    def _set_save_state(self, text: str, error: bool) -> None:
+    def _set_save_state(self, text: str, error: bool, hint: str = "") -> None:
         if self._status is not None:
-            self._status.set_save_state(text, error=error)
+            self._status.set_save_state(text, error=error, hint=hint)
         if self.tags is not None and self.tags.tag:
             self.tags.refresh()  # a save may have added or removed the tag (redraws only on change)
 

@@ -28,7 +28,7 @@ from paper_pile.core.ai.chats import (
 from paper_pile.core.parser import render_html
 from paper_pile.core.vault import ExistsError, InvalidPathError, Vault
 from paper_pile.gui.components.vault_dialog import ask_folder
-from paper_pile.gui.icons import icon_button, line_icon
+from paper_pile.gui.icons import close_button, icon_button, line_icon
 from paper_pile.gui.tips import tip
 
 log = logging.getLogger("paper_pile.memories")
@@ -213,14 +213,16 @@ class MemoriesPanel:
     def _row(self, chat: SavedChat) -> None:
         row = ui.row().classes("pp-mem-row items-center no-wrap")
         with row:
-            line_icon("message-square-text", "s").classes("pp-mem-icon")
+            line_icon("message-square-text").classes("pp-mem-icon")
             ui.label(chat.title or "Untitled chat").classes("pp-mem-title")
             day = chat_day(chat)
             fmt = "%b %d" if day.year == date.today().year else "%b %d, %Y"
             ui.label(day.strftime(fmt).replace(" 0", " ")).classes("pp-muted pp-mem-day")
             remove = line_icon("trash-2", "s").classes("pp-mem-row-del")
             tip(remove, "Delete")
+            remove.props("tabindex=0 role=button aria-label=Delete")  # reachable by Tab
             remove.on("click.stop", lambda _e, c=chat: self._delete([c]))
+            remove.on("keydown.enter.stop", lambda _e, c=chat: self._delete([c]))
         row.on("click", lambda _e, c=chat: self._view(c))
 
     # ---- reading one -----------------------------------------------------------------------
@@ -230,21 +232,25 @@ class MemoriesPanel:
         with self._root, ui.dialog() as dialog, ui.card().classes("pp-dialog pp-mem-view"):
             with ui.row().classes("pp-mem-view-head items-center no-wrap"):
                 ui.space()  # the document below starts with the title
-                icon_button("message-square", lambda: self._to_chat(chat, dialog), "Open in chat")
                 icon_button(
-                    "copy", lambda: self._copy(text, "Copied as Markdown"), "Copy as Markdown"
+                    "message-square", lambda: self._to_chat(chat, dialog), "Open in chat", "m"
+                )
+                icon_button(
+                    "copy", lambda: self._copy(text, "Copied as Markdown"), "Copy as Markdown", "m"
                 )
                 icon_button(
                     "file-plus",
                     lambda: self._save_note(chat, text, dialog),
                     "Save as note",
+                    "m",
                 )
                 icon_button(
                     "trash-2",
                     lambda: self._delete([chat], dialog),
                     "Delete",
+                    "m",
                 )
-                icon_button("x", dialog.close, "Close")
+                close_button(dialog.close)
             body = ui.html(render_html(text), sanitize=False).classes("pp-msg-body pp-mem-doc")
         dialog.on("hide", lambda _e: dialog.delete())
         dialog.open()

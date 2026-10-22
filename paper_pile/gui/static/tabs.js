@@ -158,7 +158,7 @@
     pair = ['left', 'right'].map(function (side) {
       const a = document.createElement('div');
       a.className = 'pp-tabs-arrow pp-tabs-arrow-' + side;
-      a.innerHTML = '<svg viewBox="0 0 24 24"><path d="' + (side === 'left' ? 'm15 18-6-6 6-6' : 'm9 18 6-6-6-6') + '"/></svg>';
+      a.innerHTML = window.ppIconSvg('chevron-' + side, 's');
       a.addEventListener('mousedown', function (e) { e.preventDefault(); });
       a.addEventListener('click', function () {
         bar.scrollBy({ left: (side === 'left' ? -0.7 : 0.7) * bar.clientWidth, behavior: 'smooth' });

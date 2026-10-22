@@ -36,6 +36,12 @@
   --pp-tab-h: 34px;
   --pp-bar-h: 26px;
   --pp-foot-h: 41px;    /* the profile row and the footer under the editor share it */
+  /* Motion (PLAN §4.19): every duration × --pp-motion (Settings → Animation speed; theme.js) */
+  --pp-motion: 1;
+  --pp-ease: cubic-bezier(.2, 0, 0, 1);
+  --pp-dur-fast: calc(100ms * var(--pp-motion));  /* hover, fades */
+  --pp-dur: calc(160ms * var(--pp-motion));       /* popups, chevrons, slides */
+  --pp-dur-flash: calc(900ms * var(--pp-motion)); /* a jump target's highlight fading out */
 }
 /* One shape and one icon style everywhere (tokens above). Quasar's own parts follow too; our
    rules are unlayered, so they win over Quasar's layered CSS. */
@@ -136,7 +142,7 @@ html, body { overflow: hidden; }
 .pp-wincontrols .pp-icon-btn.q-btn { width: 34px; height: 28px; border-radius: var(--pp-r-ctrl); }
 .pp-wincontrols .pp-win-close.q-btn:hover { background: #e5484d; color: #fff; }
 /* maximize / restore: a small square, two squares while maximized (body.pp-maximized, native_boot) */
-.pp-wincontrols .pp-win-max .q-icon { font-size: 13px; }
+.pp-wincontrols .pp-win-max .q-icon { font-size: var(--pp-icon-s); }
 .pp-wincontrols .pp-win-max .pp-win-restore { display: none; }
 body.pp-maximized .pp-wincontrols .pp-win-max .q-icon:not(.pp-win-restore) { display: none; }
 body.pp-maximized .pp-wincontrols .pp-win-max .pp-win-restore { display: inline-flex; }
@@ -164,7 +170,7 @@ body.pp-native.pp-right-open .pp-rtabbar { padding-right: 112px; }
 .pp-tree-banded, .pp-tree-banded:hover { background: rgba(var(--pp-accent-rgb), .18); }
 .pp-ico { font-size: var(--pp-icon-m); width: 16px; flex-shrink: 0; color: var(--pp-muted); }
 .pp-ico-folder { color: var(--pp-accent); }
-.pp-ico-chev { font-size: var(--pp-icon-s); width: 10px; margin-right: -2px; }
+.pp-ico-chev { font-size: var(--pp-icon-s); width: 14px; margin-right: -6px; }
 .pp-tree-name { overflow: hidden; text-overflow: ellipsis; font-size: 13px; pointer-events: none; }
 .pp-tree-row > * { pointer-events: none; }
 .pp-tree-empty { padding: 6px 12px; }
@@ -342,7 +348,6 @@ body.pp-page-dragging, body.pp-page-dragging * { cursor: row-resize !important; 
 .pp-tabs-arrow { position: absolute; top: 0; height: 100%; width: 22px; display: none; align-items: center; justify-content: center; cursor: pointer; color: var(--pp-muted); z-index: 2; border-radius: var(--pp-r-ctrl); }
 .pp-tabs-arrow.pp-on { display: flex; }
 .pp-tabs-arrow:hover { color: var(--pp-fg); background: rgba(127, 127, 127, .14); }
-.pp-tabs-arrow svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
 .pp-tabs-list { display: none !important; flex: none; gap: 2px; padding: 0 6px !important; width: auto !important; }
 .pp-tabs-overflow .pp-tabs-list { display: inline-flex !important; }
 .pp-tabs-list .q-btn__content { gap: 2px; flex-wrap: nowrap; }
@@ -398,8 +403,7 @@ body.pp-page-dragging, body.pp-page-dragging * { cursor: row-resize !important; 
 .pp-slash-tool { flex: 1 1 0; display: inline-flex; align-items: center; justify-content: center; gap: 6px; height: 30px; padding: 0 8px;
   border: 1px solid var(--pp-border); border-radius: var(--pp-r-ctrl); background: transparent; color: var(--pp-fg); font: inherit; font-size: 12.5px; cursor: pointer; white-space: nowrap; }
 .pp-slash-tool:hover { background: rgba(127, 127, 127, .12); }
-.pp-slash-tool-icon { display: inline-flex; width: 15px; height: 15px; color: var(--pp-muted); }
-.pp-slash-tool-icon svg { width: 15px; height: 15px; }
+.pp-slash-tool-icon { display: inline-flex; font-size: var(--pp-icon-m); color: var(--pp-muted); }
 .pp-slash-placeholder { color: var(--pp-muted); }
 .pp-slash-query { font-weight: 500; }
 .pp-slash-body { max-height: 340px; overflow-y: auto; padding: 4px; }
@@ -434,7 +438,7 @@ body.pp-page-dragging, body.pp-page-dragging * { cursor: row-resize !important; 
 .pp-table-edit th, .pp-table-edit td { min-width: 90px; cursor: text; }
 .pp-table-input { width: 100%; box-sizing: border-box; padding: 0; margin: 0; border: none; outline: none; background: transparent; font: inherit; color: inherit; text-align: inherit; }
 .pp-table-edit td:has(.pp-table-input), .pp-table-edit th:has(.pp-table-input) { outline: 2px solid var(--pp-accent); outline-offset: -2px; background: rgba(var(--pp-accent-rgb), .06); }
-.pp-table-add { border: 1px dashed var(--pp-border); background: transparent; color: var(--pp-muted); border-radius: var(--pp-r-sm); cursor: pointer; opacity: 0; transition: opacity .12s; font: inherit; line-height: 1; padding: 0; }
+.pp-table-add { border: 1px dashed var(--pp-border); background: transparent; color: var(--pp-muted); border-radius: var(--pp-r-sm); cursor: pointer; opacity: 0; transition: opacity var(--pp-dur-fast); font: inherit; line-height: 1; padding: 0; display: inline-flex; align-items: center; justify-content: center; }
 .pp-table-edit:hover .pp-table-add, .pp-table-edit:focus-within .pp-table-add { opacity: .8; }
 .pp-table-add:hover { opacity: 1 !important; background: rgba(var(--pp-accent-rgb), .12); color: var(--pp-accent); }
 .pp-table-addrow { display: block; width: 100%; max-width: 320px; height: 16px; margin-top: 3px; }
@@ -447,7 +451,7 @@ body.pp-page-dragging, body.pp-page-dragging * { cursor: row-resize !important; 
 
 /* image resize handle (P5.3) */
 .pp-image { position: relative; }
-.pp-image-handle { position: absolute; right: 2px; bottom: 6px; width: 14px; height: 14px; border-radius: var(--pp-r-sm); background: rgba(var(--pp-accent-rgb), .9); border: 2px solid var(--pp-bg); box-sizing: border-box; cursor: nwse-resize; opacity: 0; transition: opacity .12s; }
+.pp-image-handle { position: absolute; right: 2px; bottom: 6px; width: 14px; height: 14px; border-radius: var(--pp-r-sm); background: rgba(var(--pp-accent-rgb), .9); border: 2px solid var(--pp-bg); box-sizing: border-box; cursor: nwse-resize; opacity: 0; transition: opacity var(--pp-dur-fast); }
 .pp-image:hover .pp-image-handle, .pp-image-resizing .pp-image-handle { opacity: 1; }
 .pp-image-resizing img { outline: 2px solid rgba(var(--pp-accent-rgb), .6); }
 
@@ -555,7 +559,7 @@ body.pp-page-dragging, body.pp-page-dragging * { cursor: row-resize !important; 
 .pp-blockcopy-wrap { position: absolute; top: 3px; right: 6px; z-index: 2; }
 .pp-math-block, .pp-mermaid { position: relative; }
 .pp-math-block .pp-blockcopy, .pp-mermaid .pp-blockcopy { position: absolute; top: 4px; right: 4px; }
-.pp-blockcopy { display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 24px; padding: 0; cursor: pointer; color: var(--pp-muted); background: var(--pp-bg); border: 1px solid var(--pp-border); border-radius: var(--pp-r-ctrl); opacity: .55; transition: opacity .12s, color .12s; }
+.pp-blockcopy { display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 24px; padding: 0; cursor: pointer; color: var(--pp-muted); background: var(--pp-bg); border: 1px solid var(--pp-border); border-radius: var(--pp-r-ctrl); opacity: .55; transition: opacity var(--pp-dur-fast), color var(--pp-dur-fast); }
 .pp-blockcopy:hover, .pp-code-first:hover .pp-blockcopy, .pp-math-block:hover .pp-blockcopy, .pp-mermaid:hover .pp-blockcopy { opacity: 1; color: var(--pp-accent); border-color: rgba(var(--pp-accent-rgb), .5); }
 .pp-blockcopy-done { color: var(--pp-accent) !important; opacity: 1; }
 /* the text selection follows the theme colour too */
@@ -566,18 +570,18 @@ body.pp-page-dragging, body.pp-page-dragging * { cursor: row-resize !important; 
 .pp-editor .cm-line.pp-quote.pp-callout-bad { --pp-bar: #d64545; background-color: rgba(214, 69, 69, .13); }
 /* heading folding */
 .pp-editor .cm-line.pp-h { position: relative; }
-.pp-fold { position: absolute; left: -1.25em; top: 50%; transform: translateY(-50%); font-size: .7em; line-height: 1; color: var(--pp-muted); cursor: pointer; opacity: 0; user-select: none; padding: 2px; }
+.pp-fold { position: absolute; left: -20px; top: 50%; transform: translateY(-50%); display: inline-flex; font-size: var(--pp-icon-s); line-height: 1; color: var(--pp-muted); cursor: pointer; opacity: 0; user-select: none; padding: 2px; border-radius: var(--pp-r-sm); }
+.pp-fold svg.pp-i { transition: transform var(--pp-dur) var(--pp-ease); }
+.pp-fold-folded svg.pp-i { transform: rotate(-90deg); }
 .pp-h:hover .pp-fold, .pp-fold-folded { opacity: 1; }
 .pp-fold:hover { color: var(--pp-accent); }
 .pp-fold-placeholder { margin-left: .5em; padding: 0 6px; border-radius: var(--pp-r-sm); color: var(--pp-accent); background: rgba(var(--pp-accent-rgb), .14); cursor: pointer; }
-.pp-fold::before { content: "\25BE"; }
-.pp-fold-folded::before { content: "\25B8"; }
 
 /* right pane: tab strip + views; settings lives here as a tab */
 .pp-right { background: var(--pp-bg-side); }
 .pp-right-body { width: 100%; padding: 0; gap: 0; min-height: 0; flex-wrap: nowrap; overflow: hidden; }
 .pp-right-body > .pp-chat { flex: 1 1 0; min-height: 0; }
-.pp-rtab-icon { color: inherit; font-size: var(--pp-icon-m); width: 15px; text-align: center; }
+.pp-rtab-icon { color: inherit; font-size: var(--pp-icon-m); width: 16px; text-align: center; }
 .pp-right-tabs .pp-rtab-close { font-size: var(--pp-icon-s); }
 
 /* settings: two columns (section list | rows of "name + help ... control") */
@@ -586,7 +590,7 @@ body.pp-page-dragging, body.pp-page-dragging * { cursor: row-resize !important; 
 .pp-set-mode { align-self: stretch; display: flex; justify-content: center; margin-bottom: 6px; }
 .pp-set-mode .pp-seg { width: 100%; }
 .pp-set-mode .pp-seg-item { flex: 1 1 0; justify-content: center; padding: 6px 0; }
-.pp-set-nav { width: 190px; flex: none; gap: 2px; padding: 12px 10px; transition: width .15s; border-right: 1px solid var(--pp-border); flex-wrap: nowrap; }
+.pp-set-nav { width: 190px; flex: none; gap: 2px; padding: 12px 10px; transition: width var(--pp-dur); border-right: 1px solid var(--pp-border); flex-wrap: nowrap; }
 .pp-set-search { width: 100%; font-size: 13px; }
 .pp-set-search .q-field__control { border-radius: var(--pp-r-ctrl); padding: 0 12px; }
 .pp-set-search .q-field__prepend { padding-right: 10px; }
@@ -601,8 +605,6 @@ body.pp-page-dragging, body.pp-page-dragging * { cursor: row-resize !important; 
 .pp-set-main { flex: 1 1 0; min-width: 0; height: 100%; gap: 0; flex-wrap: nowrap; background: var(--pp-bg); container: ppmain / inline-size; }
 .pp-set-top { width: 100%; flex: none; gap: 10px; padding: 14px 22px 8px; flex-wrap: wrap; }
 .pp-set-title { font-size: 17px; font-weight: 600; }
-.pp-set-close { font-size: var(--pp-icon-s); padding: 6px; border-radius: var(--pp-r-ctrl); cursor: pointer; color: var(--pp-muted); }
-.pp-set-close:hover { background: rgba(127, 127, 127, .15); color: var(--pp-fg); }
 .pp-set-content { flex: 1 1 0; min-height: 0; width: 100%; overflow-y: auto; padding: 0 22px 18px; gap: 0; flex-wrap: nowrap; }
 /* rows: no dividers (only sections have one); the control drops under the text when the text
    would get narrower than ~200 px */
@@ -646,7 +648,7 @@ body.pp-page-dragging, body.pp-page-dragging * { cursor: row-resize !important; 
 .pp-mem-filters { width: 100%; gap: 8px; flex-wrap: wrap; }
 .pp-mem-search { flex: 1 1 100px; min-width: 0; font-size: 13px; }
 .pp-mem-date { flex: 0 0 136px; font-size: 13px; }
-.pp-mem-cal { font-size: var(--pp-icon-s); color: var(--pp-muted); cursor: pointer; border-radius: 4px; padding: 3px; box-sizing: content-box; }
+.pp-mem-cal { font-size: var(--pp-icon-s); color: var(--pp-muted); cursor: pointer; border-radius: var(--pp-r-sm); padding: 3px; box-sizing: content-box; }
 .pp-mem-cal:hover { color: var(--pp-fg); background: rgba(127, 127, 127, .15); }
 .pp-mem-path { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .pp-mem-change.q-btn, .pp-mem-more.q-btn, .pp-instr-btn.q-btn { font-size: 12.5px; color: var(--pp-fg); padding: 2px 10px; border-radius: var(--pp-r-ctrl); }
@@ -685,7 +687,7 @@ body.pp-page-dragging, body.pp-page-dragging * { cursor: row-resize !important; 
 .pp-gal-side-title { font-weight: 600; font-size: 13.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; flex: 1 1 auto; }
 .pp-gal-preview { width: 100%; border-radius: var(--pp-r-ctrl); overflow: hidden; background: repeating-conic-gradient(rgba(127,127,127,.12) 0 25%, transparent 0 50%) 0 0 / 16px 16px; }
 .pp-gal-preview img { width: 100%; max-height: 320px; object-fit: contain; display: block; }
-.pp-gal-side { transition: flex-basis .15s; }
+.pp-gal-side { transition: flex-basis var(--pp-dur); }
 .pp-gal-side.pp-gal-side-wide { flex-basis: 58%; }
 .pp-gal-side-wide .pp-gal-preview img { max-height: 60vh; }
 .pp-gal-meta, .pp-gal-path { font-size: 12px; }
@@ -727,10 +729,10 @@ body.body--dark .pp-instr-box textarea { color-scheme: dark; }  /* the corner gr
 .pp-mem-list { width: 100%; gap: 0; padding: 4px; max-height: 420px; overflow-y: auto; flex-wrap: nowrap; border: 1px solid var(--pp-border); border-radius: var(--pp-r-ctrl); }
 .pp-mem-row { width: 100%; gap: 8px; min-height: 32px; padding: 4px 8px; border-radius: var(--pp-r-ctrl); cursor: pointer; font-size: 13px; }
 .pp-mem-row:hover { background: rgba(127, 127, 127, .12); }
-.pp-mem-icon { flex: none; font-size: var(--pp-icon-s); color: var(--pp-muted); }
+.pp-mem-icon { flex: none; font-size: var(--pp-icon-m); color: var(--pp-muted); }
 .pp-mem-title { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .pp-mem-day { flex: none; font-size: 12px; }
-.pp-mem-row-del { flex: none; font-size: var(--pp-icon-s); color: var(--pp-muted); opacity: 0; border-radius: 4px; padding: 3px; box-sizing: content-box; transition: opacity .15s; }
+.pp-mem-row-del { flex: none; font-size: var(--pp-icon-s); color: var(--pp-muted); opacity: 0; border-radius: var(--pp-r-sm); padding: 3px; box-sizing: content-box; transition: opacity var(--pp-dur); }
 .pp-mem-row:hover .pp-mem-row-del { opacity: 1; }
 .pp-mem-row-del:hover { color: var(--pp-danger); background: rgba(127, 127, 127, .2); }
 .pp-mem-empty { padding: 10px 8px; font-size: 13px; }
@@ -794,7 +796,7 @@ body.body--dark .pp-instr-box textarea { color-scheme: dark; }  /* the corner gr
 /* composer buttons: a plain + and a round send in the accent (faint until there is text) */
 .pp-chat-plus.q-btn { width: 34px; height: 34px; min-width: 34px; min-height: 0; flex: none; padding: 0; font-size: var(--pp-icon-m); background: transparent; color: var(--pp-fg); }
 .pp-chat-plus.q-btn:hover { background: rgba(127, 127, 127, .14); }
-.pp-chat-send.q-btn { width: 34px; height: 34px; min-width: 34px; min-height: 0; flex: none; padding: 0; font-size: var(--pp-icon-m); background: rgba(var(--pp-accent-rgb), .35); color: var(--pp-fg); transition: background .12s, color .12s; }
+.pp-chat-send.q-btn { width: 34px; height: 34px; min-width: 34px; min-height: 0; flex: none; padding: 0; font-size: var(--pp-icon-m); background: rgba(var(--pp-accent-rgb), .35); color: var(--pp-fg); transition: background var(--pp-dur-fast), color var(--pp-dur-fast); }
 .pp-chat-send.pp-chat-send-ready.q-btn, .pp-chat-send.q-btn:hover { background: var(--pp-accent); color: var(--pp-on-accent); }
 .pp-chat-plus.q-btn .q-icon { font-size: var(--pp-icon-m); }
 .pp-chat-send.q-btn .q-icon { font-size: var(--pp-icon-m); }
@@ -896,7 +898,7 @@ body.body--dark .pp-instr-box textarea { color-scheme: dark; }  /* the corner gr
 .pp-rtab { position: relative; }
 
 /* Tooltips (static/tips.js): one look, 8 px inside the window */
-.pp-tip { position: fixed; z-index: 9999; pointer-events: none; max-width: 320px; padding: 4px 8px; border-radius: var(--pp-r-ctrl); background: var(--pp-tip-bg); color: var(--pp-tip-fg); font-size: 12px; line-height: 1.4; box-shadow: 0 4px 14px rgba(0, 0, 0, .18); opacity: 0; transition: opacity .12s; white-space: pre-line; }
+.pp-tip { position: fixed; z-index: 9999; pointer-events: none; max-width: 320px; padding: 4px 8px; border-radius: var(--pp-r-ctrl); background: var(--pp-tip-bg); color: var(--pp-tip-fg); font-size: 12px; line-height: 1.4; box-shadow: 0 4px 14px rgba(0, 0, 0, .18); opacity: 0; transition: opacity var(--pp-dur-fast); white-space: pre-line; }
 .pp-tip-on { opacity: 1; }
 :root { --pp-tip-bg: #2b2f36; --pp-tip-fg: #f3f4f6; }
 body.body--dark { --pp-tip-bg: #e6e8eb; --pp-tip-fg: #1f2328; }
@@ -1099,7 +1101,7 @@ input::selection, textarea::selection { background: rgba(var(--pp-accent-rgb), .
 .pp-vault-bar { gap: 6px; }
 .pp-vault-empty { padding: 6px 8px; font-size: 13px; }
 /* Floating buttons (tidy note, chat jumps): small circles that float over the content */
-.pp-fab.q-btn { position: absolute; z-index: 5; width: 32px; height: 32px; min-width: 0; min-height: 0; padding: 0; background: var(--pp-bg); color: var(--pp-muted); border: 1px solid var(--pp-border); box-shadow: 0 2px 8px rgba(0, 0, 0, .12); transition: opacity .15s, color .15s; }
+.pp-fab.q-btn { position: absolute; z-index: 5; width: 32px; height: 32px; min-width: 0; min-height: 0; padding: 0; background: var(--pp-bg); color: var(--pp-muted); border: 1px solid var(--pp-border); box-shadow: 0 2px 8px rgba(0, 0, 0, .12); transition: opacity var(--pp-dur), color var(--pp-dur); }
 .pp-fab.q-btn:hover { color: var(--pp-accent); }
 .pp-fab.q-btn .q-icon { font-size: var(--pp-icon-m); }
 .pp-tidy-fab.q-btn { right: 22px; bottom: 16px; opacity: .7; }
@@ -1116,7 +1118,7 @@ input::selection, textarea::selection { background: rgba(var(--pp-accent-rgb), .
 .pp-chat-head .pp-icon-btn.q-btn { flex: none; }
 .pp-menu-caption { padding: 6px 12px 2px; font-size: 11.5px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; color: var(--pp-muted); }
 .pp-menu-empty { padding: 4px 12px 8px; font-size: 13px; }
-.pp-chat-saved .pp-chat-saved-del { font-size: var(--pp-icon-s); color: var(--pp-muted); opacity: 0; border-radius: 4px; padding: 3px; box-sizing: content-box; transition: opacity .15s; }
+.pp-chat-saved .pp-chat-saved-del { font-size: var(--pp-icon-s); color: var(--pp-muted); opacity: 0; border-radius: var(--pp-r-sm); padding: 3px; box-sizing: content-box; transition: opacity var(--pp-dur); }
 .pp-chat-saved:hover .pp-chat-saved-del { opacity: 1; }
 .pp-chat-saved .pp-chat-saved-del:hover { color: var(--pp-fg); background: rgba(127, 127, 127, .2); }
 
@@ -1202,3 +1204,64 @@ input::selection, textarea::selection { background: rgba(var(--pp-accent-rgb), .
 .pp-diff-del { background: rgba(239, 68, 68, .12); text-decoration: line-through; text-decoration-color: rgba(239, 68, 68, .5); }
 .pp-diff-del::before { content: "− "; color: #dc2626; }
 .pp-diff-gap { color: var(--pp-muted); }
+
+/* ---- Motion (PLAN §4.19). Only opacity and transform move; never a size CodeMirror measures. ---- */
+body.pp-no-motion *, body.pp-no-motion *::before, body.pp-no-motion *::after { transition-duration: 0s !important; transition-delay: 0s !important; animation-duration: 0s !important; animation-delay: 0s !important; }
+@keyframes pp-pop { from { opacity: 0; transform: scale(.97); } }
+@keyframes pp-fade-down { from { opacity: 0; transform: translateY(-4px); } }
+@keyframes pp-fade-up { from { opacity: 0; transform: translateY(4px); } }
+@keyframes pp-fade { from { opacity: 0; } }
+/* popups: the context menu pops from its corner; banners, jump buttons and new chat turns fade in */
+.pp-ctxmenu-open { animation: pp-pop var(--pp-dur) var(--pp-ease); transform-origin: top left; }
+.pp-banner, .pp-chat-banner { animation: pp-fade-down var(--pp-dur) var(--pp-ease); }
+.pp-can-up .pp-chat-jump-top.q-btn, .pp-can-down .pp-chat-jump-bottom.q-btn { animation: pp-fade var(--pp-dur) var(--pp-ease); }
+.pp-msg-ai:has(.pp-thinking), .pp-msg-user:has(+ .pp-msg-ai .pp-thinking) { animation: pp-fade-up var(--pp-dur) var(--pp-ease); }
+/* chevrons turn instead of swapping icons */
+.pp-chev, .pp-chat-model-chev { transition: transform var(--pp-dur) var(--pp-ease); }
+.pp-outline-open .pp-outline-head .pp-chev { transform: rotate(90deg); }
+.pp-backlinks-head .pp-chev.pp-open { transform: rotate(-90deg); }
+.pp-chat-model-open .pp-chat-model-chev { transform: rotate(180deg); }
+/* hover backgrounds fade instead of flickering when the mouse sweeps a list */
+.pp-tree-row, .pp-tab, .pp-rtab, .pp-icon-btn.q-btn, .pp-ctx-item.q-btn, .pp-note-menu-item, .pp-picker-row, .pp-set-navitem, .pp-seg-item { transition: background-color var(--pp-dur-fast) ease, color var(--pp-dur-fast) ease, box-shadow var(--pp-dur-fast) ease; }
+.pp-tab-close, .pp-rtab-close, .pp-fold { transition: opacity var(--pp-dur-fast) ease, background-color var(--pp-dur-fast) ease; }
+/* a task the user just ticked: the tick grows in (widgets.js `pp-task-pop`) */
+@keyframes pp-tick { from { opacity: 0; transform: rotate(45deg) scale(.4); } }
+.pp-task-pop .pp-box::after { animation: pp-tick var(--pp-dur) var(--pp-ease); }
+.pp-task .pp-box { transition: background-color var(--pp-dur-fast) ease, border-color var(--pp-dur-fast) ease; }
+/* the chat is waiting for the first words of a reply */
+.pp-thinking { display: inline-flex; gap: 4px; padding: 6px 0; }
+.pp-thinking i { width: 6px; height: 6px; border-radius: 50%; background: var(--pp-muted); animation: pp-dot calc(1.2s * var(--pp-motion)) ease-in-out infinite; }
+.pp-thinking i:nth-child(2) { animation-delay: calc(.15s * var(--pp-motion)); }
+.pp-thinking i:nth-child(3) { animation-delay: calc(.3s * var(--pp-motion)); }
+@keyframes pp-dot { 0%, 80%, 100% { opacity: .25; transform: none; } 40% { opacity: 1; transform: translateY(-2px); } }
+body.pp-no-motion .pp-thinking i { opacity: .6; }
+/* editor: a jump target flashes (index.js `flashLine`); with motion off it stays until the next key or click */
+@keyframes pp-flash { from { background-color: rgba(var(--pp-accent-rgb), .28); } to { background-color: rgba(var(--pp-accent-rgb), 0); } }
+.pp-editor .cm-line.pp-jump-flash { animation: pp-flash var(--pp-dur-flash) ease-out forwards; }
+.pp-editor .cm-line.pp-jump-static { background-color: rgba(var(--pp-accent-rgb), .18); }
+/* lines that moved: slide in from where they were (--pp-from, set per line) and flash */
+@keyframes pp-slide { from { transform: translateY(var(--pp-from, 0)); } }
+.pp-editor .cm-line.pp-moved { animation: pp-slide var(--pp-dur) var(--pp-ease), pp-flash var(--pp-dur-flash) ease-out; }
+/* page view: lines that crossed onto another page get a soft tint that fades */
+@keyframes pp-crossed { from { background-color: rgba(var(--pp-accent-rgb), .16); } to { background-color: rgba(var(--pp-accent-rgb), 0); } }
+.pp-editor .cm-line.pp-page-crossed { animation: pp-crossed var(--pp-dur-flash) ease-out forwards; }
+/* a page line / page edge that moved slides from its old place (pageview.js sets --pp-from) */
+@keyframes pp-page-slide { from { transform: translateY(var(--pp-from, 0)); opacity: .4; } }
+.pp-page-moved { animation: pp-page-slide var(--pp-dur) var(--pp-ease); }
+@keyframes pp-num { from { opacity: 0; } }
+.pp-page-renum { animation: pp-num var(--pp-dur) var(--pp-ease); }
+.pp-page-drag-mark { transition: opacity var(--pp-dur) ease; }
+.pp-page-drag-mark.pp-page-drag-done { opacity: 0; }
+
+/* ---- Icon and small UX fixes ---- */
+.q-icon.pp-check, svg.pp-check { color: var(--pp-accent); }
+.pp-close-btn.q-btn:hover { color: var(--pp-fg); }
+/* the tab ×: a bigger target, same look */
+.pp-tab-close, .pp-rtab-close { padding: 3px; margin: 0 -2px; }
+/* keyboard focus is visible (the mouse never shows it) */
+.q-btn:focus-visible, [tabindex]:not([tabindex="-1"]):not(.cm-content):not(.pp-tree):focus-visible { outline: 2px solid rgba(var(--pp-accent-rgb), .7); outline-offset: 1px; }
+.q-btn:focus-visible .q-focus-helper { display: none; }
+/* hover-only delete buttons also show for the keyboard */
+.pp-mem-row:focus-within .pp-mem-row-del, .pp-chat-saved:focus-within .pp-chat-saved-del { opacity: 1; }
+.pp-tree-empty { gap: 6px; align-items: flex-start; }
+.pp-tree-empty-new.q-btn { color: var(--pp-accent); padding: 2px 8px; font-size: 13px; }

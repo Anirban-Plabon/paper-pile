@@ -13,7 +13,7 @@ from collections.abc import Callable
 from nicegui import ui
 
 from paper_pile.core.parser import Heading, headings, section_at
-from paper_pile.gui.icons import line_icon, set_icon
+from paper_pile.gui.icons import line_icon
 
 INDENT_PX = 12
 
@@ -36,7 +36,7 @@ class OutlinePane:
         with ui.column().classes("pp-outline-section") as self._section:
             ui.element("div").classes("pp-vsplit").props('data-name="outline"')
             with ui.row().classes("pp-outline-head items-center no-wrap") as head:
-                self._chevron = line_icon("chevron-right", "s").classes("pp-ico-chev")
+                line_icon("chevron-right", "s").classes("pp-ico-chev pp-chev")
                 line_icon("list-tree").classes("pp-ico")
                 ui.label("Outline").classes("pp-pane-title")
             head.on("click", lambda _e: self._on_toggle())
@@ -48,8 +48,7 @@ class OutlinePane:
         self._section.classes(
             add="pp-outline-open" if is_open else "", remove="" if is_open else "pp-outline-open"
         )
-        self._section.style(f"--pp-outline-h: {height}px")
-        set_icon(self._chevron, "chevron-down" if is_open else "chevron-right", prop="name")
+        self._section.style(f"--pp-outline-h: {height}px")  # the chevron turns by CSS
 
     def show(self, text: str | None, line: int) -> None:
         """The note on screen (``None``: no note) and the caret's 1-based line."""

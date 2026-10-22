@@ -1,8 +1,9 @@
-// Theme: light / dark / system, accent colour, density and the editor's font. Python sends the
+// Theme: light / dark / system, accent colour, density, animation speed and the editor's font. Python sends the
 // settings (`ppTheme.apply`) and is told whether the result is dark (`pp_theme_resolved`) so the
 // editor and its diagrams can follow. The first values are in `window.__pp_theme` (no flash).
 (function () {
   const media = window.matchMedia('(prefers-color-scheme: dark)');
+  const still = window.matchMedia('(prefers-reduced-motion: reduce)');
   let current = null;
 
   function isDark(cfg) {
@@ -32,6 +33,11 @@
     root.style.setProperty('--q-primary', dark ? cfg.accentDark : cfg.accentLight);
     body.style.setProperty('--q-primary', dark ? cfg.accentDark : cfg.accentLight);
     root.style.setProperty('--pp-on-accent', onAccent(dark ? cfg.accentDark : cfg.accentLight));
+    // animation speed (PLAN §4.19): × every duration; the OS wish counts while the setting is untouched
+    const motion = !cfg.motionSet && still.matches ? 0 : Number(cfg.motion ?? 1);
+    root.style.setProperty('--pp-motion', String(motion));
+    body.classList.toggle('pp-no-motion', motion === 0);
+    window.ppMotion = motion;
     root.style.setProperty('--pp-editor-font', cfg.fontFamily);
     root.style.setProperty('--pp-code-font', cfg.codeFont || 'monospace');
     root.style.setProperty('--pp-editor-size', cfg.fontSize + 'px');
@@ -54,6 +60,7 @@
   }
 
   media.addEventListener('change', function () { if (current && current.theme === 'system') apply(current); });
+  still.addEventListener('change', function () { if (current) apply(current); });
   window.ppTheme = { apply: apply };
   function start() { if (window.__pp_theme) apply(window.__pp_theme); }
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start); else start();

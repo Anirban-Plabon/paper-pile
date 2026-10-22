@@ -17,10 +17,15 @@
 // and the caret and typing are kept out of it. Page break lines are hidden too: the page line
 // (or sheet edge) below them already shows the break, and dragging it moves the break
 // (pagedrag.js, which also asks for trial layouts through `probeLayout`).
+//
+// Motion (PLAN §4.19): when a new layout moves a page start, its Page N line / page edge slides
+// from where it was (only a transform: the space it takes is in place at once) and the lines that
+// crossed onto the other page get a tint that fades (`animatePageMoves`).
 import { syntaxTree } from "@codemirror/language";
 import { ChangeSet, EditorSelection, EditorState, Facet, StateEffect, StateField } from "@codemirror/state";
 import { Decoration, EditorView, ViewPlugin, WidgetType } from "@codemirror/view";
 import { rtOf } from "./context.js";
+import { markLines, motionFactor } from "./motion.js";
 
 const LAYOUT_DELAY_MS = 500;
 const LAYOUT_TIMEOUT_MS = 30000;
@@ -341,7 +346,9 @@ const controller = ViewPlugin.fromClass(
         .filter((p) => p.page > 1 && p.line > 0 && p.line <= pending.doc.lines)
         .map((p) => ({ pos: pending.changes.mapPos(pending.doc.line(p.line).from, -1), page: p.page }));
       this.pending = null;
+      const before = motionFactor() ? pageSnapshot(this.view) : null;
       this.view.dispatch({ effects: setPages.of(starts) });
+      if (before) animatePageMoves(this.view, before);
       if (this.pagesBefore !== null) {
         const before = this.pagesBefore;
         const after = pageStarts(this.view.state).length + 1;
@@ -385,6 +392,50 @@ const controller = ViewPlugin.fromClass(
     }
   },
 );
+
+// ---- Motion -----------------------------------------------------------------------------------
+
+// Where each page marker is on screen now (keyed by its "Page N" label) and where each page starts.
+function pageSnapshot(view) {
+  const tops = new Map();
+  for (const el of view.contentDOM.querySelectorAll(".pp-page-line, .pp-sheet-gap")) {
+    tops.set(el.getAttribute("aria-label"), el.getBoundingClientRect().top);
+  }
+  return { tops, starts: new Map(pageStarts(view.state).map((s) => [s.page, s.from])) };
+}
+
+// After a new layout: tint the lines that changed page, then (once CodeMirror has drawn) slide
+// each marker that moved from its old screen position. A marker that is new fades in.
+function animatePageMoves(view, before) {
+  const { doc } = view.state;
+  for (const { from, page } of pageStarts(view.state)) {
+    const old = before.starts.get(page);
+    if (old === undefined || old === from) continue;
+    const lo = Math.min(old, from);
+    const hi = Math.max(old, from);
+    if (hi - 1 >= lo) markLines(view, lo, Math.min(hi - 1, doc.length), { cls: "pp-page-crossed" });
+  }
+  const screen = view.scrollDOM.clientHeight;
+  view.requestMeasure({
+    read: () => [...view.contentDOM.querySelectorAll(".pp-page-line, .pp-sheet-gap")].map((el) => [el, el.getBoundingClientRect().top]),
+    write: (now) => {
+      for (const [el, top] of now) {
+        const old = before.tops.get(el.getAttribute("aria-label"));
+        let cls = "";
+        if (old === undefined) cls = before.tops.size ? "pp-page-renum" : "";
+        else if (Math.abs(old - top) > 2 && Math.abs(old - top) < screen) {
+          el.style.setProperty("--pp-from", `${Math.round(old - top)}px`);
+          cls = "pp-page-moved";
+        }
+        if (!cls) continue;
+        el.classList.remove("pp-page-moved", "pp-page-renum");
+        void el.offsetWidth; // restart the animation if it is still running
+        el.classList.add(cls);
+        el.addEventListener("animationend", () => el.classList.remove(cls), { once: true });
+      }
+    },
+  });
+}
 
 // The properties block is folded away (in Live Preview and in Source mode alike).
 const hiddenProperties = StateField.define({

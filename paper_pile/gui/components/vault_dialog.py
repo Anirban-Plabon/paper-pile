@@ -45,7 +45,7 @@ async def ask_folder(
                         .classes("pp-picker-row items-center no-wrap")
                         .mark(f"recent-{i}") as row
                     ):
-                        line_icon("folder-clock", "s")
+                        line_icon("folder-clock").classes("pp-picker-icon")
                         ui.label(vault.name or str(vault))
                         ui.label(str(vault.parent)).classes("pp-muted pp-vault-path")
                     row.on("click", lambda _e, v=vault: dialog.submit(v))
@@ -78,7 +78,7 @@ async def ask_folder(
                         .classes("pp-picker-row items-center no-wrap")
                         .mark(f"folder-{i}") as row
                     ):
-                        line_icon("folder", "s")
+                        line_icon("folder").classes("pp-picker-icon")
                         ui.label(sub.name)
                         if is_vault(sub):
                             ui.label("vault").classes("pp-picker-badge")

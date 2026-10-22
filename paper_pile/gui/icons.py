@@ -68,6 +68,11 @@ def icon_button(
     return tip(button, tooltip)
 
 
+def close_button(on_click: Callable[[], object], tooltip: str = "Close") -> ui.button:
+    """The one × for dialogs and panes: a medium icon in a toolbar-sized button."""
+    return icon_button("x", on_click, tooltip, size="m").classes("pp-close-btn")
+
+
 def icons_config_script() -> str:
     """Tells ``static/icons.js`` where the icons are (it builds the same URLs as ``icon_url``)."""
     config = json.dumps({"base": ICON_ROUTE, "v": _data()[0]})

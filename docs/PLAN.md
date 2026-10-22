@@ -510,7 +510,7 @@ Short, quiet animations that show *where something went*. Render-only (CSS + the
 
 **Rules.** Only `opacity` and `transform` are animated, never a size CodeMirror measures (line heights, widget heights, pane widths), so clicks never drift and layout is final at once. Nothing runs while the user types in the moved text. Base durations: fast 100 ms (hover, fades), normal 160 ms (popups, chevrons, slides), flash 900 ms (the target highlight fades out). All durations = base × the speed factor.
 
-**Setting: Animation speed** (`appearance.motion`, Settings → Appearance, essential): segmented *Off · Fast · Normal · Slow* (factor 0 / 0.6 / 1 / 1.6, default *Normal*). Applies live (no reload) to the app (`--pp-motion` on `body`) and to every editor (runtime facet, reconfigured through its compartment). *Off* = no transitions, no smooth scroll, jumps still land with a static highlight that disappears on the next keystroke or click. While the setting is untouched and the OS asks for reduced motion (`prefers-reduced-motion`), it behaves as *Off*.
+**Setting: Animation speed** (`appearance.motion`, Settings → Appearance, essential): segmented *Off · Fast · Normal · Slow* (factor 0 / 0.6 / 1 / 1.6, default *Normal*). Applies live (no reload): `static/theme.js` sets `--pp-motion` (every CSS duration is `calc(base × var(--pp-motion))`) and `window.ppMotion`, which the editor bundle reads when an animation starts (`motion.js` `motionFactor`), so both split editors follow without a reconfigure. *Off* = no transitions, no smooth scroll, jumps still land with a static highlight that disappears on the next keystroke or click. While the setting is untouched and the OS asks for reduced motion (`prefers-reduced-motion`), it behaves as *Off*.
 
 **Moves and jumps (editor):**
 - *Page number moved* (page view): when a new layout moves the start of page N to another line, the **Page N** line (page-line style) or the page edge with its number (real-pages style) slides from its old screen position to the new one. Only the label is moved (`translateY`, from the old offset to 0, at most one screen); the space it takes is in place at once. The lines that crossed onto the other page get a soft accent tint that fades out (the *block jump*: you see which text went to the next/previous page). A changed page number cross-fades. The sheet padding in real-pages style changes instantly (it is measured).
@@ -518,9 +518,12 @@ Short, quiet animations that show *where something went*. Render-only (CSS + the
 - *Line / heading jump* (outline, wikilink to a heading, backlink, search result, `gotoLine`): smooth scroll when the target is within 3 screens (farther: jump to one screen away, then glide); the target line flashes with an accent background that fades out.
 - *Block moved* (Alt+↑/↓, block drag): the moved lines slide in from where they were (`translateY`) and flash briefly.
 
-**App chrome:** context menu and tooltips fade/scale in; chevrons (tree, outline, backlinks, model picker, heading fold) rotate instead of swapping icons; hover backgrounds and the tab close × fade; the task checkbox tick scales in; banners, chat jump buttons and new chat messages fade in; the chat shows pulsing dots until the first token.
+**App chrome:** context menu and tooltips fade/scale in; chevrons (outline, backlinks, model picker, heading fold) rotate instead of swapping icons (the file tree redraws its rows, so its chevrons still swap); hover backgrounds and the tab close × fade; the task checkbox tick scales in; banners, chat jump buttons and new chat messages fade in; the chat shows pulsing dots until the first token.
 
 **Not animated:** typing, CodeMirror decorations and folding, pane widths (Ctrl+B / Ctrl+L), sheet heights, drag in progress.
+
+### 4.20 Icon and small UX fixes — user request 2026-10-22
+From the icon / UX survey (same day). **Icons:** one Lucide set everywhere (heading fold chevron, tab scroll arrows and table *+* buttons were text glyphs or a hand-drawn SVG); sizes only from the 14 / 16 / 18 px tokens (no 13 / 15 px, no icon wider than its box); one close button for dialogs and panes (`icons.close_button`: 16 px × in a 30 px button — Settings, Version history, Trash, Gallery, Memories); menu check marks are `check`, 14 px, accent colour; row icons 16 px; the corner radius of hover buttons from the tokens. **UX:** the tree's 🔎 says what it does (*Search in all notes*); tooltips warm up (after one has shown, the next shows at once for 0.8 s); visible keyboard focus (`:focus-visible` ring); hover-only delete buttons (memories, saved chats) reachable by Tab and Enter; a bigger tab × target; an empty vault shows a **New note** button in the tree; the status bar shows nothing while no note is open (no "Ready") and *Saved* has a "Saved at 14:32" tooltip (the file's time); a folded heading's *…* says how many lines it hides.
 
 ## 5. Data formats
 
@@ -675,6 +678,12 @@ P9.1–P9.3 and P9.5–P9.6 are built in this phase (order: P14.1, P9.1, P9.2, P
 | P15.4 | Break drop glide + block move slide | page break released mid-gap glides to its line; Alt+↑/↓ lines slide + flash; Off = none |
 | P15.5 | Popups: context menu, tooltip, banners, chat jump buttons | fade in/out via classes; a fading-out menu never takes clicks (real-click `elementFromPoint` check) |
 | P15.6 | State polish: chevrons rotate, hover fades, tab ×, checkbox tick, chat dots + new message | one chevron + `pp-open` class (no icon swap round trip); dots gone on first chunk; NiceGUI tests pass; manual pass in the native window on WSL with no jank |
+
+### P16 — Icon and small UX fixes (user request 2026-10-22, §4.20)
+| ID | Task | Acceptance |
+|---|---|---|
+| P16.1 | Icons: one set, token sizes, one close button, one check mark | no text glyph / hand SVG icons left; no off-scale size in app.css; every dialog × is `close_button` (real click closes) |
+| P16.2 | Small UX fixes (§4.20 list) | each works in the real app; empty-vault button has a NiceGUI test |
 
 ### P10 — Note menu (⋯) (user request 2026-10-17)
 | ID | Task | Acceptance |

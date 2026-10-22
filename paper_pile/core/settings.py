@@ -33,6 +33,9 @@ ACCENTS: dict[str, tuple[str, str]] = {
 }
 THEMES = ("light", "dark", "system")
 DENSITIES = ("comfortable", "compact")
+MOTIONS = ("off", "fast", "normal", "slow")
+MOTION_LABELS = {"off": "Off", "fast": "Fast", "normal": "Normal", "slow": "Slow"}
+MOTION_FACTORS = {"off": 0.0, "fast": 0.6, "normal": 1.0, "slow": 1.6}  # × every duration
 MODES = ("live", "source")
 PAPER_SIZES = ("A4", "Letter")  # core/printdoc.py PAPERS
 PAGE_VIEWS = {"off": "Off", "lines": "Page lines", "pages": "Real pages"}  # value -> shown
@@ -225,6 +228,14 @@ SECTIONS: dict[str, tuple[Setting, ...]] = {
             "choice",
             DENSITIES,
             help="Interface spacing",
+        ),
+        Setting(
+            "appearance.motion",
+            "Animation speed",
+            "choice",
+            MOTIONS,
+            help="Off turns animations off",
+            essential=True,
         ),
     ),
     "Editor": (

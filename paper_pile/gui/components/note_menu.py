@@ -57,7 +57,9 @@ class NoteMenu:
             self._split_label = self._item("columns-2", "Split right", a.toggle_split)
             self._item("file-text", "Page view", a.toggle_page_view)
             with self._last_item:  # a check mark while page view is on
-                self._page_view_check = line_icon("check").classes("pp-note-menu-check")
+                self._page_view_check = line_icon("check", "s").classes(
+                    "pp-note-menu-check pp-check"
+                )
                 self._page_view_check.set_visibility(False)
             self._item("list-tree", "Outline", a.outline, "Ctrl+Shift+O")
             self._item("history", "Version history", a.history)

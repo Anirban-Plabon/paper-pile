@@ -43,8 +43,9 @@ class StatusBar:
         )
         tip(self.ollama_dot, text)
 
-    def set_save_state(self, text: str, *, error: bool = False) -> None:
+    def set_save_state(self, text: str, *, error: bool = False, hint: str = "") -> None:
         self.save_label.set_text(text)
+        tip(self.save_label, hint)
         if error:
             self.save_label.classes("pp-save-error")
         else:
@@ -61,6 +62,6 @@ def status_bar(
         mode_label.classes("pp-muted pp-mode-toggle")
         mode_label.on("click", lambda _e: on_toggle_mode())
         stats = ui.label("").classes("pp-muted pp-stats")
-        save = ui.label("Ready").classes("pp-muted pp-save")
+        save = ui.label("").classes("pp-muted pp-save")
         dot = tip(ui.label("●").classes("pp-dot pp-dot-off"), "Ollama status")
     return StatusBar(save, mode_label, dot, stats)

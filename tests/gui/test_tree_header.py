@@ -128,3 +128,22 @@ async def test_search_box_lists_full_text_hits_and_a_click_finds_the_word(
     assert snippet.content == "a <mark>banana</mark> &lt;i&gt;pie&lt;/i&gt;"  # escaped, not markup
     await tree._on_click({"path": "d/b.md", "isDir": False, "find": "banana"})
     assert found == [("d/b.md", "banana")]
+
+
+async def test_empty_vault_offers_a_new_note_button(user: User, tmp_path: Path) -> None:
+    root = tmp_path / "empty"
+    root.mkdir()
+    vault, opened = Vault(root), []
+
+    @ui.page("/empty")
+    def page() -> None:
+        bus = EventBus()
+        bus.subscribe("tree.open", lambda path: opened.append(path))
+        FileTree(vault, bus, can_reveal=False).build()
+
+    await user.open("/empty")
+    await user.should_see("No notes yet.")
+    user.find(kind=ui.button, content="New note").click()
+    await user.should_see("Untitled 1")
+    assert opened == ["Untitled 1.md"]
+    assert (root / "Untitled 1.md").exists()
