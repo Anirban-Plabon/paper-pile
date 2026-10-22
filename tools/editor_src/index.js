@@ -5,7 +5,7 @@ import { markdown, markdownLanguage } from "@codemirror/lang-markdown";
 import { HighlightStyle, indentUnit, syntaxHighlighting, syntaxTree } from "@codemirror/language";
 import { highlightSelectionMatches, openSearchPanel, searchKeymap } from "@codemirror/search";
 import { Annotation, Compartment, EditorSelection, EditorState, Transaction } from "@codemirror/state";
-import { EditorView, drawSelection, dropCursor, keymap } from "@codemirror/view";
+import { EditorView, drawSelection, dropCursor, keymap, tooltips } from "@codemirror/view";
 import { classHighlighter, tags as t } from "@lezer/highlight";
 import { blocks, themeFacet } from "./blocks.js";
 import { livePreview } from "./livepreview.js";
@@ -185,6 +185,15 @@ export function createEditor(
   const isPlainPath = (path) => /\.txt$/i.test(path || "");
   const isPlainDoc = () => plainDocs.has(docId);
 
+  // Slash menu / autocomplete stay out of the strip a maximized WSL window has under the
+  // Windows taskbar (--pp-inset-*, set by native_boot.py); CodeMirror only knows innerHeight.
+  const tooltipSpace = (view) => {
+    const css = getComputedStyle(document.documentElement);
+    const inset = (name) => parseFloat(css.getPropertyValue(name)) || 0;
+    const win = view.dom.ownerDocument.defaultView;
+    return { top: inset("--pp-inset-top"), left: 0, right: win.innerWidth, bottom: win.innerHeight - inset("--pp-inset-bottom") };
+  };
+
   // A note switch builds a fresh state, which also drops the undo history: Ctrl+Z must never
   // pull the previous note's text into this one.
   const makeState = (text, id) => {
@@ -197,6 +206,7 @@ export function createEditor(
       streamField,
       drawSelection(),
       dropCursor(),
+      tooltips({ tooltipSpace }),
       highlightSelectionMatches(),
       runtimeFacet.of(rt),
       // the user is in this editor now (Python makes its note the active one)

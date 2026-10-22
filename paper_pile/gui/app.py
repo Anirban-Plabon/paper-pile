@@ -36,6 +36,7 @@ def _build_pages(host: VaultHost, *, native: bool) -> None:
         ui.add_head_html(icons_config_script())
         ui.add_head_html(f'<script src="{static_url("icons.js")}"></script>')
         ui.add_head_html(f'<script src="{static_url("tips.js")}" defer></script>')
+        ui.add_head_html(f'<script src="{static_url("menus.js")}" defer></script>')
         ui.add_head_html(f'<script src="{static_url("tree.js")}" defer></script>')
         ui.add_head_html(f'<script src="{static_url("tabs.js")}" defer></script>')
         ui.add_head_html(f'<script src="{static_url("split.js")}" defer></script>')

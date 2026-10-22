@@ -616,6 +616,7 @@ on Sonnet. Only mark a task 🧠 when it is genuinely this specialized.
 ### P13 — Window, folders, images, split (user request 2026-10-21)
 Spec (one place; the feature sections point here):
 - **Window buttons:** maximize/restore is the same size as minimize/close (small icon), and its icon shows the state: `square` while normal, `copy` (two squares) while maximized — following the real window (double-click on the title area, OS snap), not a click counter.
+- **Popups in the native window (P13.15):** `static/menus.js` re-places a Quasar menu whenever its size changes (menus filled by Python on `before-show` grow after Quasar placed them) and lifts menus and the tree context menu above `--pp-inset-bottom`; the editor's CodeMirror tooltips get the same space through `tooltips({ tooltipSpace })`.
 - **Notifications in the native window:** every `ui.notify` (toasts like "Copied", errors) is visible inside the window's work area, above the footer, in both themes: Quasar's toast lists are offset by the taskbar insets of a maximized WSL window (`--pp-inset-*`) and the footer / tab-row height.
 - **Scrollbar vs. pane edges:** where a scrollbar and a pane-resize edge (file tree | editor, editor | right pane, the split divider) meet, each keeps its own grab area: the resize strip sits outside the scrollbar (never on top of it), so dragging a scrollbar never resizes a pane and the resize cursor shows only on the strip.
 - **Mode buttons in Settings:** above *Restore defaults* in the settings sidebar, the Light / Dark / System buttons (the `appearance.theme` setting) — a horizontal row while the sidebar is unfolded, a vertical column of icons while folded. The setting's label "Theme" becomes **Mode** (Settings → Appearance and search).
@@ -647,6 +648,7 @@ Spec (one place; the feature sections point here):
 | P13.12 | Settings polish: panes, concise text, stacked fields, icon-only buttons | Settings never folds by dragging, keeps its width when the file tree folds (900 / 1100 / 1500 px windows, per-frame check); no description wraps beside a box, stacked fields stretch, no icon above text, no overflow (General / AI / Editor at 480 / 650 / 900 px) |
 | P13.13 | Daily notes follow their template | no `title:` added to daily notes or templates on open; an untouched daily note is re-made from the current template (old text stashed); a written-in one is never changed; other notes still auto-titled |
 | P13.14 | Tree multi-select (user request 2026-10-22) | Ctrl+click toggles, Shift+click range, selection box from blank tree space; dragging a selected row moves all of them; group context menu (Add to chat / Delete N) |
+| P13.15 | Popups stay on screen (user report 2026-10-22) | every menu / popup (Quasar menus incl. ones Python fills on open, tree context menu, editor slash/autocomplete) lies fully inside the window's visible area, above the taskbar strip of a maximized WSL window |
 
 ### Phase-1 final QA checklist
 - [ ] Works fully offline (network off) except AI if Ollama is remote

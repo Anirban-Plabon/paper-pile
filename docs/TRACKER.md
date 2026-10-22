@@ -155,6 +155,7 @@ Legend: 🧠 = needs Opus (see PLAN §6 model guidance) · ⬜ todo · 🔄 in p
 | P13.12 | Settings polish: panes, concise text, stacked fields, icon-only buttons | ✅ | `MainLayout._toggle_left_keeping_settings` (the shown width from the page), `_dragged_shut` ignores Settings; help texts ≤ 31 chars; `.pp-set-text` natural width, `fitRow` per-row ResizeObserver; 36 + 4 real-app checks |
 | P13.13 | Daily notes follow their template | ✅ | `EditorPane._shaped_by_template`, `daily.untouched_daily`, `MainLayout._remake_daily`; 1 test (6 cases); 7 real-app checks (calendar clicks: untouched note re-made, new day, written-in day kept, template opened, ordinary note still titled) |
 | P13.14 | Tree multi-select | ✅ | `FileTree._picked` + `_on_band` / `_pick_range` / `_selection`, group `_on_move` / `_delete`; `tree.js` selection box (drawn fixed in `<body>`, not inside the Vue-managed tree); 5 tests; 16 real-app checks with CDP mouse events incl. a real HTML5 drag of 2 notes into a folder |
+| P13.15 | Popups stay on screen | ✅ | `static/menus.js` + editor `tooltipSpace`; 12 real-app checks with a 48 px taskbar strip and the server's replies slowed by 400 ms (chat +, model, ⋮, + again, tree menus, slash menu on the last line); control run without the fix: + menu ends 130 px past the visible area, model menu off screen |
 
 ## Decision log
 <!-- YYYY-MM-DD · decision · reason · (who: user / claude) -->
@@ -313,6 +314,7 @@ Legend: 🧠 = needs Opus (see PLAN §6 model guidance) · ⬜ todo · 🔄 in p
 <!-- YYYY-MM-DD · task · symptom → root cause → fix · (gotcha added? y/n) -->
 | Date | Task | Symptom | Root cause | Fix | Gotcha? |
 |---|---|---|---|---|---|
+| 2026-10-22 | P13.15 | Chat + menu (and the model menu) opened partly or wholly below the window / behind the Windows taskbar; only the first notes showed | 1) Quasar places a q-menu once when it opens, but these menus are filled by Python on `before-show` (a server round trip), so it was placed while empty/stale and then grew downward; 2) Quasar and CodeMirror fit popups to `window.innerHeight`, which in a maximized WSL window includes the strip under the taskbar (`--pp-inset-bottom`) | `static/menus.js`: a ResizeObserver on every `.q-menu` / `.pp-ctxmenu` re-places it (`getElement(menu).updatePosition()`) and lifts it above the inset strip; editor `tooltips({ tooltipSpace })` subtracts the insets | y |
 | 2026-10-22 | P13.12 | A settings row flipped between its field beside the text and under it | marking a row "stacked" let its field shrink below 200 px (flex-basis with `width: auto`), so it fitted back beside the text while the mark stayed; the mark was also computed before the row's layout settled | the stacked field keeps `min-width: 200px`; rows are re-checked by a per-row ResizeObserver | y |
 | 2026-10-22 | P13.12 | Settings grew when the file tree was folded in a small window, then shrank again (flicker) | its saved width (720 px) did not fit beside the open tree, so it showed narrower; folding the tree freed room and it jumped back to the saved width | before folding / unfolding, the width Settings really shows becomes its width | n |
 | 2026-10-21 | P13.9 | *Use this* in Write with AI did nothing (template and system instruction) | refactoring `_write_with_ai` to take a `use` callback left the dialog's button in a local variable also called `use`, which shadowed the callback (`'Button' object is not callable` in the log) | button renamed `keep_btn`; both dialogs checked in the app | n |
@@ -489,3 +491,4 @@ Legend: 🧠 = needs Opus (see PLAN §6 model guidance) · ⬜ todo · 🔄 in p
 - 2026-10-22 · P13.12 settings polish (panes, concise text, stacked fields, icon-only buttons) · 1049 tests; 36 + 4 + 15 real-app checks
 - 2026-10-22 · P13.13 daily notes follow their template (no auto-title in daily/templates folders, untouched notes re-made) · 1050 tests; 7 real-app checks
 - 2026-10-22 · P13.14 tree multi-select (Ctrl/Shift+click, selection box, group move/delete/add to chat) · 1055 tests; 16 real-app checks
+- 2026-10-22 · P13.15 popups stay on screen (menus filled by Python re-placed; taskbar strip respected by menus and editor tooltips) · 12 real-app checks
