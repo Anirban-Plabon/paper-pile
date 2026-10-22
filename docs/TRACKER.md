@@ -9,7 +9,7 @@ Legend: 🧠 = needs Opus (see PLAN §6 model guidance) · ⬜ todo · 🔄 in p
 - **Phase:** P14 — Features, navigation & safety (user request 2026-10-22; includes P9.1–P9.3, P9.5, P9.6)
 - **Task:** P14 built (P14.1–P14.16, P9.1–P9.3, P9.5); P9.6 README done, its manual QA items wait for the user; P10.5 / P12.4 native Save dialog checks still manual
 - **Now:** P14 done (switches, switcher + palette, vault search, outline, tree keys, trash, version history; tab overflow, split backlinks, line numbers, draggable page breaks)
-- **Next up:** the user's manual QA pass (PLAN §6 checklist); then the user's AI-with-notes plan; then the Tauri v2 spike
+- **Next up:** P15 Motion (§4.19, planned); the user's manual QA pass (PLAN §6 checklist); then the user's AI-with-notes plan; then the Tauri v2 spike
 
 ## Open issues
 <!-- - [ ] YYYY-MM-DD · task ID · what's blocking · what's needed -->
@@ -179,6 +179,16 @@ Legend: 🧠 = needs Opus (see PLAN §6 model guidance) · ⬜ todo · 🔄 in p
 | P14.17 | `--debug`: window sizing log | ✅ | `cli --debug` → `PAPER_PILE_DEBUG` → `native_boot.debug_logging` (both processes); window state / size / screen / zoom / taskbar strips logged on every change; real run on the user's laptop panel checked |
 | P14.7 | Slash menu on right-click and on a lone `/` | ✅ | `slash.js`: `loneSlashBefore`, temporary `/` (`openTemp` / `dropTemp`, kept out of undo history, `tempCleanup`), `clipboardRow` (Cut / Copy / Paste, buttons act on click), right-click handler; native window: the app's own page may read the clipboard (`native_boot._fix_permission_requests`, everything else still denied); editor tooltips kept inside the editor's box sideways (the pane clipped a menu opened near its right edge); 17 real-app checks with real right-clicks / clicks / keys |
 
+### P15 — Motion (user request 2026-10-22)
+| ID | Task | Status | Notes |
+|---|---|---|---|
+| P15.1 | Motion tokens + Animation speed setting | ⬜ | |
+| P15.2 🧠 | Jump: smooth scroll + target flash | ⬜ | |
+| P15.3 🧠 | Page number moves + block jump tint | ⬜ | |
+| P15.4 | Break drop glide + block move slide | ⬜ | |
+| P15.5 | Popups fade (context menu, tooltip, banners, chat jumps) | ⬜ | |
+| P15.6 | State polish (chevrons, hovers, tab ×, checkbox, chat dots) | ⬜ | |
+
 ## Decision log
 <!-- YYYY-MM-DD · decision · reason · (who: user / claude) -->
 | Date | Decision | Reason | By |
@@ -338,6 +348,7 @@ Legend: 🧠 = needs Opus (see PLAN §6 model guidance) · ⬜ todo · 🔄 in p
 | 2026-10-22 | Six more (user request): Outline button on the folded rail above Open vault; many tabs → shrink + scroll (wheel, ‹ › arrows) + a list of all tabs (user's choice); backlinks split per side; line numbers (setting, off by default); page breaks and page view's page lines draggable with the mouse; Version + Vault first in General, with *Change…* on the Vault row. Moving a break is worked out in Python (`core/page_move.py`); the editor only draws the drag. A page line the layout drew only moves up (a break further down would not change where the page ends) | User request | user |
 | 2026-10-22 | Command palette button: in the bottom row of the Files pane, Open vault · Command palette · Settings grouped in one box like the Light / Dark switch (user's placement and order); the folded rail shows the same box upright | User request | user |
 | 2026-10-22 | Page view no longer draws page break lines (user: "not required"); the Page N line stands for the break and is what you drag. Drag limits: earliest = one line below the previous page's start, furthest = where the page would end by itself (trial layout without the break); after a drop the layout runs again and the user is told when the page count changed (user: a 2-page note may need a 3rd page after a move). Real pages style: breaks hidden too, no dragging there (not asked) | User request | user |
+| 2026-10-22 | P15 Motion (§4.19): page-number moves slide + crossed lines tinted, jump flash + smooth scroll, block-move slide, popups/chevrons/hover polish; setting *Animation speed* Off/Fast/Normal/Slow (×0/0.6/1/1.6), OS reduced motion = Off while untouched. Only opacity/transform animate; measured sizes (sheet padding, widget/line heights, pane widths) never do | User request (animations survey + "animation to moving page no" + speed setting); CodeMirror measures heights, so animating them makes clicks drift | user / claude |
 
 ## Issues log
 <!-- YYYY-MM-DD · task · symptom → root cause → fix · (gotcha added? y/n) -->

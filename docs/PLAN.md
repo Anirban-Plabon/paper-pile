@@ -505,6 +505,23 @@ Output: the page boxes (printed as is) and the list of `{line, page}` starts (se
 - *Follows the note:* rename/move re-keys it; a deleted note keeps its history (restoring it from the trash brings it back).
 - *Popup* (`gui/components/history_dialog.py`): versions newest first (when, why, lines a restore would add/remove); the selected one shown as a diff against the current note or as plain text; *Restore* replaces the note's text (an undoable editor change, after recording the current text), *Copy* copies it.
 
+### 4.19 Motion — user request 2026-10-22
+Short, quiet animations that show *where something went*. Render-only (CSS + the editor bundle); Python only passes the speed.
+
+**Rules.** Only `opacity` and `transform` are animated, never a size CodeMirror measures (line heights, widget heights, pane widths), so clicks never drift and layout is final at once. Nothing runs while the user types in the moved text. Base durations: fast 100 ms (hover, fades), normal 160 ms (popups, chevrons, slides), flash 900 ms (the target highlight fades out). All durations = base × the speed factor.
+
+**Setting: Animation speed** (`appearance.motion`, Settings → Appearance, essential): segmented *Off · Fast · Normal · Slow* (factor 0 / 0.6 / 1 / 1.6, default *Normal*). Applies live (no reload) to the app (`--pp-motion` on `body`) and to every editor (runtime facet, reconfigured through its compartment). *Off* = no transitions, no smooth scroll, jumps still land with a static highlight that disappears on the next keystroke or click. While the setting is untouched and the OS asks for reduced motion (`prefers-reduced-motion`), it behaves as *Off*.
+
+**Moves and jumps (editor):**
+- *Page number moved* (page view): when a new layout moves the start of page N to another line, the **Page N** line (page-line style) or the page edge with its number (real-pages style) slides from its old screen position to the new one. Only the label is moved (`translateY`, from the old offset to 0, at most one screen); the space it takes is in place at once. The lines that crossed onto the other page get a soft accent tint that fades out (the *block jump*: you see which text went to the next/previous page). A changed page number cross-fades. The sheet padding in real-pages style changes instantly (it is measured).
+- *Page break dropped* (`pagedrag.js`): on release, the line glides from the pointer to its final line.
+- *Line / heading jump* (outline, wikilink to a heading, backlink, search result, `gotoLine`): smooth scroll when the target is within 3 screens (farther: jump to one screen away, then glide); the target line flashes with an accent background that fades out.
+- *Block moved* (Alt+↑/↓, block drag): the moved lines slide in from where they were (`translateY`) and flash briefly.
+
+**App chrome:** context menu and tooltips fade/scale in; chevrons (tree, outline, backlinks, model picker, heading fold) rotate instead of swapping icons; hover backgrounds and the tab close × fade; the task checkbox tick scales in; banners, chat jump buttons and new chat messages fade in; the chat shows pulsing dots until the first token.
+
+**Not animated:** typing, CodeMirror decorations and folding, pane widths (Ctrl+B / Ctrl+L), sheet heights, drag in progress.
+
 ## 5. Data formats
 
 **SQLite schema (`.paper-pile/index.db`)** — cache only:
@@ -648,6 +665,16 @@ P9.1–P9.3 and P9.5–P9.6 are built in this phase (order: P14.1, P9.1, P9.2, P
 | P14.15 | Vault row adapts to the pane width | Change… inside the pane at every width, never over the path; after fold/unfold (real app) |
 | P14.16 | Command palette button | in the vault · palette · settings box, row and folded rail; each opens its thing (real app) |
 | P14.17 | `--debug` window log | every window change logged with state, size, screen, zoom, taskbar strips |
+
+### P15 — Motion (user request 2026-10-22, §4.19)
+| ID | Task | Acceptance |
+|---|---|---|
+| P15.1 | Motion tokens + **Animation speed** setting | `--pp-dur-*` × `--pp-motion` in app.css; Off/Fast/Normal/Slow live in the app and both split editors; OS reduced motion → Off while untouched; Off = zero running transitions (script check); core settings test |
+| P15.2 🧠 | Jump: smooth scroll + target flash | outline / wikilink heading / backlink / search land with a flash that fades; far jumps don't scroll through the whole note; Off = static highlight cleared on next key/click; state in the runtime facet (no module globals); qa_editor passes |
+| P15.3 🧠 | Page number moves + block jump tint | page-line and real-pages styles: label slides old → new position, crossed lines tinted, number cross-fades; no measured size animated (clicks hit the right line during the slide, CDP check); typing during a layout shows no animation on the caret line; qa_editor passes |
+| P15.4 | Break drop glide + block move slide | page break released mid-gap glides to its line; Alt+↑/↓ lines slide + flash; Off = none |
+| P15.5 | Popups: context menu, tooltip, banners, chat jump buttons | fade in/out via classes; a fading-out menu never takes clicks (real-click `elementFromPoint` check) |
+| P15.6 | State polish: chevrons rotate, hover fades, tab ×, checkbox tick, chat dots + new message | one chevron + `pp-open` class (no icon swap round trip); dots gone on first chunk; NiceGUI tests pass; manual pass in the native window on WSL with no jank |
 
 ### P10 — Note menu (⋯) (user request 2026-10-17)
 | ID | Task | Acceptance |
