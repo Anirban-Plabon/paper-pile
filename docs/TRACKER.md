@@ -164,6 +164,9 @@ Legend: 🧠 = needs Opus (see PLAN §6 model guidance) · ⬜ todo · 🔄 in p
 | P14.2 | File tree keyboard | ✅ | `FileTree._on_key` / `_move_cursor` / `_fold_key`, `tree.js` keys only while the tree itself has focus; 2 tests; 12 real-app checks with real key events |
 | P14.3 | Trash popup + restore | ✅ | `core/trash.py` (manifest, list, restore, free name, image links), `TrashDialog`; 6 tests; 9 real-app checks (Delete key → trash, blank-space menu Trash…, restore folder whole, clash → `(restored)`, tree reveals it, palette) |
 | P14.4 🧠 | Version history (diff chain) | ✅ | `core/history.py` (`History`: reverse line diffs + keyframe every 25, SHA-256 per version, `kept_versions` thinning, 50 MB cap, `renamed`; `Sessions`), `command_actions.whole_text_edit`, `EditorPane.keep_version` at session start / AI / tidy / merge / outside reload / restore, `HistoryDialog`; 17 tests; 11 real-app checks (edit + tidy → versions, Changes/Text views, Restore → editor, saved, Ctrl+Z undoes it, rename → history follows; whole history of the run < 2 KB) |
+| P14.5 | Outline in the Files pane | ✅ | `OutlinePane.build(is_open, height)` / `set_open`, `.pp-vsplit` handle (`panes.js` → `pp_vsplit`, tree keeps ≥ 120 px), `SessionState.outline_open` / `outline_height`; right-pane tab removed; 11 real-app checks incl. a real drag of the handle and Ctrl+Shift+O with the tree folded |
+| P14.6 | Tab menu + note buttons (split, AI) | 🔄 | |
+| P14.7 | Slash menu on right-click and on a lone `/` | ⬜ | |
 
 ## Decision log
 <!-- YYYY-MM-DD · decision · reason · (who: user / claude) -->
@@ -320,6 +323,7 @@ Legend: 🧠 = needs Opus (see PLAN §6 model guidance) · ⬜ todo · 🔄 in p
 | 2026-10-22 | New phase P14 (user request): switches Enable AI / Enable Calendar / Minimal settings (minimal on by default, switches at the top of General), quick switcher + palette, vault search, outline, tree keys, Trash popup, version history; the AI's use of the vault stays as it is (user has own plan). History stores reverse line diffs + a full copy every 25 versions in `.paper-pile/history.db`, thinned and capped at 50 MB (user rejected full copies as too heavy) | Find notes, recover from mistakes, simpler app for most users | user |
 | 2026-10-22 | Trash entries get a `.trash.json` description (`{path, dir}`), written by `Vault.delete` | `.trash/<stamp>/a/b.md` cannot tell a deleted note from a deleted folder; older entries still list (note by note) | claude |
 | 2026-10-22 | Outline uses the existing `parser.headings` (no `core/outline.py`); the quick switcher uses `core.picker` (no `core/fuzzy.py`) | Both already existed and were tested | claude |
+| 2026-10-22 | Outline moves to a section under the file tree (user picked option 1, icon kept); slash menu also on right-click (with Cut/Copy/Paste, since the native window has no context menu) and on a caret after a lone `/`; tab right-click menu with split/rename/move/merge/history/copy/reveal/close; split + AI buttons beside ⋯ (AI button = menu: ask, summarize, rewrite, write — my reading of "ai button") | User request | user |
 
 ## Issues log
 <!-- YYYY-MM-DD · task · symptom → root cause → fix · (gotcha added? y/n) -->
@@ -510,3 +514,4 @@ Legend: 🧠 = needs Opus (see PLAN §6 model guidance) · ⬜ todo · 🔄 in p
 - 2026-10-22 · P9.2 vault search, P9.3 outline, P14.2 tree keys, P14.3 trash · tests + 10 + 10 + 12 + 9 real-app checks
 - 2026-10-22 · P14.4 version history (diffs, thinning, cap; popup with restore) · 1090 tests; 11 real-app checks
 - 2026-10-22 · P9.5 shortcuts verified (19 real-app checks), P9.6 README.md · manual QA items listed for the user
+- 2026-10-22 · P14.5 outline moved under the file tree · 11 real-app checks

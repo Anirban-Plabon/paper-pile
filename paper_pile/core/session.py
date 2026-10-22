@@ -22,6 +22,7 @@ log = logging.getLogger("paper_pile.session")
 _LAST_VAULT_FILE = "last_vault.json"
 MAX_RECENT_VAULTS = 8
 MAX_RECENT_NOTES = 20  # the quick switcher lists these first
+OUTLINE_HEIGHT = 220  # px: the Outline section under the file tree, by default
 SESSION_FILE = "session.json"
 META_DIR = ".paper-pile"
 
@@ -92,6 +93,8 @@ class SessionState:
     mode: Mode = "live"
     recent_commands: list[str] = field(default_factory=list)  # slash menu, newest first
     recent_notes: list[str] = field(default_factory=list)  # opened notes, newest first
+    outline_open: bool = False  # the Outline section under the file tree
+    outline_height: int = OUTLINE_HEIGHT
 
 
 def _session_path(vault: Path) -> Path:
@@ -128,6 +131,10 @@ def load_session(vault: Path) -> SessionState:
     recent = data.get("recent_commands")
     if isinstance(recent, list):
         state.recent_commands = [r for r in recent if isinstance(r, str)][:5]
+    if isinstance(data.get("outline_open"), bool):
+        state.outline_open = data["outline_open"]
+    if height := _positive_int(data.get("outline_height")):
+        state.outline_height = height
     notes = data.get("recent_notes")
     if isinstance(notes, list):
         state.recent_notes = [n for n in notes if isinstance(n, str)][:MAX_RECENT_NOTES]
@@ -145,6 +152,8 @@ def save_session(vault: Path, state: SessionState) -> None:
         "mode": state.mode,
         "recent_commands": state.recent_commands[:5],
         "recent_notes": state.recent_notes[:MAX_RECENT_NOTES],
+        "outline_open": state.outline_open,
+        "outline_height": state.outline_height,
     }
     try:
         path.parent.mkdir(exist_ok=True)

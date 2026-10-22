@@ -387,6 +387,11 @@ class MainLayout:
                     open_trash=self.open_trash,
                 )
                 self.tree.build()
+                self.outline = OutlinePane(self._jump_to_line, self.toggle_outline)
+                self.outline.build(
+                    is_open=self.state.outline_open, height=self.state.outline_height
+                )
+            ui.on("pp_vsplit", lambda e: self._outline_resized(e.args))
             self.profile = ProfileBlock(
                 self.config,
                 open_settings=self.open_settings,
@@ -632,9 +637,6 @@ class MainLayout:
         self.tags = TagPane(self.index, self.editor_pane.open, self.editor_pane.open_in_split)
         with self.right.tag_host:
             self.tags.build()
-        self.outline = OutlinePane(self._jump_to_line)
-        with self.right.outline_host:
-            self.outline.build()
 
     def _chat_pane(self) -> None:
         assert self.editor_pane is not None
@@ -766,25 +768,32 @@ class MainLayout:
         self._update_outline()
 
     def toggle_outline(self) -> None:
-        """Ctrl+Shift+O / ⋯ → Outline: show the Outline tab, or close it if it is showing."""
-        if self.right is None:
-            return
-        if self.right.active == "outline" and self.state.panes_open["right"]:
-            self.right.close_outline()
-            return
-        if not self.state.panes_open["right"]:
-            self.state.panes_open["right"] = True  # (toggle() would refuse an empty pane)
-            self._apply("right")
-            self._save_soon(immediately=True)
-        self.right.open_outline()
+        """Ctrl+Shift+O / ⋯ / its header: open the Outline section under the file tree (unfolding
+        the tree if it is folded away), or fold the section if it is open."""
+        if not self.state.panes_open["left"]:
+            self.toggle("left")
+            if self.state.outline_open:
+                return  # it was open behind the folded pane: showing it is enough
+        self.state.outline_open = not self.state.outline_open
+        if self.outline is not None:
+            self.outline.set_open(self.state.outline_open, self.state.outline_height)
+        self._save_soon(immediately=True)
         self._update_outline()
+
+    def _outline_resized(self, args: dict[str, object]) -> None:
+        height = args.get("height")
+        if args.get("name") == "outline" and isinstance(height, int | float) and height > 0:
+            self.state.outline_height = int(height)
+            if self.outline is not None:
+                self.outline.set_open(self.state.outline_open, self.state.outline_height)
+            self._save_soon()
 
     def _jump_to_line(self, line: int) -> None:
         if self.editor_pane is not None:
             self.editor_pane.goto_line(line)
 
     def _update_outline(self) -> None:
-        if self.outline is None or self.right is None or self.right.active != "outline":
+        if self.outline is None or not self.state.outline_open:
             return
         text = self.editor_pane.active_text() if self.editor_pane else None
         self.outline.show(text, self._caret_line)

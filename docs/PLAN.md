@@ -473,7 +473,15 @@ Output: the page boxes (printed as is) and the list of `{line, page}` starts (se
 
 **Vault search** (Ctrl+Shift+F, or the search button of the Files header): the Files pane's search mode searches the full text of every note (the SQLite FTS index, `Index.search`; the indexed body leaves out front matter and heading marks — `index.search_body`, schema 4); each hit shows the note name, folder and a two-line snippet with the words highlighted. Empty box: recently changed notes, as before. Clicking a hit opens the note with the editor's search panel on the first matched word, that match selected (a selection made by the search panel is never attached to the chat).
 
-**Outline** (Ctrl+Shift+O, ⋯ menu, palette): a closable right-pane tab listing the headings of the active note (indented by level; headings inside code blocks ignored — `core.parser.headings` / `section_at`, `gui/components/outline.py`). A click scrolls the editor to that heading and puts the caret there; the section holding the caret is marked.
+**Outline** (Ctrl+Shift+O, ⋯ menu, palette; since P14.5 a section under the file tree, see below — no longer a right-pane tab): listing the headings of the active note (indented by level; headings inside code blocks ignored — `core.parser.headings` / `section_at`, `gui/components/outline.py`). A click scrolls the editor to that heading and puts the caret there; the section holding the caret is marked.
+
+**Outline in the Files pane (2026-10-22, user request; replaces the right-pane tab):** a collapsible *OUTLINE* section under the file tree (icon `list-tree`) with a draggable divider; open/closed and its height are remembered per vault (`session.json`). Ctrl+Shift+O (⋯, palette) unfolds the file tree if needed and opens the section, or collapses it if it is open.
+
+**Slash menu, more ways in (2026-10-22, user request):** besides typing `/` and Ctrl+J / Alt+/: (1) a right-click in the note opens it at the click (inside a selection: for the selection, like Ctrl+J). The `/` it puts there is removed again if the menu closes without running a command. Opened this way the menu starts with *Cut* / *Copy* (with a selection) and *Paste* — the native window has no right-click menu of its own, and in web mode this one replaces the browser's. (2) Putting the caret right after a `/` that stands on its own (line start or after a space, followed by a space or the line end — not `and/or`, not in code) opens the menu; Esc closes it and it stays closed until the caret leaves and comes back.
+
+**Tab menu (right-click a tab, 2026-10-22, user request):** Split right / Close split, Rename…, Move to…, Merge into…, Version history, Copy path, Show in file tree, Add to chat (AI on), Close, Close others.
+
+**Note buttons beside ⋯ (2026-10-22, user request):** a split toggle (`columns-2` / close split) and, while AI is on, an AI button (`sparkles`) with Ask about this note, Summarize, Rewrite, Write….
 
 **File tree keyboard:** the tree takes focus on click. ↑/↓ move, Shift+↑/↓ extend the selection, ←/→ fold / unfold a folder (← on a note goes to its folder), Enter opens, F2 renames, Delete moves the selection to the trash (one confirm), Ctrl+A selects every shown row, Esc clears.
 
@@ -616,6 +624,9 @@ P9.1–P9.3 and P9.5–P9.6 are built in this phase (order: P14.1, P9.1, P9.2, P
 | P14.2 | File tree keyboard | every key in §4.18 works with real key events; tests |
 | P14.3 | Trash popup + restore | restore puts a note (with images) and a folder back, free name on clash; core tests; real app |
 | P14.4 🧠 | Version history (diff chain) | core: record/rebuild/thin/cap/rename tests incl. damaged diff; popup restore is undoable; real app |
+| P14.5 | Outline in the Files pane | section under the tree, collapsible + resizable, state remembered; Ctrl+Shift+O; right-pane tab gone (real app) |
+| P14.6 | Tab menu + note buttons (split, AI) | every item works on the right-clicked tab; buttons follow split state and the AI switch (real app) |
+| P14.7 | Slash menu on right-click and on a lone `/` | right-click opens it at the click, inserted `/` removed on close, Cut/Copy/Paste; caret after a lone `/` opens it, not after `and/or`; qa_editor passes |
 
 ### P10 — Note menu (⋯) (user request 2026-10-17)
 | ID | Task | Acceptance |

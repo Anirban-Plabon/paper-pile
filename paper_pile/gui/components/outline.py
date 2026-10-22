@@ -1,4 +1,7 @@
-"""The Outline tab of the right pane (PLAN §4.18): the headings of the note on screen.
+"""The Outline section under the file tree (PLAN §4.18): the headings of the note on screen.
+
+A header (click: fold / unfold) and, while open, a list whose height is set by dragging the
+handle above the header (``static/panes.js`` → ``pp_vsplit``).
 
 Indented by level; a click puts the caret on that heading; the section holding the caret is
 marked. Headings come from ``core.parser.headings`` (none from inside code blocks). The list is
@@ -10,22 +13,43 @@ from collections.abc import Callable
 from nicegui import ui
 
 from paper_pile.core.parser import Heading, headings, section_at
+from paper_pile.gui.icons import line_icon, set_icon
 
 INDENT_PX = 12
 
 
 class OutlinePane:
-    def __init__(self, on_jump: Callable[[int], None]) -> None:
+    def __init__(
+        self,
+        on_jump: Callable[[int], None],
+        on_toggle: Callable[[], None] = lambda: None,
+    ) -> None:
         self._on_jump = on_jump  # 1-based line
+        self._on_toggle = on_toggle  # the header was clicked
         self._text: str | None = None
         self._heads: list[Heading] = []
         self._rows: list[ui.element] = []
         self._marked: int | None = None
         self._list: ui.column
 
-    def build(self) -> None:
-        self._list = ui.column().classes("pp-outline")
+    def build(self, *, is_open: bool, height: int) -> None:
+        with ui.column().classes("pp-outline-section") as self._section:
+            ui.element("div").classes("pp-vsplit").props('data-name="outline"')
+            with ui.row().classes("pp-outline-head items-center no-wrap") as head:
+                self._chevron = line_icon("chevron-right", "s").classes("pp-ico-chev")
+                line_icon("list-tree").classes("pp-ico")
+                ui.label("Outline").classes("pp-pane-title")
+            head.on("click", lambda _e: self._on_toggle())
+            self._list = ui.column().classes("pp-outline")
+        self.set_open(is_open, height)
         self._draw()
+
+    def set_open(self, is_open: bool, height: int) -> None:
+        self._section.classes(
+            add="pp-outline-open" if is_open else "", remove="" if is_open else "pp-outline-open"
+        )
+        self._section.style(f"--pp-outline-h: {height}px")
+        set_icon(self._chevron, "chevron-down" if is_open else "chevron-right", prop="name")
 
     def show(self, text: str | None, line: int) -> None:
         """The note on screen (``None``: no note) and the caret's 1-based line."""

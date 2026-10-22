@@ -1,5 +1,5 @@
-"""The right pane: a tab strip (AI chat, Calendar, and Settings / a ``#tag`` list / the Outline
-while they are open) over the active view. AI chat and Calendar are listed only while their
+"""The right pane: a tab strip (AI chat, Calendar, and Settings / a ``#tag`` list while they
+are open) over the active view. AI chat and Calendar are listed only while their
 feature is on (``features``); with neither on and nothing else open the pane has nothing to show.
 
 Settings is a tab, not a dialog: it opens here, can be closed with its cross like an editor tab,
@@ -16,7 +16,6 @@ CHAT_ICON = "messages-square"
 CALENDAR_ICON = "calendar"
 SETTINGS_ICON = "settings"  # a line icon (gui/icons.py); Font Awesome Free has no outline gear
 TAG_ICON = "hash"
-OUTLINE_ICON = "list-tree"
 CLOSE_ICON = "x"
 
 
@@ -36,14 +35,12 @@ class RightPane:
         self._on_show_calendar = on_show_calendar
         self._settings_open = False
         self._tag = ""  # the open #tag tab ("" = none)
-        self._outline_open = False
         self._active = "chat"
         self._bar: ui.row
         self.chat_host: ui.column
         self.calendar_host: ui.column
         self.settings_host: ui.column
         self.tag_host: ui.column
-        self.outline_host: ui.column
 
     def build(self) -> None:
         """Create the strip and the hosts; the caller fills ``chat_host`` and ``calendar_host``."""
@@ -55,7 +52,6 @@ class RightPane:
             self.calendar_host = ui.column().classes("pp-right-body pp-grow")
             self.settings_host = ui.column().classes("pp-right-body pp-grow")
             self.tag_host = ui.column().classes("pp-right-body pp-grow")
-            self.outline_host = ui.column().classes("pp-right-body pp-grow")
         self._render()
 
     # ---- state ---------------------------------------------------------------------------
@@ -71,8 +67,6 @@ class RightPane:
             names.append("settings")
         if self._tag:
             names.append("tag")
-        if self._outline_open:
-            names.append("outline")
         return names
 
     def has_tabs(self) -> bool:
@@ -104,19 +98,6 @@ class RightPane:
         self._active = "tag"
         self._render()
 
-    @property
-    def active(self) -> str:
-        return self._active
-
-    def open_outline(self) -> None:
-        self._outline_open = True
-        self._active = "outline"
-        self._render()
-
-    def close_outline(self) -> None:
-        self._outline_open = False
-        self._render()
-
     def close_tag(self) -> None:
         self._tag = ""
         if self._active == "tag":
@@ -138,7 +119,6 @@ class RightPane:
         self.calendar_host.set_visibility(self._active == "calendar")
         self.settings_host.set_visibility(self._active == "settings")
         self.tag_host.set_visibility(self._active == "tag")
-        self.outline_host.set_visibility(self._active == "outline")
         self._bar.clear()
         if not tabs:
             self._on_empty()
@@ -150,13 +130,11 @@ class RightPane:
                     self._tab("calendar", "Calendar", CALENDAR_ICON, closable=False)
                 elif name == "settings":
                     self._tab("settings", "Settings", SETTINGS_ICON, closable=True)
-                elif name == "outline":
-                    self._tab("outline", "Outline", OUTLINE_ICON, closable=True)
                 else:
                     self._tab("tag", self._tag, TAG_ICON, closable=True)
 
     def _close(self, name: str) -> None:
-        {"tag": self.close_tag, "outline": self.close_outline}.get(name, self.close_settings)()
+        (self.close_tag if name == "tag" else self.close_settings)()
 
     def _tab(self, name: str, title: str, icon: str, *, closable: bool) -> None:
         chip = ui.element("div").classes("pp-rtab")

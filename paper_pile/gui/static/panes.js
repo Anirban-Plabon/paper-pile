@@ -30,3 +30,38 @@
     true,
   );
 })();
+
+// The handle above the Outline section (gui/components/outline.py): drag to set its height. The
+// tree above keeps at least TREE_MIN px. Python stores the final height (event `pp_vsplit`).
+(() => {
+  const MIN_H = 80;
+  const TREE_MIN = 120;
+  document.addEventListener("pointerdown", (e) => {
+    const handle = e.target.closest && e.target.closest(".pp-vsplit");
+    if (!handle || e.button !== 0) return;
+    const section = handle.parentElement;
+    const list = section.querySelector(".pp-outline");
+    const body = section.parentElement;
+    if (!list || !body) return;
+    e.preventDefault();
+    const startY = e.clientY;
+    const startH = list.getBoundingClientRect().height;
+    const tree = body.querySelector(".pp-tree");
+    const treeH = tree ? tree.getBoundingClientRect().height : 0;
+    const maxH = Math.max(MIN_H, startH + treeH - TREE_MIN);
+    let height = startH;
+    handle.classList.add("pp-vsplit-active");
+    const move = (ev) => {
+      height = Math.round(Math.max(MIN_H, Math.min(maxH, startH + (startY - ev.clientY))));
+      section.style.setProperty("--pp-outline-h", height + "px");
+    };
+    const stop = () => {
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", stop);
+      handle.classList.remove("pp-vsplit-active");
+      emitEvent("pp_vsplit", { name: handle.dataset.name, height });
+    };
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", stop);
+  });
+})();
