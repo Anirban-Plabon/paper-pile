@@ -1279,7 +1279,8 @@ body.body--dark { --pp-set-box-bg: rgba(255, 255, 255, .035); }
 .pp-tabs-arrow-left { border-right: 1px solid var(--pp-border); }
 .pp-tabs-arrow-right { border-left: 1px solid var(--pp-border); }
 .pp-tabs-arrow.pp-on { display: flex; }
-.pp-tabs-arrow:hover { color: var(--pp-fg); background: rgba(127, 127, 127, .14); }
+/* hover: the tint is layered over the pane colour, so the area stays opaque (no tab shows through) */
+.pp-tabs-arrow:hover { color: var(--pp-fg); background: linear-gradient(rgba(127, 127, 127, .14), rgba(127, 127, 127, .14)), var(--pp-bg-side); }
 .pp-tabs-arrow.pp-off { color: var(--pp-muted); opacity: .35; cursor: default; background: var(--pp-bg-side); }
 /* command palette: a muted heading above each group */
 .pp-picker-group { width: 100%; flex: none; padding: 10px 10px 3px; font-size: 11px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; color: var(--pp-muted); user-select: none; }
@@ -1289,3 +1290,17 @@ body.body--dark { --pp-set-box-bg: rgba(255, 255, 255, .035); }
 /* editor options: readable line length and the current line's band */
 .pp-editor .cm-editor.pp-readable:not(.pp-page-view) .cm-content { max-width: 46em; margin: 0 auto; }
 .pp-editor .cm-editor .cm-activeLine { background-color: rgba(127, 127, 127, .07); }
+/* the picker (palette / quick switcher): search box and × on one line; shortcuts as key caps */
+.pp-picker-head { width: 100%; gap: 4px; border-bottom: 1px solid var(--pp-border); }
+.pp-picker-head .pp-picker-input { flex: 1 1 auto; min-width: 0; border-bottom: none; }
+.pp-picker-close.q-btn { flex: none; }
+.pp-picker-keys { flex: none; gap: 3px; }
+.pp-kbd { min-width: 20px; height: 20px; padding: 0 6px; display: inline-flex; align-items: center; justify-content: center; font-size: 11px; line-height: 1; color: var(--pp-muted); background: var(--pp-bg-side); border: 1px solid var(--pp-border); border-bottom-width: 2px; border-radius: 5px; white-space: nowrap; }
+/* slash menu (slash.js): the tooltip is a transparent box as tall as the menu can get, so
+   CodeMirror picks above / below once, from the full size; the menu hugs the caret inside it,
+   and stays invisible until Python's first results (it appears at its real size) */
+.cm-editor .cm-tooltip.pp-slash-wrap { width: 320px; height: 420px; display: flex; flex-direction: column; justify-content: flex-start; background: transparent; border: none; box-shadow: none; pointer-events: none; z-index: 3000; }
+.cm-editor .cm-tooltip.pp-slash-wrap.pp-slash-wrap-tools { height: 464px; }
+.cm-editor .cm-tooltip.pp-slash-wrap.cm-tooltip-above { justify-content: flex-end; }
+.cm-editor .cm-tooltip.pp-slash-wrap > .pp-slash { pointer-events: auto; flex: none; max-height: 100%; }
+.cm-editor .cm-tooltip.pp-slash-wrap.pp-slash-waiting > .pp-slash { visibility: hidden; }

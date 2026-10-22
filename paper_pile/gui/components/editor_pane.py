@@ -126,7 +126,9 @@ class EditorPane:
         add_note_to_chat: Callable[[str], None] = lambda path: None,
         ask_chat: Callable[[str, str, bool], None] = lambda path, prompt, send: None,
         open_tag: Callable[[str], None] = lambda tag: None,
-        on_stats: Callable[[int | None, int, int], None] = lambda words, line, col: None,
+        on_stats: Callable[[int | None, int, int, int], None] = (
+            lambda words, line, col, shown: None
+        ),
         block_to_chat: Callable[[str, str, str, str], None] = lambda kind, lang, text, path: None,
         on_toggle_pane: Callable[[str], None] = lambda pane: None,
         on_outline: Callable[[], None] = lambda: None,
@@ -165,6 +167,7 @@ class EditorPane:
         self._open_tag = open_tag
         self._on_stats = on_stats
         self._caret = (1, 1)  # Ln, Col of the active note
+        self._shown_line = 1  # the line number the user sees (counted after the properties)
         self._block_to_chat = block_to_chat
         self._on_toggle_pane = on_toggle_pane
         self.show_outline = on_outline  # the ⋯ menu's Outline (the layout owns the tab)
@@ -616,6 +619,7 @@ class EditorPane:
             self._save_buffer(self.buffers[previous])  # leaving a tab saves it
         self.tabs.activate(tab_id)
         self._caret = (1, 1)  # until the editor reports where the caret is in this note
+        self._shown_line = 1
         self._empty.set_visibility(False)
         self._editors[0].set_visibility(True)
         self._editor.show_doc(tab_id, self.buffers[tab_id].text, self.buffers[tab_id].path)
@@ -1490,12 +1494,14 @@ class EditorPane:
     def _on_caret(self, args: dict[str, Any]) -> None:
         if args.get("docId") == self.tabs.active:
             self._caret = (int(args.get("line", 1)), int(args.get("col", 1)))
+            self._shown_line = int(args.get("shown", self._caret[0]))
             self._show_stats()
 
     def _show_stats(self) -> None:
         tab = self.tabs.active_tab
         buf = self.buffers.get(tab.id) if tab else None
-        self._on_stats(word_count(buf.text) if buf else None, *self._caret)
+        words = word_count(buf.text) if buf else None
+        self._on_stats(words, *self._caret, self._shown_line)
 
     def _show_state(self) -> None:
         tab = self.tabs.active_tab

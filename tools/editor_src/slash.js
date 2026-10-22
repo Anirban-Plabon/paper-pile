@@ -5,6 +5,9 @@
 // State lives in a StateField: the position of the typed "/", the current query (the text between
 // the "/" and the caret) and the results Python last sent. The menu is a CM6 tooltip, so
 // positioning, flipping above the caret near the bottom and scroll tracking come for free.
+// The side is chosen once, from the menu's full size: the tooltip is a transparent box as tall
+// as the menu can get (`.pp-slash-wrap`), the menu hugs the caret inside it. So a menu that opens
+// small (results arrive later) never opens below first and then jumps above.
 //
 // Ways in (PLAN §4.18): typing "/" where it triggers; Ctrl+J / Alt+/ (keeps the selection); the
 // caret put right after a "/" that stands alone (a click or an arrow key, not typing); a
@@ -122,14 +125,19 @@ function el(tag, cls, text) {
 }
 
 function createMenu(view) {
+  const wrap = el("div", "pp-slash-wrap");
   const dom = el("div", "pp-slash");
+  wrap.append(dom);
   const header = el("div", "pp-slash-header");
   const body = el("div", "pp-slash-body");
   const footer = el("div", "pp-slash-footer");
   footer.append(el("span", "", "Close menu"), el("span", "pp-slash-dot", "·"), el("kbd", "", "esc"));
   body.setAttribute("role", "listbox");
   const start = view.state.field(slashField, false);
-  if (start && start.temp) dom.append(clipboardRow(view, start));
+  if (start && start.temp) {
+    dom.append(clipboardRow(view, start));
+    wrap.classList.add("pp-slash-wrap-tools"); // the clipboard row makes the menu taller
+  }
   dom.append(header, body, footer);
   let drawn = null;
 
@@ -137,6 +145,8 @@ function createMenu(view) {
     const v = state.field(slashField, false);
     if (!v || v === drawn) return;
     const rebuild = !drawn || drawn.groups !== v.groups;
+    // shown once Python's first answer is in: it appears at its real size, never grows into place
+    wrap.classList.toggle("pp-slash-waiting", !v.hasResults);
     header.textContent = "";
     header.append(v.query ? el("span", "pp-slash-query", v.query) : el("span", "pp-slash-placeholder", "Type to search"));
     if (rebuild) {
@@ -185,7 +195,7 @@ function createMenu(view) {
     drawn = v;
   };
   draw(view.state);
-  return { dom, update: (u) => draw(u.state) };
+  return { dom: wrap, update: (u) => draw(u.state) };
 }
 
 // ---- running and keys -------------------------------------------------------------------------

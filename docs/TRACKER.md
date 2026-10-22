@@ -14,6 +14,7 @@ Legend: 🧠 = needs Opus (see PLAN §6 model guidance) · ⬜ todo · 🔄 in p
 ## Open issues
 <!-- - [ ] YYYY-MM-DD · task ID · what's blocking · what's needed -->
 - 2026-10-22 · Maximized window covers only the top half of the laptop screen (user: clicked the □ button / double-clicked the top bar). Not reproduced: a fresh window on the same laptop panel (1920×1200 at 150 %, work area 1128) maximizes to 1920×1128 every way (button ×2, restore, double-click). Waiting for the user's `paper-pile --debug` log of the bad case (state, size, screen, zoom, taskbar strips per change)
+  - 2026-10-23 · Likely cause found (same on the MSI monitor: maximized = bottom half): Windows places the MSI at y = −526 (above the laptop). Qt/WSLg normalise the screens (MSI 0, laptop 526), but the maximized rectangle comes from Windows' work area in Windows coordinates, clipped at y = 0 and then shifted: only the part below the other monitor's top edge is used. A WSLg bug with monitors at negative y; workaround: align the monitors' top edges in Windows display settings. In-app workaround not tried yet
 - 2026-10-22 · P15.2 (found while testing) · Real pages: a jump (`gotoLine`) leaves the target line ~17 px above the top of the editor instead of 24 px below it; same with the pre-P15 instant scroll, so not caused by the glide. Likely the sheet's top margin vs `scrollIntoView` yMargin; not investigated yet
 - (none)  <!-- 2026-10-14 · P2.5 external edits: resolved (content-hash sync + conflict banner), see Decision log -->
 
@@ -202,6 +203,17 @@ Legend: 🧠 = needs Opus (see PLAN §6 model guidance) · ⬜ todo · 🔄 in p
 | P17.5 | Chat disclaimer | ✅ | `.pp-chat-disclaimer` |
 | P17.6 | Palette groups + commands | ✅ | `PaletteCommand.group`, `GROUPS`, `PickItem.group` headings; 15 new commands (`open_today`, `new_chat`, `rebuild_index_now`, `close_other_tabs`) |
 
+### P18 — Popups, window, line numbers (user request 2026-10-23; re-applied in part after the revert)
+| ID | Task | Status | Notes |
+|---|---|---|---|
+| P18.1 | Note buttons beside the properties block | ⏭️ | reverted, not asked back (box stays in the tab strip) |
+| P18.2 | Backlinks per split side | ⏭️ | reverted, not asked back |
+| P18.3 | No maximize on tab-row double-click | ✅ | window.js (from 82cc9bf); real double-clicks |
+| P18.4 | Opaque tab-arrow hover | ✅ | layered gradient over `--pp-bg-side` |
+| P18.5 | Picker: no animation, ×, key caps | ✅ | `NO_ANIMATION`, `close_button`, `.pp-kbd` |
+| P18.6 | Slash menu side decided once | ✅ | `.pp-slash-wrap` + `pp-slash-waiting`; per-frame check |
+| P18.7 | Line numbers after the properties | ✅ | `formatNumber` + caret `shown` |
+
 ## Decision log
 <!-- YYYY-MM-DD · decision · reason · (who: user / claude) -->
 | Date | Decision | Reason | By |
@@ -366,6 +378,7 @@ Legend: 🧠 = needs Opus (see PLAN §6 model guidance) · ⬜ todo · 🔄 in p
 | 2026-10-22 | P16 icon / UX fixes (§4.20) from the survey, built with P15 (user: "implement all of them") | User request | user |
 | 2026-10-22 | Settings: boxed groups (Obsidian style), Paper size under Page view (Print page removed), new settings (reopen tabs, confirm delete, readable width, current line, word count, rebuild index), AI embedding model moved to AI → Advanced (unused); row stacking is CSS-only (box container query) — the JS `pp-set-stacked` measuring is removed; tab arrows get their own areas and step one tab; palette grouped | User request (second polish round); CSS-only stacking cannot flip at any width, which the user asked not to see again | user / claude |
 | 2026-10-23 | P18 (note buttons beside the properties, per-side backlinks, no tab-row maximize, arrow hover, picker ×/caps/no animation, slash menu side, line numbers after properties) reverted as a whole (commit 82cc9bf reverted) | User request: "restore the last edit … the whole" | user |
+| 2026-10-23 | P18 re-applied in part: tab-row double-click, opaque arrow hover, picker (no animation, ×, key caps), slash menu side, line numbers after properties; the note buttons stay in the tab strip, split backlinks still open together | User: "need the corrected versions of p18, they were useful" (listing those five) | user |
 
 ## Issues log
 <!-- YYYY-MM-DD · task · symptom → root cause → fix · (gotcha added? y/n) -->
@@ -573,3 +586,4 @@ Legend: 🧠 = needs Opus (see PLAN §6 model guidance) · ⬜ todo · 🔄 in p
 - 2026-10-22 · P15.1–P15.6 motion + Animation speed; P16.1–P16.2 icon / UX fixes · 3 new tests; 26 real-app checks (+ real-pages run); qa_editor 358/358
 - 2026-10-22 · P17.1–P17.6 tab arrows, tool boxes, settings boxes + groups + new settings, chat disclaimer, palette groups · 2 new core tests; 20 real-app checks (settings 1400→600 px, no overflow / no flip)
 - 2026-10-23 · P18 reverted (user request); state = P17
+- 2026-10-23 · P18.3–P18.7 re-applied (user request); maximize-half cause found (monitor at negative y in Windows) · 8 real-app checks

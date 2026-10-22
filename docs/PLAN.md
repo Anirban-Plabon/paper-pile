@@ -487,7 +487,7 @@ Output: the page boxes (printed as is) and the list of `{line, page}` starts (se
 - *Outline on the folded rail:* while the file tree is folded away, an Outline button (`list-tree`) sits right above the Open vault button; it unfolds the tree with the Outline section open.
 - *Many tabs:* tabs shrink (to 96 px, names cut with …) before they overflow; then the row scrolls with the mouse wheel and with ‹ › arrows on a cut-off edge (which also fades), and a list button (`chevrons-down` + the tab count) before the note buttons lists every open tab (the one(s) on screen marked; a click shows it). User's choice: shrink + scroll + list, with arrows.
 - *Backlinks while split:* the footer has one Backlinks toggle per side, the right one at the split divider; the lists open together, side by side, each for its own side's note; a click opens the link on that side.
-- *Line numbers:* Settings → Editor → *Show line numbers* (`editor.line_numbers`, default off, essential). In page view the page shrinks beside them.
+- *Line numbers:* Settings → Editor → *Show line numbers* (`editor.line_numbers`, default off, essential). In page view the page shrinks beside them. Counting starts after the properties block (its lines get no number; the first line under it is 1), in the gutter and in the status bar's Ln (*Properties* while the caret is inside them); Python still gets the real line numbers.
 - *Dragging page breaks:* hold the left mouse button on a *Page N* line of page view (outside page view: on a page break line) and drop it on another line: the page now starts there. In page view the break lines themselves are not drawn (the page line or sheet edge below shows the break; the caret steps over them). A page started by a break moves that break (kept as written, with its empty lines; the one it leaves is dropped); a page the layout started gets a new break. A press without moving puts the caret on the page's first line. The editor draws the drag and sends the drop (`page_break_move`); `core/page_move.py` makes the text, refusing places where a break would not count (code, lists…). One Ctrl+Z undoes it.
   - *How far (2026-10-22, user request):* a page starts at least one line below the start of the page before it ("earliest"), and no lower than where that page would end by itself, full ("furthest"): for a break of the user's that place comes from a trial layout of the note without that break (asked when the drag starts); a page the layout started only moves up. Outside page view a break stays between its neighbouring breaks. The note scrolls while the pointer is near the editor's top or bottom edge.
   - *The rest moves on:* after the drop the note is laid out again; when page N now holds more than fits, the rest flows onto a new page (N+1…) and a message says how many pages the note has now (or that it fits on fewer).
@@ -521,6 +521,14 @@ Short, quiet animations that show *where something went*. Render-only (CSS + the
 **App chrome:** context menu and tooltips fade/scale in; chevrons (outline, backlinks, model picker, heading fold) rotate instead of swapping icons (the file tree redraws its rows, so its chevrons still swap); hover backgrounds and the tab close × fade; the task checkbox tick scales in; banners, chat jump buttons and new chat messages fade in; the chat shows pulsing dots until the first token.
 
 **Not animated:** typing, CodeMirror decorations and folding, pane widths (Ctrl+B / Ctrl+L), sheet heights, drag in progress.
+
+### 4.22 Popups, window, line numbers — user request 2026-10-23 (P18, re-applied in part)
+P18 was reverted as a whole, then these parts were asked back; the note buttons stay in the tab strip and the split backlinks still open together.
+- **Double-click on a tab row** (tabs or the empty space beside them) never maximizes the window; other top rows still do.
+- **Tab arrows:** their hover tint is laid over the pane colour, so the area stays opaque.
+- **Picker (palette, quick switcher):** opens and closes without animation; a × in its top right; shortcuts as key caps (one rounded box per key).
+- **Slash menu:** the side (below / above the caret) is decided once from the menu's full size (`.pp-slash-wrap`, a transparent box as tall as the menu can get); the menu stays invisible until Python's first results, so it appears at its real size and never jumps.
+- **Line numbers** count after the properties block (see P14 *Line numbers*).
 
 ### 4.21 Tabs, tool boxes, settings, palette — user request 2026-10-22 (second round)
 - **Tab overflow:** while a tab row overflows, a ‹ and a › each get their own 26 px area at the row's edges, split from the tabs by a vertical line (the row is padded by them, so no tab hides underneath); a click brings the next hidden tab on that side fully into view — one tab per click; an arrow with nothing more on its side is dimmed.
@@ -702,6 +710,15 @@ P9.1–P9.3 and P9.5–P9.6 are built in this phase (order: P14.1, P9.1, P9.2, P
 | P17.4 | New settings (restore tabs, confirm delete, readable width, current line, word count, rebuild index) | each changes the app live / on next start; core tests |
 | P17.5 | Chat disclaimer | under the chat box (real app) |
 | P17.6 | Palette groups + missing commands | headings; new commands run (real app: line numbers) |
+
+### P18 — Popups, window, line numbers (user request 2026-10-23, §4.22)
+| ID | Task | Acceptance |
+|---|---|---|
+| P18.3 | No maximize on tab-row double-click | no `maximize` from tabs / the empty tab row (real double-clicks) |
+| P18.4 | Opaque tab-arrow hover | gradient over the pane colour |
+| P18.5 | Picker: no animation, ×, key caps | fully shown at once; × closes; caps drawn |
+| P18.6 | Slash menu side decided once | near the bottom: opens above at once, position never changes (per-frame check) |
+| P18.7 | Line numbers after the properties | gutter starts at 1 under the block; status bar Ln agrees |
 
 ### P10 — Note menu (⋯) (user request 2026-10-17)
 | ID | Task | Acceptance |
