@@ -126,9 +126,7 @@ class EditorPane:
         add_note_to_chat: Callable[[str], None] = lambda path: None,
         ask_chat: Callable[[str, str, bool], None] = lambda path, prompt, send: None,
         open_tag: Callable[[str], None] = lambda tag: None,
-        on_stats: Callable[[int | None, int, int, int], None] = (
-            lambda words, line, col, shown: None
-        ),
+        on_stats: Callable[[int | None, int, int], None] = lambda words, line, col: None,
         block_to_chat: Callable[[str, str, str, str], None] = lambda kind, lang, text, path: None,
         on_toggle_pane: Callable[[str], None] = lambda pane: None,
         on_outline: Callable[[], None] = lambda: None,
@@ -167,7 +165,6 @@ class EditorPane:
         self._open_tag = open_tag
         self._on_stats = on_stats
         self._caret = (1, 1)  # Ln, Col of the active note
-        self._shown_line = 1  # the line number the user sees (counted after the properties)
         self._block_to_chat = block_to_chat
         self._on_toggle_pane = on_toggle_pane
         self.show_outline = on_outline  # the ⋯ menu's Outline (the layout owns the tab)
@@ -230,19 +227,14 @@ class EditorPane:
                 on_activate_side=self._activate_side,
             )
             self._tabbar.build()
+            with self._tabbar.menu_host:
+                self.note_actions = note_actions(self)  # also the command palette's
+                self._note_buttons()
+                self.note_menu = NoteMenu(self.note_actions)
+                self.note_menu.build()
             self._banner = ui.row().classes("pp-banner items-center no-wrap")
             self._banner.set_visibility(False)
             with ui.element("div").classes("pp-editor-area"):
-                # split · AI · ⋯ in one box at the note's top right, beside its properties
-                # (placed by static/panes.js from where the editor says; scrolls with the note)
-                self._tools_box = ui.element("div").classes(
-                    "pp-note-tools pp-seg pp-tools pp-tools-row"
-                )
-                with self._tools_box:
-                    self.note_actions = note_actions(self)  # also the command palette's
-                    self._note_buttons()
-                    self.note_menu = NoteMenu(self.note_actions)
-                    self.note_menu.build()
                 self._empty = ui.column().classes("pp-empty")
                 with ui.element("div").classes("pp-split") as self._split_box:
                     for slot in (0, 1):
@@ -624,7 +616,6 @@ class EditorPane:
             self._save_buffer(self.buffers[previous])  # leaving a tab saves it
         self.tabs.activate(tab_id)
         self._caret = (1, 1)  # until the editor reports where the caret is in this note
-        self._shown_line = 1
         self._empty.set_visibility(False)
         self._editors[0].set_visibility(True)
         self._editor.show_doc(tab_id, self.buffers[tab_id].text, self.buffers[tab_id].path)
@@ -1499,14 +1490,12 @@ class EditorPane:
     def _on_caret(self, args: dict[str, Any]) -> None:
         if args.get("docId") == self.tabs.active:
             self._caret = (int(args.get("line", 1)), int(args.get("col", 1)))
-            self._shown_line = int(args.get("shown", self._caret[0]))
             self._show_stats()
 
     def _show_stats(self) -> None:
         tab = self.tabs.active_tab
         buf = self.buffers.get(tab.id) if tab else None
-        words = word_count(buf.text) if buf else None
-        self._on_stats(words, *self._caret, self._shown_line)
+        self._on_stats(word_count(buf.text) if buf else None, *self._caret)
 
     def _show_state(self) -> None:
         tab = self.tabs.active_tab
@@ -1906,7 +1895,6 @@ class EditorPane:
 
     def _update_note_buttons(self) -> None:
         has_note = self.tabs.active is not None
-        self._tools_box.set_visibility(has_note)
         self._split_button.set_visibility(has_note)
         set_icon(self._split_button, "x" if self._split_open else "columns-2")
         tip(self._split_button, "Close split" if self._split_open else "Split right")

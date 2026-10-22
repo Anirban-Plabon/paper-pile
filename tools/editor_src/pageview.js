@@ -116,7 +116,7 @@ function geometry(state) {
 }
 
 // The first line on paper (the hidden properties are not).
-export const firstShown = (state) => {
+const firstShown = (state) => {
   const end = frontMatterEnd(state);
   return end < 0 ? 0 : end + 1;
 };

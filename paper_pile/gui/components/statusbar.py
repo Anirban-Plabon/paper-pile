@@ -20,8 +20,7 @@ class StatusBar:
         if words is None:
             self.stats_label.set_text("")
             return
-        where = f"Ln {line}, Col {col}" if line > 0 else "Properties"  # lines count after them
-        self.stats_label.set_text(f"{words} word{'' if words == 1 else 's'} · {where}")
+        self.stats_label.set_text(f"{words} word{'' if words == 1 else 's'} · Ln {line}, Col {col}")
 
     def set_mode(self, mode: str, plain: bool = False) -> None:
         """Show Live/Source, or "Plain text" (not toggleable) while a .txt note is active."""
