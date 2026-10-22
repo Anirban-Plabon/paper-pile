@@ -20,6 +20,7 @@ from paper_pile.core.commands import push_recent
 from paper_pile.core.config import Config
 from paper_pile.core.daily import DEFAULT_FORMAT, daily_relpath, new_daily_text, untouched_daily
 from paper_pile.core.events import EventBus
+from paper_pile.core.history import History
 from paper_pile.core.index import Index
 from paper_pile.core.picker import switcher_notes
 from paper_pile.core.session import MAX_RECENT_NOTES, SessionState, load_session, save_session
@@ -34,6 +35,7 @@ from paper_pile.gui.components.calendar import CalendarPane
 from paper_pile.gui.components.chat import ChatPane
 from paper_pile.gui.components.editor_pane import EditorPane
 from paper_pile.gui.components.gallery import Gallery
+from paper_pile.gui.components.history_dialog import HistoryDialog
 from paper_pile.gui.components.memories import MemoriesPanel
 from paper_pile.gui.components.outline import OutlinePane
 from paper_pile.gui.components.picker_popup import PickerPopup, PickItem
@@ -95,6 +97,7 @@ class MainLayout:
         ensure_folders(vault, self.config)  # .memory, .image, .daily-notes, .template
         move_old_chats(vault, self.config)
         self.index = Index(Vault(vault))
+        self.history = History(vault)  # earlier versions of notes (.paper-pile/history.db)
         self.chat: ChatPane | None = None
         self.profile: ProfileBlock | None = None
         self.state: SessionState = load_session(vault)
@@ -273,6 +276,19 @@ class MainLayout:
         if self.editor_pane is not None:
             await self.editor_pane.open_found(path, term)
 
+    async def open_history(self) -> None:
+        """Version history of the note on screen."""
+        pane = self.editor_pane
+        path = pane.active_note() if pane else None
+        if pane is None or path is None:
+            return
+        current = await pane.live_text(path)
+        if current is None:
+            return
+        await HistoryDialog(
+            self.history, self._popups, path, current, lambda t: pane.restore_version(path, t)
+        ).open()
+
     async def open_trash(self) -> None:
         """The Trash popup: what was deleted, each with Restore."""
         await TrashDialog(Vault(self.vault), self._popups, self._restored).open()
@@ -294,6 +310,8 @@ class MainLayout:
             return new + p[len(old) :] if p == old or p.startswith(old + "/") else p
 
         self.state.recent_notes = [moved(p) for p in self.state.recent_notes]
+        if self.editor_pane is not None:
+            self.editor_pane.history_renamed(old, new)  # versions follow the note
 
     async def new_folder(self) -> None:
         if self.tree is not None:
@@ -651,6 +669,7 @@ class MainLayout:
             native=self.can_reveal,  # native window = this machine
             on_plain_changed=self._on_plain_changed,
             index=self.index,
+            history=self.history,
             config=self.config,
             get_recents=lambda: self.state.recent_commands,
             on_settings_changed=self._settings_changed_elsewhere,
@@ -665,6 +684,7 @@ class MainLayout:
             block_to_chat=self._chat_block,
             on_toggle_pane=self.toggle,
             on_outline=self.toggle_outline,
+            on_history=self.open_history,
         )
         self.editor_pane.build()
         with self.editor_pane.empty_host:

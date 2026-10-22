@@ -33,7 +33,13 @@ from paper_pile.core.ai.factory import chat_model, generation_options
 from paper_pile.core.ai.instructions import system_instruction
 from paper_pile.core.ai.provider import ChatMessage, Provider, ProviderError
 from paper_pile.core.buffer import NoteBuffer, Outcome, content_hash, find_recoverable
-from paper_pile.core.command_actions import TextChange, TextEdit, remove_range, resolve
+from paper_pile.core.command_actions import (
+    TextChange,
+    TextEdit,
+    remove_range,
+    resolve,
+    whole_text_edit,
+)
 from paper_pile.core.commands import (
     REGISTRY,
     CommandContext,
@@ -46,6 +52,7 @@ from paper_pile.core.commands import (
 )
 from paper_pile.core.config import Config, Scope
 from paper_pile.core.events import EventBus
+from paper_pile.core.history import History, Sessions
 from paper_pile.core.index import Index
 from paper_pile.core.links import (
     external_url,
@@ -107,6 +114,7 @@ class EditorPane:
         native: bool = False,
         on_plain_changed: Callable[[bool], None] = lambda plain: None,
         index: Index | None = None,
+        history: History | None = None,
         config: Config | None = None,
         get_recents: Callable[[], list[str]] = lambda: [],
         get_provider: Callable[[], Provider | None] = lambda: None,
@@ -120,6 +128,7 @@ class EditorPane:
         block_to_chat: Callable[[str, str, str, str], None] = lambda kind, lang, text, path: None,
         on_toggle_pane: Callable[[str], None] = lambda pane: None,
         on_outline: Callable[[], None] = lambda: None,
+        on_history: Callable[[], Any] = lambda: None,
         on_settings_changed: Callable[[set[str]], None] = lambda keys: None,
     ) -> None:
         self.vault = vault
@@ -136,6 +145,8 @@ class EditorPane:
         self._plain_shown: bool | None = None
         self.theme_name = "light"
         self.index = index
+        self.history = history  # earlier versions of notes (core/history.py)
+        self._sessions = Sessions()  # when a save starts an editing session
         self._config = config
         self._get_recents = get_recents
         self._get_provider = get_provider
@@ -155,6 +166,7 @@ class EditorPane:
         self._block_to_chat = block_to_chat
         self._on_toggle_pane = on_toggle_pane
         self.show_outline = on_outline  # the ⋯ menu's Outline (the layout owns the tab)
+        self.show_history = on_history  # the ⋯ menu's Version history (a popup)
         self._on_settings_changed = on_settings_changed
         self._reindex_handle: asyncio.TimerHandle | None = None
         self._backlinks: BacklinksPane
@@ -1122,6 +1134,7 @@ class EditorPane:
         # the "/query" was removed already: the note is now `text` without text[anchor:end]
         selected = text[selection[0] : selection[1]] if selection else ""
         body_text = text[:anchor] + text[end:]
+        self.keep_version(path, body_text, "before AI")
         source = spec.source if spec.source != "auto" else ("selection" if selected else "note")
         part = {"selection": selected, "before": body_text[max(0, anchor - 4000) : anchor]}.get(
             source, ""
@@ -1380,6 +1393,7 @@ class EditorPane:
     def _save_buffer(self, buf: NoteBuffer, *, refresh: bool = True) -> bool:
         if buf.conflict is not None:  # waiting for the user's decision: never write over theirs
             return False
+        self._keep_session_start(buf)
         ok = buf.save()
         if ok and self.index is not None:
             self.index.update_note(buf.path)
@@ -1493,9 +1507,11 @@ class EditorPane:
                 return
             if text is not None:
                 buf.set_text(text)
+        before = buf.text
         outcome = buf.sync_with_disk()
         name = buf.path.rsplit("/", 1)[-1]
         if outcome is Outcome.RELOADED:
+            self.keep_version(buf.path, before, "before outside change")
             self._show_text(tab_id, keep_caret=True)
         elif outcome is Outcome.GONE:
             self._toast(f"“{name}” was deleted outside the app; its tab was closed.")
@@ -1846,17 +1862,59 @@ class EditorPane:
         if tidied == text:
             self._toast("Already tidy")
             return
-        start = 0
-        while start < min(len(text), len(tidied)) and text[start] == tidied[start]:
-            start += 1
-        end_old, end_new = len(text), len(tidied)
-        while end_old > start and end_new > start and text[end_old - 1] == tidied[end_new - 1]:
-            end_old, end_new = end_old - 1, end_new - 1
-        edit = TextEdit((TextChange(start, end_old, tidied[start:end_new]),), start)
-        if await self._apply_edit(tab_id, text, edit, move_caret=False):
+        self.keep_version(tab.path, text, "before tidy")
+        if await self._apply_edit(tab_id, text, whole_text_edit(text, tidied), move_caret=False):
             self._toast("Note tidied (Ctrl+Z undoes it)")
         else:
             self._toast("The note changed meanwhile: try again", error=True)
+
+    # ---- version history ---------------------------------------------------------------------
+
+    def keep_version(self, path: str, text: str, reason: str) -> None:
+        """Keep ``text`` as a version of ``path`` (before a bulk change, PLAN §4.18)."""
+        if self.history is not None and not is_plain_text(path):
+            self.history.record(path, text, reason)
+
+    def _keep_session_start(self, buf: NoteBuffer) -> None:
+        """The first save of an editing session keeps the text it is about to replace."""
+        if self.history is None or not buf.dirty or buf.saved_hash is None:
+            return
+        if not self._sessions.starts(buf.path):
+            return
+        try:
+            before = self.vault.read_text(buf.path)
+        except VaultError:
+            return
+        self.keep_version(buf.path, before, "before editing")
+
+    async def live_text(self, path: str) -> str | None:
+        """The freshest text of open note ``path`` (keystrokes the browser holds included)."""
+        tab = self.tabs.find(path)
+        if tab is None or tab.id not in self.buffers:
+            return None
+        text = await self._live_text(tab.id)
+        return text if text is not None else self.buffers[tab.id].text
+
+    def history_renamed(self, old: str, new: str) -> None:
+        if self.history is not None:
+            self.history.renamed(old, new)
+        self._sessions.renamed(old, new)
+
+    async def restore_version(self, path: str, text: str) -> bool:
+        """Give the open note ``path`` an earlier text as one undoable edit (the current text
+        is kept as a version first)."""
+        tab = self.tabs.find(path)
+        if tab is None or tab.id not in self.buffers:
+            return False
+        current = await self._live_text(tab.id)
+        if current is None:
+            current = self.buffers[tab.id].text
+        if current == text:
+            return True
+        self.keep_version(path, current, "before restore")
+        return await self._apply_edit(
+            tab.id, current, whole_text_edit(current, text), move_caret=False
+        )
 
     def note_text(self, path: str) -> str:
         """A note's current text: the open tab's buffer, else the file."""

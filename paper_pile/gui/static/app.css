@@ -1111,3 +1111,27 @@ input::selection, textarea::selection { background: rgba(var(--pp-accent-rgb), .
 .pp-trash-name { font-size: 13.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
 .pp-trash-sub { font-size: 11.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
 .pp-trash-none { padding: 8px 4px; }
+
+/* Version history popup (gui/components/history_dialog.py, PLAN §4.18) */
+.q-card.pp-history { width: min(940px, 94vw); max-width: none; height: min(640px, 86vh); gap: 10px; flex-wrap: nowrap; }
+.pp-history-body { flex: 1 1 0; min-height: 0; width: 100%; gap: 12px; }
+.pp-history-list { width: 230px; flex-shrink: 0; height: 100%; overflow-y: auto; gap: 2px; flex-wrap: nowrap; padding-right: 4px; }
+.pp-history-row { width: 100%; padding: 6px 10px; gap: 1px; border-radius: var(--pp-r-ctrl); cursor: pointer; flex-shrink: 0; }
+.pp-history-row:hover { background: rgba(127, 127, 127, .10); }
+.pp-history-row.pp-history-on { background: rgba(var(--pp-accent-rgb), .14); }
+.pp-history-when { font-size: 13px; }
+.pp-history-why { font-size: 11.5px; }
+.pp-history-detail { flex: 1 1 0; min-width: 0; height: 100%; gap: 6px; flex-wrap: nowrap; }
+.pp-history-bar { gap: 4px; }
+.pp-history-tab.q-btn { color: var(--pp-muted) !important; font-weight: 400; }
+.pp-history-tab.pp-history-tab-on.q-btn { color: var(--pp-fg) !important; background: rgba(127, 127, 127, .14); }
+.pp-history-restore.q-btn { background: var(--pp-accent) !important; color: #fff !important; padding: 0 12px; }
+.pp-history-view { flex: 1 1 0; min-height: 0; width: 100%; overflow: auto; border: 1px solid var(--pp-border); border-radius: var(--pp-r-ctrl); padding: 8px 0; }
+.pp-history-text { white-space: pre-wrap; font-family: var(--pp-code-font, monospace); font-size: 12.5px; padding: 0 12px; }
+.pp-history-hint { padding: 0 12px 6px; font-size: 12px; }
+.pp-diff-line { white-space: pre-wrap; font-family: var(--pp-code-font, monospace); font-size: 12.5px; padding: 0 12px; min-height: 1.4em; width: 100%; }
+.pp-diff-add { background: rgba(34, 197, 94, .14); }
+.pp-diff-add::before { content: "+ "; color: #16a34a; }
+.pp-diff-del { background: rgba(239, 68, 68, .12); text-decoration: line-through; text-decoration-color: rgba(239, 68, 68, .5); }
+.pp-diff-del::before { content: "− "; color: #dc2626; }
+.pp-diff-gap { color: var(--pp-muted); }

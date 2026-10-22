@@ -163,7 +163,7 @@ Legend: 🧠 = needs Opus (see PLAN §6 model guidance) · ⬜ todo · 🔄 in p
 | P14.1 | Feature switches + Minimal settings | ✅ | `features.ai` / `features.calendar` / `settings.minimal` + `Setting.essential`, `core.settings.is_shown` / `shown_sections` / `feature_on`; AI slash commands `when=_ai_on`; `RightPane.tabs()` / `on_empty`; `MainLayout._features_changed`; 2 tests; 20 real-app checks (fake Ollama counts requests: none while off). Also fixed: a folded right pane's resize strip stuck out past the window and made the editor column scroll sideways |
 | P14.2 | File tree keyboard | ✅ | `FileTree._on_key` / `_move_cursor` / `_fold_key`, `tree.js` keys only while the tree itself has focus; 2 tests; 12 real-app checks with real key events |
 | P14.3 | Trash popup + restore | ✅ | `core/trash.py` (manifest, list, restore, free name, image links), `TrashDialog`; 6 tests; 9 real-app checks (Delete key → trash, blank-space menu Trash…, restore folder whole, clash → `(restored)`, tree reveals it, palette) |
-| P14.4 🧠 | Version history (diff chain) | 🔄 | |
+| P14.4 🧠 | Version history (diff chain) | ✅ | `core/history.py` (`History`: reverse line diffs + keyframe every 25, SHA-256 per version, `kept_versions` thinning, 50 MB cap, `renamed`; `Sessions`), `command_actions.whole_text_edit`, `EditorPane.keep_version` at session start / AI / tidy / merge / outside reload / restore, `HistoryDialog`; 17 tests; 11 real-app checks (edit + tidy → versions, Changes/Text views, Restore → editor, saved, Ctrl+Z undoes it, rename → history follows; whole history of the run < 2 KB) |
 
 ## Decision log
 <!-- YYYY-MM-DD · decision · reason · (who: user / claude) -->
@@ -508,3 +508,4 @@ Legend: 🧠 = needs Opus (see PLAN §6 model guidance) · ⬜ todo · 🔄 in p
 - 2026-10-22 · P14.1 feature switches (AI, Calendar) + Minimal settings (on by default) · 1057 tests; 20 real-app checks
 - 2026-10-22 · P9.1 quick switcher (Ctrl+O) + command palette (Ctrl+P) · 1058 tests; 18 real-app checks
 - 2026-10-22 · P9.2 vault search, P9.3 outline, P14.2 tree keys, P14.3 trash · tests + 10 + 10 + 12 + 9 real-app checks
+- 2026-10-22 · P14.4 version history (diffs, thinning, cap; popup with restore) · 1090 tests; 11 real-app checks

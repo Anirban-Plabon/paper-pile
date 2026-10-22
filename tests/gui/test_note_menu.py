@@ -22,6 +22,7 @@ LABELS = {
     "toggle_split": "Split right",
     "toggle_page_view": "Page view",
     "outline": "Outline",
+    "history": "Version history",
     "move": "Move to…",
     "merge": "Merge into…",
     "add_to_chat": "Add to chat",

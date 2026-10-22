@@ -50,6 +50,7 @@ def note_actions(pane: "EditorPane") -> NoteActions:
         toggle_split=pane.toggle_split,
         toggle_page_view=pane.toggle_page_view,
         outline=pane.show_outline,
+        history=pane.show_history,
         move=with_note(lambda p: _move(pane, p)),
         merge=with_note(lambda p: _merge(pane, p)),
         add_to_chat=with_note(pane.add_to_chat),
@@ -204,6 +205,7 @@ async def _merge(pane: "EditorPane", source: str) -> None:
         plan = plan_merge(
             source, target, pane.note_text(source), pane.note_text(target), paths, others
         )
+        pane.keep_version(target, pane.note_text(target), "before merge")
         assets.move_assets(pane.vault, source, target)
         pane.replace_note(target, plan.text)
         for path, text in plan.updated.items():

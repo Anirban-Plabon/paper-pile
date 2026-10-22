@@ -484,7 +484,7 @@ Output: the page boxes (printed as is) and the list of `{line, page}` starts (se
 - *Storage (diffs, not copies):* per note, the newest version is stored in full; every older one as a reverse line diff (`difflib`, JSON ops `keep n` / `replace n with lines`, zlib-compressed) against the next newer one, and a full copy every 25 versions. Each version keeps the SHA-256 of its text; a rebuilt version that does not match is shown as damaged, never as text. Identical text is not stored twice.
 - *Thinning:* everything from the last 24 h; then one per day for 7 days, one per week for 30 days, one per month after that (the newest in each slot). Dropping versions re-encodes the note's chain. *Cap:* when the history passes 50 MB, the oldest versions go first.
 - *Follows the note:* rename/move re-keys it; a deleted note keeps its history (restoring it from the trash brings it back).
-- *Popup:* versions newest first (when, why, lines added/removed against the current text); the selected one shown as a diff against the current note or as plain text; *Restore* replaces the note's text (an undoable editor change, after recording the current text), *Copy* copies it.
+- *Popup* (`gui/components/history_dialog.py`): versions newest first (when, why, lines a restore would add/remove); the selected one shown as a diff against the current note or as plain text; *Restore* replaces the note's text (an undoable editor change, after recording the current text), *Copy* copies it.
 
 ## 5. Data formats
 

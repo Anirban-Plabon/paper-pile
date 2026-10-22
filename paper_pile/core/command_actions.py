@@ -37,6 +37,18 @@ _INDENT = re.compile(r"[ \t]*")
 _MARKER = re.compile(r"(?:(?:#{1,6}|[-*+]|\d{1,9}[.)]|>)[ \t]+(?:\[[ xX]\][ \t]+)?|>)+")
 
 
+def whole_text_edit(old: str, new: str) -> TextEdit:
+    """``old`` becomes ``new`` as one change covering only the part that differs (so the editor
+    keeps everything around it, and one Ctrl+Z undoes it); the caret goes to its start."""
+    start = 0
+    while start < min(len(old), len(new)) and old[start] == new[start]:
+        start += 1
+    end_old, end_new = len(old), len(new)
+    while end_old > start and end_new > start and old[end_old - 1] == new[end_new - 1]:
+        end_old, end_new = end_old - 1, end_new - 1
+    return TextEdit((TextChange(start, end_old, new[start:end_new]),), start)
+
+
 def remove_range(start: int, end: int) -> TextEdit:
     """Delete the typed ``/query`` and leave the caret where it was."""
     return TextEdit((TextChange(start, end, ""),), start)

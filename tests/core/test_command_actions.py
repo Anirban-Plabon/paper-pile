@@ -225,3 +225,15 @@ def test_page_break_is_written_as_dash_dash_dash_slash() -> None:
     assert edit
     new, caret = apply(text, edit)
     assert new == "a\n\n---/\n\n\nb" and new[caret:] == "\nb"
+
+
+@pytest.mark.parametrize(
+    "old,new", [("abc", "abc"), ("abc", "aXc"), ("", "new"), ("old", ""), ("a\nb\nc", "a\nc")]
+)
+def test_whole_text_edit_changes_only_the_part_that_differs(old: str, new: str) -> None:
+    from paper_pile.core.command_actions import whole_text_edit
+
+    edit = whole_text_edit(old, new)
+    (change,) = edit.changes
+    assert old[: change.start] + change.insert + old[change.end :] == new
+    assert len(change.insert) == len(new) - (len(old) - (change.end - change.start))
