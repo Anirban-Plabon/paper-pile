@@ -7,3 +7,6 @@ __pycache__/
 dist/
 .claude/
 tools/editor_src/node_modules/
+# vault caches (never open the repo as a vault) and the local test vault
+.paper-pile/
+playground/
