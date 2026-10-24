@@ -365,8 +365,23 @@ body.pp-page-dragging, body.pp-page-dragging * { cursor: row-resize !important; 
 .pp-tab-pin { font-size: var(--pp-icon-s); color: var(--pp-muted); flex: none; }
 .pp-tab-active .pp-tab-pin { color: var(--pp-accent); }
 .pp-tabstrip .pp-tab.pp-tab-pinned { min-width: 0; padding-right: 12px; }
-/* tabs: the two top corners rounded */
-.pp-tab, .pp-rtab { border-radius: var(--pp-r-ctrl) var(--pp-r-ctrl) 0 0; }
+/* Tab rows like a browser's: inactive tabs sit on the row with a short divider between them; the
+   active tab has rounded top corners and the editor's colour, and joins the note below it (the
+   row's bottom line is drawn under the tabs, so the active one covers it). */
+.pp-tabstrip, .pp-rtabbar { border-bottom: none; box-shadow: inset 0 -1px 0 var(--pp-border); }
+.pp-tabs-arrow { box-shadow: inset 0 -1px 0 var(--pp-border); }
+.pp-tab, .pp-rtab { border-right: none; }
+.pp-tab::after, .pp-rtab::after { content: ""; position: absolute; left: 0; top: 10px; bottom: 9px; width: 1px; background: var(--pp-border); pointer-events: none; }
+:is(.pp-tabbar, .pp-rtabbar) > :is(.pp-tab, .pp-rtab):first-child::after,
+:is(.pp-tab-active, .pp-tab-shown, .pp-rtab-active)::after,
+:is(.pp-tab-active, .pp-tab-shown, .pp-rtab-active) + :is(.pp-tab, .pp-rtab)::after { display: none; }
+.pp-tab-active, .pp-tab-shown, .pp-rtab-active { border-radius: var(--pp-r-ctrl) var(--pp-r-ctrl) 0 0; box-shadow: none; }
+.pp-tab-shown { color: var(--pp-muted); }  /* split: the side not being typed in */
+.pp-tab-drop-before { box-shadow: inset 3px 0 0 var(--pp-accent); }
+.pp-tab-drop-after { box-shadow: inset -3px 0 0 var(--pp-accent); }
+/* the row is as wide as its tabs, so + follows the last tab (and stays in view when they scroll) */
+.pp-tabstrip:not(.pp-tabstrip-split) > .pp-tabbar:first-child { flex: 0 1 auto; }
+.pp-tabstrip-split > .pp-tabbar-right { flex: 0 1 auto; }
 .pp-tab-drop-before { box-shadow: inset 3px 0 0 var(--pp-accent); }
 .pp-tab-drop-after { box-shadow: inset -3px 0 0 var(--pp-accent); }
 /* many tabs: they shrink to a minimum, then the row scrolls (wheel, ‹ › arrows, static/tabs.js),
@@ -1315,7 +1330,8 @@ body.body--dark { --pp-set-box-bg: rgba(255, 255, 255, .035); }
 /* command palette: a muted heading above each group */
 .pp-picker-group { width: 100%; flex: none; padding: 10px 10px 3px; font-size: 11px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; color: var(--pp-muted); user-select: none; }
 .pp-picker-list > .pp-picker-group:first-child { padding-top: 4px; }
-.pp-tabstrip > .pp-tab-new.q-btn { flex: none; margin: 0 2px 0 4px; }
+/* + right after the last tab, level with the tabs (they start 6 px down), round like a browser's */
+.pp-tabstrip > .pp-tab-new.q-btn { flex: none; margin: 6px auto 0 4px; width: 28px; height: 28px; min-width: 0; min-height: 0; border-radius: 50%; }
 /* editor options: readable line length and the current line's band */
 .pp-editor .cm-editor.pp-readable:not(.pp-page-view) .cm-content { max-width: 46em; margin: 0 auto; }
 .pp-editor .cm-editor .cm-activeLine { background-color: rgba(127, 127, 127, .07); }
