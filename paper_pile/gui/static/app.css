@@ -1366,8 +1366,8 @@ body.body--dark { --pp-set-box-bg: rgba(255, 255, 255, .035); }
 /* command palette: a muted heading above each group */
 .pp-picker-group { width: 100%; flex: none; padding: 10px 10px 3px; font-size: 11px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; color: var(--pp-muted); user-select: none; }
 .pp-picker-list > .pp-picker-group:first-child { padding-top: 4px; }
-/* + right after the last tab, level with the tabs (they start 6 px down), round like a browser's */
-.pp-tabstrip > .pp-tab-new.q-btn { flex: none; margin: 6px auto 0 4px; width: 28px; height: 28px; min-width: 0; min-height: 0; border-radius: var(--pp-r-ctrl); overflow: visible; }
+/* + right after the last tab, centred in the row like the pane button at its end (same size) */
+.pp-tabstrip > .pp-tab-new.q-btn { flex: none; margin: 0 auto 0 4px; width: 30px; height: 30px; min-width: 0; min-height: 0; border-radius: var(--pp-r-ctrl); overflow: visible; }
 /* a short divider between the last tab and + (like the ones between tabs); none beside the active tab */
 .pp-tabstrip > .pp-tab-new.q-btn::after { content: ""; position: absolute; left: -4px; top: 6px; bottom: 6px; width: 1px; background: var(--pp-border); pointer-events: none; }
 .pp-tabstrip:has(> .pp-tabbar > :last-child:is(.pp-tab-active, .pp-tab-shown)) > .pp-tab-new.q-btn::after { display: none; }
