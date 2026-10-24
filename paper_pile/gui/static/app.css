@@ -379,6 +379,28 @@ body.pp-page-dragging, body.pp-page-dragging * { cursor: row-resize !important; 
    it joins what is below it, so it takes that colour (editor: --pp-bg; right pane: --pp-bg-side) */
 .pp-tab-active, .pp-tab-shown, .pp-rtab-active { border: 1px solid var(--pp-border); border-bottom: none; border-radius: var(--pp-r-ctrl) var(--pp-r-ctrl) 0 0; box-shadow: none; }
 .pp-rtab-active, .pp-rtab-active:hover { background: var(--pp-bg-side); }
+/* its bottom corners ramp out into the row's line (like its rounded top): a small box on each side
+   whose outer bottom corner is rounded, drawn with the line colour, and whose shadow fills the
+   notch between the curve and the tab with the tab's colour */
+.pp-tab-active, .pp-tab-shown { --pp-tab-fill: var(--pp-bg); }
+.pp-rtab-active { --pp-tab-fill: var(--pp-bg-side); }
+:is(.pp-tab-active, .pp-tab-shown, .pp-rtab-active)::before,
+:is(.pp-tab-active, .pp-tab-shown, .pp-rtab-active)::after {
+  content: ""; display: block; position: absolute; bottom: 0; width: var(--pp-r-ctrl); height: var(--pp-r-ctrl);
+  top: auto; inset-block-start: auto; background: transparent; pointer-events: none; z-index: 0;
+  border: 0 solid var(--pp-border); border-bottom-width: 1px;
+}
+:is(.pp-tab-active, .pp-tab-shown, .pp-rtab-active)::before {
+  left: calc(-1 * var(--pp-r-ctrl)); border-right-width: 1px; border-bottom-right-radius: var(--pp-r-ctrl);
+  box-shadow: calc(var(--pp-r-ctrl) / 2) calc(var(--pp-r-ctrl) / 2) 0 calc(var(--pp-r-ctrl) / 2) var(--pp-tab-fill);
+}
+:is(.pp-tab-active, .pp-tab-shown, .pp-rtab-active)::after {
+  left: auto; right: calc(-1 * var(--pp-r-ctrl)); border-left-width: 1px; border-bottom-left-radius: var(--pp-r-ctrl);
+  box-shadow: calc(var(--pp-r-ctrl) / -2) calc(var(--pp-r-ctrl) / 2) 0 calc(var(--pp-r-ctrl) / 2) var(--pp-tab-fill);
+}
+.pp-rtab.pp-rtab-active { overflow: visible; }  /* its ramps reach outside it */
+/* room at the row's ends for the ramps of the first and last tab */
+.pp-tabbar, .pp-rtabbar { padding-left: var(--pp-r-ctrl); padding-right: var(--pp-r-ctrl); }
 .pp-tab-shown { color: var(--pp-muted); }  /* split: the side not being typed in */
 .pp-tab-drop-before { box-shadow: inset 3px 0 0 var(--pp-accent); }
 .pp-tab-drop-after { box-shadow: inset -3px 0 0 var(--pp-accent); }
@@ -921,7 +943,7 @@ body.body--dark .pp-instr-box textarea { color-scheme: dark; }  /* the corner gr
 .pp-tab, .pp-rtab { isolation: isolate; }
 .pp-tab:hover, .pp-rtab:hover { background: transparent; }
 .pp-tab-active:hover, .pp-rtab-active:hover { background: var(--pp-bg); }
-.pp-tab:not(.pp-tab-active):hover::before, .pp-rtab:not(.pp-rtab-active):hover::before {
+.pp-tab:not(.pp-tab-active):not(.pp-tab-shown):hover::before, .pp-rtab:not(.pp-rtab-active):hover::before {
   content: ""; position: absolute; inset: 4px 3px; z-index: -1;
   border-radius: var(--pp-r-ctrl); background: rgba(127, 127, 127, .12);
 }
