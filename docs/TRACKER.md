@@ -438,6 +438,7 @@ Legend: 🧠 = needs Opus (see PLAN §6 model guidance) · ⬜ todo · 🔄 in p
 | 2026-10-24 | P21 follow-up 7: the first tab's right ramp was hidden by the first-tab divider rule (more specific) — that rule now skips the active tab; + right after the tabs (end padding only while the last tab is active), with a short divider before it, rounded-rectangle hover; folder-row + at row-icon size, inset like the chevron | User: "one side round other side not", "add note … too right not balanced", "vertical divider also needed beside add button", "make it rounded rectangle", "add button at dir tree … not balanced" | user |
 | 2026-10-24 | Settings header: the Settings tab's colour (`--pp-bg-side`) with a divider under it; even padding | User: "add a divider at setting header and make the color match with setting tab" | user |
 | 2026-10-24 | + right after an active last tab's ramp (no extra margin); Settings nav loses its right border (it met the Settings tab's ramp as a spike; grey nav vs white page separates them) | User: "still the add button far right", "remove the spike line" | user |
+| 2026-10-24 | Settings nav line restored, but only below the header (on `.pp-set-content`): only the part that met the tab's ramp is gone | User: "I told you to just cut the spike not the whole line" | user |
 | 2026-10-24 | Header arrows are chevron up / down (sections are above / below); the folded right pane cannot be double-clicked open (its edge is the window's resize strip); a pinned tab closes from its menu or Ctrl+W, not by middle-click | Vertical movement reads better as up / down; the window edge already belongs to resizing; middle-click closes are the common accident | claude |
 | 2026-10-23 | P18 re-applied in part: tab-row double-click, opaque arrow hover, picker (no animation, ×, key caps), slash menu side, line numbers after properties; the note buttons stay in the tab strip, split backlinks still open together | User: "need the corrected versions of p18, they were useful" (listing those five) | user |
 
@@ -667,3 +668,4 @@ Legend: 🧠 = needs Opus (see PLAN §6 model guidance) · ⬜ todo · 🔄 in p
 - 2026-10-24 · P21 follow-up 7 (both ramps on the first tab, + placement / divider / shape, tree + balance) · real app screenshots at 2×
 - 2026-10-24 · Settings header colour + divider · real app screenshot
 - 2026-10-24 · + gap after an active last tab, Settings nav line removed · real app screenshots at 2×
+- 2026-10-24 · Settings nav line back, cut beside the header · real app screenshot at 2×

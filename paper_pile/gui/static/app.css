@@ -666,7 +666,10 @@ body.pp-page-dragging, body.pp-page-dragging * { cursor: row-resize !important; 
 .pp-set-mode { align-self: stretch; display: flex; justify-content: center; margin-bottom: 6px; }
 .pp-set-mode .pp-seg { width: 100%; }
 .pp-set-mode .pp-seg-item { flex: 1 1 0; justify-content: center; padding: 6px 0; }
-.pp-set-nav { width: 190px; flex: none; gap: 2px; padding: 12px 10px; transition: width var(--pp-dur); flex-wrap: nowrap; }  /* no line beside it: grey against the white page is enough (a line met the Settings tab's ramp) */
+.pp-set-nav { width: 190px; flex: none; gap: 2px; padding: 12px 10px; transition: width var(--pp-dur); flex-wrap: nowrap; }
+/* the line between the nav and the page starts under the header: beside the header it would run
+   up into the Settings tab's ramp (a spike) */
+.pp-set-content { border-left: 1px solid var(--pp-border); }
 .pp-set-search { width: 100%; font-size: 13px; }
 .pp-set-search .q-field__control { border-radius: var(--pp-r-ctrl); padding: 0 12px; }
 .pp-set-search .q-field__prepend { padding-right: 10px; }
