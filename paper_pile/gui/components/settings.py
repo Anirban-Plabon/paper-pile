@@ -55,6 +55,7 @@ from paper_pile.core.vault_folders import (
     folder_path,
 )
 from paper_pile.gui.components.memories import MemoriesPanel
+from paper_pile.gui.dialog import Dialog
 from paper_pile.gui.icons import close_button, ico, line_icon
 from paper_pile.gui.tips import tip
 
@@ -704,7 +705,7 @@ class SettingsPane:
             "vault.daily_notes_folder": "Your daily notes disappear from the calendar.",
             "vault.templates_folder": "/template will have nothing to offer.",
         }.get(setting.key, "")
-        with self._content, ui.dialog() as dialog, ui.card().classes("pp-dialog"):
+        with self._content, Dialog() as dialog, ui.card().classes("pp-dialog"):
             ui.label(f"Clear {name}?").classes("pp-dialog-title")
             ui.label(
                 f"{count} file{'s' * (count != 1)} in {folder} move to the vault's trash "
@@ -830,7 +831,7 @@ class SettingsPane:
 
     async def _tpl_delete(self, vault: Vault, path: str) -> None:
         name = Path(path).stem
-        with self._content, ui.dialog() as dialog, ui.card().classes("pp-dialog"):
+        with self._content, Dialog() as dialog, ui.card().classes("pp-dialog"):
             ui.label(f"Delete the template “{name}”?").classes("pp-dialog-title")
             ui.label("It moves to the vault's trash, where you can restore it.").classes(
                 "pp-muted pp-dialog-text"
@@ -1013,7 +1014,7 @@ class SettingsPane:
             "instruction": "What should the assistant be like?",
             "template": "What is the template for? e.g. a meeting, a book review",
         }[kind]
-        with self._content, ui.dialog() as dialog, ui.card().classes("pp-dialog pp-instr-dialog"):
+        with self._content, Dialog() as dialog, ui.card().classes("pp-dialog pp-instr-dialog"):
             ui.label("Write with AI").classes("pp-dialog-title")
             brief = ui.input(placeholder=ask).props("outlined dense autofocus")
             brief.classes("w-full")

@@ -21,6 +21,7 @@ from paper_pile.core.config import Config
 from paper_pile.core.gallery import ImageInfo, group_by_day, list_images, trash_image
 from paper_pile.core.settings import sanitized
 from paper_pile.core.vault import Vault, VaultError
+from paper_pile.gui.dialog import Dialog
 from paper_pile.gui.icons import close_button, icon_button, line_icon
 from paper_pile.gui.tips import tip
 
@@ -81,7 +82,7 @@ class Gallery:
     # ---- building --------------------------------------------------------------------------
 
     async def open(self) -> None:
-        with ui.dialog() as self._dialog, ui.card().classes("pp-dialog pp-gallery"):
+        with Dialog() as self._dialog, ui.card().classes("pp-dialog pp-gallery"):
             with ui.row().classes("pp-gal-bar items-center no-wrap w-full"):
                 ui.label("Images").classes("pp-dialog-title")
                 self._count = ui.label("").classes("pp-muted pp-gal-count")
@@ -279,7 +280,7 @@ class Gallery:
     async def _trash(self, info: ImageInfo) -> None:
         if info.used_by:
             n = len(info.used_by)
-            with ui.dialog() as ask, ui.card().classes("pp-dialog"):
+            with Dialog() as ask, ui.card().classes("pp-dialog"):
                 ui.label("Move this image to the trash?").classes("pp-dialog-title")
                 ui.label(
                     f"{n} note{'s' * (n != 1)} still show{'s' * (n == 1)} it and will show a "

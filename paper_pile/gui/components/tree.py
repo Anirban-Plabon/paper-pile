@@ -38,6 +38,7 @@ from paper_pile.core.events import EventBus
 from paper_pile.core.fsutil import reveal_in_file_manager
 from paper_pile.core.index import SearchHit
 from paper_pile.core.vault import TreeEntry, Vault, VaultError
+from paper_pile.gui.dialog import Dialog
 from paper_pile.gui.icons import ico, icon_button, line_icon
 
 log = logging.getLogger("paper_pile.tree")
@@ -618,7 +619,7 @@ class FileTree:
     # ---- dialogs and toasts --------------------------------------------------------------
 
     async def _prompt(self, title: str, value: str) -> str | None:
-        with self._host, ui.dialog() as dialog, ui.card().classes("pp-dialog"):
+        with self._host, Dialog() as dialog, ui.card().classes("pp-dialog"):
             ui.label(title).classes("pp-dialog-title")
             field = ui.input(value=value).props("outlined dense autofocus").classes("w-full")
             field.on("keydown.enter", lambda: dialog.submit(field.value))
@@ -634,7 +635,7 @@ class FileTree:
 
     async def _folder_dialog(self, folder: str) -> tuple[str, str] | None:
         options = {VAULT_ROOT: "Vault (top level)"} | {f: f for f in self.vault.folders()}
-        with self._host, ui.dialog() as dialog, ui.card().classes("pp-dialog"):
+        with self._host, Dialog() as dialog, ui.card().classes("pp-dialog"):
             ui.label("New folder").classes("pp-dialog-title")
             field = ui.input("Name").props("outlined dense autofocus").classes("w-full")
             field.on_value_change(lambda _e: field.props(remove="error"))
@@ -665,7 +666,7 @@ class FileTree:
         return None if result is None else (str(result[0]), str(result[1]))
 
     async def _confirm(self, message: str, ok_label: str) -> bool:
-        with self._host, ui.dialog() as dialog, ui.card().classes("pp-dialog"):
+        with self._host, Dialog() as dialog, ui.card().classes("pp-dialog"):
             ui.label(message).classes("pp-dialog-title")
             with ui.row().classes("justify-end w-full"):
                 ui.button("Cancel", on_click=lambda: dialog.submit(False)).props("flat no-caps")

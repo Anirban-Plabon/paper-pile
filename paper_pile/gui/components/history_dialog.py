@@ -14,6 +14,7 @@ from nicegui import ui
 
 from paper_pile.core.history import DamagedVersion, History, Version
 from paper_pile.gui.components.trash_dialog import when
+from paper_pile.gui.dialog import Dialog
 from paper_pile.gui.icons import close_button
 
 MAX_DIFF_LINES = 600  # lines drawn in the Changes view
@@ -65,7 +66,7 @@ class HistoryDialog:
     async def open(self) -> None:
         self._versions = self.history.all_texts(self.path)
         name = self.path.rsplit("/", 1)[-1]
-        with self._host, ui.dialog() as dialog, ui.card().classes("pp-dialog pp-history"):
+        with self._host, Dialog() as dialog, ui.card().classes("pp-dialog pp-history"):
             self._dialog = dialog
             with ui.row().classes("items-center no-wrap w-full"):
                 ui.label(f"Version history — {name}").classes("pp-dialog-title")

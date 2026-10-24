@@ -87,6 +87,7 @@ from paper_pile.gui.components.editor import Editor, Mode
 from paper_pile.gui.components.note_actions import note_actions, pick_split_note
 from paper_pile.gui.components.note_menu import NoteActions, NoteMenu
 from paper_pile.gui.components.tabs import SplitTabs, TabBar, TabMenuItem
+from paper_pile.gui.dialog import Dialog
 from paper_pile.gui.icons import ico, icon_button, line_icon, set_icon
 from paper_pile.gui.theme import editor_options
 from paper_pile.gui.tips import tip
@@ -903,7 +904,7 @@ class EditorPane:
             notes = [n for n in notes if n.startswith(folder + "/")]
         state = {"query": "", "selected": 0}
         shown: list[str] = []
-        with self._host, ui.dialog() as dialog, ui.card().classes("pp-dialog pp-picker"):
+        with self._host, Dialog() as dialog, ui.card().classes("pp-dialog pp-picker"):
             ui.label(title).classes("pp-dialog-title")
             field = ui.input(placeholder="Search notes…").props("outlined dense autofocus")
             listing = ui.column().classes("pp-picker-list")
@@ -947,6 +948,7 @@ class EditorPane:
             field.on("keydown.up.prevent", lambda _e: move(-1))
             field.on("keydown.enter.prevent", lambda _e: choose())
             dialog.on("hide", lambda _e: self._editor.focus())
+            dialog.on("hide", lambda _e: dialog.delete())  # a new one is made each time
             render()
         dialog.open()
 
@@ -1129,7 +1131,7 @@ class EditorPane:
 
     async def _ask_dialog(self) -> str | None:
         """Ask what to ask the AI; ``None`` if cancelled."""
-        with self._host, ui.dialog() as dialog, ui.card().classes("pp-dialog pp-ask"):
+        with self._host, Dialog() as dialog, ui.card().classes("pp-dialog pp-ask"):
             ui.label("Ask the AI").classes("pp-dialog-title")
             ui.label("It sees this note. The answer is written at the caret.").classes("pp-muted")
             box = ui.textarea(placeholder="What should it write?").props(
@@ -1143,6 +1145,7 @@ class EditorPane:
             box.on("keydown.ctrl.enter", lambda _e: dialog.submit((box.value or "").strip()))
         dialog.open()
         answer = await dialog
+        dialog.delete()
         return str(answer) if answer else None
 
     async def _run_stream(
@@ -1834,7 +1837,7 @@ class EditorPane:
 
     def _ask_recovery(self, entries: list[RecoveryEntry], *, then_open: str | None) -> None:
         """One dialog listing unsaved text that survived a crash or a failed save."""
-        with self._host, ui.dialog() as dialog, ui.card().classes("pp-dialog pp-recovery"):
+        with self._host, Dialog() as dialog, ui.card().classes("pp-dialog pp-recovery"):
             ui.label("Unsaved changes were recovered").classes("pp-dialog-title")
             ui.label("These notes had text that never reached the disk.").classes("pp-muted")
             for entry in entries:

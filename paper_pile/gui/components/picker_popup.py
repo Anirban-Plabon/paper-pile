@@ -11,6 +11,7 @@ from dataclasses import dataclass
 
 from nicegui import ui
 
+from paper_pile.gui.dialog import Dialog
 from paper_pile.gui.icons import close_button, line_icon
 
 
@@ -47,7 +48,7 @@ class PickerPopup:
         with (
             self._host,
             # no open / close animation: it is there at once (Ctrl+P, Ctrl+O)
-            ui.dialog().props(
+            Dialog().props(
                 "position=top transition-show=none transition-hide=none transition-duration=0"
             ) as dialog,
             ui.card().classes("pp-picker"),

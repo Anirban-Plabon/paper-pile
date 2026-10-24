@@ -19,6 +19,7 @@ from paper_pile.core.titles import note_name
 from paper_pile.core.vault import VaultError
 from paper_pile.gui import printing
 from paper_pile.gui.components.note_menu import NoteActions
+from paper_pile.gui.dialog import Dialog
 from paper_pile.gui.printing import build_print_page, paper_name
 from paper_pile.gui.window import native_request
 
@@ -92,7 +93,7 @@ async def _move(pane: "EditorPane", path: str) -> None:
     if not options:
         pane.toast("There is no other folder to move it to.")
         return
-    with pane.host, ui.dialog() as dialog, ui.card().classes("pp-dialog"):
+    with pane.host, Dialog() as dialog, ui.card().classes("pp-dialog"):
         ui.label(f"Move “{note_name(path)}” to").classes("pp-dialog-title")
         where = (
             ui.select(options, value=next(iter(options)), label="Folder", with_input=True)
@@ -127,7 +128,7 @@ async def _pick_note(
     lead = [n for n in (first or []) if n in set(notes)]
     rest = sorted((n for n in notes if n not in set(lead)), key=str.lower)
     state: dict[str, Any] = {"query": "", "selected": 0, "shown": []}
-    with pane.host, ui.dialog() as dialog, ui.card().classes("pp-dialog pp-picker"):
+    with pane.host, Dialog() as dialog, ui.card().classes("pp-dialog pp-picker"):
         ui.label(title).classes("pp-dialog-title")
         field = ui.input(placeholder="Search notes…").props("outlined dense autofocus")
         listing = ui.column().classes("pp-picker-list")
@@ -176,7 +177,7 @@ async def _pick_note(
 
 
 async def _confirm(pane: "EditorPane", title: str, detail: str, ok: str) -> bool:
-    with pane.host, ui.dialog() as dialog, ui.card().classes("pp-dialog"):
+    with pane.host, Dialog() as dialog, ui.card().classes("pp-dialog"):
         ui.label(title).classes("pp-dialog-title")
         ui.label(detail).classes("pp-muted pp-dialog-text")
         with ui.row().classes("justify-end w-full"):

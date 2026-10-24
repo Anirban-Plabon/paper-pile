@@ -234,10 +234,10 @@ class MainLayout:
         background_tasks.create(self._switcher())
 
     async def _switcher(self) -> None:
-        vault = Vault(self.vault)
+        notes = list(Vault(self.vault).walk_notes())  # once per popup, not per keystroke
 
         def search(query: str) -> list[PickItem]:
-            paths = switcher_notes(query, vault.walk_notes(), self.state.recent_notes)
+            paths = switcher_notes(query, notes, self.state.recent_notes)
             items = [
                 PickItem(p, p.rsplit("/", 1)[-1].removesuffix(".md"), p.rpartition("/")[0])
                 for p in paths

@@ -11,6 +11,7 @@ from nicegui import ui
 
 from paper_pile.core.trash import TrashItem, list_trash, restore
 from paper_pile.core.vault import Vault, VaultError
+from paper_pile.gui.dialog import Dialog
 from paper_pile.gui.icons import close_button, line_icon
 
 
@@ -33,7 +34,7 @@ class TrashDialog:
         self._list: ui.column
 
     async def open(self) -> None:
-        with self._host, ui.dialog() as dialog, ui.card().classes("pp-dialog pp-trash"):
+        with self._host, Dialog() as dialog, ui.card().classes("pp-dialog pp-trash"):
             with ui.row().classes("items-center no-wrap w-full"):
                 ui.label("Trash").classes("pp-dialog-title")
                 ui.space()

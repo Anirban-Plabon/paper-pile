@@ -15,6 +15,7 @@ from paper_pile.core.profile import (
     remove_avatar,
     save_avatar,
 )
+from paper_pile.gui.dialog import Dialog
 from paper_pile.gui.icons import ico, icon_button
 from paper_pile.gui.tips import tip
 
@@ -95,7 +96,7 @@ class ProfileBlock:
     def _open_dialog(self) -> None:
         """Name and picture. The picture is chosen with a plain button (the uploader itself is
         hidden: Quasar's upload box does not follow the theme)."""
-        with ui.dialog() as dialog, ui.card().classes("pp-dialog pp-profile-dialog"):
+        with Dialog() as dialog, ui.card().classes("pp-dialog pp-profile-dialog"):
             ui.label("Profile").classes("pp-dialog-title")
             ui.label("Stored only on this computer.").classes("pp-muted")
             name = (

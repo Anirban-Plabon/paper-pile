@@ -28,6 +28,7 @@ from paper_pile.core.ai.chats import (
 from paper_pile.core.parser import render_html
 from paper_pile.core.vault import ExistsError, InvalidPathError, Vault
 from paper_pile.gui.components.vault_dialog import ask_folder
+from paper_pile.gui.dialog import Dialog
 from paper_pile.gui.icons import close_button, icon_button, line_icon
 from paper_pile.gui.tips import tip
 
@@ -136,7 +137,7 @@ class MemoriesPanel:
         self.reload()
 
     async def _ask_move(self, count: int, to: Path) -> bool:
-        with self._root, ui.dialog() as dialog, ui.card().classes("pp-dialog"):
+        with self._root, Dialog() as dialog, ui.card().classes("pp-dialog"):
             ui.label(f"Move {count} memories?").classes("pp-dialog-title")
             ui.label(f"Move the saved chats to {to}, or leave them where they are.").classes(
                 "pp-muted pp-dialog-text"
@@ -229,7 +230,7 @@ class MemoriesPanel:
 
     def _view(self, chat: SavedChat) -> None:
         text = chat_markdown(chat, self._user_name())
-        with self._root, ui.dialog() as dialog, ui.card().classes("pp-dialog pp-mem-view"):
+        with self._root, Dialog() as dialog, ui.card().classes("pp-dialog pp-mem-view"):
             with ui.row().classes("pp-mem-view-head items-center no-wrap"):
                 ui.space()  # the document below starts with the title
                 icon_button(
@@ -289,7 +290,7 @@ class MemoriesPanel:
     # ---- deleting --------------------------------------------------------------------------
 
     async def _confirm(self, title: str, detail: str) -> bool:
-        with self._root, ui.dialog() as dialog, ui.card().classes("pp-dialog"):
+        with self._root, Dialog() as dialog, ui.card().classes("pp-dialog"):
             ui.label(title).classes("pp-dialog-title")
             ui.label(detail).classes("pp-muted pp-dialog-text")
             with ui.row().classes("justify-end w-full"):

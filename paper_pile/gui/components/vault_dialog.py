@@ -13,6 +13,7 @@ from nicegui import app, ui
 
 from paper_pile.core.folders import is_vault, start_folder, subfolders
 from paper_pile.core.session import load_recent_vaults
+from paper_pile.gui.dialog import Dialog
 from paper_pile.gui.icons import icon_button, line_icon
 from paper_pile.gui.tips import tip
 
@@ -34,7 +35,7 @@ async def ask_folder(
     """Ask for a folder, browsing from ``start``; ``None`` if cancelled."""
     recent = recent or []
     state: dict[str, Any] = {"folder": start}
-    with ui.dialog() as dialog, ui.card().classes("pp-dialog pp-picker pp-vault-dialog"):
+    with Dialog() as dialog, ui.card().classes("pp-dialog pp-picker pp-vault-dialog"):
         ui.label(title).classes("pp-dialog-title")
         if recent:
             ui.label("Recent").classes("pp-vault-section")

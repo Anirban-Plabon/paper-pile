@@ -6,7 +6,8 @@
 Legend: 🧠 = needs Opus (see PLAN §6 model guidance) · ⬜ todo · 🔄 in progress · ✅ done · ⛔ blocked · ⏭️ skipped/deferred
 
 ## Current focus
-- **Phase:** P19 — Performance (user request 2026-10-24, PLAN §4.23): done; next candidates in the Decision log (save off the UI thread, watcher echo, tab strip in place)
+- **Phase:** P20 — Memory (user request 2026-10-24, PLAN §4.24): leaks fixed (dialogs, timing entries); small heap creep left (Open issue); next: Tailwind off with a screenshot comparison, then the engine options (system WebKitGTK, browser app mode)
+- **Before:** P19 — Performance (PLAN §4.23): done; next candidates in the Decision log (save off the UI thread, watcher echo, tab strip in place)
 - **Earlier phase:** P14 — Features, navigation & safety (user request 2026-10-22; includes P9.1–P9.3, P9.5, P9.6)
 - **Task:** P17 tabs / tool boxes / settings boxes / palette built; P15 + P16 built; P14 built (P14.1–P14.16, P9.1–P9.3, P9.5); P9.6 README done, its manual QA items wait for the user; P10.5 / P12.4 native Save dialog checks still manual
 - **Now:** P15 + P16 done (motion with Animation speed setting; icons unified; small UX fixes); P14 done (switches, switcher + palette, vault search, outline, tree keys, trash, version history; tab overflow, split backlinks, line numbers, draggable page breaks)
@@ -14,6 +15,7 @@ Legend: 🧠 = needs Opus (see PLAN §6 model guidance) · ⬜ todo · 🔄 in p
 
 ## Open issues
 <!-- - [ ] YYYY-MM-DD · task ID · what's blocking · what's needed -->
+- 2026-10-24 · P20.2 · JS heap still grows ~0.17 MB per soak round (thousands of small strings / arrays, no single retainer; likely Vue / Quasar / Tailwind runtime internals). ~25–30 MB over 2 h of heavy use. Next: run without Tailwind (needs a screenshot comparison), then re-soak. The user's 1.3 GB renderer (2 h, real WSLg window, llvmpipe) is not reproduced offscreen (166 → 243 MB over 12 rounds): measure again after the move with `tools/mem_soak.py --visible`
 - 2026-10-22 · Maximized window covers only the top half of the laptop screen (user: clicked the □ button / double-clicked the top bar). Not reproduced: a fresh window on the same laptop panel (1920×1200 at 150 %, work area 1128) maximizes to 1920×1128 every way (button ×2, restore, double-click). Waiting for the user's `paper-pile --debug` log of the bad case (state, size, screen, zoom, taskbar strips per change)
   - 2026-10-23 · Likely cause found (same on the MSI monitor: maximized = bottom half): Windows places the MSI at y = −526 (above the laptop). Qt/WSLg normalise the screens (MSI 0, laptop 526), but the maximized rectangle comes from Windows' work area in Windows coordinates, clipped at y = 0 and then shifted: only the part below the other monitor's top edge is used. A WSLg bug with monitors at negative y; workaround: align the monitors' top edges in Windows display settings. In-app workaround not tried yet
 - 2026-10-22 · P15.2 (found while testing) · Real pages: a jump (`gotoLine`) leaves the target line ~17 px above the top of the editor instead of 24 px below it; same with the pre-P15 instant scroll, so not caused by the glide. Likely the sheet's top margin vs `scrollIntoView` yMargin; not investigated yet
@@ -229,6 +231,15 @@ Legend: 🧠 = needs Opus (see PLAN §6 model guidance) · ⬜ todo · 🔄 in p
 | P19.9 | Backlink snippets cached by indexed mtime | ✅ | `Backlink.mtime` (test) |
 | P19.10 | Tabs before the startup sync | ✅ | real app: backlinks / link styles right after the sync, incl. changes made while closed |
 
+### P20 — Memory (user request 2026-10-24)
+| ID | Task | Status | Notes |
+|---|---|---|---|
+| P20.1 | `tools/mem_soak.py` soak harness | ✅ | 12 rounds × (8 rich notes, tab cycle, palette, context menu) |
+| P20.2 | Find and fix what grows | 🔄 | fixed: dialog canaries (P20.3), Tailwind timing entries (P20.4); left: JS heap +0.17 MB / round in Vue/Quasar internals (no single owner in snapshots) → Open issue; next step Tailwind off |
+| P20.3 | `Dialog` without the canary leak | ✅ | soak: DOM nodes 2358 → 2430 over 9 rounds before, flat 2349 after; server flat |
+| P20.4 | Clear Tailwind's timing entries | ✅ | snapshots: +888 marks / +444 measures per round before, bounded after (only those since the last clear) |
+| P20.5 | Quick switcher lists the vault once per popup | ✅ | was a vault walk per keystroke |
+
 ## Decision log
 <!-- YYYY-MM-DD · decision · reason · (who: user / claude) -->
 | Date | Decision | Reason | By |
@@ -394,6 +405,8 @@ Legend: 🧠 = needs Opus (see PLAN §6 model guidance) · ⬜ todo · 🔄 in p
 | 2026-10-22 | Settings: boxed groups (Obsidian style), Paper size under Page view (Print page removed), new settings (reopen tabs, confirm delete, readable width, current line, word count, rebuild index), AI embedding model moved to AI → Advanced (unused); row stacking is CSS-only (box container query) — the JS `pp-set-stacked` measuring is removed; tab arrows get their own areas and step one tab; palette grouped | User request (second polish round); CSS-only stacking cannot flip at any width, which the user asked not to see again | user / claude |
 | 2026-10-23 | P18 (note buttons beside the properties, per-side backlinks, no tab-row maximize, arrow hover, picker ×/caps/no animation, slash menu side, line numbers after properties) reverted as a whole (commit 82cc9bf reverted) | User request: "restore the last edit … the whole" | user |
 | 2026-10-24 | P19 Performance (§4.23): no vault walk / many-file reads / fsync on the tab-switch path (known notes from the index, calendar folder listing + mtime cache + redraw on change, backlink snippets cached by indexed mtime, session save debounced + flushed on disconnect); `Index` does disk work outside its lock; `walk_notes` via `os.scandir`; `body_start` by line scan; tabs open before the startup sync. No visible change | User: startup / scrolling / panes / tabs / popups / new notes laggy, "keep the UI as it is"; profiling showed the event loop blocked (walk per switch 7 s of a profile, lock held during sync, calendar re-reading 42 days, fsync per switch) | user / claude |
+| 2026-10-24 | P20 Memory (§4.24): option 1 of 3 (fix memory inside the current stack, platform-independent); system WebKitGTK and browser app mode later | User: "go for 1 which is not platform dependent. later we will go for other" | user |
+| 2026-10-24 | `Dialog` subclass instead of `ui.dialog` everywhere; Tailwind's timing entries cleared by `static/marks.js` now, Tailwind itself switched off later after a screenshot comparison (its Preflight reset goes with it) | Both leaks are in NiceGUI's stack (3.18.0); the subclass and the clearing are small and invisible, removing Tailwind may change looks | claude |
 | 2026-10-24 | Environment findings left to the user (done on another PC): move repo, `.venv` and vaults off `/mnt/l`; WSL distro is RHEL 10.1 whose Mesa has no `d3d12` (llvmpipe, no GPU) | Measured: imports 30.8 s → 3.0 s on the Linux fs, vault walk 93 ms → 2 ms; Qt reports `llvmpipe` | user |
 | 2026-10-24 | Not done in P19 (next candidates): saving the left tab off the UI thread, ignoring the watcher's echo of the app's own writes, updating the tab strip in place instead of re-rendering it | Each touches save / conflict logic (data safety) or tab-strip DOM (UI), so kept out of a no-visible-change pass | claude |
 | 2026-10-23 | P18 re-applied in part: tab-row double-click, opaque arrow hover, picker (no animation, ×, key caps), slash menu side, line numbers after properties; the note buttons stay in the tab strip, split backlinks still open together | User: "need the corrected versions of p18, they were useful" (listing those five) | user |
@@ -402,6 +415,9 @@ Legend: 🧠 = needs Opus (see PLAN §6 model guidance) · ⬜ todo · 🔄 in p
 <!-- YYYY-MM-DD · task · symptom → root cause → fix · (gotcha added? y/n) -->
 | Date | Task | Symptom | Root cause | Fix | Gotcha? |
 |---|---|---|---|---|---|
+| 2026-10-24 | P20.3 | Real-app dialog check: 2 of 11 failed (Esc did not close, new folder not made) | Check bug: typed / pressed Esc before the dialog's autofocus landed (empty name keeps the dialog open) | Wait 0.6 s after a dialog shows; 11/11 | n |
+| 2026-10-24 | P20.3 | Every dialog ever opened left an empty `<div class="hidden">` in its host and its element tree on the server, although the code called `dialog.delete()` | NiceGUI 3.16+ `ui.dialog` creates a hidden canary element in the current slot whose `weakref.finalize` callback holds the dialog; `delete()` does not remove the canary | `paper_pile.gui.dialog.Dialog` deletes its canary; dialogs made per use and only closed are deleted on hide | y |
+| 2026-10-24 | P20.4 | JS heap grew ~0.2 MB per soak round with DOM nodes flat | Tailwind's browser compiler calls `performance.mark` / `measure` on every rebuild; user-timing entries are never dropped | `static/marks.js` clears them every 30 s | y |
 | 2026-10-24 | P19.1 | Timing runs reported "startup 0.0 s" and actions that never happened | A test instance from an earlier run (killed shell / timeout skipped cleanup) still held the CDP port; `pkill -f` patterns had matched the cleanup shell itself | Kill by process group, bracket trick in patterns, check no instance is left before a run | y |
 | 2026-10-24 | P19.1 | Icon files took ~8 s to load at startup although their handler is trivial | The event loop was blocked: restore tasks and `_save_all` waited on `Index._lock`, which `sync()` held for its whole vault walk (in a thread) | Disk work outside the lock (P19.3) | y |
 | 2026-10-24 | P19.7 | Real-app calendar check showed no dots | Check bug: the default daily folder is `.daily-notes`, the test note was at the root | Test note in `.daily-notes/` (the new `day_marks` handles the app folder) | n |
@@ -609,3 +625,4 @@ Legend: 🧠 = needs Opus (see PLAN §6 model guidance) · ⬜ todo · 🔄 in p
 - 2026-10-23 · P18 reverted (user request); state = P17
 - 2026-10-23 · P18.3–P18.7 re-applied (user request); maximize-half cause found (monitor at negative y in Windows) · 8 real-app checks
 - 2026-10-24 · P19.1–P19.10 performance pass (no visible change) · perf_ui, 2 000 notes, warm index, app on /mnt/l: switch tab 758 → 342 ms, close tab 806 → 300 ms, new note 2496 → 1301 ms, palette 390 → 280 ms, settings 505 → 414 ms, context menu 112 → 72 ms, first text 44.2 → 41.3 s (imports on /mnt/l ≈ 30 s of it); scroll / pane frames unchanged (renderer-bound) · 7 new tests (37 cases, 1101 → 1138); 7/7 real-app checks; qa_editor 358/358
+- 2026-10-24 · P20.1, P20.3–P20.5 memory pass (no visible change) · mem_soak 12 rounds, offscreen: DOM nodes +9 / round → flat (2351), server RSS 106 → 110 MB → flat 109–110, JS heap creep 0.22 → 0.17 MB / round, renderer creep ~1.5 → ~1.0 MB / round; heap snapshots: dialog canaries and Tailwind's PerformanceMark / Measure gone · 1 new GUI test; 1139 tests; qa_editor 358/358; 11/11 real-app dialog checks

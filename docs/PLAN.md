@@ -522,6 +522,13 @@ Short, quiet animations that show *where something went*. Render-only (CSS + the
 
 **Not animated:** typing, CodeMirror decorations and folding, pane widths (Ctrl+B / Ctrl+L), sheet heights, drag in progress.
 
+### 4.24 Memory — user request 2026-10-24 (P20)
+User: the app feels heavy; wants it lighter, platform-independent work first ("go for 1"), engine changes (system WebKitGTK, browser app mode) later. Measured on the user's machine after ~2 h: page renderer 1.3 GB RSS, Qt window process 514 MB, Python server 105 MB; `.venv` 722 MB (PyQt6 520 MB). Goal: find what grows over a session and stop it, with no visible change; disk size is left to the later engine options.
+- **Measured, not guessed:** `tools/mem_soak.py` (dev tool) drives a long session (open / switch / close tabs, popups, notes with math, diagrams, tables, images) on a throwaway vault and prints JS heap, DOM nodes, listeners and process RSS per round.
+- **Dialogs leave nothing behind:** every dialog is a `paper_pile.gui.dialog.Dialog` (never `ui.dialog`): NiceGUI's hidden "canary" element (whose finalizer holds the dialog) is deleted with it, so a closed dialog is freed in the page and on the server. Dialogs made anew each time and only closed (note picker, Ask AI) are deleted when hidden; the crash-recovery dialog (once per crash) stays as it is.
+- **No piling timing entries:** Tailwind's in-browser compiler adds a `performance.mark` / `measure` on every rebuild and never clears them; `static/marks.js` clears them every 30 s.
+- **Later (needs a screenshot comparison):** run without Tailwind (`ui.run(tailwind=False)`): only `w-full` is a Tailwind-only class, but Tailwind's Preflight reset would go too.
+
 ### 4.23 Performance — user request 2026-10-24 (P19)
 User: startup, scrolling, moving panes, opening / closing / switching tabs, popups and new notes feel laggy; "keep the UI as it is". Measured offscreen on a generated 2 000-note vault (`tools/perf_ui.py`): switch tab ~770 ms (browser ~160 ms), close tab ~850 ms, new note ~2.4 s, startup ~31 s to the first text — the rest was the server's event loop being busy or blocked. No visible change; only when and where the work runs.
 - **No vault walk per tab switch:** the names wikilinks may use (`set_known_notes`) come from the index, are cached, and reach the editor only when the set of notes changed.
@@ -746,6 +753,15 @@ P9.1–P9.3 and P9.5–P9.6 are built in this phase (order: P14.1, P9.1, P9.2, P
 | P19.8 | Session save debounced, flushed on disconnect | a tab switch right before quitting is in session.json (real app) |
 | P19.9 | Backlink snippets cached by indexed mtime | `Backlink.mtime` is the file's (test); snippets unchanged |
 | P19.10 | Tabs before the startup sync | backlinks / link styles right after the background sync, incl. notes and links added while closed (real app) |
+
+### P20 — Memory (user request 2026-10-24, §4.24)
+| ID | Task | Acceptance |
+|---|---|---|
+| P20.1 | `tools/mem_soak.py` soak harness | per-round JS heap / nodes / listeners / RSS (renderer, window, server) on a throwaway vault |
+| P20.2 | Find and fix what grows | named causes in TRACKER; growth per round near zero after warm-up; tests + qa_editor green |
+| P20.3 | `Dialog` without the canary leak | deleted dialogs leave no element and are garbage-collected (test); DOM nodes / server RSS flat in the soak |
+| P20.4 | Clear Tailwind's timing entries | no `PerformanceMark` / `Measure` growth in heap snapshots; heap flat in the soak |
+| P20.5 | Quick switcher lists the vault once per popup | no vault walk per keystroke; results unchanged |
 
 ### P10 — Note menu (⋯) (user request 2026-10-17)
 | ID | Task | Acceptance |

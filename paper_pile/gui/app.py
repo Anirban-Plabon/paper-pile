@@ -43,6 +43,7 @@ def _build_pages(host: VaultHost, *, native: bool) -> None:
         ui.add_head_html(f'<script src="{static_url("notedrop.js")}" defer></script>')
         ui.add_head_html(f'<script src="{static_url("panes.js")}" defer></script>')
         ui.add_head_html(f'<script src="{static_url("chat.js")}" defer></script>')
+        ui.add_head_html(f'<script src="{static_url("marks.js")}" defer></script>')
         if native:  # drag / resize of the frameless window
             ui.add_head_html(f'<script src="{static_url("window.js")}" defer></script>')
         # "reveal" only makes sense on this machine
