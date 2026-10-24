@@ -1,0 +1,927 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>plan</title>
+<style>
+:root { color-scheme: light dark; --fg: #1f2328; --bg: #ffffff; --muted: #656d76;
+  --border: #d0d7de; --code: #f3f4f6; --accent: #2563eb; }
+@media (prefers-color-scheme: dark) { :root { --fg: #e6edf3; --bg: #0d1117; --muted: #8d96a0;
+  --border: #30363d; --code: #161b22; --accent: #6ea8fe; } }
+body { margin: 0; background: var(--bg); color: var(--fg);
+  font: 16px/1.65 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+main { max-width: 760px; margin: 0 auto; padding: 48px 24px 96px; }
+h1, h2, h3, h4 { line-height: 1.25; margin: 1.6em 0 .6em; }
+a { color: var(--accent); }
+img { max-width: 100%; height: auto; border-radius: 6px; }
+code, pre { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: .92em; }
+code { background: var(--code); border-radius: 4px; padding: .1em .35em; }
+pre { background: var(--code); border-radius: 8px; padding: 12px 14px; overflow-x: auto; }
+pre code { background: none; padding: 0; }
+blockquote { margin: 1em 0; padding: 0 1em; border-left: 3px solid var(--border);
+  color: var(--muted); }
+table { border-collapse: collapse; margin: 1em 0; }
+th, td { border: 1px solid var(--border); padding: 6px 10px; }
+hr { border: none; border-top: 1px solid var(--border); margin: 2em 0; }
+.wikilink { color: var(--accent); }
+.pp-page-break { break-after: page; page-break-after: always; }
+@media screen { .pp-page-break { border-top: 1px dashed var(--border); margin: 2em 0; } }
+</style>
+</head>
+<body>
+<main>
+
+<h1>paper-pile — Spec &amp; Build Plan</h1>
+<blockquote>
+<p>Living document. When a requirement changes, edit this file and log it in<br />
+<code>docs/TRACKER.md</code> → Decision log (see CLAUDE.md protocol).</p>
+</blockquote>
+<hr />
+<h2>1. Vision</h2>
+<p>A local note app for one power user (phase 1), later teams. Obsidian's<br />
+file-based vault + Cursor's clean 3-pane layout + Notion's <code>/</code> menu +<br />
+built-in local AI via Ollama. Plain <code>.md</code>/<code>.txt</code> files, no lock-in.</p>
+<p><strong>Phase-1 target:</strong> Ubuntu desktop, single user, native window.<br />
+<strong>Later:</strong> web/server mode (RHEL, SSH tunnel), TUI (Textual), teams.</p>
+<p><strong>Differentiators:</strong> AI truly built in (local), Smart Paste for chatbot text<br />
+(math-safe), traceless images, Mermaid + math out of the box.</p>
+<hr />
+<h2>2. Stack</h2>
+<table>
+<thead>
+<tr>
+<th>Concern</th>
+<th>Choice</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Python / env</td>
+<td>Python 3.12, <code>uv</code></td>
+<td>pin in <code>pyproject.toml</code></td>
+</tr>
+<tr>
+<td>UI framework</td>
+<td>NiceGUI (latest stable, pin exact)</td>
+<td>native mode via pywebview</td>
+</tr>
+<tr>
+<td>Native window</td>
+<td><code>pywebview[qt]</code></td>
+<td>Qt backend = pip-only, no apt GTK hunt</td>
+</tr>
+<tr>
+<td>Editor</td>
+<td>CodeMirror 6, vendored bundle, custom NiceGUI element</td>
+<td>see Spike S1</td>
+</tr>
+<tr>
+<td>Markdown parse</td>
+<td><code>markdown-it-py</code> + <code>mdit-py-plugins</code></td>
+<td>front_matter, dollarmath, tasklists, footnote, + custom wikilink plugin</td>
+</tr>
+<tr>
+<td>Math render</td>
+<td>KaTeX (vendored, client-side)</td>
+<td></td>
+</tr>
+<tr>
+<td>Diagrams</td>
+<td>Mermaid (vendored, client-side)</td>
+<td></td>
+</tr>
+<tr>
+<td>Code highlight</td>
+<td>highlight.js or Pygments</td>
+<td>decide in P2, log it</td>
+</tr>
+<tr>
+<td>Index / search</td>
+<td>stdlib <code>sqlite3</code> + FTS5</td>
+<td><code>.paper-pile/index.db</code>, rebuildable</td>
+</tr>
+<tr>
+<td>File watching</td>
+<td><code>watchdog</code></td>
+<td>external edits</td>
+</tr>
+<tr>
+<td>HTML → MD (paste)</td>
+<td><code>beautifulsoup4</code> + <code>markdownify</code></td>
+<td>custom converters for math/code</td>
+</tr>
+<tr>
+<td>AI</td>
+<td><code>ollama</code> (official python lib, AsyncClient)</td>
+<td>behind a <code>Provider</code> protocol</td>
+</tr>
+<tr>
+<td>Config</td>
+<td><code>tomllib</code> (read) + <code>tomli-w</code> (write) + <code>platformdirs</code></td>
+<td></td>
+</tr>
+<tr>
+<td>Images</td>
+<td><code>Pillow</code></td>
+<td>dimension read, format normalize</td>
+</tr>
+<tr>
+<td>Tests</td>
+<td><code>pytest</code>, <code>pytest-asyncio</code></td>
+<td></td>
+</tr>
+<tr>
+<td>Lint</td>
+<td><code>ruff</code>, <code>mypy</code> (core)</td>
+<td></td>
+</tr>
+</tbody>
+</table>
+<p>Dev-only: Node + <code>esbuild</code> to build the CodeMirror bundle once (<code>tools/build_editor.sh</code>).<br />
+The built bundle is committed, so end users never need Node.</p>
+<hr />
+<h2>3. Repository layout</h2>
+<pre><code>paper-pile/
+├── CLAUDE.md
+├── pyproject.toml              # [project.scripts] paper-pile = &quot;paper_pile.cli:main&quot;
+├── docs/
+│   ├── PLAN.md
+│   └── TRACKER.md
+├── tools/
+│   ├── build_editor.sh         # esbuild CodeMirror bundle → gui/static/vendor/
+│   └── editor_src/             # JS source for the editor component (small)
+├── paper_pile/
+│   ├── cli.py                  # arg parsing, launch native/serve
+│   ├── core/                   # ZERO UI imports
+│   │   ├── vault.py            # file ops, tree, trash, rename/move
+│   │   ├── assets.py           # image storage, lifecycle, orphan sweep
+│   │   ├── parser.py           # markdown-it setup, wikilink plugin, render → HTML
+│   │   ├── links.py            # extract links, resolve, rewrite on rename
+│   │   ├── index.py            # SQLite: notes, links, FTS
+│   │   ├── watcher.py          # watchdog → events
+│   │   ├── commands.py         # slash command registry + actions
+│   │   ├── paste.py            # Smart Paste: html→md, delimiter normalize
+│   │   ├── config.py           # global + vault TOML, defaults
+│   │   ├── session.py          # open tabs, last vault, restore
+│   │   ├── events.py           # simple pub/sub so core can notify UIs
+│   │   └── ai/
+│   │       ├── provider.py     # Provider protocol
+│   │       ├── ollama.py       # OllamaProvider
+│   │       └── context.py      # context building + token budget
+│   └── gui/
+│       ├── app.py              # layout, routing, startup
+│       ├── theme.py            # light/dark/system, accent palette, CSS vars
+│       ├── components/
+│       │   ├── tree.py         # left pane
+│       │   ├── tabs.py         # tab bar + preview-tab logic
+│       │   ├── editor.py       # NiceGUI element wrapping CM6
+│       │   ├── preview.py      # rendered HTML + mermaid/katex post-render
+│       │   ├── backlinks.py
+│       │   ├── chat.py         # right pane, collapsible
+│       │   ├── statusbar.py
+│       │   ├── palette.py      # Ctrl+P command palette, Ctrl+O switcher
+│       │   └── settings.py     # settings dialog + bottom-left profile
+│       └── static/
+│           ├── vendor/         # cm6 bundle, katex, mermaid (committed)
+│           ├── editor.js       # built from tools/editor_src
+│           └── app.css
+└── tests/
+    ├── core/
+    ├── fixtures/
+    │   ├── vaults/             # tiny sample vaults
+    │   └── paste/              # real chatbot clipboard HTML samples
+    └── gui/
+</code></pre>
+<hr />
+<h2>4. Feature specs</h2>
+<h3>4.1 CLI</h3>
+<pre><code>paper-pile                # open last vault (or prompt to pick folder)
+paper-pile .              # current dir = vault
+paper-pile &lt;path&gt;         # given dir = vault
+paper-pile --serve [path] [--port 8080]   # web mode, 127.0.0.1 only, prints URL with token
+</code></pre>
+<ul>
+<li><code>--serve</code> generates a random token; requests without it are rejected.</li>
+<li>Creates <code>&lt;vault&gt;/.paper-pile/</code> on first open (index.db, vault.toml, session.json).</li>
+</ul>
+<h3>4.2 Layout</h3>
+<pre><code>┌────────────┬──────────────────────────────────┬──────────────┐
+│ Dir tree   │ [tab][tab*][tab]                 │  AI chat     │
+│            │ editor        │ preview          │  (collapsible│
+│            │               │                  │   Ctrl+L)    │
+│            │ ── backlinks ─────────────────── │              │
+├────────────┤                                  │              │
+│ 👤 ⚙️ ☀️    │ status: words · Ln/Col · saved · ollama ●        │
+└────────────┴──────────────────────────────────┴──────────────┘
+</code></pre>
+<ul>
+<li>Panes resizable (splitters). Left pane collapsible (Ctrl+B), right pane collapsible (Ctrl+L), width remembered.</li>
+<li>Preview modes: <strong>split</strong> (default) / editor-only / preview-only. Toggle Ctrl+E.</li>
+<li>Clean, minimal, Cursor-like: thin borders, no heavy chrome, monospace editor font.</li>
+</ul>
+<h3>4.3 Dir tree</h3>
+<ul>
+<li>Shows <code>.md</code> and <code>.txt</code> files + folders. Hides dotfiles/dot-folders (<code>.paper-pile</code>, <code>.trash</code>, <code>.*.assets</code>).</li>
+<li>Context menu: new note, new folder, rename, delete (→ trash), duplicate, reveal in file manager.</li>
+<li>Drag to move file/folder (move = rename → links + assets updated).</li>
+<li>Lazy-loads large folders. Live-updates from watcher events.</li>
+</ul>
+<h3>4.4 Tabs</h3>
+<ul>
+<li>Multiple note tabs.</li>
+<li><strong>Preview tab</strong> (VS Code style): single-click in tree opens an italic preview tab that is replaced by the next single-click. Double-click, or any edit, pins it. <em>(Default chosen during planning; user may change — see Decision log.)</em></li>
+<li>Close: Ctrl+W, middle-click, × button. Cycle: Ctrl+Tab / Ctrl+Shift+Tab. Drag to reorder.</li>
+<li><code>●</code> dirty marker if a save is pending or failed.</li>
+<li>Open tabs + active tab restored on relaunch (per vault, <code>session.json</code>).</li>
+<li>Rename/move of a note updates its tab; delete closes it.</li>
+<li>Clicking <code>[[link]]</code> opens in current tab; Ctrl+click opens a new tab.</li>
+<li>Later (not phase 1): split panes.</li>
+</ul>
+<h3>4.5 Editor</h3>
+<ul>
+<li>CodeMirror 6 with markdown language, syntax highlighting, line wrapping, search (Ctrl+F), undo/redo, multiple cursors.</li>
+<li>Autosave: debounced 1 s after last keystroke + on tab switch/close/blur. Atomic write (temp file + rename).</li>
+<li>External change to an open file: if buffer clean → reload silently; if dirty → conflict banner (keep mine / load theirs / diff later).</li>
+<li>Crash safety: unsaved buffer mirrored to <code>.paper-pile/recovery/</code> until saved.</li>
+<li><code>.txt</code> files: plain text mode, no preview, no slash menu.</li>
+</ul>
+<h3>4.6 Markdown rendering (preview)</h3>
+<ul>
+<li>CommonMark + GFM tables, task lists, footnotes, front matter (hidden in preview, shown as small metadata block).</li>
+<li>Code blocks with highlighting.</li>
+<li><code>```mermaid</code> → rendered diagram; render error shows inline message, not a crash.</li>
+<li>Math: <code>$inline$</code> and <code>$$block$$</code> via KaTeX. Dollar rule (pandoc): no whitespace after opening <code>$</code>, no whitespace before closing <code>$</code>, closing <code>$</code> not followed by a digit → &quot;$5 and $10&quot; stays text.</li>
+<li><code>[[note]]</code>, <code>[[note|alias]]</code>, <code>[[note#heading]]</code> → internal links; missing targets styled distinctly (dashed / dim).</li>
+<li>Standard <code>[text](other.md)</code> links also resolved as internal.</li>
+<li>Images <code>![alt|300](path)</code> → width 300px.</li>
+<li>Preview scroll roughly syncs with editor scroll.</li>
+<li>Preview re-render debounced (~200 ms).</li>
+</ul>
+<h3>4.7 Links &amp; backlinks</h3>
+<ul>
+<li>Link extraction on save → index (<code>links</code> table: src, dst_raw, dst_resolved, kind).</li>
+<li>Resolution: exact vault-relative path → unique basename match (case-insensitive) → unresolved.</li>
+<li>Clicking an unresolved link creates the note (in the same folder as the source) and opens it.</li>
+<li>Backlinks pane under the editor: list of notes linking to the current note, with a one-line context snippet. Collapsible.</li>
+<li><strong>Rename-safe:</strong> renaming/moving a note rewrites every <code>[[...]]</code> and <code>(...md)</code> reference to it across the vault, in one operation, with a summary toast (&quot;updated 7 links in 4 notes&quot;).</li>
+</ul>
+<h3>4.8 Slash command menu (<code>/</code>)</h3>
+<ul>
+<li>Trigger: typing <code>/</code> at line start or after whitespace. Not inside code blocks/inline code, not in URLs.</li>
+<li>Notion-style popup at the caret: search field placeholder &quot;Type to search&quot;, grouped sections, icon + label + optional subtitle/badge + right-aligned markdown hint, footer &quot;Close menu · esc&quot;.</li>
+<li>Fuzzy filter on name + aliases; empty groups hidden; recently used float to top (top 5, persisted).</li>
+<li>Keys: ↑/↓, Enter apply, Esc close (keeps literal <code>/</code>), Backspace past <code>/</code> closes.</li>
+<li>Registry lives in <code>core/commands.py</code>:</li>
+</ul>
+<pre><code class="language-python">@command(&quot;h2&quot;, &quot;Heading 2&quot;, group=&quot;Basic blocks&quot;,
+         icon=&quot;h2&quot;, hint=&quot;##&quot;, aliases=[&quot;heading&quot;, &quot;subtitle&quot;])
+def h2(ctx: CommandContext) -&gt; Action:
+    return ReplaceLinePrefix(&quot;## &quot;)
+</code></pre>
+<ul>
+<li><code>CommandContext</code>: note path, buffer text, cursor, selection, vault, config, ai provider.</li>
+<li>Actions: <code>Insert(text, cursor_offset)</code>, <code>ReplaceLinePrefix(prefix)</code>, <code>ReplaceSelection(text)</code>, <code>OpenNote(path)</code>, <code>OpenPicker(kind)</code>, <code>StreamInsert(async_iter)</code> (for AI).</li>
+<li>GUI sends registry as JSON to the editor JS; JS renders the menu and returns the chosen command id; Python executes and returns the action; JS applies it.</li>
+</ul>
+<p><strong>Phase-1 commands</strong></p>
+<table>
+<thead>
+<tr>
+<th>Group</th>
+<th>Commands</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Basic blocks</td>
+<td>text, h1–h4, bulleted list, numbered list, todo, quote, divider, callout</td>
+</tr>
+<tr>
+<td>Code &amp; math</td>
+<td>code block, math block, inline math</td>
+</tr>
+<tr>
+<td>Diagrams</td>
+<td>mermaid (flowchart), sequence, gantt</td>
+</tr>
+<tr>
+<td>Media</td>
+<td>image (file picker), table (3×3)</td>
+</tr>
+<tr>
+<td>Links</td>
+<td>link to note (note picker), embed note</td>
+</tr>
+<tr>
+<td>Insert</td>
+<td>date, time, template (if templates folder set)</td>
+</tr>
+<tr>
+<td>AI</td>
+<td>summarize, continue writing, explain selection, fix grammar, ask…</td>
+</tr>
+</tbody>
+</table>
+<h3>4.9 Images (traceless)</h3>
+<ul>
+<li>Storage: hidden sibling folder per note: <code>notes/mamba.md</code> → <code>notes/.mamba.assets/</code>.</li>
+<li>Filename: first 12 hex of SHA-256 of bytes + original extension (dedupe, no collisions). PNG for pasted bitmaps.</li>
+<li>Reference inserted: <code>![image|&lt;width&gt;](.mamba.assets/a3f9c1d2e4b0.png)</code> — standard markdown path, width in alt (Obsidian convention).</li>
+<li>Sources: clipboard paste, drag-drop, <code>/image</code> picker.</li>
+<li>Resize: in preview, drag image corner → rewrite only the <code>|&lt;width&gt;</code> number in the source. (Inline-editor resize comes with inline live preview, later.)</li>
+<li>Lifecycle (in <code>core/assets.py</code>, invoked by vault ops):</li>
+</ul>
+<table>
+<thead>
+<tr>
+<th>Event</th>
+<th>Action</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Note renamed/moved</td>
+<td>Rename/move assets folder + rewrite references in that note</td>
+</tr>
+<tr>
+<td>Note deleted</td>
+<td>Move assets folder to <code>.trash/</code> alongside the note</td>
+</tr>
+<tr>
+<td>Note duplicated</td>
+<td>Copy assets folder, rewrite refs in copy</td>
+</tr>
+<tr>
+<td>Image ref removed</td>
+<td>On save, unreferenced files → <code>.trash/</code> (orphan sweep)</td>
+</tr>
+<tr>
+<td>Assets folder empty</td>
+<td>Delete folder</td>
+</tr>
+</tbody>
+</table>
+<ul>
+<li>Export option (later phase): &quot;Export note as single .md&quot; with base64-inlined images.</li>
+</ul>
+<h3>4.10 Smart Paste</h3>
+<p>On paste into the editor:</p>
+<ol>
+<li>If clipboard has an <strong>image</strong> → images flow (4.9).</li>
+<li>Else if it has <strong>text/html</strong> → <code>core/paste.html_to_md(html)</code>:
+<ul>
+<li>KaTeX/MathJax elements → extract LaTeX from <code>&lt;annotation encoding=&quot;application/x-tex&quot;&gt;</code> (or MathJax script tags) → <code>$...$</code> inline, <code>$$...$$</code> display. Drop the visual duplicate.</li>
+<li><code>&lt;pre&gt;&lt;code class=&quot;language-x&quot;&gt;</code> → fenced block with language.</li>
+<li>Tables, nested lists, headings, emphasis, links → markdown.</li>
+<li>Strip chatbot UI junk (&quot;Copy code&quot;, &quot;Copied!&quot;, &quot;Copy&quot;, language labels in code headers, citation buttons).</li>
+</ul>
+</li>
+<li>Else <strong>plain text</strong> → <code>core/paste.normalize(text)</code>:
+<ul>
+<li><code>\( ... \)</code> → <code>$...$</code>, <code>\[ ... \]</code> → <code>$$...$$</code>.</li>
+<li>Never touch content inside fenced code or inline code.</li>
+</ul>
+</li>
+<li>Ctrl+Shift+V → raw paste, no conversion.</li>
+<li>Setting: Smart Paste on/off (default <strong>on</strong>).</li>
+</ol>
+<ul>
+<li>Test fixtures: real clipboard HTML captured from ChatGPT, Claude, Gemini, DeepSeek in <code>tests/fixtures/paste/&lt;source&gt;_&lt;case&gt;.html</code> + expected <code>.md</code>. Cases: inline math, display math, code block, table, nested list, mixed.</li>
+</ul>
+<h3>4.11 AI (Ollama)</h3>
+<ul>
+<li><code>Provider</code> protocol: <code>chat(messages, stream) -&gt; AsyncIterator[str]</code>, <code>embed(texts)</code>, <code>models()</code>, <code>health()</code>.</li>
+<li><code>OllamaProvider</code>: host from config (default <code>http://localhost:11434</code>).</li>
+<li>Startup health check; status bar dot (green/red). If down → friendly banner in chat pane (&quot;Ollama isn't running — start it with <code>ollama serve</code>&quot;), app still fully usable.</li>
+<li>Model picker in chat header, populated from <code>models()</code>.</li>
+<li><strong>Context building</strong> (<code>core/ai/context.py</code>), filled in order until the token budget (configurable, default 6000 tokens; rough estimate chars/4):
+<ol>
+<li>Selection (if any)</li>
+<li>Current note</li>
+<li><code>@note</code> mentions in the chat message</li>
+<li>(option) all open tabs</li>
+<li>Linked notes (outgoing + backlinks, one hop) — truncated</li>
+</ol>
+</li>
+<li>Chat: streamed tokens, markdown-rendered replies (math + mermaid render too), Stop button, per-message &quot;Insert into note&quot; and &quot;Copy&quot;.</li>
+<li><code>@</code> in chat input → note picker (fuzzy).</li>
+<li>Chat history kept per session (in memory) in phase 1.</li>
+<li>AI slash commands use the same provider + context builder and stream into the editor at the cursor (<code>StreamInsert</code>).</li>
+<li>Vault-wide RAG (embeddings + <code>sqlite-vec</code>): <strong>not phase 1</strong>.</li>
+</ul>
+<h3>4.12 Settings, theme, profile</h3>
+<ul>
+<li>Bottom-left of left pane: avatar + name, ⚙️ settings, ☀️/🌙 quick theme toggle.</li>
+<li>Profile: local only (name, avatar image or initials). Name used in chat and optional <code>author:</code> front matter.</li>
+<li>Settings dialog sections:</li>
+</ul>
+<table>
+<thead>
+<tr>
+<th>Section</th>
+<th>Options</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Appearance</td>
+<td>Theme: Light / Dark / System; accent colour (6–8 preset palette); UI density (compact/comfortable)</td>
+</tr>
+<tr>
+<td>Editor</td>
+<td>Font family, font size, line height, word wrap, tab size, spell check, default preview mode</td>
+</tr>
+<tr>
+<td>Vault</td>
+<td>Attachments behaviour (fixed: hidden per-note), templates folder, daily-notes folder</td>
+</tr>
+<tr>
+<td>AI</td>
+<td>Ollama host, default chat model, embed model (future), context budget</td>
+</tr>
+<tr>
+<td>Paste</td>
+<td>Smart Paste on/off</td>
+</tr>
+</tbody>
+</table>
+<ul>
+<li>Storage: global <code>~/.config/paper-pile/config.toml</code> (via platformdirs), per-vault overrides <code>&lt;vault&gt;/.paper-pile/vault.toml</code>. Load order: defaults → global → vault.</li>
+<li>Theming via CSS variables; editor + preview + mermaid + chat all follow theme (Mermaid theme switches to <code>dark</code>).</li>
+</ul>
+<h3>4.13 Navigation &amp; status</h3>
+<ul>
+<li>Ctrl+P command palette (all commands incl. settings actions), Ctrl+O quick switcher (fuzzy note open), Ctrl+Shift+F vault search (FTS5, results with snippets).</li>
+<li>Outline panel (headings of current note) — toggle, can live in left pane as a tab.</li>
+<li>Status bar: word count, Ln/Col, save state, Ollama status.</li>
+</ul>
+<h3>4.14 Keyboard shortcuts (defaults)</h3>
+<table>
+<thead>
+<tr>
+<th>Key</th>
+<th>Action</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Ctrl+P</td>
+<td>Command palette</td>
+</tr>
+<tr>
+<td>Ctrl+O</td>
+<td>Quick switcher</td>
+</tr>
+<tr>
+<td>Ctrl+N</td>
+<td>New note</td>
+</tr>
+<tr>
+<td>Ctrl+W</td>
+<td>Close tab</td>
+</tr>
+<tr>
+<td>Ctrl+Tab</td>
+<td>Next tab</td>
+</tr>
+<tr>
+<td>Ctrl+E</td>
+<td>Cycle preview mode</td>
+</tr>
+<tr>
+<td>Ctrl+B</td>
+<td>Toggle left pane</td>
+</tr>
+<tr>
+<td>Ctrl+L</td>
+<td>Toggle AI chat</td>
+</tr>
+<tr>
+<td>Ctrl+Shift+F</td>
+<td>Vault search</td>
+</tr>
+<tr>
+<td>Ctrl+Shift+V</td>
+<td>Raw paste</td>
+</tr>
+<tr>
+<td>Ctrl+,</td>
+<td>Settings</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2>5. Data formats</h2>
+<p><strong>SQLite schema (<code>.paper-pile/index.db</code>)</strong> — cache only:</p>
+<pre><code class="language-sql">notes(id INTEGER PK, path TEXT UNIQUE, title TEXT, mtime REAL, hash TEXT)
+links(src_id INT, dst_raw TEXT, dst_path TEXT NULL, kind TEXT, line INT)
+notes_fts USING fts5(path, title, body)
+meta(key TEXT PK, value TEXT)   -- schema_version
+</code></pre>
+<ul>
+<li>On open: compare mtime/hash, re-index changed files. <code>Rebuild index</code> command drops and rebuilds.</li>
+</ul>
+<p><strong>session.json</strong>: <code>{ &quot;tabs&quot;: [...paths], &quot;active&quot;: path, &quot;pane_widths&quot;: {...}, &quot;preview_mode&quot;: &quot;split&quot; }</code></p>
+<hr />
+<h2>6. Phases &amp; tasks</h2>
+<p>Status lives in TRACKER.md. Each task: do it → verify acceptance → update TRACKER.<br />
+Order matters: risky spikes come first.</p>
+<h3>P0 — Foundation</h3>
+<table>
+<thead>
+<tr>
+<th>ID</th>
+<th>Task</th>
+<th>Acceptance</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>P0.1</td>
+<td><code>uv init</code>, pyproject (deps pinned, script entry <code>paper-pile</code>), ruff/mypy/pytest config</td>
+<td><code>uv run paper-pile --help</code> works; <code>uv run pytest</code> runs (0 tests ok)</td>
+</tr>
+<tr>
+<td>P0.2</td>
+<td>Repo skeleton per §3, empty modules with docstrings</td>
+<td>tree matches §3</td>
+</tr>
+<tr>
+<td>P0.3</td>
+<td><code>core/events.py</code> pub/sub + <code>core/config.py</code> (defaults, load/merge/save TOML)</td>
+<td>unit tests for merge order + save round-trip</td>
+</tr>
+<tr>
+<td>P0.4</td>
+<td><strong>Spike S1 — editor component.</strong> Build minimal CM6 bundle with esbuild, wrap as custom NiceGUI element; prove: load text, change event → Python, set text from Python, insert at cursor from Python, keydown hook for <code>/</code>, paste event with html+image → Python. Check first whether NiceGUI's built-in <code>ui.codemirror</code> allows custom extensions; if yes, prefer it.</td>
+<td>Demo page does all 6 things; decision logged; PLAN §2/§4.5 updated with chosen approach</td>
+</tr>
+<tr>
+<td>P0.5</td>
+<td><strong>Spike S2 — preview rendering.</strong> markdown-it HTML → <code>ui.html</code>, then JS post-render Mermaid + KaTeX from vendored files; theme switch re-renders mermaid</td>
+<td>Demo renders a mermaid diagram + inline/display math offline (network disabled)</td>
+</tr>
+<tr>
+<td>P0.6</td>
+<td><strong>Spike S3 — native mode.</strong> <code>ui.run(native=True)</code> with pywebview[qt] on Ubuntu; keyboard shortcuts reach the app (Ctrl+P, Ctrl+W not swallowed)</td>
+<td>Window opens, shortcuts verified; fallbacks logged if any are swallowed</td>
+</tr>
+</tbody>
+</table>
+<h3>P1 — Shell &amp; vault</h3>
+<table>
+<thead>
+<tr>
+<th>ID</th>
+<th>Task</th>
+<th>Acceptance</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>P1.1</td>
+<td><code>cli.py</code>: vault arg, last-vault memory, <code>--serve</code> with token + 127.0.0.1 bind</td>
+<td>all 4 CLI forms in §4.1 work</td>
+</tr>
+<tr>
+<td>P1.2</td>
+<td><code>core/vault.py</code>: list tree (hide dot entries), read/write (atomic), create, rename/move, delete→trash, duplicate</td>
+<td>unit tests on tmp vault incl. trash + atomic write</td>
+</tr>
+<tr>
+<td>P1.3</td>
+<td>3-pane layout with resizable/collapsible panes, empty chat panel, status bar stub</td>
+<td>manual QA: resize, collapse, widths persist</td>
+</tr>
+<tr>
+<td>P1.4</td>
+<td>Tree component + context menu + drag-move</td>
+<td>manual QA</td>
+</tr>
+<tr>
+<td>P1.5</td>
+<td><code>core/watcher.py</code> → events → tree refresh</td>
+<td>creating a file from terminal appears in tree &lt; 1 s</td>
+</tr>
+</tbody>
+</table>
+<h3>P2 — Editor, tabs, preview</h3>
+<table>
+<thead>
+<tr>
+<th>ID</th>
+<th>Task</th>
+<th>Acceptance</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>P2.1</td>
+<td>Editor component (from S1) wired to open file, autosave (debounce + atomic), recovery buffer</td>
+<td>edit → file on disk updates; kill app mid-edit → recovery offered</td>
+</tr>
+<tr>
+<td>P2.2</td>
+<td>Tabs per §4.4 incl. preview tab, restore session</td>
+<td>manual QA checklist §4.4 all pass</td>
+</tr>
+<tr>
+<td>P2.3</td>
+<td><code>core/parser.py</code> markdown-it setup + dollar math rule + front matter</td>
+<td>unit tests: tables, tasks, footnotes, <code>$5 and $10</code> not math</td>
+</tr>
+<tr>
+<td>P2.4</td>
+<td>Preview component (from S2), split/editor/preview modes, debounce, scroll sync</td>
+<td>manual QA</td>
+</tr>
+<tr>
+<td>P2.5</td>
+<td>External-change handling (reload / conflict banner)</td>
+<td>edit open file from terminal → correct behaviour both clean and dirty</td>
+</tr>
+<tr>
+<td>P2.6</td>
+<td><code>.txt</code> plain mode</td>
+<td>.txt opens without preview/slash</td>
+</tr>
+</tbody>
+</table>
+<h3>P3 — Links &amp; index</h3>
+<table>
+<thead>
+<tr>
+<th>ID</th>
+<th>Task</th>
+<th>Acceptance</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>P3.1</td>
+<td>Wikilink markdown-it plugin (<code>[[a]]</code>, <code>[[a|b]]</code>, <code>[[a#h]]</code>)</td>
+<td>unit tests</td>
+</tr>
+<tr>
+<td>P3.2</td>
+<td><code>core/index.py</code> schema, incremental index, FTS, rebuild</td>
+<td>unit tests; 1,000-note synthetic vault indexes &lt; 5 s</td>
+</tr>
+<tr>
+<td>P3.3</td>
+<td><code>core/links.py</code> resolve + click-to-navigate + create-on-missing; Ctrl+click new tab</td>
+<td>manual QA</td>
+</tr>
+<tr>
+<td>P3.4</td>
+<td>Backlinks pane with snippets</td>
+<td>manual QA</td>
+</tr>
+<tr>
+<td>P3.5</td>
+<td>Rename-safe link rewriting across vault + toast</td>
+<td>unit test: rename updates wikilinks + md links in N files</td>
+</tr>
+</tbody>
+</table>
+<h3>P4 — Slash menu</h3>
+<table>
+<thead>
+<tr>
+<th>ID</th>
+<th>Task</th>
+<th>Acceptance</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>P4.1</td>
+<td><code>core/commands.py</code> registry, decorator, actions, fuzzy match, recents</td>
+<td>unit tests</td>
+</tr>
+<tr>
+<td>P4.2</td>
+<td>Notion-style popup in editor JS per §4.8 (look + keys + trigger rules)</td>
+<td>manual QA vs reference screenshot; not triggered in code/URLs</td>
+</tr>
+<tr>
+<td>P4.3</td>
+<td>Implement non-AI phase-1 commands + note picker</td>
+<td>each command inserts correct markdown</td>
+</tr>
+</tbody>
+</table>
+<h3>P5 — Images</h3>
+<table>
+<thead>
+<tr>
+<th>ID</th>
+<th>Task</th>
+<th>Acceptance</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>P5.1</td>
+<td><code>core/assets.py</code> save (hash name), reference format, lifecycle table §4.9</td>
+<td>unit tests for every lifecycle row</td>
+</tr>
+<tr>
+<td>P5.2</td>
+<td>Paste / drag-drop / <code>/image</code> → save + insert</td>
+<td>manual QA all 3 sources</td>
+</tr>
+<tr>
+<td>P5.3</td>
+<td>Preview drag-resize → rewrite width</td>
+<td>width persists in source, other markdown untouched</td>
+</tr>
+<tr>
+<td>P5.4</td>
+<td>Tree hides <code>.*.assets</code>; vault ops call assets lifecycle</td>
+<td>rename note in tree → images still render</td>
+</tr>
+</tbody>
+</table>
+<h3>P6 — Smart Paste</h3>
+<table>
+<thead>
+<tr>
+<th>ID</th>
+<th>Task</th>
+<th>Acceptance</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>P6.1</td>
+<td>Collect fixtures (ask user to paste samples from ChatGPT/Claude/Gemini/DeepSeek, or capture via a debug &quot;dump clipboard HTML&quot; command)</td>
+<td>≥ 4 sources × 4 cases in <code>tests/fixtures/paste/</code></td>
+</tr>
+<tr>
+<td>P6.2</td>
+<td><code>core/paste.py</code> html_to_md + normalize per §4.10</td>
+<td>all fixture tests pass</td>
+</tr>
+<tr>
+<td>P6.3</td>
+<td>Wire into editor paste; Ctrl+Shift+V raw; setting toggle</td>
+<td>manual QA</td>
+</tr>
+</tbody>
+</table>
+<h3>P7 — AI</h3>
+<table>
+<thead>
+<tr>
+<th>ID</th>
+<th>Task</th>
+<th>Acceptance</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>P7.1</td>
+<td>Provider protocol + OllamaProvider + health check + status dot</td>
+<td>unit tests with mocked client; banner when Ollama down</td>
+</tr>
+<tr>
+<td>P7.2</td>
+<td>Chat pane: model picker, streaming, stop, markdown render, copy, insert into note</td>
+<td>manual QA</td>
+</tr>
+<tr>
+<td>P7.3</td>
+<td>Context builder + token budget + <code>@note</code> picker + &quot;include open tabs&quot; toggle</td>
+<td>unit tests for ordering/truncation</td>
+</tr>
+<tr>
+<td>P7.4</td>
+<td>AI slash commands with <code>StreamInsert</code></td>
+<td><code>/summarize</code>, <code>/continue</code>, <code>/explain</code>, <code>/fix</code>, <code>/ask</code> work, Stop cancels</td>
+</tr>
+</tbody>
+</table>
+<h3>P8 — Settings, theme, profile</h3>
+<table>
+<thead>
+<tr>
+<th>ID</th>
+<th>Task</th>
+<th>Acceptance</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>P8.1</td>
+<td>Theme system (CSS vars, light/dark/system, accent palette, density); editor/preview/mermaid/chat follow</td>
+<td>switching theme updates everything live</td>
+</tr>
+<tr>
+<td>P8.2</td>
+<td>Settings dialog §4.12 + persistence (global + vault)</td>
+<td>values survive restart; vault overrides global</td>
+</tr>
+<tr>
+<td>P8.3</td>
+<td>Bottom-left profile block + quick theme toggle</td>
+<td>manual QA</td>
+</tr>
+</tbody>
+</table>
+<h3>P9 — Navigation &amp; polish</h3>
+<table>
+<thead>
+<tr>
+<th>ID</th>
+<th>Task</th>
+<th>Acceptance</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>P9.1</td>
+<td>Ctrl+P palette, Ctrl+O switcher</td>
+<td>fuzzy, keyboard-only usable</td>
+</tr>
+<tr>
+<td>P9.2</td>
+<td>Vault search (FTS) with snippets</td>
+<td>manual QA</td>
+</tr>
+<tr>
+<td>P9.3</td>
+<td>Outline panel</td>
+<td>click heading → jumps</td>
+</tr>
+<tr>
+<td>P9.4</td>
+<td>Status bar complete</td>
+<td>word count, Ln/Col, save state, ollama dot</td>
+</tr>
+<tr>
+<td>P9.5</td>
+<td>Shortcut table §4.14 all wired</td>
+<td>each verified</td>
+</tr>
+<tr>
+<td>P9.6</td>
+<td>Full manual QA pass + README (install, run, shortcuts)</td>
+<td>checklist below all ✅</td>
+</tr>
+</tbody>
+</table>
+<h3>Phase-1 final QA checklist</h3>
+<ul class="contains-task-list">
+<li class="task-list-item enabled"><input class="task-list-item-checkbox"  type="checkbox"> Works fully offline (network off) except AI if Ollama is remote</li>
+<li class="task-list-item enabled"><input class="task-list-item-checkbox"  type="checkbox"> Rename a note with images + 5 backlinks → nothing breaks</li>
+<li class="task-list-item enabled"><input class="task-list-item-checkbox"  type="checkbox"> Paste a math-heavy ChatGPT answer → renders correctly</li>
+<li class="task-list-item enabled"><input class="task-list-item-checkbox"  type="checkbox"> Mermaid renders in both themes</li>
+<li class="task-list-item enabled"><input class="task-list-item-checkbox"  type="checkbox"> 10 tabs open, restart → restored</li>
+<li class="task-list-item enabled"><input class="task-list-item-checkbox"  type="checkbox"> Ollama stopped → app usable, clear banner</li>
+<li class="task-list-item enabled"><input class="task-list-item-checkbox"  type="checkbox"> Delete note → recoverable from <code>.trash/</code></li>
+<li class="task-list-item enabled"><input class="task-list-item-checkbox"  type="checkbox"> <code>--serve</code> reachable only on 127.0.0.1 and only with token</li>
+</ul>
+<hr />
+<h2>7. Deferred (not phase 1)</h2>
+<p>Inline live preview (Obsidian-style hidden syntax) · vault RAG with <code>sqlite-vec</code> ·<br />
+graph view · split panes · tags/front-matter queries · daily notes &amp; templates UI ·<br />
+export (PDF/HTML/single-file base64) · git sync · TUI (Textual, reusing core) ·<br />
+RHEL/server packaging · multi-user/teams · cloud AI providers.</p>
+<hr />
+<h2>8. Risks</h2>
+<table>
+<thead>
+<tr>
+<th>Risk</th>
+<th>Mitigation</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Custom CM6 element in NiceGUI is harder than expected</td>
+<td>Spike S1 first; fallback: CodeMirror 5 UMD (no build step, has show-hint addon) — log if used</td>
+</tr>
+<tr>
+<td>pywebview swallows shortcuts</td>
+<td>Spike S3; fallback key bindings or browser mode</td>
+</tr>
+<tr>
+<td>Chatbot HTML changes</td>
+<td>Fixture tests; easy to add new fixtures</td>
+</tr>
+<tr>
+<td>Rename rewriting corrupts notes</td>
+<td>Atomic writes, tests, write to trash backup before bulk rewrite</td>
+</tr>
+<tr>
+<td>Slow local models</td>
+<td>Streaming, Stop, small default context budget</td>
+</tr>
+</tbody>
+</table>
+</main>
+</body>
+</html>

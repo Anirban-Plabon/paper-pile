@@ -20,6 +20,7 @@ from paper_pile.core.vault import VaultError
 from paper_pile.gui import printing
 from paper_pile.gui.components.note_menu import NoteActions
 from paper_pile.gui.dialog import Dialog
+from paper_pile.gui.icons import close_button, line_icon
 from paper_pile.gui.printing import build_print_page, paper_name
 from paper_pile.gui.window import native_request
 
@@ -129,9 +130,22 @@ async def _pick_note(
     lead = [n for n in (first or []) if n in set(notes)]
     rest = sorted((n for n in notes if n not in set(lead)), key=str.lower)
     state: dict[str, Any] = {"query": "", "selected": 0, "shown": []}
-    with pane.host, Dialog() as dialog, ui.card().classes("pp-dialog pp-picker"):
-        ui.label(title).classes("pp-dialog-title")
-        field = ui.input(placeholder="Search notes…").props("outlined dense autofocus")
+    # the same look and place as the palette / quick switcher (picker_popup.py); the title is
+    # the search box's placeholder
+    with (
+        pane.host,
+        Dialog().props(
+            "position=top transition-show=none transition-hide=none transition-duration=0"
+        ) as dialog,
+        ui.card().classes("pp-picker"),
+    ):
+        with ui.row().classes("pp-picker-head items-center no-wrap"):
+            field = (
+                ui.input(placeholder=title)
+                .props("dense borderless autofocus")
+                .classes("pp-picker-input")
+            )
+            close_button(lambda: dialog.submit(None), "Close (Esc)").classes("pp-picker-close")
         listing = ui.column().classes("pp-picker-list")
 
         def render() -> None:
@@ -144,13 +158,14 @@ async def _pick_note(
                     ui.label("No notes found").classes("pp-muted")
                 for i, note in enumerate(shown):
                     folder, _, name = note.rpartition("/")
-                    row = ui.row().classes("pp-picker-row items-baseline no-wrap")
+                    row = ui.row().classes("pp-picker-row items-center no-wrap")
                     if i == state["selected"]:
-                        row.classes("pp-picker-sel")
+                        row.classes("pp-picker-on")
                     with row:
-                        ui.label(name.rsplit(".", 1)[0])
+                        line_icon("file-text").classes("pp-picker-icon")
+                        ui.label(name.rsplit(".", 1)[0]).classes("pp-picker-title")
                         if folder:
-                            ui.label(folder).classes("pp-muted")
+                            ui.label(folder).classes("pp-picker-sub")
                         if note in lead:
                             ui.label("Open").classes("pp-picker-badge")
                     row.on("click", lambda _e, n=note: dialog.submit(n))

@@ -38,7 +38,7 @@ class NoteHead:
 
     def build(self) -> None:
         with ui.row().classes("pp-notehead items-center no-wrap") as self.bar:
-            with ui.element("div").classes("pp-seg pp-tools pp-tools-row pp-notehead-nav"):
+            with ui.row().classes("pp-notehead-nav items-center no-wrap"):
                 self._prev = icon_button("chevron-up", self._on_prev, "Previous section", "m")
                 self._next = icon_button("chevron-down", self._on_next, "Next section", "m")
             with ui.row().classes("pp-notehead-crumb items-center no-wrap"):

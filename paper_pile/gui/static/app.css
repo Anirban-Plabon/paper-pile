@@ -116,8 +116,11 @@ html, body { overflow: hidden; }
 /* the file tree's edge while folded (beside the ribbon) can still be double-clicked open */
 .pp-root .pp-panesplit-left.q-splitter--disabled > .q-splitter__separator > div { right: -6px; }
 /* a pane edge being dragged (static/panes.js): an accent line, like the outline's divider */
-.pp-root .pp-panesplit > .q-splitter__separator { transition: background-color var(--pp-dur-fast) ease, box-shadow var(--pp-dur-fast) ease; }
-.pp-root .pp-panesplit > .q-splitter__separator.pp-sep-active { background: var(--pp-accent); box-shadow: 0 0 0 1px rgba(var(--pp-accent-rgb), .45); z-index: 5; }
+/* a pane edge under the pointer (the resize cursor shows) or being dragged (static/panes.js): its
+   grab strip is tinted like the outline's divider */
+.pp-root .pp-panesplit > .q-splitter__separator > div { transition: background-color var(--pp-dur-fast) ease; }
+.pp-root .pp-panesplit > .q-splitter__separator:hover > div,
+.pp-root .pp-panesplit > .q-splitter__separator.pp-sep-active > div { background: rgba(var(--pp-accent-rgb), .35); }
 /* The pane itself has no padding and clips, so a collapsed (0 px) pane is truly 0 wide. */
 .pp-pane { width: 100%; height: 100%; padding: 0; gap: 0; overflow: hidden; flex-wrap: nowrap; }
 .pp-pane-body { width: 100%; height: 100%; padding: 10px 12px; gap: 6px; overflow: auto; flex-wrap: nowrap; }
@@ -1294,7 +1297,9 @@ body.body--dark { --pp-set-box-bg: rgba(255, 255, 255, .035); }
 .pp-chat-compose:has(.pp-chat-disclaimer) { padding-bottom: 8px; }
 /* tab overflow (tabs.js): each arrow has its own 26 px area at an edge of the row; the row is
    padded by those areas, so no tab hides under one */
-.pp-tabbar.pp-tabs-scroll { padding: 0 26px; scroll-padding: 0 26px; }
+.pp-tabbar.pp-tabs-scroll { padding: 6px 26px 0; scroll-padding: 0 26px; }
+/* tabs are a little lower than their row: air above them (the row stays as tall as the footer) */
+.pp-tabbar, .pp-rtabbar { padding-top: 6px; }
 .pp-tabs-arrow { position: absolute; top: 0; height: 100%; width: 26px; display: none; align-items: center; justify-content: center; cursor: pointer; color: var(--pp-muted); background: var(--pp-bg-side); z-index: 2; transition: color var(--pp-dur-fast) ease, background-color var(--pp-dur-fast) ease; }
 .pp-tabs-arrow.pp-on { display: flex; }
 /* each arrow is a small rounded box inside its (opaque, full-height) area: no tab shows through */
@@ -1327,15 +1332,16 @@ body.body--dark { --pp-set-box-bg: rgba(255, 255, 255, .035); }
 
 /* The bar on top of each editor (gui/components/note_head.py, P21): ‹ › sections, the note's
    title and the section at the top of the view, then the note's own buttons */
-.pp-notehead { width: 100%; flex: none; height: 38px; gap: 8px; padding: 0 8px; border-bottom: 1px solid var(--pp-border); background: var(--pp-bg); }
+/* 46 px with 8 px above and below: its boxes sit at the height of the Files header's box */
+.pp-notehead { width: 100%; flex: none; height: 46px; gap: 8px; padding: 8px; border-bottom: 1px solid var(--pp-border); background: var(--pp-bg); }
 .pp-notehead-crumb { flex: 1 1 auto; min-width: 0; gap: 6px; font-size: 13px; }
 .pp-notehead-title { flex: 0 1 auto; min-width: 0; max-width: 60%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; color: var(--pp-fg); padding: 2px 4px; border-radius: var(--pp-r-sm); }
 .pp-notehead-sep { flex: none; color: var(--pp-muted); }
 .pp-notehead-section { flex: 1 1 0; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--pp-muted); }
 .pp-notehead-nav, .pp-notehead-tools { flex: none; }
+.pp-notehead-nav { gap: 0; }  /* the arrows: plain buttons, no box */
 .pp-notehead .pp-icon-btn.q-btn.disabled { opacity: .35 !important; }
 /* split view: the title picks another note here; the side being typed in is marked */
 .pp-notehead-split .pp-notehead-title { cursor: pointer; }
 .pp-notehead-split .pp-notehead-title:hover { background: rgba(127, 127, 127, .12); }
-.pp-notehead-active { box-shadow: inset 0 -2px 0 rgba(var(--pp-accent-rgb), .7); }
 .pp-notehead-active .pp-notehead-title { color: var(--pp-accent); }
