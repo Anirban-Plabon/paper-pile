@@ -116,11 +116,13 @@ html, body { overflow: hidden; }
 /* the file tree's edge while folded (beside the ribbon) can still be double-clicked open */
 .pp-root .pp-panesplit-left.q-splitter--disabled > .q-splitter__separator > div { right: -6px; }
 /* a pane edge being dragged (static/panes.js): an accent line, like the outline's divider */
-/* a pane edge under the pointer (the resize cursor shows) or being dragged (static/panes.js): its
-   grab strip is tinted like the outline's divider */
-.pp-root .pp-panesplit > .q-splitter__separator > div { transition: background-color var(--pp-dur-fast) ease; }
-.pp-root .pp-panesplit > .q-splitter__separator:hover > div,
-.pp-root .pp-panesplit > .q-splitter__separator.pp-sep-active > div { background: rgba(var(--pp-accent-rgb), .35); }
+/* a pane edge under the pointer (the resize cursor shows) or being dragged (static/panes.js): an
+   8 px band centred on the line, tinted like the outline's divider (the grab strip itself reaches
+   right of the line only, so it is not what is tinted) */
+.pp-root .pp-panesplit > .q-splitter__separator::after { content: ""; position: absolute; top: 0; bottom: 0; left: -4px; width: 9px; pointer-events: none; background: transparent; transition: background-color var(--pp-dur-fast) ease; }
+.pp-root .pp-panesplit > .q-splitter__separator:hover, .pp-root .pp-panesplit > .q-splitter__separator.pp-sep-active { z-index: 5; }
+.pp-root .pp-panesplit > .q-splitter__separator:hover::after,
+.pp-root .pp-panesplit > .q-splitter__separator.pp-sep-active::after { background: rgba(var(--pp-accent-rgb), .35); }
 /* The pane itself has no padding and clips, so a collapsed (0 px) pane is truly 0 wide. */
 .pp-pane { width: 100%; height: 100%; padding: 0; gap: 0; overflow: hidden; flex-wrap: nowrap; }
 .pp-pane-body { width: 100%; height: 100%; padding: 10px 12px; gap: 6px; overflow: auto; flex-wrap: nowrap; }
@@ -149,7 +151,7 @@ html, body { overflow: hidden; }
 /* File tree (paper_pile/gui/components/tree.py, static/tree.js) */
 .pp-left-top { width: 100%; height: var(--pp-tab-h); flex: none; padding: 0 4px; gap: 6px; border-bottom: 1px solid var(--pp-border); }
 .pp-win-title { font-size: 12px; color: var(--pp-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; user-select: none; pointer-events: none; }
-.pp-files-head { width: 100%; height: 38px; padding: 8px 6px 0 12px; gap: 2px; flex: none; } /* 8 px of air above Files and its buttons */
+.pp-files-head { width: 100%; height: var(--pp-foot-h); padding: 0 6px 0 12px; gap: 2px; flex: none; border-bottom: 1px solid transparent; } /* as tall as the note header beside it: their boxes line up */
 .pp-ribbon-top { width: 100%; height: var(--pp-tab-h); flex: none; border-bottom: 1px solid var(--pp-border); margin-bottom: 2px; }
 /* Native window without an OS title bar */
 .pp-wincontrols { position: fixed; top: 0; right: 0; height: var(--pp-tab-h); padding-right: 4px; gap: 0; z-index: 2500; }
@@ -363,6 +365,8 @@ body.pp-page-dragging, body.pp-page-dragging * { cursor: row-resize !important; 
 .pp-tab-pin { font-size: var(--pp-icon-s); color: var(--pp-muted); flex: none; }
 .pp-tab-active .pp-tab-pin { color: var(--pp-accent); }
 .pp-tabstrip .pp-tab.pp-tab-pinned { min-width: 0; padding-right: 12px; }
+/* tabs: the two top corners rounded */
+.pp-tab, .pp-rtab { border-radius: var(--pp-r-ctrl) var(--pp-r-ctrl) 0 0; }
 .pp-tab-drop-before { box-shadow: inset 3px 0 0 var(--pp-accent); }
 .pp-tab-drop-after { box-shadow: inset -3px 0 0 var(--pp-accent); }
 /* many tabs: they shrink to a minimum, then the row scrolls (wheel, ‹ › arrows, static/tabs.js),
@@ -1112,7 +1116,7 @@ input::selection, textarea::selection { background: rgba(var(--pp-accent-rgb), .
 .pp-chat-jump.q-btn { display: none; }
 .pp-can-up .pp-chat-jump-top.q-btn, .pp-can-down .pp-chat-jump-bottom.q-btn { display: inline-flex; }
 /* the chat's ⋮ menu (top right of the log): new chat, saved chats ("Memories"), AI settings */
-.pp-chat-head { width: 100%; flex: none; gap: 6px; padding: 4px 6px 4px 14px; border-bottom: 1px solid var(--pp-border); }
+.pp-chat-head { width: 100%; flex: none; height: var(--pp-foot-h); gap: 6px; padding: 0 6px 0 14px; border-bottom: 1px solid var(--pp-border); }
 .pp-chat-title { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; font-weight: 500; color: var(--pp-muted); }
 .pp-chat-head .pp-icon-btn.q-btn { flex: none; }
 .pp-menu-caption { padding: 6px 12px 2px; font-size: 11.5px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; color: var(--pp-muted); }
@@ -1332,8 +1336,8 @@ body.body--dark { --pp-set-box-bg: rgba(255, 255, 255, .035); }
 
 /* The bar on top of each editor (gui/components/note_head.py, P21): ‹ › sections, the note's
    title and the section at the top of the view, then the note's own buttons */
-/* 46 px with 8 px above and below: its boxes sit at the height of the Files header's box */
-.pp-notehead { width: 100%; flex: none; height: 46px; gap: 8px; padding: 8px; border-bottom: 1px solid var(--pp-border); background: var(--pp-bg); }
+/* as tall as the footer (the Backlinks bar), like the top row and the chat's title row */
+.pp-notehead { width: 100%; flex: none; height: var(--pp-foot-h); gap: 8px; padding: 0 8px; border-bottom: 1px solid var(--pp-border); background: var(--pp-bg); }
 .pp-notehead-crumb { flex: 1 1 auto; min-width: 0; gap: 6px; font-size: 13px; }
 .pp-notehead-title { flex: 0 1 auto; min-width: 0; max-width: 60%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; color: var(--pp-fg); padding: 2px 4px; border-radius: var(--pp-r-sm); }
 .pp-notehead-sep { flex: none; color: var(--pp-muted); }
