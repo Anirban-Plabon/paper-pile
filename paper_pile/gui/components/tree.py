@@ -293,7 +293,7 @@ class FileTree:
                 line_icon("file-text").classes("pp-ico pp-ico-note")
             ui.label(entry.name).classes("pp-tree-name")
             if entry.is_dir:  # static/tree.js: a click here is "new note in this folder"
-                add = line_icon("plus", "s").classes("pp-tree-add")
+                add = line_icon("plus").classes("pp-tree-add")
                 add._props["data-tip"] = "New note here"
         self._rows[entry.path] = row
 
