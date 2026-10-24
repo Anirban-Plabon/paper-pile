@@ -115,6 +115,8 @@ html, body { overflow: hidden; }
 .pp-root .q-splitter--disabled > .q-splitter__separator > div { right: 0; }
 /* the file tree's edge while folded (beside the ribbon) can still be double-clicked open */
 .pp-root .pp-panesplit-left.q-splitter--disabled > .q-splitter__separator > div { right: -6px; }
+/* ...and shows the resize arrow (a drag or a double-click there opens it, static/panes.js) */
+.pp-root .pp-panesplit-left.q-splitter--disabled > .q-splitter__separator, .pp-root .pp-panesplit-left.q-splitter--disabled > .q-splitter__separator > div { cursor: col-resize; }
 /* a pane edge being dragged (static/panes.js): an accent line, like the outline's divider */
 /* a pane edge under the pointer (the resize cursor shows) or being dragged (static/panes.js): an
    8 px band centred on the line, tinted like the outline's divider (the grab strip itself reaches

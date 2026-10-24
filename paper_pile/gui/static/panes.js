@@ -1,9 +1,11 @@
 // Dragging the edge of the file tree or the right pane on past its narrowest width folds that
 // pane away (like Obsidian/VS Code); the edge is highlighted while it is held. A double-click on
-// the edge folds the pane, or unfolds a folded one. Capture only: Python decides (events
+// the edge folds the pane, or unfolds a folded one; a folded file tree also opens when its edge is
+// pulled to the right. Capture only: Python decides (events
 // `pp_pane_collapse`, `pp_pane_toggle`).
 (() => {
   const GRACE_PX = 48; // how far past the narrowest width the pointer must go
+  const OPEN_PX = 24; // how far a folded file tree's edge must be pulled to open it
   const paneEdge = (el) => {
     const sep = el && el.closest && el.closest(".q-splitter__separator");
     const box = sep && sep.parentElement;
@@ -23,7 +25,26 @@
       if (!edge || e.button !== 0) return;
       const { sep, box, pane } = edge;
       const min = Number(box.dataset.min || 0);
-      if (!min) return; // already folded
+      if (!min) {
+        // the folded file tree: dragging its edge to the right opens it
+        if (pane !== "left") return;
+        const x0 = e.clientX;
+        sep.classList.add("pp-sep-active");
+        const pull = (ev) => {
+          if (ev.clientX - x0 > OPEN_PX) {
+            done();
+            emitEvent("pp_pane_toggle", { pane });
+          }
+        };
+        const done = () => {
+          sep.classList.remove("pp-sep-active");
+          window.removeEventListener("pointermove", pull);
+          window.removeEventListener("pointerup", done);
+        };
+        window.addEventListener("pointermove", pull);
+        window.addEventListener("pointerup", done);
+        return;
+      }
       const rect = box.getBoundingClientRect();
       sep.classList.add("pp-sep-active");
       const move = (ev) => {
