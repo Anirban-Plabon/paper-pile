@@ -1365,7 +1365,7 @@ body.body--dark { --pp-set-box-bg: rgba(255, 255, 255, .035); }
 /* the picker (palette / quick switcher): search box and × on one line; shortcuts as key caps */
 .pp-picker-head { width: 100%; gap: 4px; border-bottom: 1px solid var(--pp-border); }
 .pp-picker-head .pp-picker-input { flex: 1 1 auto; min-width: 0; border-bottom: none; }
-.pp-picker-close.q-btn { flex: none; }
+.pp-picker-close.q-btn { flex: none; position: relative; top: -1px; }  /* level with the letters (they sit a little above the centre of the field) */
 .pp-picker-keys { flex: none; gap: 3px; }
 .pp-kbd { min-width: 20px; height: 20px; padding: 0 6px; display: inline-flex; align-items: center; justify-content: center; font-size: 11px; line-height: 1; color: var(--pp-muted); background: var(--pp-bg-side); border: 1px solid var(--pp-border); border-bottom-width: 2px; border-radius: 5px; white-space: nowrap; }
 /* slash menu (slash.js): the tooltip is a transparent box as tall as the menu can get, so

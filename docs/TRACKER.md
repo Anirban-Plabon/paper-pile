@@ -434,6 +434,7 @@ Legend: 🧠 = needs Opus (see PLAN §6 model guidance) · ⬜ todo · 🔄 in p
 | 2026-10-24 | P21 follow-up 4: active tabs outlined (top and sides) and open at the bottom; the right pane's active tab takes the pane's grey | User: "looks odd lines are required", "color is not being matched and no line as well" (AI chat tab) | user |
 | 2026-10-24 | P21 follow-up 5: the active tab's bottom corners ramp out into the row's line (pseudo-element per side, shadow fills the notch); tab rows get 8 px end padding for the first / last ramp | User: "tabs top is rounded so ramp also need to be rounded" | user |
 | 2026-10-24 | P21 follow-up 6: the folded file tree's edge shows the resize arrow and hover tint, and pulling it right opens the tree (so the arrow does what it promises) | User: "the left pane didn't get the expansion arrow while folded" | user |
+| 2026-10-24 | Picker × (palette, switcher, note picker) 1 px higher: the boxes were centred, but the search text's letters sit above the field's centre | User: "the cross is bit down, not aligned"; measured at 2×: letters' middle 0.5–1 px above the ×'s | user |
 | 2026-10-24 | Header arrows are chevron up / down (sections are above / below); the folded right pane cannot be double-clicked open (its edge is the window's resize strip); a pinned tab closes from its menu or Ctrl+W, not by middle-click | Vertical movement reads better as up / down; the window edge already belongs to resizing; middle-click closes are the common accident | claude |
 | 2026-10-23 | P18 re-applied in part: tab-row double-click, opaque arrow hover, picker (no animation, ×, key caps), slash menu side, line numbers after properties; the note buttons stay in the tab strip, split backlinks still open together | User: "need the corrected versions of p18, they were useful" (listing those five) | user |
 
@@ -659,3 +660,4 @@ Legend: 🧠 = needs Opus (see PLAN §6 model guidance) · ⬜ todo · 🔄 in p
 - 2026-10-24 · P21 follow-up 4 (outlined active tabs, right pane tab colour) · real app screenshot
 - 2026-10-24 · P21 follow-up 5 (rounded ramps on the active tab) · real app screenshot (2× zoom)
 - 2026-10-24 · P21 follow-up 6 (folded tree edge: resize arrow, tint, pull to open) · real app: cursor col-resize, tint shown, pull 40 px → tree back at 260 px
+- 2026-10-24 · picker × aligned with the search text · measured at 2× (glyph rows): within 0.5 px
