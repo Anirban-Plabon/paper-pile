@@ -24,7 +24,13 @@ from paper_pile.core.events import EventBus
 from paper_pile.core.history import History
 from paper_pile.core.index import Index
 from paper_pile.core.picker import switcher_notes
-from paper_pile.core.session import MAX_RECENT_NOTES, SessionState, load_session, save_session
+from paper_pile.core.session import (
+    MAX_RECENT_NOTES,
+    SessionState,
+    load_session,
+    renamed,
+    save_session,
+)
 from paper_pile.core.settings import feature_on, language_name, sanitized
 from paper_pile.core.templates import template_draft_messages
 from paper_pile.core.vault import Vault, VaultError
@@ -175,6 +181,7 @@ class MainLayout:
         for pane in WIDTH_LIMITS:
             self._apply(pane)
         ui.on("pp_pane_collapse", lambda e: self._dragged_shut(str(e.args.get("pane"))))
+        ui.on("pp_pane_toggle", lambda e: self._edge_double_clicked(str(e.args.get("pane"))))
         self.bus.subscribe("vault.created", lambda path: self._on_created())
         self.bus.subscribe("tree.add_to_chat", lambda path: self._chat_add_note(path))
         self.bus.subscribe("vault.renamed", lambda old, new: self._recent_renamed(old, new))
@@ -324,10 +331,7 @@ class MainLayout:
         self.right.show("calendar")
 
     def _recent_renamed(self, old: str, new: str) -> None:
-        def moved(p: str) -> str:
-            return new + p[len(old) :] if p == old or p.startswith(old + "/") else p
-
-        self.state.recent_notes = [moved(p) for p in self.state.recent_notes]
+        self.state.recent_notes = renamed(self.state.recent_notes, old, new)
         if self.editor_pane is not None:
             self.editor_pane.history_renamed(old, new)  # versions follow the note
 
@@ -404,6 +408,7 @@ class MainLayout:
                     open_found=self._open_found,
                     open_trash=self.open_trash,
                     confirm_delete=lambda: bool(self._setting("general.confirm_delete")),
+                    pinned=lambda: self.state.pinned,
                 )
                 self.tree.build()
                 self.outline = OutlinePane(self._jump_to_line, self.toggle_outline)
@@ -624,6 +629,8 @@ class MainLayout:
             self._status.stats_label.set_visibility(bool(self._setting("editor.word_count")))
         if self.editor_pane is not None and "editor.tidy_button" in changed:
             self.editor_pane.show_tidy_buttons()
+        if self.editor_pane is not None and "editor.last_edited" in changed:
+            self.editor_pane.show_edited()
         if changed & {"features.ai", "features.calendar"}:
             self._features_changed()
         elif self.chat is not None and any(k.startswith("ai.") for k in changed):
@@ -710,6 +717,8 @@ class MainLayout:
             on_toggle_pane=self.toggle,
             on_outline=self.toggle_outline,
             on_history=self.open_history,
+            pinned=self.state.pinned,
+            on_pins_changed=self._pins_changed,
         )
         self.editor_pane.build()
         with self.editor_pane.empty_host:
@@ -718,6 +727,12 @@ class MainLayout:
             self._status = status_bar(self.toggle_mode, self.state.mode)
             self._status.show_ollama(self.ai_on())
         self.editor_pane.set_ai(self.ai_on())
+
+    def _pins_changed(self, paths: list[str]) -> None:
+        self.state.pinned = paths
+        self._save_soon(immediately=True)
+        if self.tree is not None:
+            self.tree.refresh()
 
     def _chat_selection(self, text: str, path: str) -> None:
         if self.chat is not None and self.ai_on():
@@ -934,6 +949,11 @@ class MainLayout:
         if pane == "right" and self._settings_wide:
             return
         if pane in self.state.panes_open and self.state.panes_open[pane]:
+            self.toggle(pane)
+
+    def _edge_double_clicked(self, pane: str) -> None:
+        """A double-click on a pane's edge folds the pane, or unfolds it (``static/panes.js``)."""
+        if pane in self.state.panes_open:
             self.toggle(pane)
 
     def _on_resize(self, pane: str, value: float | None) -> None:

@@ -92,6 +92,7 @@ class FrontMatterWidget extends WidgetType {
       row.append(key, val);
       el.appendChild(row);
     }
+    el.appendChild(editedRow(view));
     revealOnMouseDown(el, view);
     // the spacing around the block is padding of an outer box: CodeMirror ignores margins
     const outer = document.createElement("div");
@@ -102,6 +103,22 @@ class FrontMatterWidget extends WidgetType {
   ignoreEvent() {
     return false;
   }
+}
+
+// "edited": when the note's file last changed (read-only, not in the file). Python sends the text
+// (`setEdited`, empty while Settings → Editor → "Last edited" is off) and patches shown rows.
+function editedRow(view) {
+  const row = document.createElement("div");
+  row.className = "pp-fm-row pp-fm-edited-row";
+  const key = document.createElement("span");
+  key.className = "pp-fm-key";
+  key.textContent = "edited";
+  const val = document.createElement("span");
+  val.className = "pp-fm-val pp-fm-edited";
+  val.textContent = rtOf(view.state).edited || "";
+  row.hidden = !val.textContent;
+  row.append(key, val);
+  return row;
 }
 
 // The `tags` property as chips (display only: Python's core/tags.py decides what a note's tags

@@ -379,14 +379,14 @@ On paste into the editor:
 - **Blank lines around blocks** (Settings → Editor → Advanced, on by default, `editor.block_spacing`): a table, image, embed, code / math / diagram block, callout, heading, list or quote inserted by a slash command, a paste/drop or the note picker goes on lines of its own with an empty line above and below (`core/spacing.py`; a quote next to a quote continues it; list items under a list item continue the list). Off: blocks still get their own lines, and lists still end with an empty line.
 - **H1 divider** (user request 2026-10-21): an H1 (and only an H1) is drawn with a divider under it that looks exactly like a `---` rule (same colour and left/right edges), with space between it and the heading text. Drawing only: nothing is added to the file.
 - **Lazy lines** (user report 2026-10-21): in markdown a line typed straight under a quote/callout or list line, without `>` or indentation, still belongs to that block. Live Preview draws such a line inside the quote bar / callout card / under the item's text, as every renderer will show it. **Enter on an empty quote or list line** that leaves the block for good keeps that line empty and moves the caret to a new line under it, so the next text starts a new paragraph. The **divider** is spaced like the other blocks (empty line above and below, caret below the rule); with the setting off it still gets an empty line under text (no setext heading).
-- **Tidy note** (user request 2026-10-21): a floating round button at the bottom right of the editor (markdown notes only; also Shift+Alt+F and the ⋯ menu). Each side of the editor has its own floating tidy button for the note it shows: bottom right with one editor; in split view one per side, floating just above that side's name island (right edges aligned). Settings → Editor → "Tidy note button" (`editor.tidy_button`, on by default) shows or hides these buttons; the shortcut and the ⋯ menu item always work lays the note out cleanly with `core/tidy.py`, as ONE undo step with the caret kept: one empty line between blocks (none at the start, one newline at the end), trailing spaces removed (two-space line breaks kept), one empty line at most inside lists/quotes, lazy quote/list lines get their `> ` / indentation, `#` headings get one space, a one-line setext heading becomes `#`/`##`, `***`/`___` become `---`, tables are aligned when no cell would be lost. Code, math and front matter are never touched; lines outside any block (link definitions, footnotes) are kept. Guarantee, tested on every fixture and doc: the rendered HTML is identical before and after, and tidying twice changes nothing.
+- **Tidy note** (user request 2026-10-21): a floating round button at the bottom right of the editor (markdown notes only; also Shift+Alt+F and the ⋯ menu). Each side of the editor has its own floating tidy button for the note it shows: bottom right with one editor; in split view one per side, at the bottom right of that side. Settings → Editor → "Tidy note button" (`editor.tidy_button`, on by default) shows or hides these buttons; the shortcut and the ⋯ menu item always work lays the note out cleanly with `core/tidy.py`, as ONE undo step with the caret kept: one empty line between blocks (none at the start, one newline at the end), trailing spaces removed (two-space line breaks kept), one empty line at most inside lists/quotes, lazy quote/list lines get their `> ` / indentation, `#` headings get one space, a one-line setext heading becomes `#`/`##`, `***`/`___` become `---`, tables are aligned when no cell would be lost. Code, math and front matter are never touched; lines outside any block (link definitions, footnotes) are kept. Guarantee, tested on every fixture and doc: the rendered HTML is identical before and after, and tidying twice changes nothing.
 - **Chat jump buttons** (user request 2026-10-21): floating "scroll to top" / "scroll to bottom" circles at the bottom right of the chat log, each shown only when there is more than 120 px to go that way (`static/chat.js`, smooth scroll in the page).
 - **Click below a note that ends with a block** (anything but a paragraph): an empty last line is added and the caret goes there, so text is never typed into the table / heading / callout by accident.
 - **Callouts** look like the properties block: a card (thin border, rounded corners, light tint) in the callout's colour — accent, green (tip/success/done/hint), orange (warning/caution/important/attention), red (danger/error/bug/failure) — with a rounded colour stick on the left.
 - **Editor QA harness:** `uv run python tools/qa_editor.py` drives the real editor (offscreen native window, throwaway vault) through 293 checks (incl. "every drawn block fits the space the editor gave it" and notes with a properties block): arrow keys around every block type at the start / end / between text / next to another block, click below the end, a new line above the first block, slash-command spacing and the callout card.
 
 ### 4.15 Note menu (⋯) — user request 2026-10-17
-A **⋯** button at the right end of the tab strip (before the chat toggle) opens a menu for the note on screen (disabled when no note is open):
+A **⋯** button in the note header (§4.25; before P21: at the right end of the tab strip) opens a menu for the note on screen (each split side has its own):
 
 | Group | Item | Behaviour |
 |---|---|---|
@@ -481,7 +481,7 @@ Output: the page boxes (printed as is) and the list of `{line, page}` starts (se
 
 **Tab menu (right-click a tab, 2026-10-22, user request):** Split right / Close split, Rename…, Move to…, Merge into…, Version history, Copy path, Show in file tree, Add to chat (AI on), Close, Close others.
 
-**Note buttons beside ⋯ (2026-10-22, user request):** a split toggle (`columns-2` / close split) and, while AI is on, an AI button (`sparkles`) with Ask about this note, Summarize, Rewrite, Write….
+**Note buttons beside ⋯ (2026-10-22, user request; in the note header since P21):** a split toggle (`columns-2` / close split) and, while AI is on, an AI button (`sparkles`) with Ask about this note, Summarize, Rewrite, Write….
 
 **More of the same day (2026-10-22, user request):**
 - *Outline on the folded rail:* while the file tree is folded away, an Outline button (`list-tree`) sits right above the Open vault button; it unfolds the tree with the Outline section open.
@@ -521,6 +521,22 @@ Short, quiet animations that show *where something went*. Render-only (CSS + the
 **App chrome:** context menu and tooltips fade/scale in; chevrons (outline, backlinks, model picker, heading fold) rotate instead of swapping icons (the file tree redraws its rows, so its chevrons still swap); hover backgrounds and the tab close × fade; the task checkbox tick scales in; banners, chat jump buttons and new chat messages fade in; the chat shows pulsing dots until the first token.
 
 **Not animated:** typing, CodeMirror decorations and folding, pane widths (Ctrl+B / Ctrl+L), sheet heights, drag in progress.
+
+### 4.25 Note header, pins, small UI fixes — user request 2026-10-24 (P21)
+User list of 12 items (numbering theirs, merged); questions answered: top row as tall as the Backlinks bar; pins both as tabs and in the tree; double-click on a pane's edge; header sections are `#` / `##`; icon colour only Default / Accent (no rounded-square style); creation date not shown (version history has it); kanban only as Mermaid's diagram.
+- **Top rows** (tab strips, left pane's title row, ribbon top, window buttons) are `--pp-tab-h` = 41 px, the height of the footer / Backlinks bar.
+- **Icons:** all are vendored Lucide (`static/vendor/lucide/icons.json`), served by the app (`/_pp/icon`, cached); nothing comes from the web, so nothing to replace. Every AI / chat entry point uses `sparkles` (chat tab, AI button, Add to chat, Ask, AI on/off); specific AI actions keep their own icons (Rewrite, Summarize…).
+- **Icon colour** (Settings → Appearance, not essential): Default, or Accent — every line icon in the accent colour, except icons with a meaning of their own (status dots, ticks, danger) and icons on an accent background (send, Restore, avatar, selected day); note text is not touched. `appearance.icons`, body class `pp-icons-accent`.
+- **Pinned notes** (session: `pinned`, in order): a pinned note's tab comes first (core `TabList` keeps pinned tabs first; a drag never mixes the groups), shows a pin and no ×, ignores middle-click, and reopens at every start even if it was closed. The tree lists pinned notes in a **Pinned** group above the folders. Pin / Unpin from the tab menu, the tree's right-click menu and the ⋯ menu. Renames and moves keep the pin; deleting the note unpins it.
+- **New note buttons:** a + at the end of each folder row (on hover) makes `Untitled N` in that folder; a + after the tabs makes one in the vault's top folder.
+- **Tab overflow arrows** are small rounded boxes inside their (opaque) areas.
+- **Pane edges:** the edge being dragged is an accent line (like the outline divider); a double-click on a pane's edge folds that pane, and a double-click on the folded file tree's edge (beside the ribbon) opens it again. The folded right pane has no edge to click (the window's own resize strip is there): Ctrl+L / its button.
+- **Note header** (one per editor side, `gui/components/note_head.py`): ‹ › (chevron up / down) jump to the previous / next section start — sections begin at `#` and `##` (`core/sections.py`; ‹ goes to the start of the section on screen, or the one before when already there) — then the note's title (its `title` property, else its name) and the section at the top of the view, each cut short with … when long, and on the right the note's own split, AI and ⋯ buttons (they act on that side's note; in split view the split button closes that side and a click on the title shows another note there). The section follows scrolling (the editor reports the line at the top of the view). Replaces the note buttons in the tab strip and the floating name islands of split view.
+- **Inline code in tables** is the same chip as in text (`pp-code`).
+- **Last edited:** the properties box shows a read-only "edited" row (the file's time: today 14:05, yesterday …, Oct 12 …) that is not written into the file; Settings → Editor → "Last edited" (`editor.last_edited`, on) hides it. Notes without properties show none.
+- **Tree:** 4 px between a folder's chevron and its icon.
+- **Chat:** a selection (or block) sent with a message is kept with that message (`SavedTurn.quotes`) and shows as the same chip as in the composer; a click unfolds its text.
+- **`/kanban`:** inserts a Mermaid `kanban` diagram (columns with cards), drawn like the other diagrams.
 
 ### 4.24 Memory — user request 2026-10-24 (P20)
 User: the app feels heavy; wants it lighter, platform-independent work first ("go for 1"), engine changes (system WebKitGTK, browser app mode) later. Measured on the user's machine after ~2 h: page renderer 1.3 GB RSS, Qt window process 514 MB, Python server 105 MB; `.venv` 722 MB (PyQt6 520 MB). Goal: find what grows over a session and stop it, with no visible change; disk size is left to the later engine options.
@@ -762,6 +778,23 @@ P9.1–P9.3 and P9.5–P9.6 are built in this phase (order: P14.1, P9.1, P9.2, P
 | P20.3 | `Dialog` without the canary leak | deleted dialogs leave no element and are garbage-collected (test); DOM nodes / server RSS flat in the soak |
 | P20.4 | Clear Tailwind's timing entries | no `PerformanceMark` / `Measure` growth in heap snapshots; heap flat in the soak |
 | P20.5 | Quick switcher lists the vault once per popup | no vault walk per keystroke; results unchanged |
+
+### P21 — Note header, pins, small UI fixes (user request 2026-10-24, §4.25)
+| ID | Task | Acceptance |
+|---|---|---|
+| P21.1 | Top rows 41 px | tab strip = footer height (real app) |
+| P21.2 | Spark icon for AI / chat | chat tab, AI button, Add to chat, Ask use `sparkles` |
+| P21.3 | Icon colour setting (Default / Accent) | Accent colours icons, not send / status / note text (real app) |
+| P21.4 | Pinned notes | pinned first, pin and no ×, reopen at start, tree group, rename keeps / delete drops (tests + real app) |
+| P21.5 | + on folder rows and after the tabs | new note in that folder / the vault top (real app) |
+| P21.6 | Rounded tab overflow arrows | arrows show as boxes when tabs overflow (real app) |
+| P21.7 | Pane edges: highlight while dragged, double-click folds / unfolds | real-app checks |
+| P21.8 | Note header per side | sections `#`/`##` follow scrolling, ‹ › jump, title / section cut with …, per-side split / AI / ⋯ (tests + real app) |
+| P21.9 | Inline code chip in tables | same class and colour as in text (real app) |
+| P21.10 | "edited" row in properties + setting | today / yesterday / date, hidden by the setting (tests + real app) |
+| P21.11 | Gap between chevron and folder icon | 4 px |
+| P21.12 | Sent selections unfold in the chat | quote kept in the saved chat (test); click unfolds (real app) |
+| P21.13 | `/kanban` (Mermaid) | inserts a kanban block that renders (test + real app) |
 
 ### P10 — Note menu (⋯) (user request 2026-10-17)
 | ID | Task | Acceptance |

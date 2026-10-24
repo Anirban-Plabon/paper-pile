@@ -168,6 +168,10 @@ _GANTT = (
     "gantt\n    title Plan\n    dateFormat YYYY-MM-DD\n    section Work\n"
     "    First task :a1, 2026-01-01, 7d\n    Second task :after a1, 5d\n"
 )
+_KANBAN = (  # Mermaid's kanban diagram: a column per line, its cards indented under it
+    "kanban\n    todo[To do]\n        t1[First card]\n        t2[Second card]\n"
+    "    doing[Doing]\n        t3[Third card]\n    done[Done]\n        t4[Fourth card]\n"
+)
 
 
 def _mermaid(cid: str, title: str, icon: str, source: str, aliases: tuple[str, ...]) -> None:
@@ -183,6 +187,7 @@ _mermaid(
 _mermaid(
     "gantt", "Gantt chart", "chart-gantt", _GANTT, ("mermaid", "diagram", "schedule", "timeline")
 )
+_mermaid("kanban", "Kanban board", "square-kanban", _KANBAN, ("mermaid", "board", "cards", "todo"))
 
 
 @command(
@@ -385,7 +390,7 @@ def ai_fix(ctx: CommandContext) -> Action:
     "ai-ask",
     "Ask…",
     group=AI,
-    icon="messages-square",
+    icon="sparkles",
     subtitle="Ask the AI about this note",
     badge="AI",
     aliases=("question", "ask ai", "prompt", "write"),

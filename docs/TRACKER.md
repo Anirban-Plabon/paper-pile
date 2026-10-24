@@ -6,6 +6,7 @@
 Legend: 🧠 = needs Opus (see PLAN §6 model guidance) · ⬜ todo · 🔄 in progress · ✅ done · ⛔ blocked · ⏭️ skipped/deferred
 
 ## Current focus
+- **Phase:** P21 — Note header, pins, small UI fixes (user request 2026-10-24, PLAN §4.25): built; P20's next step (Tailwind off) waits
 - **Phase:** P20 — Memory (user request 2026-10-24, PLAN §4.24): leaks fixed (dialogs, timing entries); small heap creep left (Open issue); next: Tailwind off with a screenshot comparison, then the engine options (system WebKitGTK, browser app mode)
 - **Before:** P19 — Performance (PLAN §4.23): done; next candidates in the Decision log (save off the UI thread, watcher echo, tab strip in place)
 - **Earlier phase:** P14 — Features, navigation & safety (user request 2026-10-22; includes P9.1–P9.3, P9.5, P9.6)
@@ -240,6 +241,23 @@ Legend: 🧠 = needs Opus (see PLAN §6 model guidance) · ⬜ todo · 🔄 in p
 | P20.4 | Clear Tailwind's timing entries | ✅ | snapshots: +888 marks / +444 measures per round before, bounded after (only those since the last clear) |
 | P20.5 | Quick switcher lists the vault once per popup | ✅ | was a vault walk per keystroke |
 
+### P21 — Note header, pins, small UI fixes (user request 2026-10-24)
+| ID | Task | Status | Notes |
+|---|---|---|---|
+| P21.1 | Top rows 41 px | ✅ | `--pp-tab-h` 34 → 41 (compact density keeps 28) |
+| P21.2 | Spark icon for AI / chat | ✅ | no icon came from the web (all vendored Lucide); nothing replaced |
+| P21.3 | Icon colour setting (Default / Accent) | ✅ | not essential (listed with all settings) |
+| P21.4 | Pinned notes | ✅ | 4 core tests; real app: tab first with pin, tree group, survives restart |
+| P21.5 | + on folder rows and after the tabs | ✅ | real app |
+| P21.6 | Rounded tab overflow arrows | ✅ | real app |
+| P21.7 | Pane edges: highlight while dragged, double-click folds / unfolds | ✅ | folded right pane: no edge (window resize strip) — Ctrl+L |
+| P21.8 | Note header per side | ✅ | 3 core tests; real app: › ×3 / ‹ ×4 walk the sections, split heads mark the active side |
+| P21.9 | Inline code chip in tables | ✅ | `.pp-table code` rule no longer overrides it |
+| P21.10 | "edited" row in properties + setting | ✅ | 1 core test; real app |
+| P21.11 | Gap between chevron and folder icon | ✅ | |
+| P21.12 | Sent selections unfold in the chat | ✅ | 1 core test; real app (unfold / fold) |
+| P21.13 | `/kanban` (Mermaid) | ✅ | Mermaid 12.2 has `kanban`; renders in the editor |
+
 ## Decision log
 <!-- YYYY-MM-DD · decision · reason · (who: user / claude) -->
 | Date | Decision | Reason | By |
@@ -409,6 +427,8 @@ Legend: 🧠 = needs Opus (see PLAN §6 model guidance) · ⬜ todo · 🔄 in p
 | 2026-10-24 | `Dialog` subclass instead of `ui.dialog` everywhere; Tailwind's timing entries cleared by `static/marks.js` now, Tailwind itself switched off later after a screenshot comparison (its Preflight reset goes with it) | Both leaks are in NiceGUI's stack (3.18.0); the subclass and the clearing are small and invisible, removing Tailwind may change looks | claude |
 | 2026-10-24 | Environment findings left to the user (done on another PC): move repo, `.venv` and vaults off `/mnt/l`; WSL distro is RHEL 10.1 whose Mesa has no `d3d12` (llvmpipe, no GPU) | Measured: imports 30.8 s → 3.0 s on the Linux fs, vault walk 93 ms → 2 ms; Qt reports `llvmpipe` | user |
 | 2026-10-24 | Not done in P19 (next candidates): saving the left tab off the UI thread, ignoring the watcher's echo of the app's own writes, updating the tab strip in place instead of re-rendering it | Each touches save / conflict logic (data safety) or tab-strip DOM (UI), so kept out of a no-visible-change pass | claude |
+| 2026-10-24 | P21 (§4.25): note header per editor side replaces the tab-strip note buttons and split name islands; pins = pinned tabs + tree group (session, not front matter); icon colour Default / Accent only; "Last edited" read from the file, never written into it; no creation date; kanban only as Mermaid's diagram | User list + answers: "2 c", "3 a", "4 yes (#/##)", "for icon a and b", "just stick to last edited, creation date will be recorded in history", "keep kanban just as mermaid diagram" | user |
+| 2026-10-24 | Header arrows are chevron up / down (sections are above / below); the folded right pane cannot be double-clicked open (its edge is the window's resize strip); a pinned tab closes from its menu or Ctrl+W, not by middle-click | Vertical movement reads better as up / down; the window edge already belongs to resizing; middle-click closes are the common accident | claude |
 | 2026-10-23 | P18 re-applied in part: tab-row double-click, opaque arrow hover, picker (no animation, ×, key caps), slash menu side, line numbers after properties; the note buttons stay in the tab strip, split backlinks still open together | User: "need the corrected versions of p18, they were useful" (listing those five) | user |
 
 ## Issues log
@@ -626,3 +646,4 @@ Legend: 🧠 = needs Opus (see PLAN §6 model guidance) · ⬜ todo · 🔄 in p
 - 2026-10-23 · P18.3–P18.7 re-applied (user request); maximize-half cause found (monitor at negative y in Windows) · 8 real-app checks
 - 2026-10-24 · P19.1–P19.10 performance pass (no visible change) · perf_ui, 2 000 notes, warm index, app on /mnt/l: switch tab 758 → 342 ms, close tab 806 → 300 ms, new note 2496 → 1301 ms, palette 390 → 280 ms, settings 505 → 414 ms, context menu 112 → 72 ms, first text 44.2 → 41.3 s (imports on /mnt/l ≈ 30 s of it); scroll / pane frames unchanged (renderer-bound) · 7 new tests (37 cases, 1101 → 1138); 7/7 real-app checks; qa_editor 358/358
 - 2026-10-24 · P20.1, P20.3–P20.5 memory pass (no visible change) · mem_soak 12 rounds, offscreen: DOM nodes +9 / round → flat (2351), server RSS 106 → 110 MB → flat 109–110, JS heap creep 0.22 → 0.17 MB / round, renderer creep ~1.5 → ~1.0 MB / round; heap snapshots: dialog canaries and Tailwind's PerformanceMark / Measure gone · 1 new GUI test; 1139 tests; qa_editor 358/358; 11/11 real-app dialog checks
+- 2026-10-24 · P21.1–P21.13 note header, pins, small UI fixes · 4 new core test files / cases (sections, when, pins in tabs + session, chat quotes), kanban command case; 1149 tests; qa_editor 358/358; real app on a throwaway vault: header sections + jumps, split heads, pins, folder / tab +, arrows, pane edge, table code chip, kanban, edited row, accent icons, chat quote unfold

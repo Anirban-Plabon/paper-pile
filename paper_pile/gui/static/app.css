@@ -33,7 +33,7 @@
   --pp-icon-m: 16px;   /* rows, menus, tabs */
   --pp-icon-l: 18px;   /* toolbar buttons */
   --pp-row-h: 24px;
-  --pp-tab-h: 34px;
+  --pp-tab-h: 41px;    /* the top rows: as tall as the footer, so their buttons have air */
   --pp-bar-h: 26px;
   --pp-foot-h: 41px;    /* the profile row and the footer under the editor share it */
   /* Motion (PLAN §4.19): every duration × --pp-motion (Settings → Animation speed; theme.js) */
@@ -59,6 +59,12 @@ svg.pp-i { width: 1em; height: 1em; flex: none; }
 .q-btn.pp-i-s .q-icon, .q-btn .pp-i-s { font-size: var(--pp-icon-s); }
 .q-btn.pp-i-l .q-icon { font-size: var(--pp-icon-l); }
 .q-btn .q-icon.on-left { margin-right: 10px; }
+/* Settings → Appearance → Icon colour: Accent (theme.js sets the class). Icons that carry a
+   meaning of their own (danger, status dots, ticks) keep their colour; note text is not touched. */
+body.pp-icons-accent .q-icon:not(.pp-dot):not(.pp-check), body.pp-icons-accent svg.pp-i { color: var(--pp-accent); }
+body.pp-icons-accent .cm-content .q-icon, body.pp-icons-accent .cm-content svg.pp-i { color: inherit; }
+/* icons on an accent background (send, Restore, avatar, selected day) stay readable */
+body.pp-icons-accent :is(.pp-chat-send.pp-chat-send-ready, .pp-chat-send:hover, .bg-primary, .pp-history-restore, .pp-avatar, .pp-cal-sel) .q-icon:not(.pp-dot) { color: inherit; }
 
 /* Dark theme: set on <body> by static/theme.js (Quasar's own dark mode adds body--dark) */
 body.body--dark {
@@ -107,6 +113,11 @@ html, body { overflow: hidden; }
 /* a folded pane's strip does nothing; at the window's right edge it would stick out and make the
    editor column scroll sideways */
 .pp-root .q-splitter--disabled > .q-splitter__separator > div { right: 0; }
+/* the file tree's edge while folded (beside the ribbon) can still be double-clicked open */
+.pp-root .pp-panesplit-left.q-splitter--disabled > .q-splitter__separator > div { right: -6px; }
+/* a pane edge being dragged (static/panes.js): an accent line, like the outline's divider */
+.pp-root .pp-panesplit > .q-splitter__separator { transition: background-color var(--pp-dur-fast) ease, box-shadow var(--pp-dur-fast) ease; }
+.pp-root .pp-panesplit > .q-splitter__separator.pp-sep-active { background: var(--pp-accent); box-shadow: 0 0 0 1px rgba(var(--pp-accent-rgb), .45); z-index: 5; }
 /* The pane itself has no padding and clips, so a collapsed (0 px) pane is truly 0 wide. */
 .pp-pane { width: 100%; height: 100%; padding: 0; gap: 0; overflow: hidden; flex-wrap: nowrap; }
 .pp-pane-body { width: 100%; height: 100%; padding: 10px 12px; gap: 6px; overflow: auto; flex-wrap: nowrap; }
@@ -170,7 +181,15 @@ body.pp-native.pp-right-open .pp-rtabbar { padding-right: 112px; }
 .pp-tree-banded, .pp-tree-banded:hover { background: rgba(var(--pp-accent-rgb), .18); }
 .pp-ico { font-size: var(--pp-icon-m); width: 16px; flex-shrink: 0; color: var(--pp-muted); }
 .pp-ico-folder { color: var(--pp-accent); }
-.pp-ico-chev { font-size: var(--pp-icon-s); width: 14px; margin-right: -6px; }
+.pp-ico-chev { font-size: var(--pp-icon-s); width: 14px; margin-right: 0; }
+/* a folder's + (new note in it): shows on hover, at the end of the row */
+.pp-tree-row > .pp-tree-add { pointer-events: auto; margin-left: auto; flex: none; padding: 2px; border-radius: var(--pp-r-sm); color: var(--pp-muted); opacity: 0; transition: opacity var(--pp-dur-fast) ease, background-color var(--pp-dur-fast) ease; }
+.pp-tree-row:hover > .pp-tree-add { opacity: .8; }
+/* the Pinned group above the folders (tree.py _render_pins) */
+.pp-tree-group { padding: 6px 12px 2px; font-size: 11px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; color: var(--pp-muted); user-select: none; }
+.pp-tree-group-end { height: 1px; margin: 6px 12px; background: var(--pp-border); }
+.pp-tree-pinrow .pp-ico-chev { color: var(--pp-muted); }
+.pp-tree-row > .pp-tree-add:hover { opacity: 1; color: var(--pp-fg); background: rgba(127, 127, 127, .22); }
 .pp-tree-name { overflow: hidden; text-overflow: ellipsis; font-size: 13px; pointer-events: none; }
 .pp-tree-row > * { pointer-events: none; }
 .pp-tree-empty { padding: 6px 12px; }
@@ -244,12 +263,14 @@ body.pp-native.pp-right-open .pp-rtabbar { padding-right: 112px; }
 .pp-table table { border-collapse: collapse; min-width: 50%; font-size: .95em; }
 .pp-table th, .pp-table td { padding: 4px 12px; border: 1px solid var(--pp-border); }
 .pp-table th { background: var(--pp-bg-side); font-weight: 600; }
-.pp-table code { background: var(--pp-code-bg, #f3f4f6); border-radius: var(--pp-r-sm); padding: 0 3px; }
+.pp-table code:not(.pp-code) { background: var(--pp-code-bg, #f3f4f6); border-radius: var(--pp-r-sm); padding: 0 3px; }
 .pp-fm-line { color: var(--pp-muted); font-size: .88em; }
 .pp-frontmatter { box-sizing: border-box; margin: 4px 6px 10px; padding: 6px 10px; border: 1px solid var(--pp-border); border-radius: var(--pp-r-ctrl); background: var(--pp-bg-side); font-size: .85em; color: var(--pp-muted); cursor: text; }
 .pp-fm-row { display: flex; gap: 12px; line-height: 1.6; }
 .pp-fm-key { flex: 0 0 9ch; font-weight: 600; opacity: .8; overflow: hidden; text-overflow: ellipsis; }
 .pp-fm-val { color: var(--pp-fg); overflow-wrap: anywhere; }
+.pp-fm-row[hidden] { display: none; }
+.pp-fm-val.pp-fm-edited { color: var(--pp-muted); }
 .pp-hr { display: block; height: 0; margin: 0.55em 0; border-top: 1px solid rgba(var(--pp-accent-rgb), .45); }
 /* A manual page break (PLAN §4.17): dashed line, name in the middle; padding, not margin (CM) */
 .pp-page-break-line { display: flex; align-items: center; gap: 10px; padding: .45em 0; color: var(--pp-muted); font-size: 11px; line-height: 16px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; user-select: none; cursor: text; }
@@ -335,6 +356,10 @@ body.pp-page-dragging, body.pp-page-dragging * { cursor: row-resize !important; 
 .pp-tab .pp-tab-close:hover { opacity: 1; background: rgba(127, 127, 127, .25); }
 .pp-rtab .pp-rtab-close:hover { opacity: 1; background: rgba(127, 127, 127, .25); }
 .pp-tab-dirty ~ .pp-tab-close { margin-left: -2px; }
+/* a pinned tab: a pin before its name, no × (core/tabs.py keeps pinned tabs first) */
+.pp-tab-pin { font-size: var(--pp-icon-s); color: var(--pp-muted); flex: none; }
+.pp-tab-active .pp-tab-pin { color: var(--pp-accent); }
+.pp-tabstrip .pp-tab.pp-tab-pinned { min-width: 0; padding-right: 12px; }
 .pp-tab-drop-before { box-shadow: inset 3px 0 0 var(--pp-accent); }
 .pp-tab-drop-after { box-shadow: inset -3px 0 0 var(--pp-accent); }
 /* many tabs: they shrink to a minimum, then the row scrolls (wheel, ‹ › arrows, static/tabs.js),
@@ -507,6 +532,10 @@ body.pp-page-dragging, body.pp-page-dragging * { cursor: row-resize !important; 
 .pp-profile-dialog { width: 360px; gap: 8px; }
 .pp-ask { width: 480px; max-width: 92vw; gap: 8px; }
 .pp-msg-attach { font-size: 12px; }
+/* a sent selection (chat.py _quote_chip): its chip, and its text unfolded under it */
+.pp-msg-quote { width: 100%; gap: 4px; align-items: flex-start; }
+.pp-msg-quote .pp-chat-ref { display: inline-flex; }
+.pp-msg-quote-body { width: 100%; gap: 0; }
 .pp-msg-body ul { list-style: disc; } .pp-msg-body ul ul { list-style: circle; } .pp-msg-body ol { list-style: decimal; }
 .pp-msg-body li { margin: .1em 0; } .pp-msg-body li > p { margin: 0; }
 .pp-msg-body blockquote { margin: .3em 0; padding-left: 8px; border-left: 3px solid var(--pp-border); color: var(--pp-muted); }
@@ -953,7 +982,6 @@ input::selection, textarea::selection { background: rgba(var(--pp-accent-rgb), .
 .pp-step-value .q-field__native { padding: 0; min-height: 0; height: 30px; text-align: center; font-variant-numeric: tabular-nums; }
 
 /* ⋯ note menu (PLAN §4.15) */
-.pp-tab-more { display: flex; align-items: center; flex: none; }
 .pp-note-menu { min-width: 240px; background: var(--pp-bg); color: var(--pp-fg); border: 1px solid var(--pp-border); border-radius: var(--pp-r-popup); box-shadow: 0 8px 28px rgba(0, 0, 0, .2); padding: 4px; }
 .pp-note-menu .q-item.pp-note-menu-item { min-height: 32px; padding: 0 10px; gap: 10px; border-radius: var(--pp-r-ctrl); font-size: 13px; align-items: center; }
 .pp-note-menu .q-item.pp-note-menu-item:hover { background: rgba(127, 127, 127, .12); }
@@ -969,9 +997,6 @@ input::selection, textarea::selection { background: rgba(var(--pp-accent-rgb), .
 
 /* Split view: two editors side by side; each names its note in a small floating chip */
 .pp-split { display: flex; width: 100%; height: 100%; }
-.pp-split-head { position: absolute; bottom: 10px; right: 14px; z-index: 5; height: 28px; gap: 2px; padding: 0 2px 0 10px; background: var(--pp-bg); border: 1px solid var(--pp-border); border-radius: var(--pp-r-ctrl); box-shadow: 0 2px 8px rgba(0, 0, 0, .08); }
-.pp-split-title { max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; color: var(--pp-muted); }
-.pp-split-head .pp-icon-btn.q-btn { width: 24px; height: 24px; min-height: 0; }
 
 /* Find / replace: CodeMirror's search panel, themed like the app (light and dark) */
 .pp-editor .cm-panels { background: var(--pp-bg-side); color: var(--pp-fg); font-family: Roboto, system-ui, sans-serif; font-size: 13px; }
@@ -1002,10 +1027,6 @@ input::selection, textarea::selection { background: rgba(var(--pp-accent-rgb), .
 /* one editor: it fills the area whatever width the divider gave it last */
 .pp-split:not(.pp-split-on) > .pp-split-pane { flex: 1 1 0 !important; }
 .pp-split-pane > .pp-editor { flex: 1 1 0; min-height: 0; height: auto; }
-.pp-split-title { cursor: pointer; padding: 2px 4px; border-radius: var(--pp-r-sm); }
-.pp-split-title:hover { color: var(--pp-fg); background: rgba(127, 127, 127, .12); }
-.pp-split-head.pp-split-head-active { border-color: rgba(var(--pp-accent-rgb), .7); }
-.pp-split-head.pp-split-head-active .pp-split-title { color: var(--pp-accent); }
 
 /* Tags (PLAN §4.16): inline #tag chips, the tags row of the properties block, the #tag tab */
 .pp-tag { display: inline-block; padding: 0 7px; margin: 0 1px; border-radius: 999px; line-height: 1.45; font-size: .9em; color: rgb(var(--pp-accent-rgb)); background: rgba(var(--pp-accent-rgb), .12); cursor: pointer; }
@@ -1081,7 +1102,6 @@ input::selection, textarea::selection { background: rgba(var(--pp-accent-rgb), .
 .pp-fab.q-btn:hover { color: var(--pp-accent); }
 .pp-fab.q-btn .q-icon { font-size: var(--pp-icon-m); }
 .pp-tidy-fab.q-btn { right: 22px; bottom: 16px; opacity: .7; }
-.pp-split-on .pp-tidy-fab.q-btn { right: 14px; bottom: 46px; } /* split: just above the side's name island */
 .pp-tidy-fab.q-btn:hover { opacity: 1; }
 .pp-chat-logwrap { position: relative; flex: 1 1 0; min-height: 0; width: 100%; display: flex; flex-direction: column; }
 .pp-chat-jumps { position: absolute; right: 14px; bottom: 10px; gap: 6px; z-index: 5; pointer-events: none; }
@@ -1272,21 +1292,21 @@ body.body--dark { --pp-set-box-bg: rgba(255, 255, 255, .035); }
 .pp-set-box > .pp-mem { padding: 12px 0; }
 .pp-chat-disclaimer { width: 100%; padding: 6px 12px 0; text-align: center; font-size: 11px; line-height: 14px; color: var(--pp-muted); user-select: none; }
 .pp-chat-compose:has(.pp-chat-disclaimer) { padding-bottom: 8px; }
-/* tab overflow (tabs.js): each arrow has its own 26 px area at an edge of the row, split from
-   the tabs by a vertical line; the row is padded by those areas, so no tab hides under one */
+/* tab overflow (tabs.js): each arrow has its own 26 px area at an edge of the row; the row is
+   padded by those areas, so no tab hides under one */
 .pp-tabbar.pp-tabs-scroll { padding: 0 26px; scroll-padding: 0 26px; }
 .pp-tabs-arrow { position: absolute; top: 0; height: 100%; width: 26px; display: none; align-items: center; justify-content: center; cursor: pointer; color: var(--pp-muted); background: var(--pp-bg-side); z-index: 2; transition: color var(--pp-dur-fast) ease, background-color var(--pp-dur-fast) ease; }
-.pp-tabs-arrow-left { border-right: 1px solid var(--pp-border); }
-.pp-tabs-arrow-right { border-left: 1px solid var(--pp-border); }
 .pp-tabs-arrow.pp-on { display: flex; }
-/* hover: the tint is layered over the pane colour, so the area stays opaque (no tab shows through) */
-.pp-tabs-arrow:hover { color: var(--pp-fg); background: linear-gradient(rgba(127, 127, 127, .14), rgba(127, 127, 127, .14)), var(--pp-bg-side); }
-.pp-tabs-arrow.pp-off { color: var(--pp-muted); opacity: .35; cursor: default; background: var(--pp-bg-side); }
+/* each arrow is a small rounded box inside its (opaque, full-height) area: no tab shows through */
+.pp-tabs-arrow::before { content: ""; position: absolute; left: 2px; right: 2px; top: 50%; height: 24px; margin-top: -12px; z-index: -1; border: 1px solid var(--pp-border); border-radius: var(--pp-r-ctrl); background: var(--pp-bg); transition: background-color var(--pp-dur-fast) ease; }
+.pp-tabs-arrow:hover { color: var(--pp-fg); }
+.pp-tabs-arrow:hover::before { background: linear-gradient(rgba(127, 127, 127, .14), rgba(127, 127, 127, .14)), var(--pp-bg); }
+.pp-tabs-arrow.pp-off { color: var(--pp-muted); opacity: .35; cursor: default; }
+.pp-tabs-arrow.pp-off::before { background: var(--pp-bg); }
 /* command palette: a muted heading above each group */
 .pp-picker-group { width: 100%; flex: none; padding: 10px 10px 3px; font-size: 11px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; color: var(--pp-muted); user-select: none; }
 .pp-picker-list > .pp-picker-group:first-child { padding-top: 4px; }
-/* the note buttons (split · AI · ⋯) in one box, like the vault · palette · settings box */
-.pp-tab-more.pp-tools { margin: 0 4px; }
+.pp-tabstrip > .pp-tab-new.q-btn { flex: none; margin: 0 2px 0 4px; }
 /* editor options: readable line length and the current line's band */
 .pp-editor .cm-editor.pp-readable:not(.pp-page-view) .cm-content { max-width: 46em; margin: 0 auto; }
 .pp-editor .cm-editor .cm-activeLine { background-color: rgba(127, 127, 127, .07); }
@@ -1304,3 +1324,18 @@ body.body--dark { --pp-set-box-bg: rgba(255, 255, 255, .035); }
 .cm-editor .cm-tooltip.pp-slash-wrap.cm-tooltip-above { justify-content: flex-end; }
 .cm-editor .cm-tooltip.pp-slash-wrap > .pp-slash { pointer-events: auto; flex: none; max-height: 100%; }
 .cm-editor .cm-tooltip.pp-slash-wrap.pp-slash-waiting > .pp-slash { visibility: hidden; }
+
+/* The bar on top of each editor (gui/components/note_head.py, P21): ‹ › sections, the note's
+   title and the section at the top of the view, then the note's own buttons */
+.pp-notehead { width: 100%; flex: none; height: 38px; gap: 8px; padding: 0 8px; border-bottom: 1px solid var(--pp-border); background: var(--pp-bg); }
+.pp-notehead-crumb { flex: 1 1 auto; min-width: 0; gap: 6px; font-size: 13px; }
+.pp-notehead-title { flex: 0 1 auto; min-width: 0; max-width: 60%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; color: var(--pp-fg); padding: 2px 4px; border-radius: var(--pp-r-sm); }
+.pp-notehead-sep { flex: none; color: var(--pp-muted); }
+.pp-notehead-section { flex: 1 1 0; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--pp-muted); }
+.pp-notehead-nav, .pp-notehead-tools { flex: none; }
+.pp-notehead .pp-icon-btn.q-btn.disabled { opacity: .35 !important; }
+/* split view: the title picks another note here; the side being typed in is marked */
+.pp-notehead-split .pp-notehead-title { cursor: pointer; }
+.pp-notehead-split .pp-notehead-title:hover { background: rgba(127, 127, 127, .12); }
+.pp-notehead-active { box-shadow: inset 0 -2px 0 rgba(var(--pp-accent-rgb), .7); }
+.pp-notehead-active .pp-notehead-title { color: var(--pp-accent); }

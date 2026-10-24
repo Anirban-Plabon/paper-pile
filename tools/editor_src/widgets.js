@@ -99,6 +99,7 @@ function walk(state, node, from, to, out) {
     } else if (c.name === "InlineCode") {
       const marks = c.getChildren("CodeMark");
       const el = document.createElement("code");
+      el.className = "pp-code"; // the same chip as inline code outside a table
       el.textContent = state.sliceDoc(marks[0] ? marks[0].to : c.from, marks.length > 1 ? marks[marks.length - 1].from : c.to);
       out.append(el);
     } else if (c.name === "Link") {

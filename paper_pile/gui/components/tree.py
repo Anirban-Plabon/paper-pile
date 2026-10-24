@@ -10,6 +10,9 @@ through the event bus:
   ``vault.renamed``  (old, new)          rename or move (a folder path covers its children)
   ``vault.deleted``  (path, trashed)     moved to ``.trash/``
 
+Pinned notes (right-click → Pin) are listed above the folders. A folder's + (on hover) makes a
+new note in it.
+
 The header above the tree has three buttons: search (swaps the tree for a search box over the
 full text of every note — the SQLite index — listing hits with a highlighted snippet; with an
 empty box, the most recently changed notes), new folder (a dialog asking for the name and where
@@ -64,7 +67,9 @@ class FileTree:
         open_found: Callable[[str, str], Awaitable[None]] | None = None,
         open_trash: Callable[[], Awaitable[None]] | None = None,
         confirm_delete: Callable[[], bool] = lambda: True,
+        pinned: Callable[[], list[str]] = list,
     ) -> None:
+        self._pinned = pinned  # pinned notes, listed above the folders
         self._confirm_delete = confirm_delete  # Settings → Ask before deleting
         self._open_trash = open_trash  # the vault menu's Trash…
         self._search = search  # full-text search (core.index.Index.search)
@@ -116,11 +121,17 @@ class FileTree:
         ui.on("pp_tree_move", lambda e: self._guard(self._on_move(e.args)))
         ui.on("pp_tree_band", lambda e: self._guard(self._on_band(e.args)))
         ui.on("pp_tree_key", lambda e: self._guard(self._on_key(e.args)))
+        ui.on("pp_tree_add", lambda e: self._guard(self._new_note(str(e.args["path"]))))
         ui.on("pp_ctx_close", lambda _e: self._close_menu())
         # a tab's menu renames through the tree (same dialog as the tree's own Rename)
         self.bus.subscribe(
             "note.rename",
             lambda path: background_tasks.create(self._guard(self._rename(path))),
+        )
+        # the tab row's + makes a note in a given folder ("" = the vault's top folder)
+        self.bus.subscribe(
+            "note.new",
+            lambda folder: background_tasks.create(self._guard(self._new_note(folder))),
         )
         # the note menu (⋯) moves notes through the tree, like a drag would
         self.bus.subscribe(
@@ -143,6 +154,7 @@ class FileTree:
                 count = self._render_recent()
                 empty = "No notes yet."
             else:
+                self._render_pins()
                 count = self._render_folder("", 0)
                 empty = "No notes yet."
             if count == 0:
@@ -231,6 +243,26 @@ class FileTree:
                 ui.label(folder).classes("pp-muted pp-tree-sub")
         self._rows[path] = row
 
+    def _render_pins(self) -> None:
+        """The pinned notes, above the folders (a click opens one; right-click: Unpin)."""
+        pins = [p for p in self._pinned() if self.vault.exists(p)]
+        if not pins:
+            return
+        ui.label("Pinned").classes("pp-tree-group")
+        for path in pins:
+            row = ui.element("div").classes("pp-tree-row pp-tree-pinrow")
+            row._props["data-path"] = path
+            row._props["data-dir"] = "0"
+            row.style(f"padding-left: {BASE_PAD_PX}px")
+            with row:
+                line_icon("pin", "s").classes("pp-ico pp-ico-chev")
+                line_icon("file-text").classes("pp-ico pp-ico-note")
+                ui.label(path.rsplit("/", 1)[-1]).classes("pp-tree-name")
+                folder = path.rpartition("/")[0]
+                if folder:
+                    ui.label(folder).classes("pp-muted pp-tree-sub")
+        ui.element("div").classes("pp-tree-group-end")
+
     def _render_folder(self, rel: str, depth: int) -> int:
         try:
             entries = self.vault.list_tree(rel)
@@ -260,6 +292,9 @@ class FileTree:
                 ui.element("span").classes("pp-ico pp-ico-chev")  # aligns notes
                 line_icon("file-text").classes("pp-ico pp-ico-note")
             ui.label(entry.name).classes("pp-tree-name")
+            if entry.is_dir:  # static/tree.js: a click here is "new note in this folder"
+                add = line_icon("plus", "s").classes("pp-tree-add")
+                add._props["data-tip"] = "New note here"
         self._rows[entry.path] = row
 
     def _apply_selection(self) -> None:
@@ -431,7 +466,7 @@ class FileTree:
         notes = [p for p in paths if self.vault.resolve(p).is_file()]
         if notes and self._ai_on():
             label = "Add to chat" if len(notes) == 1 else f"Add {len(notes)} notes to chat"
-            self._item(label, "messages-square", lambda: self._add_to_chat(*notes))
+            self._item(label, "sparkles", lambda: self._add_to_chat(*notes))
         self._item(
             f"Delete {len(paths)} items", "trash-2", lambda: self._delete(*paths), danger=True
         )
@@ -443,8 +478,13 @@ class FileTree:
             self._item("New folder", "folder-plus", lambda: self._new_folder(folder))
         if not on_row and self._open_trash is not None:
             self._item("Trash…", "trash", self._open_trash)
+        if on_row and not is_dir:
+            if path in self._pinned():
+                self._item("Unpin", "pin-off", lambda: self._pin(path, False))
+            else:
+                self._item("Pin", "pin", lambda: self._pin(path, True))
         if on_row and not is_dir and self._ai_on():
-            self._item("Add to chat", "messages-square", lambda: self._add_to_chat(path))
+            self._item("Add to chat", "sparkles", lambda: self._add_to_chat(path))
         if on_row:
             self._item("Rename", "square-pen", lambda: self._rename(path))
             self._item("Duplicate", "copy", lambda: self._duplicate(path))
@@ -455,6 +495,9 @@ class FileTree:
                     "folder-open",
                     lambda: self._reveal(path),
                 )
+
+    async def _pin(self, path: str, on: bool) -> None:
+        self.bus.publish("note.pin", path=path, on=on)  # the editor pane owns the pins
 
     async def _add_to_chat(self, *paths: str) -> None:
         for path in paths:

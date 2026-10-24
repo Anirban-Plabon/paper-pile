@@ -12,7 +12,7 @@ from nicegui import ui
 
 from paper_pile.gui.icons import line_icon
 
-CHAT_ICON = "messages-square"
+CHAT_ICON = "sparkles"  # the one AI icon (chat tab, AI button, Add to chat)
 CALENDAR_ICON = "calendar"
 SETTINGS_ICON = "settings"  # a line icon (gui/icons.py); Font Awesome Free has no outline gear
 TAG_ICON = "hash"

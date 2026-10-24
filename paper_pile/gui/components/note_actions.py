@@ -57,6 +57,7 @@ def note_actions(pane: "EditorPane", note: Callable[[], str | None] | None = Non
         toggle_page_view=pane.toggle_page_view,
         outline=pane.show_outline,
         history=with_note(pane.show_history),
+        pin=with_note(lambda p: pane.set_pinned(p, not pane.is_pinned(p))),
         move=with_note(lambda p: _move(pane, p)),
         merge=with_note(lambda p: _merge(pane, p)),
         add_to_chat=with_note(pane.add_to_chat),

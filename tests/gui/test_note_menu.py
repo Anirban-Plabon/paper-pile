@@ -23,6 +23,7 @@ LABELS = {
     "toggle_page_view": "Page view",
     "outline": "Outline",
     "history": "Version history",
+    "pin": "Pin note",
     "move": "Move to…",
     "merge": "Merge into…",
     "add_to_chat": "Add to chat",
@@ -56,8 +57,9 @@ async def test_every_item_runs_its_action(user: User) -> None:
     before = len(called)
     user.find(marker="Open in default app").click()  # shown, not implemented
     assert len(called) == before
-    menus[0].update(has_note=True, split_open=True, page_view=False)
+    menus[0].update(has_note=True, split_open=True, page_view=False, pinned=True)
     await user.should_see("Close split")
+    await user.should_see("Unpin note")
     assert not menus[0]._page_view_check.visible
     menus[0].set_page_view(True)  # the check mark follows the setting
     assert menus[0]._page_view_check.visible

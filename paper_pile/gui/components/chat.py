@@ -28,6 +28,7 @@ from nicegui import Client, background_tasks, ui
 from paper_pile.core.ai.attachments import AttachmentError, FileRef, read_text_file
 from paper_pile.core.ai.chats import (
     SavedChat,
+    SavedQuote,
     chat_title,
     chats_folder,
     delete_chat,
@@ -98,6 +99,14 @@ class Selection:
     def preview(self, limit: int = 300) -> str:
         t = self.text.strip()
         return t if len(t) <= limit else t[:limit] + "…"
+
+
+def _chip_text(note: str, kind: str, size: str) -> str:
+    """An attached selection's chip: ``From <note>: [Selected text · 3 lines]`` (HTML)."""
+    text = html.escape(f"[{kind} · {size}]")
+    if not note:
+        return text
+    return f'From <span class="pp-chat-ref-note">{html.escape(note)}</span>: {text}'
 
 
 class ChatPane:
@@ -487,8 +496,11 @@ class ChatPane:
         if turn.role == "user":
             with ui.column().classes("pp-msg pp-msg-user"):
                 ui.label(self._user_name() or "You").classes("pp-msg-who")
-                if turn.attachment:
-                    ui.label(turn.attachment).classes("pp-muted pp-msg-attach")
+                for quote in turn.quotes:
+                    self._quote_chip(quote)
+                rest = "\n".join(turn.attachment.splitlines()[len(turn.quotes) :])
+                if rest:  # notes and files (the quotes' lines come first)
+                    ui.label(rest).classes("pp-muted pp-msg-attach")
                 ui.label(turn.text).classes("pp-msg-text")
             return None
         with ui.column().classes("pp-msg pp-msg-ai" + (" pp-msg-error" if turn.error else "")):
@@ -514,6 +526,33 @@ class ChatPane:
                     ).props("flat dense size=xs").props('data-tip="Insert into note"')
             self._typeset(body)
         return body
+
+    def _quote_chip(self, quote: SavedQuote) -> None:
+        """A sent selection: the same chip as in the composer; a click unfolds its text."""
+        with ui.column().classes("pp-msg-quote"):
+            row = ui.row().classes("pp-chat-ref pp-chat-chip items-center no-wrap")
+            body = ui.column().classes("pp-msg-quote-body")
+            body.set_visibility(False)
+
+            def toggle() -> None:
+                if not body.default_slot.children:  # drawn on the first unfold
+                    with body:
+                        text = render_html(source_view(quote.text.strip()))
+                        html_body = ui.html(text, sanitize=False)
+                        html_body.classes("pp-msg-body pp-chat-chip-body")
+                        self._typeset(html_body)
+                body.set_visibility(not body.visible)
+                if body.visible:
+                    row.classes("pp-chat-chip-open")
+                else:
+                    row.classes(remove="pp-chat-chip-open")
+
+            with row:
+                line_icon("quote").classes("pp-chat-ref-icon")
+                label = ui.html(_chip_text(quote.note, quote.kind, quote.size), sanitize=False)
+                label.classes("pp-chat-ref-text pp-chat-chip-text")
+                label.on("click", toggle)
+                tip(label, "Show the attached text")
 
     def _typeset(self, body: ui.html) -> None:
         self._js(f"window.ppTypeset && window.ppTypeset(document.getElementById('c{body.id}'))")
@@ -771,10 +810,7 @@ class ChatPane:
                     row.classes("pp-chat-chip-open")
                 with row:
                     line_icon("quote").classes("pp-chat-ref-icon")
-                    text = f"[{picked.kind} · {picked.size()}]"
-                    if picked.note:
-                        note = html.escape(picked.note)
-                        text = f'From <span class="pp-chat-ref-note">{note}</span>: {text}'
+                    text = _chip_text(picked.note, picked.kind, picked.size())
                     label = ui.html(text, sanitize=False)
                     label.classes("pp-chat-ref-text pp-chat-chip-text")
                     label.on("click", lambda _e=None, s=picked: self._toggle_chip(s))
@@ -878,7 +914,8 @@ class ChatPane:
             [f"{p.label}:\n{p.text.strip()}" for p in picked]
             + [f"File {f.name}:\n{f.text.strip()}" for f in files]
         )
-        self.history.append(Turn("user", text, label))
+        quotes = [SavedQuote(p.label, p.kind, p.size(), p.text, p.note) for p in picked]
+        self.history.append(Turn("user", text, label, quotes=quotes))
         self._save()
         self._task = background_tasks.create(self._answer(text, attached, names))
         set_icon(self._send, "square")

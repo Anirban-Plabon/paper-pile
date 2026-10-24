@@ -3,7 +3,8 @@
 Rules (PLAN §4.4): every note has at most one tab, opening a note that is already open just
 focuses its tab, there are no preview tabs, closing the active tab activates its right
 neighbour (else the left one), and a rename or move keeps the tab. Tab ids are never reused,
-so UI code can use them as stable keys.
+so UI code can use them as stable keys. Pinned tabs always come first (a drag never mixes the
+two groups).
 """
 
 from dataclasses import dataclass
@@ -13,6 +14,7 @@ from dataclasses import dataclass
 class TabEntry:
     id: int
     path: str  # vault-relative, POSIX
+    pinned: bool = False
 
     @property
     def name(self) -> str:
@@ -104,7 +106,22 @@ class TabList:
         self._tabs.remove(src)
         at = next(i for i, t in enumerate(self._tabs) if t.id == dst_id)
         self._tabs.insert(at + 1 if after else at, src)
+        self._group()
         return [t.id for t in self._tabs] != before
+
+    def set_pinned(self, tab_id: int, pinned: bool) -> bool:
+        """Pin a tab (it joins the end of the pinned group) or unpin it (it becomes the first
+        unpinned tab). False if nothing changed."""
+        tab = self.get(tab_id)
+        if tab is None or tab.pinned == pinned:
+            return False
+        self._tabs.remove(tab)
+        tab.pinned = pinned
+        self._tabs.insert(sum(t.pinned for t in self._tabs), tab)
+        return True
+
+    def _group(self) -> None:
+        self._tabs.sort(key=lambda t: not t.pinned)  # stable: each group keeps its order
 
     def rename_prefix(self, old: str, new: str) -> list[TabEntry]:
         """A note or folder was renamed/moved: re-point the tabs inside it; returns them."""

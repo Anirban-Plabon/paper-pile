@@ -52,6 +52,7 @@ class Editor(
         on_focus: Handler | None = None,
         on_tag: Handler | None = None,
         on_caret: Handler | None = None,
+        on_top: Handler | None = None,
         on_print_layout: Handler | None = None,
         on_page_break: Handler | None = None,
         on_page_break_move: Handler | None = None,
@@ -72,6 +73,8 @@ class Editor(
             self.on("tag", on_tag)
         if on_caret:
             self.on("caret", on_caret)
+        if on_top:  # the line at the top of the view (the note header's section)
+            self.on("top", on_top)
         if on_print_layout:
             self.on("print_layout", on_print_layout)
         if on_page_break:
@@ -129,6 +132,10 @@ class Editor(
     def show_doc(self, doc_id: int, text: str, path: str = "") -> None:
         """Switch to tab ``doc_id``: its parked editor state if it has one, else ``text``."""
         self.run_method("showDoc", doc_id, text, path)
+
+    def set_edited(self, text: str) -> None:
+        """When the shown note last changed on disk (its properties' "edited" row; "" hides it)."""
+        self.run_method("setEdited", text)
 
     def set_path(self, path: str) -> None:
         """The shown note was renamed or moved."""

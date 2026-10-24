@@ -29,13 +29,26 @@ MEMORY_DIR = ".memory"
 TITLE_CHARS = 60
 
 
+@dataclass(frozen=True, slots=True)
+class SavedQuote:
+    """Text the user attached to a message (an editor selection or a block), kept so the
+    message can unfold it later."""
+
+    label: str  # "From [[a]]" or "Selected text"
+    kind: str  # "Selected text", "Code block", "Math block", "Diagram"
+    size: str  # "3 lines", "120 chars"
+    text: str
+    note: str = ""  # the note it came from
+
+
 @dataclass(slots=True)
 class SavedTurn:
     role: str  # "user" | "assistant"
     text: str
-    attachment: str = ""
+    attachment: str = ""  # one line per attached thing (quotes first)
     summary: str = ""
     error: bool = False
+    quotes: list[SavedQuote] = field(default_factory=list)
 
 
 @dataclass(slots=True)
@@ -113,7 +126,15 @@ def _turn(raw: Any) -> SavedTurn | None:
         str(raw.get("attachment", "")),
         str(raw.get("summary", "")),
         bool(raw.get("error", False)),
+        [q for q in map(_quote, raw.get("quotes") or []) if q is not None],
     )
+
+
+def _quote(raw: Any) -> SavedQuote | None:
+    if not isinstance(raw, dict) or not isinstance(raw.get("text"), str):
+        return None
+    label, kind, size, note = (str(raw.get(k, "")) for k in ("label", "kind", "size", "note"))
+    return SavedQuote(label, kind, size, raw["text"], note)
 
 
 def load_chat(folder: Path, chat_id: str) -> SavedChat | None:

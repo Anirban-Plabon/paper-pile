@@ -11,7 +11,9 @@ note is marked, the side being typed in more strongly.
 
 Many tabs: they shrink (down to a minimum width, names cut short) before they overflow; then
 the row scrolls (mouse wheel, or the ‹ › arrows ``static/tabs.js`` shows at a cut-off edge) and
-the list button before the note buttons lists every open tab.
+the list button before the note buttons lists every open tab. Pinned tabs come first, with a
+pin and no ×. A + after the tabs makes a new
+note in the vault's top folder.
 """
 
 import inspect
@@ -56,6 +58,7 @@ class TabBar:
         menu: Callable[[int, str], list[TabMenuItem]] = lambda tab_id, path: [],
         on_toggle_pane: Callable[[str], None] = lambda pane: None,
         on_activate_side: Callable[[int, int], None] | None = None,
+        on_new: Callable[[], None] = lambda: None,
     ) -> None:
         self._tabs = tabs
         self._on_activate = on_activate
@@ -64,10 +67,10 @@ class TabBar:
         self._menu = menu  # the items of a tab's right-click menu (None: a divider)
         self._on_toggle_pane = on_toggle_pane
         self._on_activate_side = on_activate_side  # (tab id, side) while split
+        self._on_new = on_new  # the + after the tabs: a new note in the vault's top folder
         self._strip: ui.row
         self._right: ui.element
         self.toggles: dict[str, ui.button] = {}
-        self.menu_host: ui.element
         self._bar: ui.element
         self._dots: dict[int, ui.label] = {}
         self._list_menu: ui.menu
@@ -79,6 +82,7 @@ class TabBar:
             self._right = ui.row().classes("pp-tabbar pp-tabbar-right pp-dragzone no-wrap")
             self._right.classes("items-stretch")
             self._right.set_visibility(False)
+            icon_button("plus", self._on_new, "New note", size="m").classes("pp-tab-new")
             with (
                 ui.button(color=None)
                 .props("flat dense no-caps")
@@ -89,8 +93,6 @@ class TabBar:
                 self._list_menu = ui.menu().classes("pp-note-menu pp-tabs-list-menu")
                 self._list_menu.props("anchor='bottom right' self='top right'")
             tip(list_button, "All open tabs")
-            # split, AI and the ⋯ note menu, in one box (like the vault · palette · settings box)
-            self.menu_host = ui.element("div").classes("pp-tab-more pp-seg pp-tools pp-tools-row")
             self.toggles["right"] = icon_button(
                 "panel-right-close", lambda: self._on_toggle_pane("right"), "Hide AI chat (Ctrl+L)"
             )
@@ -124,7 +126,9 @@ class TabBar:
 
     def _chip(self, tab_id: int, path: str, side: int, split: SplitTabs | None) -> None:
         name, hint = self._tabs.titles()[tab_id]
-        chip = ui.element("div").classes("pp-tab")
+        entry = self._tabs.get(tab_id)
+        pinned = entry is not None and entry.pinned
+        chip = ui.element("div").classes("pp-tab" + (" pp-tab-pinned" if pinned else ""))
         if split is None:
             if tab_id == self._tabs.active:
                 chip.classes("pp-tab-active")
@@ -136,15 +140,19 @@ class TabBar:
             chip.on("click", lambda _e, i=tab_id, s=side: self._on_activate_side(i, s))  # type: ignore[misc]
         else:
             chip.on("click", lambda _e, i=tab_id: self._on_activate(i))
-        chip.on("mousedown.middle.prevent", lambda _e, i=tab_id: self._on_close(i))
+        if not pinned:  # a pinned tab never closes by a stray middle-click
+            chip.on("mousedown.middle.prevent", lambda _e, i=tab_id: self._on_close(i))
         with chip:
+            if pinned:
+                line_icon("pin", "s").classes("pp-tab-pin")
             ui.label(name).classes("pp-tab-title")
             if hint is not None:
                 ui.label(hint).classes("pp-tab-hint")
             dot = ui.label("●").classes("pp-tab-dot")
             self._dots.setdefault(tab_id, dot)
-            close = line_icon("x", "s").classes("pp-tab-close")
-            close.on("click.stop", lambda _e, i=tab_id: self._on_close(i))
+            if not pinned:  # closed from its menu (or Ctrl+W) instead
+                close = line_icon("x", "s").classes("pp-tab-close")
+                close.on("click.stop", lambda _e, i=tab_id: self._on_close(i))
             items = self._menu(tab_id, path)
             if items:
                 with ui.context_menu().classes("pp-note-menu"):

@@ -141,6 +141,10 @@
 
   document.addEventListener('click', (e) => {
     const row = rowOf(e.target);
+    if (row && e.target.closest('.pp-tree-add')) { // a folder's +: a new note in it
+      emitEvent('pp_tree_add', { path: row.dataset.path });
+      return;
+    }
     if (row) {
       treeOf(row).focus({ preventScroll: true });
       emitEvent('pp_tree_click', {

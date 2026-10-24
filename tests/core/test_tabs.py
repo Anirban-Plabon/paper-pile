@@ -151,3 +151,29 @@ def test_titles_disambiguate_only_duplicates() -> None:
     assert by_path["notes/readme.md"] == ("readme.md", "notes")
     assert by_path["docs/readme.md"] == ("readme.md", "docs")
     assert by_path["readme.md"] == ("readme.md", "/")  # root folder shown as "/"
+
+
+def test_pinned_tabs_come_first() -> None:
+    tabs = opened("a", "b", "c", "d")
+    ids = {t.path: t.id for t in tabs.tabs}
+    assert tabs.set_pinned(ids["c"], True)
+    assert tabs.paths == ["c", "a", "b", "d"]
+    assert tabs.set_pinned(ids["d"], True)
+    assert tabs.paths == ["c", "d", "a", "b"]  # joins the end of the pinned group
+    assert not tabs.set_pinned(ids["d"], True)  # already pinned
+    assert tabs.set_pinned(ids["c"], False)
+    assert tabs.paths == ["d", "c", "a", "b"]  # first of the unpinned ones
+    tabs.open("e")
+    assert tabs.paths[-1] == "e"
+
+
+def test_a_drag_never_mixes_pinned_and_unpinned() -> None:
+    tabs = opened("a", "b", "c")
+    ids = {t.path: t.id for t in tabs.tabs}
+    tabs.set_pinned(ids["a"], True)
+    tabs.move(ids["c"], ids["a"], after=False)  # an unpinned tab dropped before a pinned one
+    assert tabs.paths == ["a", "c", "b"]
+    tabs.move(ids["a"], ids["b"], after=True)  # a pinned tab dropped among unpinned ones
+    assert tabs.paths == ["a", "c", "b"]
+    renamed = tabs.rename_prefix("a", "z")
+    assert renamed[0].pinned

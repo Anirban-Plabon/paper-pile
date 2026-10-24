@@ -5,6 +5,7 @@ from paper_pile.core.session import (
     SessionState,
     load_last_vault,
     load_session,
+    renamed,
     save_last_vault,
     save_session,
 )
@@ -57,6 +58,7 @@ def test_session_round_trip(tmp_path: Path) -> None:
         recent_notes=["d/b.md", "a.md"],
         outline_open=True,
         outline_height=300,
+        pinned=["d/b.md"],
     )
     save_session(tmp_path, state)
     assert (tmp_path / ".paper-pile" / "session.json").is_file()
@@ -122,3 +124,17 @@ def test_recent_vaults_reads_the_old_file_format(tmp_path: Path) -> None:
     assert load_recent_vaults(state) == [tmp_path]
     (state / "last_vault.json").write_text("[1, 2]")
     assert load_recent_vaults(state) == []
+
+
+def test_pinned_drops_junk_and_duplicates(tmp_path: Path) -> None:
+    (tmp_path / ".paper-pile").mkdir()
+    (tmp_path / ".paper-pile" / "session.json").write_text(
+        json.dumps({"pinned": ["a.md", 3, "b.md", "a.md"]})
+    )
+    assert load_session(tmp_path).pinned == ["a.md", "b.md"]
+
+
+def test_renamed_follows_notes_and_folders() -> None:
+    paths = ["a.md", "d/b.md", "d/e/c.md", "dd/x.md"]
+    assert renamed(paths, "a.md", "z.md") == ["z.md", "d/b.md", "d/e/c.md", "dd/x.md"]
+    assert renamed(paths, "d", "f/d") == ["a.md", "f/d/b.md", "f/d/e/c.md", "dd/x.md"]

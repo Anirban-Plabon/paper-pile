@@ -95,6 +95,12 @@ class SessionState:
     recent_notes: list[str] = field(default_factory=list)  # opened notes, newest first
     outline_open: bool = False  # the Outline section under the file tree
     outline_height: int = OUTLINE_HEIGHT
+    pinned: list[str] = field(default_factory=list)  # pinned notes, in tab order
+
+
+def renamed(paths: list[str], old: str, new: str) -> list[str]:
+    """``paths`` after ``old`` (a note or a folder) was renamed or moved to ``new``."""
+    return [new + p[len(old) :] if p == old or p.startswith(old + "/") else p for p in paths]
 
 
 def _session_path(vault: Path) -> Path:
@@ -138,6 +144,9 @@ def load_session(vault: Path) -> SessionState:
     notes = data.get("recent_notes")
     if isinstance(notes, list):
         state.recent_notes = [n for n in notes if isinstance(n, str)][:MAX_RECENT_NOTES]
+    pinned = data.get("pinned")
+    if isinstance(pinned, list):
+        state.pinned = list(dict.fromkeys(p for p in pinned if isinstance(p, str)))
     return state
 
 
@@ -154,6 +163,7 @@ def save_session(vault: Path, state: SessionState) -> None:
         "recent_notes": state.recent_notes[:MAX_RECENT_NOTES],
         "outline_open": state.outline_open,
         "outline_height": state.outline_height,
+        "pinned": state.pinned,
     }
     try:
         path.parent.mkdir(exist_ok=True)

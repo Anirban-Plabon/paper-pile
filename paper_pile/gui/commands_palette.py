@@ -244,7 +244,7 @@ def palette_commands(layout: "MainLayout") -> list[PaletteCommand]:
                 "Add note to chat",
                 actions.add_to_chat,
                 "",
-                "message-square-plus",
+                "sparkles",
                 when=ai_note,
             ),
             C(

@@ -31,6 +31,7 @@ from paper_pile.core.settings import (
     ALL,
     CODE_FONTS,
     FONTS,
+    ICON_COLORS,
     LANGUAGES,
     MOTION_LABELS,
     PAGE_VIEWS,
@@ -78,6 +79,7 @@ THEME_ICONS = {
 _SEGMENTED = {
     "appearance.density",
     "appearance.motion",
+    "appearance.icons",
     "editor.default_mode",
     "editor.tab_size",
     "appearance.theme",
@@ -402,9 +404,11 @@ class SettingsPane:
             self._accent_picker(setting, str(current))
         elif setting.key in _SEGMENTED:
             icons = THEME_ICONS if setting.key == "appearance.theme" else {}
-            labels = {"editor.page_view": PAGE_VIEWS, "appearance.motion": MOTION_LABELS}.get(
-                setting.key, {}
-            )
+            labels = {
+                "editor.page_view": PAGE_VIEWS,
+                "appearance.motion": MOTION_LABELS,
+                "appearance.icons": ICON_COLORS,
+            }.get(setting.key, {})
             self._segmented(
                 [(c, labels.get(c, c) if not icons else "", icons.get(c)) for c in setting.choices],
                 str(current),

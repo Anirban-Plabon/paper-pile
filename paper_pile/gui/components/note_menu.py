@@ -23,6 +23,7 @@ class NoteActions:
     toggle_page_view: Action
     outline: Action
     history: Action
+    pin: Action  # pin / unpin (the label says which)
     move: Action
     merge: Action
     add_to_chat: Action
@@ -41,6 +42,7 @@ class NoteMenu:
         self._actions = actions
         self._button: ui.button
         self._split_label: ui.label
+        self._pin_label: ui.label
         self._page_view_check: ui.element
         self._last_item: ui.menu_item
         self._ai_parts: list[ui.element] = []  # the AI group, hidden while AI is off
@@ -63,12 +65,13 @@ class NoteMenu:
                 self._page_view_check.set_visibility(False)
             self._item("list-tree", "Outline", a.outline, "Ctrl+Shift+O")
             self._item("history", "Version history", a.history)
+            self._pin_label = self._item("pin", "Pin note", a.pin)
             self._item("folder-input", "Move to…", a.move)
             self._item("merge", "Merge into…", a.merge)
             self._ai_parts.append(ui.separator())
             self._ai_parts.append(ui.label("AI").classes("pp-note-menu-group"))
             for icon, label, action in (
-                ("message-square-plus", "Add to chat", a.add_to_chat),
+                ("sparkles", "Add to chat", a.add_to_chat),
                 ("list-collapse", "Summarize", a.summarize),
                 ("wand-sparkles", "Rewrite", a.rewrite),
                 ("pen-line", "Write…", a.write),
@@ -88,10 +91,13 @@ class NoteMenu:
         for part in self._ai_parts:
             part.set_visibility(on)
 
-    def update(self, *, has_note: bool, split_open: bool, page_view: bool) -> None:
-        """Hide the button without a note; the split item names what it will do."""
+    def update(
+        self, *, has_note: bool, split_open: bool, page_view: bool, pinned: bool = False
+    ) -> None:
+        """Hide the button without a note; the split and pin items name what they will do."""
         self._button.set_visibility(has_note)
         self._split_label.set_text("Close split" if split_open else "Split right")
+        self._pin_label.set_text("Unpin note" if pinned else "Pin note")
         self.set_page_view(page_view)
 
     def set_page_view(self, on: bool) -> None:

@@ -37,6 +37,7 @@ def theme_payload(config: Config | None) -> dict[str, Any]:
         "accentLightRgb": hex_to_rgb(light),
         "accentDarkRgb": hex_to_rgb(dark),
         "density": v["appearance.density"],
+        "icons": v["appearance.icons"],
         "motion": MOTION_FACTORS[str(v["appearance.motion"])],
         # untouched: the OS "reduce motion" wish counts as Off (PLAN §4.19)
         "motionSet": config is not None and _is_set(config, "appearance.motion"),

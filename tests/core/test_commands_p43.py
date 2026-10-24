@@ -55,7 +55,12 @@ def test_blocks_start_on_their_own_line() -> None:
 
 @pytest.mark.parametrize(
     ("cid", "needle"),
-    [("flowchart", "flowchart TD"), ("sequence", "sequenceDiagram"), ("gantt", "gantt")],
+    [
+        ("flowchart", "flowchart TD"),
+        ("sequence", "sequenceDiagram"),
+        ("gantt", "gantt"),
+        ("kanban", "kanban"),
+    ],
 )
 def test_mermaid_blocks(cid: str, needle: str) -> None:
     text, _ = run(cid, "", "/x")
@@ -116,7 +121,16 @@ def test_every_phase1_group_is_present_in_order() -> None:
     names = [g.name for g in REGISTRY.search("")]
     assert names == ["Basic blocks", "Code & math", "Diagrams", "Media", "Links", "Insert", "AI"]
     ids = {c.id for c in REGISTRY.all()}
-    assert {"callout", "code", "math", "math-inline", "flowchart", "sequence", "gantt"} <= ids
+    assert {
+        "callout",
+        "code",
+        "math",
+        "math-inline",
+        "flowchart",
+        "sequence",
+        "gantt",
+        "kanban",
+    } <= ids
     assert {"image", "table", "link", "embed", "date", "time", "template"} <= ids
 
 

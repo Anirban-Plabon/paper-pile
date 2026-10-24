@@ -5,6 +5,7 @@ import pytest
 
 from paper_pile.core.ai.chats import (
     SavedChat,
+    SavedQuote,
     SavedTurn,
     chat_title,
     chats_folder,
@@ -27,6 +28,21 @@ def test_round_trip(tmp_path: Path) -> None:
     save_chat(chats_folder(tmp_path), chat)
     assert load_chat(chats_folder(tmp_path), chat.id) == chat
     assert (tmp_path / ".memory" / f"{chat.id}.json").is_file()
+
+
+def test_quotes_round_trip_and_old_files_have_none(tmp_path: Path) -> None:
+    quote = SavedQuote("From [[a]]", "Selected text", "2 lines", "one\ntwo", "a")
+    chat = _chat("q", 5.0)
+    chat.turns[0].quotes.append(quote)
+    folder = chats_folder(tmp_path)
+    save_chat(folder, chat)
+    assert load_chat(folder, "q") == chat
+    raw = json.loads((folder / "q.json").read_text())
+    for turn in raw["turns"]:
+        turn.pop("quotes")  # a chat saved before quotes were kept
+    raw["turns"][1]["quotes"] = [{"label": "x"}, "junk"]  # no text: dropped
+    (folder / "q.json").write_text(json.dumps(raw))
+    assert [t.quotes for t in load_chat(folder, "q").turns] == [[], []]  # type: ignore[union-attr]
 
 
 def test_list_newest_first_and_skips_bad_files(tmp_path: Path) -> None:

@@ -95,7 +95,7 @@ export function createEditor(
   { doc = "", mode = "live", theme = "light", emit = () => {}, imageUploadUrl = null, linkTarget = "python", options = {} } = {},
 ) {
   // this editor's own runtime (note path, events, doc id), reached by its widgets via the facet
-  const rt = { notePath: "", emit, getDocId: () => docId };
+  const rt = { notePath: "", edited: "", emit, getDocId: () => docId };
   const modeSlot = new Compartment();
   const optionsSlot = new Compartment();
   // word wrap, tab size, spell check, line numbers, page view (Settings): applied to every open note
@@ -368,6 +368,29 @@ export function createEditor(
 
   const view = new EditorView({ parent, state: makeState(doc, docId) });
 
+  // The line at the top of the view, for the note header's section (Python decides what it is):
+  // reported a moment after scrolling stops, and after a note switch. Probed a little below the
+  // top edge, where a heading lands after a jump (motion.js leaves a margin above it). `atEnd`:
+  // the view cannot scroll further down.
+  const TOP_PROBE_PX = 30;
+  let topTimer = null;
+  let lastTop = null;
+  const reportTop = () => {
+    clearTimeout(topTimer);
+    topTimer = setTimeout(() => {
+      const scroller = view.scrollDOM;
+      const height = scroller.getBoundingClientRect().top - view.documentTop + TOP_PROBE_PX;
+      const block = view.lineBlockAtHeight(Math.max(0, height));
+      const line = view.state.doc.lineAt(Math.min(block.from, view.state.doc.length)).number;
+      const atEnd = scroller.scrollTop + scroller.clientHeight >= scroller.scrollHeight - 2;
+      const key = `${docId}:${line}:${atEnd}`;
+      if (key === lastTop) return;
+      lastTop = key;
+      emit("top", { docId, line, atEnd });
+    }, 150);
+  };
+  view.scrollDOM.addEventListener("scroll", reportTop, { passive: true });
+
   // A click below the end of a note that ends with a block (table, image, heading, list, …) would
   // put the caret inside that block: give the note an empty last line and put the caret there.
   view.scrollDOM.addEventListener(
@@ -390,6 +413,7 @@ export function createEditor(
   const replaceText = (text, id, path, keepCaret) => {
     const head = view.state.selection.main.head;
     rt.notePath = path;
+    if (id !== docId) rt.edited = ""; // Python sends the new note's
     if (id !== docId) park();
     else flush();
     clearTimeout(timer);
@@ -398,6 +422,7 @@ export function createEditor(
     docId = id;
     view.setState(makeState(text, id));
     if (keepCaret) view.dispatch({ selection: { anchor: Math.min(head, view.state.doc.length) } });
+    reportTop();
   };
 
   return {
@@ -408,6 +433,7 @@ export function createEditor(
     showDoc(id, text, path = "") {
       rt.notePath = path; // before the state swap: widgets built next read it
       if (id === docId) return;
+      rt.edited = ""; // Python sends the new note's
       park();
       clearTimeout(timer);
       timer = null;
@@ -426,8 +452,17 @@ export function createEditor(
       }
       docId = id;
       view.setState(state);
+      reportTop();
     },
     // Replace tab `id`'s content outright (restored text): fresh state, history dropped.
+    // When the note on screen last changed on disk ("" hides the properties' "edited" row).
+    setEdited(text) {
+      rt.edited = text;
+      view.dom.querySelectorAll(".pp-fm-edited").forEach((el) => {
+        el.textContent = text;
+        el.parentElement.hidden = !text;
+      });
+    },
     // The note on screen was renamed/moved: relative image URLs must be recomputed.
     setPath(path) {
       rt.notePath = path;

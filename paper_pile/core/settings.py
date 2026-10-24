@@ -35,6 +35,7 @@ THEMES = ("light", "dark", "system")
 DENSITIES = ("comfortable", "compact")
 MOTIONS = ("off", "fast", "normal", "slow")
 MOTION_LABELS = {"off": "Off", "fast": "Fast", "normal": "Normal", "slow": "Slow"}
+ICON_COLORS = {"default": "Default", "accent": "Accent"}  # value -> shown
 MOTION_FACTORS = {"off": 0.0, "fast": 0.6, "normal": 1.0, "slow": 1.6}  # × every duration
 MODES = ("live", "source")
 PAPER_SIZES = ("A4", "Letter")  # core/printdoc.py PAPERS
@@ -252,6 +253,13 @@ SECTIONS: dict[str, tuple[Setting, ...]] = {
             help="Off turns animations off",
             essential=True,
         ),
+        Setting(
+            "appearance.icons",
+            "Icon colour",
+            "choice",
+            tuple(ICON_COLORS),
+            help="Accent: icons take the accent colour",
+        ),
     ),
     "Editor": (
         Setting(
@@ -342,6 +350,13 @@ SECTIONS: dict[str, tuple[Setting, ...]] = {
             "Title property from the note name",
             "bool",
             help="Adds title: to properties",
+            group="Writing",
+        ),
+        Setting(
+            "editor.last_edited",
+            "Last edited",
+            "bool",
+            help="In the note's properties",
             group="Writing",
         ),
         Setting(

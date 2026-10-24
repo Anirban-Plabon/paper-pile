@@ -29,6 +29,7 @@ DEFAULTS: dict[str, Any] = {
         "accent": "blue",
         "density": "comfortable",
         "motion": "normal",  # off | fast | normal | slow (PLAN §4.19)
+        "icons": "default",  # default | accent: the line icons' colour
     },
     "editor": {
         "font_family": "monospace",
@@ -44,6 +45,7 @@ DEFAULTS: dict[str, Any] = {
         "spell_check": False,
         "default_mode": "live",
         "auto_title": True,
+        "last_edited": True,  # an "edited" row (the file's time) in the properties
         "block_spacing": True,
         "tidy_button": True,
         "page_view": "off",  # off | lines | pages (PLAN §4.17)

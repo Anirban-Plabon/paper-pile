@@ -48,6 +48,9 @@ export default {
     async setPath(path) {
       (await this.ready).setPath(path);
     },
+    async setEdited(text) {
+      (await this.ready).setEdited(text);
+    },
     async closeDoc(docId) {
       (await this.ready).closeDoc(docId);
     },

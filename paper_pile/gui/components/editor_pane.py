@@ -20,6 +20,7 @@ import os
 import time
 import webbrowser
 from collections.abc import Awaitable, Callable
+from dataclasses import fields
 from datetime import date, datetime
 from typing import Any
 
@@ -64,11 +65,19 @@ from paper_pile.core.links import (
     wikilink_to,
 )
 from paper_pile.core.page_move import move_page_break
-from paper_pile.core.parser import find_heading
+from paper_pile.core.parser import Heading, find_heading
 from paper_pile.core.paste import smart_paste
 from paper_pile.core.picker import search_notes
 from paper_pile.core.recovery import RecoveryEntry, RecoveryStore
 from paper_pile.core.rewrite import Edit, plan_rewrites
+from paper_pile.core.sections import (
+    current_section,
+    next_start,
+    note_title,
+    previous_start,
+    section_heads,
+)
+from paper_pile.core.session import renamed
 from paper_pile.core.settings import PAGE_VIEWS, get_nested, language_name, sanitized
 from paper_pile.core.snippets import Snippet, link_snippet
 from paper_pile.core.spacing import spaced_block
@@ -81,10 +90,12 @@ from paper_pile.core.tidy import tidy
 from paper_pile.core.titles import note_name, retitle_edit, with_title
 from paper_pile.core.vault import Vault, VaultError, is_note_name, is_plain_text
 from paper_pile.core.watcher import FsEvent
+from paper_pile.core.when import edited_when
 from paper_pile.gui import printing
 from paper_pile.gui.components.backlinks import BacklinkItem, BacklinksPane
 from paper_pile.gui.components.editor import Editor, Mode
 from paper_pile.gui.components.note_actions import note_actions, pick_split_note
+from paper_pile.gui.components.note_head import NoteHead
 from paper_pile.gui.components.note_menu import NoteActions, NoteMenu
 from paper_pile.gui.components.tabs import SplitTabs, TabBar, TabMenuItem
 from paper_pile.gui.dialog import Dialog
@@ -103,6 +114,7 @@ AI_SELECTION_TTL_S = 300.0  # how long a Ctrl+J selection stays usable
 STREAM_FLUSH_S = 0.06  # how often streamed text is written into the editor
 AUTOSAVE_AFTER_CHANGE_S = 0.7  # on top of the editor's own 0.3 s debounce: ~1 s in total
 RETRY_AFTER_FAILURE_S = 5.0
+HEADS_AFTER_TYPING_S = 1.0  # the note header's sections are read again after this pause
 
 
 class EditorPane:
@@ -135,8 +147,14 @@ class EditorPane:
         on_outline: Callable[[], None] = lambda: None,
         on_history: Callable[[str], Any] = lambda path: None,
         on_settings_changed: Callable[[set[str]], None] = lambda keys: None,
+        pinned: list[str] | None = None,
+        on_pins_changed: Callable[[list[str]], None] = lambda paths: None,
     ) -> None:
         self.vault = vault
+        # Pinned notes (the session keeps them): their tabs come first, reopen at every start and
+        # are listed at the top of the file tree. A closed pinned tab stays pinned.
+        self.pinned: list[str] = list(pinned or [])
+        self._on_pins_changed = on_pins_changed
         self.bus = bus
         self.recovery = RecoveryStore(vault.root)
         self.tabs = TabList()
@@ -180,7 +198,7 @@ class EditorPane:
         self._backlinks: BacklinksPane
         self._timer: asyncio.TimerHandle | None = None
         self._failure_toasted = False
-        self._rendered: tuple[tuple[int, str], ...] = ()
+        self._rendered: tuple[tuple[int, str, bool], ...] = ()
         self._banner_key: tuple[int, str] | None = None
         self._rendered_active: object = None  # (active tab, split sides) last drawn
         self._tabbar: TabBar
@@ -194,12 +212,18 @@ class EditorPane:
         self._split_open = False
         self._side: ui.element
         self._split_box: ui.element  # gets `pp-split-on` while split (shows the divider)
-        self._chips: list[ui.row] = []  # per side: the note's name (click: choose another) + ✕
-        self._chip_titles: list[ui.label] = []
+        self._heads: list[NoteHead] = []  # per side: the bar on top of its editor
+        self.note_menus: list[NoteMenu] = []  # per side: its ⋯ menu
+        self._split_buttons: list[ui.button] = []
+        self._ai_buttons: list[ui.button] = []
+        self._tops: dict[int, tuple[int, bool]] = {}  # per tab: line at the top of view, at end
+        # per tab: (text, path) the title and sections were read from, title, sections
+        self._section_heads: dict[int, tuple[str, str, str, list[Heading]]] = {}
+        self._heads_handle: asyncio.TimerHandle | None = None  # sections read again after typing
         self._tidy_buttons: list[ui.button] = []  # per side: floats above its name island
+        self._edited_sent: list[object] = [None, None]  # per side: what its "edited" row shows
         self._ai = True  # the AI feature switch (set_ai)
         self.note_actions: NoteActions
-        self.note_menu: NoteMenu
         self._empty: ui.element  # shown while no tab is open; MainLayout fills it
         self._banner: ui.element
         self._host: ui.element  # holds dialogs and notifications
@@ -231,13 +255,10 @@ class EditorPane:
                 menu=self._tab_menu,
                 on_toggle_pane=self._on_toggle_pane,
                 on_activate_side=self._activate_side,
+                on_new=lambda: self.bus.publish("note.new", folder=""),
             )
             self._tabbar.build()
-            with self._tabbar.menu_host:
-                self.note_actions = note_actions(self)  # also the command palette's
-                self._note_buttons()
-                self.note_menu = NoteMenu(self.note_actions)
-                self.note_menu.build()
+            self.note_actions = note_actions(self)  # also the command palette's
             self._banner = ui.row().classes("pp-banner items-center no-wrap")
             self._banner.set_visibility(False)
             with ui.element("div").classes("pp-editor-area"):
@@ -250,8 +271,8 @@ class EditorPane:
                         if slot == 1:
                             self._side = pane
                         with pane:
+                            self._note_head(slot)
                             self._editors.append(self._make_editor(slot).classes("pp-fill"))
-                            self._split_chip(slot)
                             self._tidy_fab(slot)
                 self._side.set_visibility(False)
                 self._editor = self._editors[0]
@@ -264,6 +285,7 @@ class EditorPane:
         self.bus.subscribe("vault.created", lambda path: self._reindex_soon())
         self.bus.subscribe("vault.renamed", self._renamed_in_app)
         self.bus.subscribe("vault.deleted", lambda path, **_: self._on_deleted(path))
+        self.bus.subscribe("note.pin", lambda path, on: self._spawn(self.set_pinned(path, on)))
         ui.context.client.on_disconnect(self._on_disconnect)
 
     def _make_editor(self, slot: int) -> Editor:
@@ -292,6 +314,7 @@ class EditorPane:
             on_focus=lambda e: self._focused(slot),
             on_tag=lambda e: self._open_tag(str(e.args.get("tag", ""))),
             on_caret=lambda e: self._on_caret(e.args),
+            on_top=lambda e: self._on_top(e.args, slot),
             on_print_layout=lambda e: self._on_print_layout(e.args, slot),
             on_page_break=lambda e: self._spawn(self._on_page_break(e.args)),
             on_page_break_move=lambda e: self._spawn(self._on_page_break_move(e.args)),
@@ -335,17 +358,41 @@ class EditorPane:
         if self._split_open:
             self._editors[1 - source].sync_text(tab_id, text)
 
-    def _split_chip(self, slot: int) -> None:
-        """The floating name of the note in one side of the split: click it to show another
-        note there, ✕ to close that side."""
-        with ui.row().classes("pp-split-head items-center no-wrap") as chip:
-            title = ui.label("").classes("pp-split-title")
-            title.on("click", lambda _e: self._spawn(self.choose_for(slot)))
-            tip(title, "Show another note here")
-            icon_button("x", lambda: self.close_side(slot), "Close this side", size="m")
-        self._chips.append(chip)
-        self._chip_titles.append(title)
-        chip.set_visibility(False)
+    def _note_head(self, slot: int) -> None:
+        """The bar on top of editor ``slot`` (``note_head.py``): sections, the note's name and
+        its own split / AI / ⋯ buttons, which act on this side's note."""
+
+        def choose() -> None:
+            if self._split_open:
+                self._spawn(self.choose_for(slot))
+
+        head = NoteHead(
+            on_prev=lambda: self._jump_section(slot, -1),
+            on_next=lambda: self._jump_section(slot, 1),
+            on_title=choose,
+        )
+        head.build()
+        head.bar.set_visibility(False)
+        actions = self._side_actions(slot)
+        with head.tools:
+            self._note_buttons(slot, actions)
+            menu = NoteMenu(actions)
+            menu.build()
+        self._heads.append(head)
+        self.note_menus.append(menu)
+
+    def _side_actions(self, slot: int) -> NoteActions:
+        """The note actions for one side's buttons: the side becomes the active one first."""
+
+        def on_side(action: Callable[[], Any]) -> Callable[[], Any]:
+            def run() -> Any:
+                self._focused(slot)
+                return action()
+
+            return run
+
+        base = self.note_actions
+        return NoteActions(**{f.name: on_side(getattr(base, f.name)) for f in fields(base)})
 
     def _tidy_fab(self, slot: int) -> None:
         """A floating button that tidies the note on this side (``core/tidy.py``): bottom right
@@ -417,7 +464,7 @@ class EditorPane:
             self._activate(tab.id)
         else:
             await self.open(path)
-        self._show_split_titles()
+        self._show_heads()
 
     def close_side(self, slot: int) -> None:
         """Close one side of the split; the other side's note stays."""
@@ -438,11 +485,10 @@ class EditorPane:
         self._split_open = False
         self._side.set_visibility(False)
         self._split_box.classes(remove="pp-split-on")
-        for chip in self._chips:
-            chip.set_visibility(False)
         for tab in self.tabs.tabs:
             side.close_doc(tab.id)  # its parked states would go stale while it is hidden
         self._shown[1] = None
+        self._edited_sent[1] = None  # the side forgot its notes: send again when reopened
         self._slot, self._editor = 0, main
         if keep is not None and keep in self.buffers and self._shown[0] != keep:
             self._shown[0] = keep
@@ -484,7 +530,7 @@ class EditorPane:
         if slot == self._slot or not self._split_open:
             return
         self._slot, self._editor = slot, self._editors[slot]
-        self._show_split_titles()
+        self._show_heads()
         tab_id = self._shown[slot]
         if tab_id is None or tab_id == self.tabs.active or tab_id not in self.buffers:
             self._refresh()  # the tab row marks the side being typed in
@@ -495,17 +541,77 @@ class EditorPane:
         self._refresh()
         self._notify_tabs()
 
-    def _show_split_titles(self) -> None:
-        """Each side's chip names its note; the side being typed in is highlighted."""
-        for slot, (chip, title) in enumerate(zip(self._chips, self._chip_titles, strict=True)):
-            tab = next((t for t in self.tabs.tabs if t.id == self._shown[slot]), None)
-            title.set_text(note_name(tab.path) if tab else "")
-            chip.set_visibility(self._split_open)
-            if slot == self._slot:
-                chip.classes("pp-split-head-active")
-            else:
-                chip.classes(remove="pp-split-head-active")
+    def _show_heads(self) -> None:
+        """Each side's bar names its note and the section at the top of its view; while split,
+        the side being typed in is marked."""
+        for slot, head in enumerate(self._heads):
+            tab_id = self._shown[slot]
+            buf = self.buffers.get(tab_id) if tab_id is not None else None
+            shown = buf is not None and (slot == 0 or self._split_open)
+            head.bar.set_visibility(shown)
+            if buf is None or tab_id is None or not shown:
+                continue
+            head.set_split(self._split_open, slot == self._slot)
+            title, heads = self._sections_of(tab_id, buf)
+            top = self._tops.get(tab_id, (1, False))[0]
+            current = current_section(heads, top)
+            section = current.text if current is not None else ""
+            if section.casefold() == title.casefold():
+                section = ""  # `# Name` under the title Name: said once
+            can_prev = previous_start(heads, top) is not None
+            head.show(title, section, can_prev, next_start(heads, top) is not None)
         self.show_tidy_buttons()
+
+    def _sections_of(
+        self, tab_id: int, buf: NoteBuffer, *, fresh: bool = False
+    ) -> tuple[str, list[Heading]]:
+        """The note's title and its ``#`` / ``##`` sections. While the text keeps changing
+        (typing) the last ones are used and read again after a pause (a whole-note parse on every
+        change event would load the UI thread); ``fresh`` reads them now."""
+        cached = self._section_heads.get(tab_id)
+        if cached is not None and cached[0] == buf.text and cached[1] == buf.path:
+            return cached[2], cached[3]
+        if cached is not None and not fresh:
+            if self._heads_handle is not None:
+                self._heads_handle.cancel()
+            self._heads_handle = asyncio.get_running_loop().call_later(
+                HEADS_AFTER_TYPING_S, self._heads_settled
+            )
+            return cached[2], cached[3]
+        title, heads = note_title(buf.text, buf.path), section_heads(buf.text)
+        self._section_heads[tab_id] = (buf.text, buf.path, title, heads)
+        return title, heads
+
+    def _heads_settled(self) -> None:
+        self._heads_handle = None
+        for tab_id in {t for t in self._shown if t is not None}:
+            buf = self.buffers.get(tab_id)
+            if buf is not None:
+                self._sections_of(tab_id, buf, fresh=True)
+        self._show_heads()
+
+    def _on_top(self, args: dict[str, Any], slot: int) -> None:
+        """Editor ``slot`` scrolled: its bar names the section now at the top."""
+        tab_id = self._shown[slot]
+        if tab_id is None or args.get("docId") != tab_id:
+            return
+        self._tops[tab_id] = (int(args.get("line", 1)), bool(args.get("atEnd")))
+        self._show_heads()
+
+    def _jump_section(self, slot: int, step: int) -> None:
+        """‹ / ›: to the start of the previous / next section of the note on side ``slot``."""
+        self._focused(slot)
+        tab_id = self._shown[slot]
+        buf = self.buffers.get(tab_id) if tab_id is not None else None
+        if buf is None or tab_id is None:
+            return
+        _title, heads = self._sections_of(tab_id, buf, fresh=True)
+        top, at_end = self._tops.get(tab_id, (1, False))
+        # at the bottom the view cannot bring a heading to the top: go on from the caret
+        ref = max(top, self._caret[0]) if at_end and tab_id == self.tabs.active else top
+        line = next_start(heads, ref) if step > 0 else previous_start(heads, ref)
+        if line is not None:
+            self._editors[slot].goto_line(line)
 
     def start(self, paths: list[str], active: str | None) -> None:
         """Reopen the tabs of the last session, then offer any crash recovery."""
@@ -528,7 +634,8 @@ class EditorPane:
         # recovery entry (auto-title), which must neither be mistaken for a crash nor overwrite one.
         entries = find_recoverable(self.vault, self.recovery)
         self._awaiting_recovery = {entry.path for entry in entries}
-        for path in paths:
+        pinned = [p for p in self.pinned if self.vault.exists(p)]
+        for path in dict.fromkeys(pinned + paths):  # pinned tabs reopen even if they were closed
             if self.vault.exists(path):  # notes deleted since last time are skipped quietly
                 await self.open(path, skip_recovery=True, activate=False)
         target = self.tabs.find(active) if active else None
@@ -584,6 +691,8 @@ class EditorPane:
                 buffer.set_text(titled)  # dirty: the autosave below writes it
         tab, _ = self.tabs.open(path)
         self.buffers[tab.id] = buffer
+        if path in self.pinned:
+            self.tabs.set_pinned(tab.id, True)
         if activate:
             self._activate(tab.id)
         if buffer.dirty:  # restored text: the editor reports no change for it, so schedule a save
@@ -629,7 +738,7 @@ class EditorPane:
         self._editor.show_doc(tab_id, self.buffers[tab_id].text, self.buffers[tab_id].path)
         self._shown[self._slot] = tab_id
         if self._split_open:
-            self._show_split_titles()
+            self._show_heads()
         self._editor.focus()
         self.refresh_links()
         self.refresh_backlinks()
@@ -646,7 +755,8 @@ class EditorPane:
     def set_options(self, options: dict[str, Any]) -> None:
         for editor in self._editors:
             editor.set_options(options)
-        self.note_menu.set_page_view(bool(options.get("pageView")))
+        for menu in self.note_menus:
+            menu.set_page_view(bool(options.get("pageView")))
 
     # ---- page view (PLAN §4.17) ---------------------------------------------------------
 
@@ -732,6 +842,8 @@ class EditorPane:
             self.close_split()
         was_active = tab_id == self.tabs.active
         self.buffers.pop(tab_id, None)
+        self._tops.pop(tab_id, None)
+        self._section_heads.pop(tab_id, None)
         next_active = self.tabs.close(tab_id)
         if next_active is not None and was_active:
             self._activate(next_active)  # switches the editor away from the closed tab first
@@ -1496,12 +1608,17 @@ class EditorPane:
             self._tabbar.set_unsaved(unsaved)
         self._show_state()
         self._update_banner()
-        self.note_menu.update(
-            has_note=self.tabs.active is not None,
-            split_open=self._split_open,
-            page_view=self.page_view_on(),
-        )
+        for slot, menu in enumerate(self.note_menus):
+            tab = self.tabs.get(self._shown[slot]) if self._shown[slot] is not None else None
+            menu.update(
+                has_note=tab is not None,
+                split_open=self._split_open,
+                page_view=self.page_view_on(),
+                pinned=tab is not None and self.is_pinned(tab.path),
+            )
         self._update_note_buttons()
+        self._show_heads()
+        self.show_edited()
         plain = self._active_is_plain()
         self.show_tidy_buttons()
         if plain != self._plain_shown:
@@ -1510,7 +1627,7 @@ class EditorPane:
 
     def _structure_changed(self) -> bool:
         """Re-render the bar only when tabs, titles or the active tab changed (not on typing)."""
-        shape = tuple((t.id, t.path) for t in self.tabs.tabs)
+        shape = tuple((t.id, t.path, t.pinned) for t in self.tabs.tabs)
         active = (self.tabs.active, self._split_tabs())
         if shape == self._rendered and active == self._rendered_active:
             return False
@@ -1543,6 +1660,26 @@ class EditorPane:
             self._on_state("Editing…", False, "")
         else:
             self._on_state("Saved", False, self._saved_hint(tab.path))
+
+    def show_edited(self) -> None:
+        """Each side's properties show when its note's file last changed (Settings → Editor →
+        "Last edited"). Sent again only when the note, its saved text or the setting changed."""
+        on = bool(self._config.get("editor.last_edited", True)) if self._config else True
+        for slot, editor in enumerate(self._editors):
+            tab_id = self._shown[slot] if slot == 0 or self._split_open else None
+            buf = self.buffers.get(tab_id) if tab_id is not None else None
+            key = (tab_id, buf.saved_hash if buf else None, on)
+            if buf is None or key == self._edited_sent[slot]:
+                continue
+            self._edited_sent[slot] = key
+            text = ""
+            if on and buf.saved_hash is not None:
+                try:
+                    mtime = self.vault.resolve(buf.path).stat().st_mtime
+                    text = edited_when(mtime, time.time())
+                except (OSError, VaultError):
+                    text = ""
+            editor.set_edited(text)
 
     def _saved_hint(self, path: str) -> str:
         """ "Saved at 14:32" (or with the date when not today), from the file itself."""
@@ -1685,6 +1822,10 @@ class EditorPane:
     # ---- the tree renamed / deleted notes ------------------------------------------------
 
     def _on_renamed(self, old: str, new: str) -> None:
+        pins = renamed(self.pinned, old, new)
+        if pins != self.pinned:
+            self.pinned = pins
+            self._on_pins_changed(list(pins))
         changed = self.tabs.rename_prefix(old, new)
         for tab in changed:
             self.buffers[tab.id].rename(tab.path)
@@ -1692,7 +1833,7 @@ class EditorPane:
                 if shown == tab.id:  # relative image URLs depend on the note's folder
                     self._editors[slot].set_path(tab.path)
         if self._split_open:
-            self._show_split_titles()
+            self._show_heads()
         self.refresh_links()
         self._reindex_soon()
         if changed:
@@ -1825,6 +1966,10 @@ class EditorPane:
         return True
 
     def _on_deleted(self, path: str) -> None:
+        pins = [p for p in self.pinned if p != path and not p.startswith(path + "/")]
+        if pins != self.pinned:  # in the trash now: no longer pinned
+            self.pinned = pins
+            self._on_pins_changed(list(pins))
         for tab in self.tabs.under(path):
             buf = self.buffers.get(tab.id)
             if buf is not None:
@@ -1895,21 +2040,30 @@ class EditorPane:
     def set_ai(self, on: bool) -> None:
         """The AI feature was switched: the ⋯ menu, the AI button and the tabs' menu follow."""
         self._ai = on
-        self.note_menu.set_ai(on)
+        for menu in self.note_menus:
+            menu.set_ai(on)
         self._update_note_buttons()
         self._tabbar.render(self._unsaved(), self._split_tabs())
 
     # ---- the buttons beside ⋯ and a tab's right-click menu ---------------------------------
 
-    def _note_buttons(self) -> None:
-        """Split / close split, and the AI menu (while AI is on), left of the ⋯ button."""
-        a = self.note_actions
-        self._split_button = icon_button("columns-2", self.toggle_split, "Split right", size="m")
-        self._ai_button = icon_button("sparkles", lambda: None, "AI", size="m")
-        with self._ai_button, ui.menu().props('anchor="bottom right" self="top right"') as menu:
+    def _note_buttons(self, slot: int, a: NoteActions) -> None:
+        """Split (in split view: close this side), and the AI menu (while AI is on), left of
+        the ⋯ button of side ``slot``."""
+
+        def split() -> None:
+            if self._split_open:
+                self.close_side(slot)
+            else:
+                self.toggle_split()
+
+        self._split_buttons.append(icon_button("columns-2", split, "Split right", size="m"))
+        ai = icon_button("sparkles", lambda: None, "AI", size="m")
+        self._ai_buttons.append(ai)
+        with ai, ui.menu().props('anchor="bottom right" self="top right"') as menu:
             menu.classes("pp-note-menu")
             for icon, label, action in (
-                ("message-square-plus", "Ask about this note", a.add_to_chat),
+                ("sparkles", "Ask about this note", a.add_to_chat),
                 ("list-collapse", "Summarize", a.summarize),
                 ("wand-sparkles", "Rewrite", a.rewrite),
                 ("pen-line", "Write…", a.write),
@@ -1926,11 +2080,11 @@ class EditorPane:
             self._spawn(result)
 
     def _update_note_buttons(self) -> None:
-        has_note = self.tabs.active is not None
-        self._split_button.set_visibility(has_note)
-        set_icon(self._split_button, "x" if self._split_open else "columns-2")
-        tip(self._split_button, "Close split" if self._split_open else "Split right")
-        self._ai_button.set_visibility(has_note and self._ai)
+        for button in self._split_buttons:
+            set_icon(button, "x" if self._split_open else "columns-2")
+            tip(button, "Close this side" if self._split_open else "Split right")
+        for button in self._ai_buttons:
+            button.set_visibility(self._ai)
 
     def _tab_menu(self, tab_id: int, path: str) -> list[TabMenuItem]:
         """A tab's right-click menu: what can be done with that tab's note."""
@@ -1941,7 +2095,11 @@ class EditorPane:
             if on_right
             else ("columns-2", "Open in split", lambda: self.open_in_split(path))
         )
+        pinned = self.is_pinned(path)
         items: list[TabMenuItem] = [
+            ("pin-off", "Unpin tab", lambda: self.set_pinned(path, False))
+            if pinned
+            else ("pin", "Pin tab", lambda: self.set_pinned(path, True)),
             split,
             ("pencil", "Rename…", lambda: self.bus.publish("note.rename", path=path)),
             ("folder-input", "Move to…", a.move),
@@ -1952,13 +2110,33 @@ class EditorPane:
             ("locate", "Show in file tree", lambda: self.bus.publish("note.reveal", path=path)),
         ]
         if self._ai:
-            items.append(("message-square-plus", "Add to chat", a.add_to_chat))
+            items.append(("sparkles", "Add to chat", a.add_to_chat))
         items += [
             None,
             ("x", "Close", lambda: self.close_tab(tab_id)),
             ("copy-x", "Close others", lambda: self._close_others(tab_id)),
         ]
         return items
+
+    def is_pinned(self, path: str) -> bool:
+        return path in self.pinned
+
+    async def set_pinned(self, path: str, on: bool) -> None:
+        """Pin a note (its tab opens if needed and moves to the pinned group) or unpin it."""
+        if on == (path in self.pinned):
+            return
+        if on:
+            self.pinned.append(path)
+            if self.tabs.find(path) is None:
+                await self.open(path, activate=False)
+        else:
+            self.pinned.remove(path)
+        tab = self.tabs.find(path)
+        if tab is not None:
+            self.tabs.set_pinned(tab.id, on)
+            self._notify_tabs()  # the session keeps the tab order
+        self._on_pins_changed(list(self.pinned))
+        self._refresh()
 
     async def close_other_tabs(self) -> None:
         """Keep only the active tab (the palette's Close other tabs)."""

@@ -1,18 +1,31 @@
 // Dragging the edge of the file tree or the right pane on past its narrowest width folds that
-// pane away (like Obsidian/VS Code). Capture only: Python decides (event `pp_pane_collapse`).
+// pane away (like Obsidian/VS Code); the edge is highlighted while it is held. A double-click on
+// the edge folds the pane, or unfolds a folded one. Capture only: Python decides (events
+// `pp_pane_collapse`, `pp_pane_toggle`).
 (() => {
   const GRACE_PX = 48; // how far past the narrowest width the pointer must go
+  const paneEdge = (el) => {
+    const sep = el && el.closest && el.closest(".q-splitter__separator");
+    const box = sep && sep.parentElement;
+    if (!box || !box.classList.contains("pp-panesplit")) return null;
+    return { sep, box, pane: box.classList.contains("pp-panesplit-left") ? "left" : "right" };
+  };
+
+  document.addEventListener("dblclick", (e) => {
+    const edge = paneEdge(e.target);
+    if (edge) emitEvent("pp_pane_toggle", { pane: edge.pane });
+  });
 
   document.addEventListener(
     "pointerdown",
     (e) => {
-      const sep = e.target.closest && e.target.closest(".q-splitter__separator");
-      const box = sep && sep.parentElement;
-      if (!box || e.button !== 0 || !box.classList.contains("pp-panesplit")) return;
-      const pane = box.classList.contains("pp-panesplit-left") ? "left" : "right";
+      const edge = paneEdge(e.target);
+      if (!edge || e.button !== 0) return;
+      const { sep, box, pane } = edge;
       const min = Number(box.dataset.min || 0);
       if (!min) return; // already folded
       const rect = box.getBoundingClientRect();
+      sep.classList.add("pp-sep-active");
       const move = (ev) => {
         const width = pane === "left" ? ev.clientX - rect.left : rect.right - ev.clientX;
         if (width < min - GRACE_PX) {
@@ -21,6 +34,7 @@
         }
       };
       const stop = () => {
+        sep.classList.remove("pp-sep-active");
         window.removeEventListener("pointermove", move);
         window.removeEventListener("pointerup", stop);
       };
