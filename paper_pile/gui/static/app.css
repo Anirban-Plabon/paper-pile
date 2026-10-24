@@ -1333,7 +1333,7 @@ body.body--dark { --pp-set-box-bg: rgba(255, 255, 255, .035); }
 .pp-set-content { gap: 0; }
 .pp-set-content > * { max-width: 860px; }
 .pp-set-group { width: 100%; margin: 22px 0 8px; padding: 0 4px; font-size: 14px; font-weight: 600; color: var(--pp-fg); }
-.pp-set-content > .pp-set-group:first-child { margin-top: 6px; }
+.pp-set-content > .pp-set-group:first-child { margin-top: 9px; }  /* the letters sit low in their line: this makes the visible space above them equal to the space below (to the box) */
 .pp-set-content > .pp-set-box:first-child { margin-top: 8px; }
 .pp-set-box { width: 100%; flex: none; gap: 0; flex-wrap: nowrap; padding: 0 16px; border: 1px solid var(--pp-set-line); border-radius: var(--pp-r-popup); background: var(--pp-set-box-bg); container: ppbox / inline-size; }
 .pp-set-box > * + * { border-top: 1px solid var(--pp-set-line); }

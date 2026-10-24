@@ -443,6 +443,7 @@ Legend: 🧠 = needs Opus (see PLAN §6 model guidance) · ⬜ todo · 🔄 in p
 | 2026-10-24 | Tab-row + centred in the row and 30 px, like the pane button at the row's end (was 6 px lower, level with the tabs) | User: "add note button near tab is not aligned to pane close/open button" | user |
 | 2026-10-24 | Settings' Restore defaults: no accent colour (Quasar primary) — a row like the nav items, same grey rounded hover | User: "on expanded settings pane hover shape and color is not regular"; hover screenshots: every other control used the grey rounded hover | user |
 | 2026-10-25 | Appearance settings in two named groups: Theme (Mode, Accent colour, Icon colour) and Interface (Density, Animation speed); Icon colour moved next to Accent colour | User: "only one group in appearance section and it has no names" | user |
+| 2026-10-25 | Settings: a page's first group heading has 9 px above it (was 6): the visible space above its letters now equals the space below them to the box (measured 2×: ~15 / ~15 px, was ~12 / ~16) | User: "top space of Model and bottom space are not equal and this is common for all" | user |
 | 2026-10-24 | Header arrows are chevron up / down (sections are above / below); the folded right pane cannot be double-clicked open (its edge is the window's resize strip); a pinned tab closes from its menu or Ctrl+W, not by middle-click | Vertical movement reads better as up / down; the window edge already belongs to resizing; middle-click closes are the common accident | claude |
 | 2026-10-23 | P18 re-applied in part: tab-row double-click, opaque arrow hover, picker (no animation, ×, key caps), slash menu side, line numbers after properties; the note buttons stay in the tab strip, split backlinks still open together | User: "need the corrected versions of p18, they were useful" (listing those five) | user |
 
@@ -677,3 +678,4 @@ Legend: 🧠 = needs Opus (see PLAN §6 model guidance) · ⬜ todo · 🔄 in p
 - 2026-10-24 · tab-row + aligned with the pane button · measured: both 5.5–35.5 px, icon centres equal
 - 2026-10-24 · Restore defaults hover like the nav rows · hover screenshots of all Settings controls
 - 2026-10-25 · Appearance groups (Theme / Interface) · 1149 tests; real app screenshot
+- 2026-10-25 · Settings first heading spacing equal above / below · ink measured at 4×
