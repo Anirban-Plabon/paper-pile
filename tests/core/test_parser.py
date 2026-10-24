@@ -3,7 +3,14 @@ from pathlib import Path
 
 import pytest
 
-from paper_pile.core.parser import front_matter, make_parser, math_spans, render_html
+from paper_pile.core.parser import (
+    body_start,
+    front_matter,
+    make_parser,
+    math_spans,
+    parse,
+    render_html,
+)
 
 FIXTURE = Path(__file__).parent.parent / "fixtures" / "math_cases.json"
 MATH_CASES = json.loads(FIXTURE.read_text(encoding="utf-8"))
@@ -61,6 +68,32 @@ def test_front_matter_fixture(case: dict[str, object]) -> None:
         assert fm is None
     else:
         assert fm is not None and fm.raw.strip() == case["raw"]
+
+
+BODY_START_EXTRA = [
+    "---\r\ntitle: T\r\n---\r\nbody\r\n",  # CRLF
+    "---\rtitle: T\r---\rbody",  # old Mac line ends
+    "---  \ntitle: T\n---\t\nbody",  # trailing blanks on the markers
+    "----\ntitle: T\n----\nbody",
+    " ---\ntitle: T\n---\nbody",
+    "---\ntitle: T\n---",  # closed at the very end
+    "---\n---",
+    "---",
+    "",
+    "# no front matter\n---\nx\n---\n",
+    "---\nä: ü\n---\n\n日本語\n",
+]
+
+
+@pytest.mark.parametrize("src", [str(c["src"]) for c in FM_CASES] + BODY_START_EXTRA)
+def test_body_start_matches_the_parser(src: str) -> None:
+    """body_start scans lines; it must agree with the parser's front-matter token."""
+    tokens = parse(src)
+    expected = 0
+    if tokens and tokens[0].type == "front_matter" and tokens[0].map:
+        lines = src.split("\n")
+        expected = min(len(src), sum(len(line) + 1 for line in lines[: tokens[0].map[1]]))
+    assert body_start(src) == expected
 
 
 def test_a_heading_after_front_matter_is_a_heading() -> None:

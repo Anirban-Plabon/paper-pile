@@ -83,6 +83,22 @@ def test_walk_notes_skips_hidden_and_non_notes(vault: Vault) -> None:
     assert list(vault.walk_notes()) == ["a.md", "d/b.txt", "d/e/c.md"]
 
 
+def test_walk_notes_symlinks_and_order(vault: Vault, tmp_path: Path) -> None:
+    outside = tmp_path / "outside"
+    (outside / "od").mkdir(parents=True)
+    (outside / "o.md").write_text("x")
+    (outside / "od" / "k.md").write_text("x")
+    for rel in ["b.md", "B.md", "Z/a.MD", "d/z.md", "d/.h/q.md"]:
+        p = vault.root / rel
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_text("x")
+    (vault.root / "in.md").symlink_to(vault.root / "b.md")  # inside the vault: kept
+    (vault.root / "out.md").symlink_to(outside / "o.md")  # escapes: skipped
+    (vault.root / "dlink").symlink_to(vault.root / "d")  # symlinked folders are not entered
+    (vault.root / "odlink").symlink_to(outside / "od")
+    assert list(vault.walk_notes()) == ["B.md", "b.md", "in.md", "Z/a.MD", "d/z.md"]
+
+
 # ---- path safety -----------------------------------------------------------------------
 
 

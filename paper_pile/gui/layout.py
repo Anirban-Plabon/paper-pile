@@ -180,6 +180,7 @@ class MainLayout:
         self.bus.subscribe("vault.renamed", lambda old, new: self._recent_renamed(old, new))
         self.bus.subscribe("note.reveal", lambda path: self._reveal_in_tree(path))
         self._follow_external_changes()
+        ui.context.client.on_disconnect(self._flush_save)  # a debounced save still pending
         if self.editor_pane is not None:  # reopen last session's tabs (after the status bar exists)
             reopen = bool(self._setting("general.restore_tabs"))
             tabs = list(self.state.tabs) if reopen else []
@@ -766,7 +767,7 @@ class MainLayout:
         self._update_outline()
         if active is not None:
             self.state.recent_notes = push_recent(self.state.recent_notes, active, MAX_RECENT_NOTES)
-        self._save_soon(immediately=True)
+        self._save_soon()  # debounced: a tab switch must not wait for a file write + fsync
         self._refresh_calendar()
 
     def _on_mode_changed(self, mode: str) -> None:
@@ -955,4 +956,10 @@ class MainLayout:
         self._save_handle = asyncio.get_running_loop().call_later(SAVE_DELAY_S, self._save_now)
 
     def _save_now(self) -> None:
+        self._save_handle = None
         save_session(self.vault, self.state)
+
+    def _flush_save(self) -> None:
+        if self._save_handle is not None:
+            self._save_handle.cancel()
+            self._save_now()

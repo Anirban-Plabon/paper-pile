@@ -59,6 +59,62 @@ def test_incremental_changes(vault: Vault) -> None:
     assert ix.search("honey") == []
 
 
+def test_sync_keeps_a_save_indexed_while_it_was_reading(
+    vault: Vault, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """sync reads outside the lock: a save indexed meanwhile must not be overwritten."""
+    ix = Index(vault)
+    ix.sync()
+    time.sleep(0.02)
+    vault.write_text("a.md", "# Old read\n")
+    read = ix._read
+
+    def read_then_save(rel: str, known: object, *, force: bool = False) -> object:
+        result = read(rel, known, force=force)  # type: ignore[arg-type]
+        if rel == "a.md" and not force:  # sync has read "Old read"; now the user saves
+            time.sleep(0.02)
+            vault.write_text("a.md", "# Saved\n")
+            ix.update_note("a.md")
+        return result
+
+    monkeypatch.setattr(ix, "_read", read_then_save)
+    ix.sync()
+    assert ix.title("a.md") == "Saved"
+
+
+def test_sync_keeps_a_note_that_came_back_while_it_walked(
+    vault: Vault, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    ix = Index(vault)
+    ix.sync()
+    vault.delete("b.md")
+    walk = vault.walk_notes
+
+    def walk_then_restore() -> object:
+        yield from walk()
+        vault.create_note("b.md", "back again")  # after the walk missed it
+
+    monkeypatch.setattr(vault, "walk_notes", walk_then_restore)
+    assert ix.sync().removed == 0
+    assert "b.md" in ix.paths()
+
+
+def test_update_note_never_goes_back_to_an_older_read(
+    vault: Vault, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    ix = Index(vault)
+    ix.sync()
+    time.sleep(0.02)
+    vault.write_text("a.md", "# Newer\n")
+    stale = ix._read("a.md", None, force=True)  # a slow reader got this one
+    time.sleep(0.02)
+    vault.write_text("a.md", "# Newest\n")
+    ix.update_note("a.md")
+    monkeypatch.setattr(ix, "_read", lambda *a, **k: stale)
+    ix.update_note("a.md")  # ... and only writes it now
+    assert ix.title("a.md") == "Newest"
+
+
 def test_touch_without_change_is_not_an_update(vault: Vault) -> None:
     ix = Index(vault)
     ix.sync()
@@ -154,6 +210,8 @@ def test_backlinks(tmp_path: Path) -> None:
     ix.sync()
     got = [(b.src, b.kind, b.line) for b in ix.backlinks("target.md")]
     assert got == [("a.md", "wiki", 4), ("a.md", "wiki", 4), ("sub/b.md", "md", 2)]
+    mtimes = {b.src: b.mtime for b in ix.backlinks("target.md")}  # the pane caches by it
+    assert mtimes["a.md"] == v.resolve("a.md").stat().st_mtime
     # [[target]] from sub/ prefers its own folder's note
     v.create_note("sub/e.md", "[[target]]\n")
     ix.sync()

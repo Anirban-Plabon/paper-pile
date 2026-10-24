@@ -201,17 +201,37 @@ class Vault:
         return entries
 
     def walk_notes(self) -> Iterator[str]:
-        """Every note path in the vault (for the indexer), skipping hidden folders."""
-        for dirpath, dirnames, filenames in os.walk(self.root):
-            depth = len(Path(dirpath).relative_to(self.root).parts)
-            dirnames[:] = sorted(d for d in dirnames if not is_hidden_part(d, depth))
-            for name in sorted(filenames):
-                path = Path(dirpath) / name
-                if name.startswith(".") or not is_note_name(name):
-                    continue
-                if path.is_symlink() and not self._inside(path):
-                    continue
-                yield self._rel(path)
+        """Every note path in the vault (for the indexer), skipping hidden folders.
+
+        Same order and rules as an ``os.walk`` (symlinked folders are not entered), but the
+        file type comes from the directory entries: no extra stat per file, which matters on
+        slow file systems (WSL's ``/mnt/*``).
+        """
+        yield from self._walk_notes(self.root, 0)
+
+    def _walk_notes(self, folder: Path, depth: int) -> Iterator[str]:
+        try:
+            with os.scandir(folder) as it:
+                entries = list(it)
+        except OSError:  # unreadable or vanished: skipped, as os.walk does
+            return
+        dirs: list[os.DirEntry[str]] = []
+        files: list[os.DirEntry[str]] = []
+        for e in entries:
+            try:
+                is_dir = e.is_dir()
+            except OSError:
+                is_dir = False
+            (dirs if is_dir else files).append(e)
+        for e in sorted(files, key=lambda e: e.name):
+            if e.name.startswith(".") or not is_note_name(e.name):
+                continue
+            if e.is_symlink() and not self._inside(Path(e.path)):
+                continue
+            yield self._rel(Path(e.path))
+        for e in sorted(dirs, key=lambda e: e.name):
+            if not is_hidden_part(e.name, depth) and not e.is_symlink():
+                yield from self._walk_notes(Path(e.path), depth + 1)
 
     def recent_notes(self, limit: int = 50) -> list[str]:
         """Note paths, most recently modified first (at most ``limit``)."""

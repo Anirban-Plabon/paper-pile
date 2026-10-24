@@ -307,13 +307,27 @@ def front_matter(text: str, tokens: list[Token] | None = None) -> FrontMatter | 
     return FrontMatter(raw, loaded)
 
 
+_NEWLINES = re.compile(r"\r\n?")  # what markdown-it normalises before the block rules run
+
+
+def front_matter_lines(text: str) -> int:
+    """How many lines the front matter takes, closing ``---`` included (0: none). The rule of
+    :func:`_front_matter_rule` without a markdown parse (the status bar asks on every edit)."""
+    if not text.startswith("---"):
+        return 0
+    lines = _NEWLINES.sub("\n", text).split("\n")
+    if lines[0].rstrip() != "---":
+        return 0
+    close = next((i for i in range(1, len(lines)) if lines[i].rstrip() == "---"), None)
+    return 0 if close is None else close + 1
+
+
 def body_start(text: str) -> int:
     """Where the note's body begins: just after its front matter (0 when it has none)."""
-    tokens = _PARSER.parse(text)
-    if not tokens or tokens[0].type != "front_matter" or not tokens[0].map:
+    end_line = front_matter_lines(text)
+    if not end_line:
         return 0
     lines = text.split("\n")
-    end_line = tokens[0].map[1]
     return min(len(text), sum(len(line) + 1 for line in lines[:end_line]))
 
 

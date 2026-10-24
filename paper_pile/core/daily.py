@@ -6,6 +6,7 @@ no clock (callers pass ``today`` / ``now``).
 """
 
 import calendar
+import os
 import re
 from collections.abc import Iterable
 from dataclasses import dataclass
@@ -116,16 +117,48 @@ class Marks:
     open_tasks: bool = False
 
 
-def day_marks(vault: Vault, folder: str, fmt: str, days: Iterable[date]) -> dict[date, Marks]:
-    """Which of ``days`` have a daily note, and whether it still has unchecked tasks."""
-    out: dict[date, Marks] = {}
+def day_marks(
+    vault: Vault,
+    folder: str,
+    fmt: str,
+    days: Iterable[date],
+    cache: dict[str, tuple[float, bool]] | None = None,
+) -> dict[date, Marks]:
+    """Which of ``days`` have a daily note, and whether it still has unchecked tasks.
+
+    Each folder is listed once and only existing notes are read (the calendar asks on every
+    tab switch, ~42 days); ``cache`` (path → mtime, open tasks) spares re-reading notes that
+    did not change since the last call.
+    """
+    by_folder: dict[str, list[tuple[date, str]]] = {}
     for day in days:
         path = daily_relpath(day, folder, fmt)
+        by_folder.setdefault(path.rpartition("/")[0], []).append((day, path))
+    out: dict[date, Marks] = {}
+    for parent, wanted in by_folder.items():
         try:
-            text = vault.read_text(path)
-        except (NotFoundError, VaultError):
+            with os.scandir(vault.resolve(parent, allow_root=True)) as it:
+                entries = {e.name: e for e in it}
+        except (OSError, VaultError):
             continue
-        out[day] = Marks(True, bool(_OPEN_TASK.search(text)))
+        folded = {name.casefold(): e for name, e in entries.items()}  # case-insensitive drives
+        for day, path in wanted:
+            name = path.rpartition("/")[2]
+            entry = entries.get(name) or folded.get(name.casefold())
+            if entry is None:
+                continue
+            try:
+                mtime = entry.stat().st_mtime
+                hit = cache.get(path) if cache is not None and not entry.is_symlink() else None
+                if hit is not None and hit[0] == mtime:
+                    open_tasks = hit[1]
+                else:
+                    open_tasks = bool(_OPEN_TASK.search(vault.read_text(path)))
+                    if cache is not None:
+                        cache[path] = (mtime, open_tasks)
+            except (OSError, NotFoundError, VaultError):
+                continue
+            out[day] = Marks(True, open_tasks)
     return out
 
 

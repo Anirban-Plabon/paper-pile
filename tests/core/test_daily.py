@@ -1,3 +1,4 @@
+import time
 from datetime import date, datetime
 from pathlib import Path
 
@@ -87,6 +88,34 @@ def test_day_marks_and_open_tasks(tmp_path) -> None:
     assert set(marks) == {date(2026, 10, 1), date(2026, 10, 2), date(2026, 10, 3)}
     assert not marks[date(2026, 10, 1)].open_tasks
     assert marks[date(2026, 10, 2)].open_tasks and marks[date(2026, 10, 3)].open_tasks
+
+
+def test_day_marks_cache_rereads_only_changed_notes(tmp_path, monkeypatch) -> None:
+    vault = Vault(tmp_path)
+    vault.create_note("Daily/2026-10-01.md", "- [ ] open\n")
+    days = [date(2026, 10, i) for i in range(1, 4)]
+    cache: dict[str, tuple[float, bool]] = {}
+    assert day_marks(vault, "Daily", "YYYY-MM-DD", days, cache)[days[0]].open_tasks
+    reads: list[str] = []
+    read = vault.read_text
+    monkeypatch.setattr(vault, "read_text", lambda rel: reads.append(str(rel)) or read(rel))
+    assert day_marks(vault, "Daily", "YYYY-MM-DD", days, cache)[days[0]].open_tasks
+    assert reads == []  # unchanged: answered from the cache
+    time.sleep(0.02)
+    vault.write_text("Daily/2026-10-01.md", "- [x] done\n")
+    assert not day_marks(vault, "Daily", "YYYY-MM-DD", days, cache)[days[0]].open_tasks
+    assert reads == ["Daily/2026-10-01.md"]
+
+
+def test_day_marks_nested_format_missing_folder_and_escaping_link(tmp_path) -> None:
+    vault = Vault(tmp_path / "v")
+    vault.create_note("J/2026/10-02.md", "x")
+    outside = tmp_path / "secret.md"
+    outside.write_text("- [ ] s")
+    (vault.root / "J" / "2026" / "10-03.md").symlink_to(outside)
+    days = [date(2026, 10, i) for i in range(1, 4)] + [date(2025, 1, 1)]
+    assert set(day_marks(vault, "J", "YYYY/MM-DD", days)) == {date(2026, 10, 2)}
+    assert day_marks(vault, "Nope", "YYYY-MM-DD", days) == {}
 
 
 def test_new_daily_text_uses_the_template_for_that_day(tmp_path) -> None:

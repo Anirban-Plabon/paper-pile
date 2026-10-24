@@ -6,7 +6,8 @@
 Legend: 🧠 = needs Opus (see PLAN §6 model guidance) · ⬜ todo · 🔄 in progress · ✅ done · ⛔ blocked · ⏭️ skipped/deferred
 
 ## Current focus
-- **Phase:** P14 — Features, navigation & safety (user request 2026-10-22; includes P9.1–P9.3, P9.5, P9.6)
+- **Phase:** P19 — Performance (user request 2026-10-24, PLAN §4.23): done; next candidates in the Decision log (save off the UI thread, watcher echo, tab strip in place)
+- **Earlier phase:** P14 — Features, navigation & safety (user request 2026-10-22; includes P9.1–P9.3, P9.5, P9.6)
 - **Task:** P17 tabs / tool boxes / settings boxes / palette built; P15 + P16 built; P14 built (P14.1–P14.16, P9.1–P9.3, P9.5); P9.6 README done, its manual QA items wait for the user; P10.5 / P12.4 native Save dialog checks still manual
 - **Now:** P15 + P16 done (motion with Animation speed setting; icons unified; small UX fixes); P14 done (switches, switcher + palette, vault search, outline, tree keys, trash, version history; tab overflow, split backlinks, line numbers, draggable page breaks)
 - **Next up:** the user's manual QA pass (incl. P15 motion feel in the native window) (PLAN §6 checklist); then the user's AI-with-notes plan; then the Tauri v2 spike
@@ -214,6 +215,20 @@ Legend: 🧠 = needs Opus (see PLAN §6 model guidance) · ⬜ todo · 🔄 in p
 | P18.6 | Slash menu side decided once | ✅ | `.pp-slash-wrap` + `pp-slash-waiting`; per-frame check |
 | P18.7 | Line numbers after the properties | ✅ | `formatNumber` + caret `shown` |
 
+### P19 — Performance (user request 2026-10-24)
+| ID | Task | Status | Notes |
+|---|---|---|---|
+| P19.1 | `tools/perf_ui.py` timing harness | ✅ | pre-builds the index (`--cold-index` for a first open); `--loop-debug` lists blocking callbacks |
+| P19.2 | Known note names from the index, sent on change only | ✅ | also refreshed after each background sync (notes made in the tree were never re-sent before); real app: create / delete / rename restyle in ~0.55 s |
+| P19.3 | Index lock only around writes | ✅ | 3 race tests (save during sync, file back during walk, stale update) |
+| P19.4 | Walk without extra stat per file | ✅ | `os.scandir`; same result as `os.walk` incl. symlinks (test) |
+| P19.5 | Cheap `body_start` | ✅ | line scan = parser on all fixtures + CRLF / CR / blanks (test) |
+| P19.6 | Before / after numbers | ✅ | see Session log; 1138 tests, qa_editor 358/358 |
+| P19.7 | Calendar: folder listing + mtime cache, redraw only on change | ✅ | real app 4/4 calendar checks (default `.daily-notes`) |
+| P19.8 | Session save debounced, flushed on disconnect | ✅ | real app: switch right before quit is saved |
+| P19.9 | Backlink snippets cached by indexed mtime | ✅ | `Backlink.mtime` (test) |
+| P19.10 | Tabs before the startup sync | ✅ | real app: backlinks / link styles right after the sync, incl. changes made while closed |
+
 ## Decision log
 <!-- YYYY-MM-DD · decision · reason · (who: user / claude) -->
 | Date | Decision | Reason | By |
@@ -378,12 +393,18 @@ Legend: 🧠 = needs Opus (see PLAN §6 model guidance) · ⬜ todo · 🔄 in p
 | 2026-10-22 | P16 icon / UX fixes (§4.20) from the survey, built with P15 (user: "implement all of them") | User request | user |
 | 2026-10-22 | Settings: boxed groups (Obsidian style), Paper size under Page view (Print page removed), new settings (reopen tabs, confirm delete, readable width, current line, word count, rebuild index), AI embedding model moved to AI → Advanced (unused); row stacking is CSS-only (box container query) — the JS `pp-set-stacked` measuring is removed; tab arrows get their own areas and step one tab; palette grouped | User request (second polish round); CSS-only stacking cannot flip at any width, which the user asked not to see again | user / claude |
 | 2026-10-23 | P18 (note buttons beside the properties, per-side backlinks, no tab-row maximize, arrow hover, picker ×/caps/no animation, slash menu side, line numbers after properties) reverted as a whole (commit 82cc9bf reverted) | User request: "restore the last edit … the whole" | user |
+| 2026-10-24 | P19 Performance (§4.23): no vault walk / many-file reads / fsync on the tab-switch path (known notes from the index, calendar folder listing + mtime cache + redraw on change, backlink snippets cached by indexed mtime, session save debounced + flushed on disconnect); `Index` does disk work outside its lock; `walk_notes` via `os.scandir`; `body_start` by line scan; tabs open before the startup sync. No visible change | User: startup / scrolling / panes / tabs / popups / new notes laggy, "keep the UI as it is"; profiling showed the event loop blocked (walk per switch 7 s of a profile, lock held during sync, calendar re-reading 42 days, fsync per switch) | user / claude |
+| 2026-10-24 | Environment findings left to the user (done on another PC): move repo, `.venv` and vaults off `/mnt/l`; WSL distro is RHEL 10.1 whose Mesa has no `d3d12` (llvmpipe, no GPU) | Measured: imports 30.8 s → 3.0 s on the Linux fs, vault walk 93 ms → 2 ms; Qt reports `llvmpipe` | user |
+| 2026-10-24 | Not done in P19 (next candidates): saving the left tab off the UI thread, ignoring the watcher's echo of the app's own writes, updating the tab strip in place instead of re-rendering it | Each touches save / conflict logic (data safety) or tab-strip DOM (UI), so kept out of a no-visible-change pass | claude |
 | 2026-10-23 | P18 re-applied in part: tab-row double-click, opaque arrow hover, picker (no animation, ×, key caps), slash menu side, line numbers after properties; the note buttons stay in the tab strip, split backlinks still open together | User: "need the corrected versions of p18, they were useful" (listing those five) | user |
 
 ## Issues log
 <!-- YYYY-MM-DD · task · symptom → root cause → fix · (gotcha added? y/n) -->
 | Date | Task | Symptom | Root cause | Fix | Gotcha? |
 |---|---|---|---|---|---|
+| 2026-10-24 | P19.1 | Timing runs reported "startup 0.0 s" and actions that never happened | A test instance from an earlier run (killed shell / timeout skipped cleanup) still held the CDP port; `pkill -f` patterns had matched the cleanup shell itself | Kill by process group, bracket trick in patterns, check no instance is left before a run | y |
+| 2026-10-24 | P19.1 | Icon files took ~8 s to load at startup although their handler is trivial | The event loop was blocked: restore tasks and `_save_all` waited on `Index._lock`, which `sync()` held for its whole vault walk (in a thread) | Disk work outside the lock (P19.3) | y |
+| 2026-10-24 | P19.7 | Real-app calendar check showed no dots | Check bug: the default daily folder is `.daily-notes`, the test note was at the root | Test note in `.daily-notes/` (the new `day_marks` handles the app folder) | n |
 | 2026-10-22 | P14.16 | Closing Settings with its own × (top right of the page) left an empty pane under a still-active "Settings" tab; `RuntimeError: The parent element this slot belongs to has been deleted` | `RightPane.close_settings` cleared the Settings host (which holds that ×) and then redrew in the ×'s dead slot (`_on_wide` → `ui.query`); the P14.1 fix only covered the tab's own close icon | `close_settings` / `close_tag` redraw inside `with self._bar:` | n (existing gotcha) |
 | 2026-10-22 | P14.15 | Settings (full view) flickered: rows jumped between control-beside-text and control-below, endlessly; terminal full of "ResizeObserver loop completed with undelivered notifications" (user's screen recording) | P14.15 changed a stacked field's `min-width: 200px` to `min(200px, 100%)`: the % depends on the row's own layout, so once stacked the field could fit back beside the text, unstack, no longer fit, stack… (60 flips/s at some widths) | `min-width: 200px` back; very narrow panes (`@container ppmain (max-width: 330px)`) put every control on its own line, decided by the pane width only; real-app check measures flips at 52 widths on two pages (fails on the old CSS) | n (existing gotcha) |
 | 2026-10-22 | P14.15 | In a very narrow Settings pane the vault row's Change… stuck out past the pane's left edge instead of showing only its icon | the control is right-aligned (`justify-content: flex-end`): what does not fit overflows to the LEFT, which `scrollWidth` does not count, so tabs.js never saw it as squeezed | `justify-content: safe flex-end` (overflow goes right, where it is measured) | y |
@@ -587,3 +608,4 @@ Legend: 🧠 = needs Opus (see PLAN §6 model guidance) · ⬜ todo · 🔄 in p
 - 2026-10-22 · P17.1–P17.6 tab arrows, tool boxes, settings boxes + groups + new settings, chat disclaimer, palette groups · 2 new core tests; 20 real-app checks (settings 1400→600 px, no overflow / no flip)
 - 2026-10-23 · P18 reverted (user request); state = P17
 - 2026-10-23 · P18.3–P18.7 re-applied (user request); maximize-half cause found (monitor at negative y in Windows) · 8 real-app checks
+- 2026-10-24 · P19.1–P19.10 performance pass (no visible change) · perf_ui, 2 000 notes, warm index, app on /mnt/l: switch tab 758 → 342 ms, close tab 806 → 300 ms, new note 2496 → 1301 ms, palette 390 → 280 ms, settings 505 → 414 ms, context menu 112 → 72 ms, first text 44.2 → 41.3 s (imports on /mnt/l ≈ 30 s of it); scroll / pane frames unchanged (renderer-bound) · 7 new tests (37 cases, 1101 → 1138); 7/7 real-app checks; qa_editor 358/358

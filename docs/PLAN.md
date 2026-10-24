@@ -522,6 +522,19 @@ Short, quiet animations that show *where something went*. Render-only (CSS + the
 
 **Not animated:** typing, CodeMirror decorations and folding, pane widths (Ctrl+B / Ctrl+L), sheet heights, drag in progress.
 
+### 4.23 Performance — user request 2026-10-24 (P19)
+User: startup, scrolling, moving panes, opening / closing / switching tabs, popups and new notes feel laggy; "keep the UI as it is". Measured offscreen on a generated 2 000-note vault (`tools/perf_ui.py`): switch tab ~770 ms (browser ~160 ms), close tab ~850 ms, new note ~2.4 s, startup ~31 s to the first text — the rest was the server's event loop being busy or blocked. No visible change; only when and where the work runs.
+- **No vault walk per tab switch:** the names wikilinks may use (`set_known_notes`) come from the index, are cached, and reach the editor only when the set of notes changed.
+- **The index lock is never held during disk work:** `Index.sync` / `update_note` walk, stat, read and parse outside the lock and take it only for one short write transaction. A row that changed since the snapshot (a save indexed it meanwhile) is not overwritten with the older read; a "gone" file is only removed if it is still missing.
+- **One stat per file per walk:** `Vault.walk_notes` uses the directory entries (`os.scandir`) instead of an extra `is_symlink()` per file.
+- **Cheap word count:** `body_start` finds the front matter by scanning lines, not by a markdown parse of the whole note.
+- **Calendar on tab switch:** `day_marks` lists each daily-notes folder once and re-reads a note only when its mtime changed (cache in the pane); the month grid is rebuilt only when what it shows changed (month, today, marks, selected day, settings).
+- **Session file on tab switch:** debounced like the pane widths (`SAVE_DELAY_S`), flushed when the page disconnects (window closed), instead of a write + fsync on every switch.
+- **Backlink snippets:** the source note's text is cached by the mtime the index has for it (`Backlink.mtime`), so listing backlinks reads only notes that changed.
+- **Startup:** last session's tabs open before the index sync (from last run's index); the sync of what changed while the app was closed runs afterwards off the UI thread and then refreshes links and backlinks. With no index yet, the known-note list falls back to one vault walk.
+- **Measured, not guessed:** `tools/perf_ui.py` (dev tool) times startup and the actions above and prints frame stats for scrolling and pane toggles.
+- Environment (not code, user's side): on WSL keep the repo, `.venv` and vaults on the Linux file system (on `/mnt/*` imports took 30.8 s instead of 3.0 s and a vault walk 45× longer), and use a distro whose Mesa has the `d3d12` driver (the RHEL 10.1 distro renders with llvmpipe, i.e. without the GPU).
+
 ### 4.22 Popups, window, line numbers — user request 2026-10-23 (P18, re-applied in part)
 P18 was reverted as a whole, then these parts were asked back; the note buttons stay in the tab strip and the split backlinks still open together.
 - **Double-click on a tab row** (tabs or the empty space beside them) never maximizes the window; other top rows still do.
@@ -719,6 +732,20 @@ P9.1–P9.3 and P9.5–P9.6 are built in this phase (order: P14.1, P9.1, P9.2, P
 | P18.5 | Picker: no animation, ×, key caps | fully shown at once; × closes; caps drawn |
 | P18.6 | Slash menu side decided once | near the bottom: opens above at once, position never changes (per-frame check) |
 | P18.7 | Line numbers after the properties | gutter starts at 1 under the block; status bar Ln agrees |
+
+### P19 — Performance (user request 2026-10-24, §4.23)
+| ID | Task | Acceptance |
+|---|---|---|
+| P19.1 | `tools/perf_ui.py` timing harness | prints startup, tab switch/close, new note, palette, settings, context menu, scroll + pane frame stats on a throwaway vault (isolated XDG dirs) |
+| P19.2 | Known note names from the index, sent on change only | tab switch does no vault walk; links to missing notes still styled after create / delete / rename |
+| P19.3 | Index lock only around writes | sync / update_note do disk work unlocked; a concurrent save's newer row is kept (test); a re-created file is not removed (test) |
+| P19.4 | Walk without extra stat per file | same notes found as before (symlink rules unchanged, tests) |
+| P19.5 | Cheap `body_start` | same result as the parser on the fixtures (test); no markdown parse |
+| P19.6 | Before / after numbers | perf_ui run recorded in TRACKER; tests + qa_editor green |
+| P19.7 | Calendar: folder listing + mtime cache, redraw only on change | dots / open-task dot / selected day right (real app, default `.daily-notes`); unchanged notes not re-read (test) |
+| P19.8 | Session save debounced, flushed on disconnect | a tab switch right before quitting is in session.json (real app) |
+| P19.9 | Backlink snippets cached by indexed mtime | `Backlink.mtime` is the file's (test); snippets unchanged |
+| P19.10 | Tabs before the startup sync | backlinks / link styles right after the background sync, incl. notes and links added while closed (real app) |
 
 ### P10 — Note menu (⋯) (user request 2026-10-17)
 | ID | Task | Acceptance |

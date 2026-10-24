@@ -54,7 +54,7 @@ from paper_pile.core.commands import (
 from paper_pile.core.config import Config, Scope
 from paper_pile.core.events import EventBus
 from paper_pile.core.history import History, Sessions
-from paper_pile.core.index import Index
+from paper_pile.core.index import Backlink, Index
 from paper_pile.core.links import (
     external_url,
     link_keys,
@@ -174,6 +174,8 @@ class EditorPane:
         self.show_history = on_history  # the ⋯ menu's Version history (a popup)
         self._on_settings_changed = on_settings_changed
         self._reindex_handle: asyncio.TimerHandle | None = None
+        self._known_paths: list[str] | None = None  # the note list the editors last got
+        self._source_texts: dict[str, tuple[float, str]] = {}  # backlink sources: mtime, text
         self._backlinks: BacklinksPane
         self._timer: asyncio.TimerHandle | None = None
         self._failure_toasted = False
@@ -525,8 +527,6 @@ class EditorPane:
         # recovery entry (auto-title), which must neither be mistaken for a crash nor overwrite one.
         entries = find_recoverable(self.vault, self.recovery)
         self._awaiting_recovery = {entry.path for entry in entries}
-        if self.index is not None:
-            await asyncio.to_thread(self.index.sync)  # backlinks need it before the first tab
         for path in paths:
             if self.vault.exists(path):  # notes deleted since last time are skipped quietly
                 await self.open(path, skip_recovery=True, activate=False)
@@ -537,6 +537,9 @@ class EditorPane:
         else:
             self._notify_tabs()
         self._awaiting_recovery = set()
+        # The tabs show first (from last run's index); the sync of what changed while the app
+        # was closed follows off the UI thread and refreshes links and backlinks when done.
+        self._spawn(self._reindex())
         if entries:
             self._ask_recovery(entries, then_open=None)
 
@@ -1365,6 +1368,7 @@ class EditorPane:
         if self.index is None:
             return
         await asyncio.to_thread(self.index.sync)
+        self.refresh_links()  # notes may have appeared or vanished
         self.refresh_backlinks()
 
     def refresh_backlinks(self) -> None:
@@ -1390,16 +1394,35 @@ class EditorPane:
         items = []
         for link in self.index.backlinks(path)[:100]:
             try:
-                text = self.vault.read_text(link.src)
-                snippet = link_snippet(text, link.line, link.kind, link.raw)
+                snippet = link_snippet(self._source_text(link), link.line, link.kind, link.raw)
             except VaultError:
                 snippet = Snippet("", "", "")
             items.append(BacklinkItem(link.src, link.title, link.line, snippet))
         return items
 
+    def _source_text(self, link: Backlink) -> str:
+        """A linking note's text for its snippet, read again only when the index saw it change
+        (backlinks are listed on every tab switch)."""
+        hit = self._source_texts.get(link.src)
+        if hit is not None and hit[0] == link.mtime:
+            return hit[1]
+        text = self.vault.read_text(link.src)
+        if len(self._source_texts) >= 500:
+            self._source_texts.clear()
+        self._source_texts[link.src] = (link.mtime, text)
+        return text
+
     def refresh_links(self) -> None:
-        """Tell the editor which notes exist, so links to missing ones are styled."""
-        keys = link_keys(self.vault.walk_notes())
+        """Tell the editor which notes exist, so links to missing ones are styled. The list
+        comes from the index (no vault walk: this runs on every tab switch) and is only sent
+        when it changed; :meth:`_reindex` calls this again once the index caught up."""
+        paths = self.index.paths() if self.index is not None else []
+        if not paths:  # no index, or not built yet (a vault opened for the first time)
+            paths = list(self.vault.walk_notes())
+        if paths == self._known_paths:
+            return
+        self._known_paths = paths
+        keys = link_keys(paths)
         for editor in self._editors:
             editor.set_known_notes(keys)
 

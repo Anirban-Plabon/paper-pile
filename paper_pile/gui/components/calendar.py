@@ -45,6 +45,8 @@ class CalendarPane:
         t = today()
         self.year, self.month = t.year, t.month
         self._body: ui.column
+        self._marks_cache: dict[str, tuple[float, bool]] = {}  # daily note → mtime, open tasks
+        self._drawn: object = None  # what the grid shows now; refresh() skips an equal one
 
     def build(self) -> None:
         """Call inside the host element."""
@@ -70,11 +72,19 @@ class CalendarPane:
         return folder, fmt
 
     def refresh(self) -> None:
-        """Redraw the month (dots and the highlighted day included)."""
+        """Redraw the month (dots and the highlighted day included). Runs on every tab switch,
+        so it only rebuilds when something it shows changed."""
         folder, fmt = self._settings()
-        weeks = month_grid(self.year, self.month, self._today())
-        marks = day_marks(self.vault, folder, fmt, (d.date for w in weeks for d in w.days))
+        today = self._today()
+        weeks = month_grid(self.year, self.month, today)
+        days = [d.date for w in weeks for d in w.days]
+        marks = day_marks(self.vault, folder, fmt, days, self._marks_cache)
         active = self._active_path()
+        selected = next((d for d in days if active == daily_relpath(d, folder, fmt)), None)
+        drawn = (self.year, self.month, today, folder, fmt, sorted(marks.items()), selected)
+        if drawn == self._drawn:
+            return
+        self._drawn = drawn
         self._body.clear()
         with self._body:
             with ui.row().classes("pp-cal-head items-center no-wrap"):

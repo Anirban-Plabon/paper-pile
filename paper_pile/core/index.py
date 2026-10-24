@@ -70,6 +70,7 @@ class Backlink:
     kind: str
     line: int  # 1-based line of the link in ``src``
     raw: str  # the link as written
+    mtime: float = 0.0  # ``src``'s mtime as indexed (to cache what was read from it)
 
 
 @dataclass(frozen=True, slots=True)
@@ -77,6 +78,19 @@ class TaggedNote:
     path: str
     title: str
     tags: tuple[str, ...]  # the matching tags as written in the note (``a/b`` for ``#a``)
+
+
+@dataclass(frozen=True, slots=True)
+class _Read:
+    """One file as the index stores it, read and parsed outside the lock."""
+
+    rel: str
+    mtime: float
+    digest: str
+    title: str | None = None  # None: the text is the indexed one, only the mtime moves
+    body: str = ""
+    links: tuple[tuple[str, str, str, int], ...] = ()  # raw, dst_key, kind, line
+    tags: tuple[tuple[str, str], ...] = ()  # as written, normalised
 
 
 @dataclass(frozen=True, slots=True)
@@ -196,40 +210,68 @@ class Index:
     # ---- writing ---------------------------------------------------------------------------
 
     def sync(self) -> SyncResult:
-        """Bring the index in line with the vault: new/changed files indexed, gone ones removed."""
-        added = updated = 0
+        """Bring the index in line with the vault: new/changed files indexed, gone ones removed.
+
+        The walk, the reads and the parsing happen without the lock (the UI thread's queries
+        must not wait for the disk); the lock is held only for the write. A row that changed
+        since the snapshot was written meanwhile by :meth:`update_note` from a newer read, so it
+        is kept; a file is only removed if it is still missing then.
+        """
         with self._lock:
-            known = {
+            known: dict[str, tuple[float, str]] = {
                 path: (mtime, digest)
                 for path, mtime, digest in self._db.execute("SELECT path, mtime, hash FROM notes")
             }
-            seen: set[str] = set()
+        seen: set[str] = set()
+        reads: list[_Read] = []
+        for rel in self.vault.walk_notes():
+            seen.add(rel)
+            read = self._read(rel, known.get(rel))
+            if read is not None:
+                reads.append(read)
+        gone = [p for p in known if p not in seen]
+        added = updated = removed = 0
+        with self._lock:
             self._db.execute("BEGIN")
             try:
-                for rel in self.vault.walk_notes():
-                    seen.add(rel)
-                    outcome = self._index_file(rel, known.get(rel))
-                    added += outcome == "added"
-                    updated += outcome == "updated"
-                gone = [p for p in known if p not in seen]
+                for read in reads:
+                    snapshot = known.get(read.rel)
+                    if self._row(read.rel) != snapshot:
+                        continue
+                    self._write(read, snapshot)
+                    added += snapshot is None
+                    updated += snapshot is not None and read.title is not None
                 for rel in gone:
-                    self._remove(rel)
+                    if self._row(rel) == known[rel] and not self.vault.exists(rel):
+                        self._remove(rel)
+                        removed += 1
                 self._db.execute("COMMIT")
             except BaseException:
                 self._db.execute("ROLLBACK")
                 raise
-        return SyncResult(added, updated, len(gone))
+        return SyncResult(added, updated, removed)
 
     def update_note(self, rel: str) -> bool:
         """Re-index one note (after a save or an outside change); False if it is gone."""
+        if not self.vault.exists(rel):
+            self.remove_note(rel)
+            return False
         with self._lock:
-            if not self.vault.exists(rel):
-                self.remove_note(rel)
-                return False
-            row = self._db.execute("SELECT mtime, hash FROM notes WHERE path=?", (rel,)).fetchone()
+            row = self._row(rel)
+        read = self._read(rel, row, force=True)
+        if read is None:
+            return True
+        with self._lock:
+            current = self._row(rel)
+            if current is not None and current[0] > read.mtime:
+                return True  # a newer version is indexed already
+            if read.title is None and current != row:  # "same text" compared with an old row
+                read = self._read(rel, None, force=True)
+                if read is None:
+                    return True
             self._db.execute("BEGIN")
             try:
-                self._index_file(rel, row, force=True)
+                self._write(read, current)
                 self._db.execute("COMMIT")
             except BaseException:
                 self._db.execute("ROLLBACK")
@@ -255,47 +297,65 @@ class Index:
         self._db.execute("DELETE FROM notes WHERE path=?", (rel,))  # links cascade
         self._db.execute("DELETE FROM notes_fts WHERE path=?", (rel,))
 
-    def _index_file(self, rel: str, known: tuple[float, str] | None, *, force: bool = False) -> str:
-        """Index one file inside the caller's transaction. Returns added/updated/same/skipped."""
+    def _row(self, rel: str) -> tuple[float, str] | None:
+        """``(mtime, hash)`` of the indexed note (caller holds the lock)."""
+        row = self._db.execute("SELECT mtime, hash FROM notes WHERE path=?", (rel,)).fetchone()
+        return (row[0], row[1]) if row else None
+
+    def _read(
+        self, rel: str, known: tuple[float, str] | None, *, force: bool = False
+    ) -> _Read | None:
+        """Read and parse one file for the index, without touching the database. ``None``: its
+        mtime is the indexed one (unless ``force``), or it could not be read."""
         try:
             mtime = self.vault.resolve(rel).stat().st_mtime
             if known and not force and known[0] == mtime:
-                return "same"
+                return None
             text = self.vault.read_text(rel)
         except (VaultError, OSError):
             log.warning("could not index %s", rel)
-            return "skipped"
+            return None
         digest = hashlib.sha256(text.encode()).hexdigest()
         if known and known[1] == digest:
-            self._db.execute("UPDATE notes SET mtime=? WHERE path=?", (mtime, rel))
-            return "same"
+            return _Read(rel, mtime, digest)  # same text: only the mtime moves
         tokens = parse(text)  # once: title, links and tags all read it
-        title = note_title(rel, text, tokens)
-        if known:
-            self._remove(rel)
+        tags = note_tags(text, tokens) if rel.lower().endswith(".md") else []
+        return _Read(
+            rel,
+            mtime,
+            digest,
+            title=note_title(rel, text, tokens),
+            body=search_body(text, tokens),
+            links=tuple((r.raw, _dst_key(r), r.kind, r.line) for r in note_links(text, tokens)),
+            tags=tuple((tag, norm_tag(tag)) for tag in tags),
+        )
+
+    def _write(self, read: _Read, current: tuple[float, str] | None) -> None:
+        """Store one :meth:`_read` result inside the caller's transaction; ``current`` is the
+        note's row as it is now."""
+        if read.title is None:
+            self._db.execute("UPDATE notes SET mtime=? WHERE path=?", (read.mtime, read.rel))
+            return
+        if current:
+            self._remove(read.rel)
         cur = self._db.execute(
             "INSERT INTO notes(path, title, mtime, hash) VALUES(?,?,?,?)",
-            (rel, title, mtime, digest),
+            (read.rel, read.title, read.mtime, read.digest),
         )
         note_id = cur.lastrowid
         self._db.execute(
             "INSERT INTO notes_fts(path, title, body) VALUES(?,?,?)",
-            (rel, title, search_body(text, tokens)),
+            (read.rel, read.title, read.body),
         )
         self._db.executemany(
             "INSERT INTO links(src_id, dst_raw, dst_key, dst_path, kind, line) "
             "VALUES(?,?,?,NULL,?,?)",
-            [
-                (note_id, ref.raw, _dst_key(ref), ref.kind, ref.line)
-                for ref in note_links(text, tokens)
-            ],
+            [(note_id, raw, key, kind, line) for raw, key, kind, line in read.links],
         )
-        if rel.lower().endswith(".md"):
-            self._db.executemany(
-                "INSERT INTO tags(note_id, tag, norm) VALUES(?,?,?)",
-                [(note_id, tag, norm_tag(tag)) for tag in note_tags(text, tokens)],
-            )
-        return "updated" if known else "added"
+        self._db.executemany(
+            "INSERT INTO tags(note_id, tag, norm) VALUES(?,?,?)",
+            [(note_id, tag, norm) for tag, norm in read.tags],
+        )
 
     # ---- reading ---------------------------------------------------------------------------
 
@@ -364,21 +424,21 @@ class Index:
         marks = ",".join("?" * len(keys))
         with self._lock:
             rows = self._db.execute(
-                "SELECT n.path, n.title, l.kind, l.line, l.dst_raw FROM links l "
+                "SELECT n.path, n.title, l.kind, l.line, l.dst_raw, n.mtime FROM links l "
                 f"JOIN notes n ON n.id=l.src_id WHERE l.dst_key IN ({marks}) AND n.path != ? "
                 "ORDER BY n.path, l.line, l.rowid",
                 (*keys, target),
             ).fetchall()
             paths = {r[0] for r in self._db.execute("SELECT path FROM notes")}
         found = []
-        for src, title, kind, line, raw in rows:
+        for src, title, kind, line, raw, mtime in rows:
             if kind == "wiki":
                 parsed = parse_wikilink(raw)
                 hit = parsed is not None and resolve_wikilink(parsed.note, src, paths) == target
             else:
                 hit = resolve_md_link(raw, src, paths) == target
             if hit:
-                found.append(Backlink(src, title, kind, line, raw))
+                found.append(Backlink(src, title, kind, line, raw, mtime))
         return found
 
     def search(self, query: str, limit: int = 50) -> list[SearchHit]:
