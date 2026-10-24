@@ -161,9 +161,9 @@ class SettingsPane:
                 ui.space()
                 self._mode = ui.element("div").classes("pp-set-mode")
                 self._render_mode()
-                ui.button("Restore defaults", icon=ico("rotate-ccw"), on_click=self._restore).props(
-                    "flat no-caps dense align=left"
-                ).classes("pp-set-restore")
+                ui.button(
+                    "Restore defaults", icon=ico("rotate-ccw"), on_click=self._restore, color=None
+                ).props("flat no-caps dense align=left").classes("pp-set-restore")
             with ui.column().classes("pp-set-main"):
                 with ui.row().classes("pp-set-top items-center no-wrap"):
                     self._title = ui.label("").classes("pp-set-title")

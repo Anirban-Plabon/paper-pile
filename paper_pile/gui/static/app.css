@@ -679,6 +679,11 @@ body.pp-page-dragging, body.pp-page-dragging * { cursor: row-resize !important; 
 .pp-set-navlist { width: 100%; gap: 2px; }
 .pp-set-navitem { width: 100%; gap: 10px; padding: 7px 12px; white-space: nowrap; overflow: hidden; border-radius: var(--pp-r-ctrl); cursor: pointer; font-size: 13.5px; color: var(--pp-fg); }
 .pp-set-navitem:hover { background: rgba(127, 127, 127, .10); }
+/* Restore defaults: a row like the nav items above it (no accent colour, the same grey hover) */
+.pp-set-restore.q-btn { width: 100%; padding: 7px 12px; min-height: 0; font-size: 13.5px; font-weight: 400; color: var(--pp-fg); border-radius: var(--pp-r-ctrl); }
+.pp-set-restore.q-btn .q-icon { color: var(--pp-muted); }
+.pp-set-restore.q-btn .q-focus-helper { display: none; }
+.pp-set-restore.q-btn:hover { background: rgba(127, 127, 127, .10); }
 .pp-set-navitem-on, .pp-set-navitem-on:hover { background: rgba(var(--pp-accent-rgb), .14); font-weight: 600; }
 .pp-set-navicon { font-size: var(--pp-icon-m); flex: none; color: var(--pp-muted); }
 .pp-set-navitem-on .pp-set-navicon { color: var(--pp-accent); }
