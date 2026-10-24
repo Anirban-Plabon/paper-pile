@@ -668,8 +668,9 @@ body.pp-page-dragging, body.pp-page-dragging * { cursor: row-resize !important; 
 .pp-set-mode .pp-seg-item { flex: 1 1 0; justify-content: center; padding: 6px 0; }
 .pp-set-nav { width: 190px; flex: none; gap: 2px; padding: 12px 10px; transition: width var(--pp-dur); flex-wrap: nowrap; }
 /* the line between the nav and the page starts under the header: beside the header it would run
-   up into the Settings tab's ramp (a spike) */
-.pp-set-content { border-left: 1px solid var(--pp-border); }
+   up into the Settings tab's ramp (a spike). The page is a white box on the grey, its top-left
+   corner rounded where the header's line turns into this one. */
+.pp-set-content { border-left: 1px solid var(--pp-border); border-top: 1px solid var(--pp-border); border-top-left-radius: var(--pp-r-popup); background: var(--pp-bg); }
 .pp-set-search { width: 100%; font-size: 13px; }
 .pp-set-search .q-field__control { border-radius: var(--pp-r-ctrl); padding: 0 12px; }
 .pp-set-search .q-field__prepend { padding-right: 10px; }
@@ -681,9 +682,9 @@ body.pp-page-dragging, body.pp-page-dragging * { cursor: row-resize !important; 
 .pp-set-navitem-on, .pp-set-navitem-on:hover { background: rgba(var(--pp-accent-rgb), .14); font-weight: 600; }
 .pp-set-navicon { font-size: var(--pp-icon-m); flex: none; color: var(--pp-muted); }
 .pp-set-navitem-on .pp-set-navicon { color: var(--pp-accent); }
-.pp-set-main { flex: 1 1 0; min-width: 0; height: 100%; gap: 0; flex-wrap: nowrap; background: var(--pp-bg); container: ppmain / inline-size; }
+.pp-set-main { flex: 1 1 0; min-width: 0; height: 100%; gap: 0; flex-wrap: nowrap; background: var(--pp-bg-side); container: ppmain / inline-size; }
 /* the header: the Settings tab's colour above it, a divider under it (like the chat's title row) */
-.pp-set-top { width: 100%; flex: none; gap: 10px; padding: 10px 22px; flex-wrap: wrap; background: var(--pp-bg-side); border-bottom: 1px solid var(--pp-border); }
+.pp-set-top { width: 100%; flex: none; gap: 10px; padding: 10px 22px; flex-wrap: wrap; background: var(--pp-bg-side); }  /* its line under it is the page box's top */
 .pp-set-title { font-size: 17px; font-weight: 600; }
 .pp-set-content { flex: 1 1 0; min-height: 0; width: 100%; overflow-y: auto; padding: 0 22px 18px; gap: 0; flex-wrap: nowrap; }
 .pp-set-label { font-size: 14px; }
