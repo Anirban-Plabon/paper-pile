@@ -375,7 +375,10 @@ body.pp-page-dragging, body.pp-page-dragging * { cursor: row-resize !important; 
 :is(.pp-tabbar, .pp-rtabbar) > :is(.pp-tab, .pp-rtab):first-child::after,
 :is(.pp-tab-active, .pp-tab-shown, .pp-rtab-active)::after,
 :is(.pp-tab-active, .pp-tab-shown, .pp-rtab-active) + :is(.pp-tab, .pp-rtab)::after { display: none; }
-.pp-tab-active, .pp-tab-shown, .pp-rtab-active { border-radius: var(--pp-r-ctrl) var(--pp-r-ctrl) 0 0; box-shadow: none; }
+/* the active tab is outlined (top and sides) and open at the bottom, where the row's line stops:
+   it joins what is below it, so it takes that colour (editor: --pp-bg; right pane: --pp-bg-side) */
+.pp-tab-active, .pp-tab-shown, .pp-rtab-active { border: 1px solid var(--pp-border); border-bottom: none; border-radius: var(--pp-r-ctrl) var(--pp-r-ctrl) 0 0; box-shadow: none; }
+.pp-rtab-active, .pp-rtab-active:hover { background: var(--pp-bg-side); }
 .pp-tab-shown { color: var(--pp-muted); }  /* split: the side not being typed in */
 .pp-tab-drop-before { box-shadow: inset 3px 0 0 var(--pp-accent); }
 .pp-tab-drop-after { box-shadow: inset -3px 0 0 var(--pp-accent); }
