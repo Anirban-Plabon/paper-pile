@@ -6,6 +6,7 @@
 Legend: 🧠 = needs Opus (see PLAN §6 model guidance) · ⬜ todo · 🔄 in progress · ✅ done · ⛔ blocked · ⏭️ skipped/deferred
 
 ## Current focus
+- **Phase:** P22 — AI redesign (user request 2026-10-28, PLAN §4.26): planned; next: P22.1 (the `ai` extra) and P22.2 (`AiEngine`)
 - **Phase:** P21 — Note header, pins, small UI fixes (user request 2026-10-24, PLAN §4.25): built; P20's next step (Tailwind off) waits
 - **Phase:** P20 — Memory (user request 2026-10-24, PLAN §4.24): leaks fixed (dialogs, timing entries); small heap creep left (Open issue); next: Tailwind off with a screenshot comparison, then the engine options (system WebKitGTK, browser app mode)
 - **Before:** P19 — Performance (PLAN §4.23): done; next candidates in the Decision log (save off the UI thread, watcher echo, tab strip in place)
@@ -258,6 +259,22 @@ Legend: 🧠 = needs Opus (see PLAN §6 model guidance) · ⬜ todo · 🔄 in p
 | P21.12 | Sent selections unfold in the chat | ✅ | 1 core test; real app (unfold / fold) |
 | P21.13 | `/kanban` (Mermaid) | ✅ | Mermaid 12.2 has `kanban`; renders in the editor |
 
+### P22 — AI redesign (user request 2026-10-28)
+| ID | Task | Status | Notes |
+|---|---|---|---|
+| P22.1 | AI as the `ai` extra | ⬜ | |
+| P22.2 🧠 | `AiEngine` in core; chat + AI commands use it | ⬜ | |
+| P22.3 | Context budget from the model; token-based history; meter | ⬜ | |
+| P22.4 | Cache-friendly prompt order; per-turn context; mtime cache | ⬜ | |
+| P22.5 | Basic compaction + `/compact` | ⬜ | |
+| P22.6 | Access scope + Settings → AI → Access | ⬜ | |
+| P22.7 🧠 | Edit proposals + inline diff | ⬜ | |
+| P22.8 | Edit permission setting | ⬜ | |
+| P22.9 | Selection bar (Ask / Edit) + selection-to-chat setting | ⬜ | |
+| P22.10 | Suggested prompts + own prompts file | ⬜ | |
+| P22.11 | Chat extras: regenerate, edit last, sources, folded reasoning | ⬜ | |
+| P22.12 | `@vault` search | ⬜ | |
+
 ## Decision log
 <!-- YYYY-MM-DD · decision · reason · (who: user / claude) -->
 | Date | Decision | Reason | By |
@@ -446,6 +463,8 @@ Legend: 🧠 = needs Opus (see PLAN §6 model guidance) · ⬜ todo · 🔄 in p
 | 2026-10-25 | Settings: a page's first group heading has 9 px above it (was 6): the visible space above its letters now equals the space below them to the box (measured 2×: ~15 / ~15 px, was ~12 / ~16) | User: "top space of Model and bottom space are not equal and this is common for all" | user |
 | 2026-10-24 | Header arrows are chevron up / down (sections are above / below); the folded right pane cannot be double-clicked open (its edge is the window's resize strip); a pinned tab closes from its menu or Ctrl+W, not by middle-click | Vertical movement reads better as up / down; the window edge already belongs to resizing; middle-click closes are the common accident | claude |
 | 2026-10-23 | P18 re-applied in part: tab-row double-click, opaque arrow hover, picker (no animation, ×, key caps), slash menu side, line numbers after properties; the note buttons stay in the tab strip, split backlinks still open together | User: "need the corrected versions of p18, they were useful" (listing those five) | user |
+| 2026-10-28 | AI redesign planned as P22 (PLAN §4.26): one `AiEngine` in core, `ollama` as the optional `ai` extra, edits only as approved inline diffs (− light red / + light green), access scope (whole vault by allowed file types + granted outside paths), selection-to-chat as a choice (today's auto chips stay default), suggested prompts, model-sized context, cache-friendly prompts, basic compaction | User: pack the AI to port with the app, show added / deleted lines, permission gate, access settings, less messy selections, prompt suggestions, no overflow, caching, compaction; AI must be installable separately on Linux | user |
+| 2026-10-28 | P22 order: engine + extra first (P22.1–2), then context / cache / compaction (3–5), access (6), edits (7–9), prompts and extras (10–12) | Everything else plugs into the engine; access must exist before `@vault` search | claude |
 
 ## Issues log
 <!-- YYYY-MM-DD · task · symptom → root cause → fix · (gotcha added? y/n) -->

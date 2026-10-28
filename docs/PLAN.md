@@ -34,7 +34,7 @@ built-in local AI via Ollama. Plain `.md`/`.txt` files, no lock-in.
 | Index / search | stdlib `sqlite3` + FTS5 | `.paper-pile/index.db`, rebuildable |
 | File watching | `watchdog` | external edits |
 | HTML → MD (paste) | `beautifulsoup4` + `markdownify` | custom converters for math/code |
-| AI | `ollama` (official python lib, AsyncClient) | behind a `Provider` protocol |
+| AI | `ollama` (official python lib, AsyncClient) | behind a `Provider` protocol. **Optional since P22 (§4.26):** the `ai` extra (`uv sync --extra ai`); the app runs without it |
 | Config | `tomllib` (read) + `tomli-w` (write) + `platformdirs` | |
 | Images | `Pillow` | dimension read, format normalize |
 | Tests | `pytest`, `pytest-asyncio` | |
@@ -522,6 +522,20 @@ Short, quiet animations that show *where something went*. Render-only (CSS + the
 
 **Not animated:** typing, CodeMirror decorations and folding, pane widths (Ctrl+B / Ctrl+L), sheet heights, drag in progress.
 
+### 4.26 AI redesign: one engine, approved edits, access scope — user request 2026-10-28 (P22)
+User: pack the whole AI part so it ports with the app with little effort; edits must show added / deleted lines; a permission gate before the AI changes a note; settings for where the AI may read; selections in the chat can get messy; suggested prompts when something is attached; no context overflow; caching; basic compaction. Useful features only, nothing that makes the app heavy. Answers (2026-10-28): AI is a separate install (Linux machines may lack libraries, or the app may ship without AI; the code stays, its dependencies are not installed); the diff looks like a code editor's (− lines light red, + lines light green); the AI may read the whole vault (file types the user allows) plus outside folders / notes the user grants by path; the current selection-to-chat stays and the new button flow is offered as a choice; new settings look like the existing ones (no drastic visual change).
+- **One engine, separate install.** All AI logic lives in `paper_pile/core/ai/` behind one `AiEngine` (sessions, context, access policy, edit proposals, compaction, provider). Chat pane and AI slash commands both use it; the GUI only sends actions (send, stop, accept, reject) and draws events (chunk, done, proposal, error). `ollama` moves to the `ai` extra: `uv sync` installs the app without AI, `uv sync --extra ai` with it. Nothing imports `ollama` at start: without it the AI switch shows "AI is not installed — `uv sync --extra ai`" and every AI entry point stays hidden, as with AI off.
+- **Approved edits (permission gate).** The AI never writes into a note. A change is an `EditProposal` (note, range, original text's hash, new text). It is shown inline in the editor as a line diff, like a code editor: removed lines light red with a − gutter mark, added lines light green with +; Accept / Reject per change and Accept all / Reject all in a small bar. If the note changed under the proposal, it is marked out of date and cannot be applied. Accepting is one undo step and keeps the "before AI" version. Fix grammar, Rewrite and the selection *Edit* flow go through it; a chat answer to a message with an attached selection offers *Apply to note* (→ the same diff). Setting `ai.edits`: *Ask every time* (default) / *Auto-accept in the open note* / *Read-only* (suggestions only, no apply). Insert-at-caret commands (Continue writing, Summarize, Explain) keep streaming in, as now.
+- **Access scope** (one checker in core: every AI read — context, mentions, linked notes, vault search — goes through it). Default: the whole vault, notes with the file types in `ai.file_types` (default `.md`; the user adds e.g. `.txt`, `.py`). Never: `.trash`, `.paper-pile`, the memories folder, notes with `ai: false` in their properties, paths in `ai.exclude`. Outside the vault: only folders / notes the user grants by path in `ai.allow_paths` (absolute or `~`), plus files uploaded in the chat. The composer's + menu shows a one-line "AI can read: …". Settings → AI → *Access*, rows in the existing style.
+- **Selections.** Setting `ai.selection_to_chat`: *Automatically* (default, today's behaviour: a selection becomes a chip whose text can be read in the chat) / *With the Ask button*. Either way a small bar beside a selection offers *Ask* (attach to chat) and *Edit* (a one-line prompt in the editor; the answer comes back as a diff). Chips stay as now; the same text attached twice is one chip.
+- **Suggested prompts** (no model call): when a selection, block or note is attached, 3–4 chips above the input fit its kind — prose: Rewrite clearer, Shorten, Fix grammar, Explain; code: Explain, Find bugs, Add comments; math: Explain step by step, Check it; table: Summarize, Find patterns; a note: Summarize, Outline, Key points, Open questions. A click fills the input (does not send). The user's own prompts can be added from a markdown file (`ai.prompts_file`, one `- ` item per prompt).
+- **Context window.** The budget comes from the model's real context length (Ollama `show`; `num_ctx` setting wins) minus room for the answer; `ai.context_budget` stays as an upper cap. History is trimmed by tokens, not turns (`ai.history_turns` stays as a cap). Ollama's real token counts (`prompt_eval_count`) correct the chars ÷ 4 estimate. A small "4.1k / 8k" meter in the composer.
+- **Caching.** Prompt order keeps the start stable so Ollama can reuse its cache: fixed system prompt → history → this message with its new context. Context a message used is saved with that turn (attached notes are not lost on the next message). Note text read for context is cached by mtime; no vault walk per message (the index has the paths).
+- **Basic compaction.** When history passes ~60 % of the budget, the oldest turns (all but the last 4) are summarized by one model call into "Summary so far", kept in the saved chat and sent in their place; the turns stay visible in the chat. `/compact` in the chat does it now.
+- **Chat extras:** Regenerate the last answer; edit the last message and resend; notes used for an answer listed as clickable `[[links]]` under it; reasoning of thinking models shown folded instead of dropped; `@vault` in a message searches the vault index (FTS, scope-checked) and attaches the best few hits.
+- **Not now:** autonomous multi-step agents, embeddings / vector search, web access, long-term memory across chats.
+- **Saved chat format:** new fields (`summary`, per-turn `context`) are optional; older chat files load unchanged.
+
 ### 4.25 Note header, pins, small UI fixes — user request 2026-10-24 (P21)
 User list of 12 items (numbering theirs, merged); questions answered: top row as tall as the Backlinks bar; pins both as tabs and in the tree; double-click on a pane's edge; header sections are `#` / `##`; icon colour only Default / Accent (no rounded-square style); creation date not shown (version history has it); kanban only as Mermaid's diagram.
 - **Top rows** (tab strips, left pane's title row, ribbon top, window buttons) are `--pp-tab-h` = 41 px, the height of the footer / Backlinks bar; the tabs in them start 6 px lower (air above the tabs). Tab rows look like a browser's: inactive tabs sit on the row with a short divider between them, the active tab is outlined (top and sides, rounded top corners, its bottom corners ramping out into the row's line), open at the bottom and in the colour of what is below it (editor white, right pane grey), so it joins it, and the round + follows the last tab. The Backlinks bar's height is the standard: the note header, the Files header and the chat's title row are 41 px too.
@@ -779,6 +793,22 @@ P9.1–P9.3 and P9.5–P9.6 are built in this phase (order: P14.1, P9.1, P9.2, P
 | P20.3 | `Dialog` without the canary leak | deleted dialogs leave no element and are garbage-collected (test); DOM nodes / server RSS flat in the soak |
 | P20.4 | Clear Tailwind's timing entries | no `PerformanceMark` / `Measure` growth in heap snapshots; heap flat in the soak |
 | P20.5 | Quick switcher lists the vault once per popup | no vault walk per keystroke; results unchanged |
+
+### P22 — AI redesign (user request 2026-10-28, §4.26)
+| ID | Task | Acceptance |
+|---|---|---|
+| P22.1 | AI as the `ai` extra | `uv sync` (no extra) → app starts, AI shows "not installed" and no AI entry point; with the extra all works; no `ollama` import at start (test) |
+| P22.2 🧠 | `AiEngine` in core; chat + AI commands use it | chat.py / editor_pane.py hold no prompt or history logic; engine unit tests with `FakeProvider`; all tests green; chat and commands work as before (real app) |
+| P22.3 | Context budget from the model; token-based history; meter | long chat never exceeds the window (test with a small fake window); meter shows used / budget (real app) |
+| P22.4 | Cache-friendly prompt order; per-turn context; mtime cache | system prompt identical across turns (test); attached note still in context next turn (test); no vault walk per message (test) |
+| P22.5 | Basic compaction + `/compact` | at ~60 % the old turns become "Summary so far" in the saved chat (test); old chat files still load (test) |
+| P22.6 | Access scope + Settings → AI → Access | excluded / not-allowed / outside paths never reach the model (tests); granted outside path works; rows look like the existing ones (real app) |
+| P22.7 🧠 | Edit proposals + inline diff | −/+ lines light red / green; accept / reject per change and all; out-of-date proposal not applied; one undo step (tests + `qa_editor.py` + real app) |
+| P22.8 | Edit permission setting | Ask / Auto-accept in open note / Read-only each behave (tests + real app) |
+| P22.9 | Selection bar (Ask / Edit) + selection-to-chat setting | Automatically keeps today's chips; With the Ask button attaches only on Ask; Edit returns a diff (real app) |
+| P22.10 | Suggested prompts + own prompts file | chips fit the attached kind; click fills, does not send (tests + real app) |
+| P22.11 | Chat extras: regenerate, edit last, sources, folded reasoning | each works (tests + real app) |
+| P22.12 | `@vault` search | attaches top hits from the index, scope-checked (test) |
 
 ### P21 — Note header, pins, small UI fixes (user request 2026-10-24, §4.25)
 | ID | Task | Acceptance |
