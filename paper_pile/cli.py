@@ -25,6 +25,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--debug", action="store_true", help="log details on stderr (window sizes, screens)"
     )
+    parser.add_argument("--ai", action="store_true", help="with the AI (chat, AI commands)")
     parser.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
     return parser
 
@@ -59,6 +60,8 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     if args.debug:
         os.environ["PAPER_PILE_DEBUG"] = "1"  # the window's own process inherits it
+    if args.ai:
+        os.environ["PAPER_PILE_AI"] = "1"  # read by core/ai/install.py, also in that process
     from paper_pile.gui import app  # imported late: keeps --help fast and core UI-free
     from paper_pile.gui.native_boot import debug_logging
 

@@ -54,8 +54,9 @@ Never mark a task done without its acceptance criteria verified. Never delete Is
 
 ## Commands
 ```bash
-uv sync --extra ai               # install deps (plain `uv sync` = no AI)
-uv run paper-pile .              # run native window on current dir as vault
+uv sync                          # install deps
+uv run paper-pile .              # run native window on current dir as vault (no AI)
+uv run paper-pile --ai .         # the same with the AI
 uv run paper-pile --serve ~/n    # web mode on 127.0.0.1
 uv run pytest -q                 # tests
 uv run ruff check --fix && uv run ruff format

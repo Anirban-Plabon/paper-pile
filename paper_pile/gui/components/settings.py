@@ -23,7 +23,7 @@ from typing import Any
 from nicegui import ui
 
 from paper_pile import __version__
-from paper_pile.core.ai.install import NOT_INSTALLED, ai_installed
+from paper_pile.core.ai.install import ai_available, ai_unavailable
 from paper_pile.core.ai.instructions import MAX_TEXT_CHARS
 from paper_pile.core.colors import parse_color
 from paper_pile.core.config import Config, Scope
@@ -390,11 +390,11 @@ class SettingsPane:
             return
         inline = " pp-set-row-inline" if setting.kind == "bool" else ""  # a switch never drops
         with ui.row().classes("pp-set-row items-center" + inline):
-            missing = setting.key == "features.ai" and not ai_installed()
+            missing = setting.key == "features.ai" and not ai_available()
             with ui.column().classes("pp-set-text"):
                 ui.label(setting.label).classes("pp-set-label")
                 if setting.help or missing:
-                    ui.label(NOT_INSTALLED if missing else setting.help).classes("pp-set-help")
+                    ui.label(ai_unavailable() if missing else setting.help).classes("pp-set-help")
                 error = ui.label("").classes("pp-set-error")
                 error.set_visibility(False)
                 self._errors[setting.key] = error
@@ -407,7 +407,7 @@ class SettingsPane:
 
         if setting.kind == "bool":
             switch = ui.switch(value=bool(current), on_change=lambda e: commit(e.value))
-            if setting.key == "features.ai" and not ai_installed():
+            if setting.key == "features.ai" and not ai_available():
                 switch.disable()
         elif setting.key == "appearance.accent":
             self._accent_picker(setting, str(current))

@@ -9,6 +9,7 @@ dependencies = [
     "markdownify==1.2.3",
     "mdit-py-plugins==0.6.1",
     "nicegui==3.18.0",
+    "ollama==0.6.3",  # imported only when started with --ai (PLAN §4.26)
     "pillow==12.3.0",
     "platformdirs==4.13.0",
     "pywebview[qt]==6.2.1",
@@ -16,10 +17,6 @@ dependencies = [
     "tomli-w==1.2.0",
     "watchdog==6.0.0",
 ]
-
-[project.optional-dependencies]
-# the AI part (chat, AI commands): `uv sync --extra ai`; the app runs without it (PLAN §4.26)
-ai = ["ollama==0.6.3"]
 
 [project.scripts]
 paper-pile = "paper_pile.cli:main"

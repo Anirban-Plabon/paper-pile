@@ -48,12 +48,11 @@ Linux (and Windows through WSL2 / WSLg). Needs Python ≥ 3.12 and [uv](https://
 
 ```bash
 git clone <this repo> paper-pile && cd paper-pile
-uv sync --extra ai   # the app with AI (chat, AI commands)
-uv sync              # or: the app without AI (no AI libraries installed)
+uv sync
 ```
 
-AI is an optional part (the `ai` extra): without it the app runs with AI off, and
-Settings → General → AI says how to add it. Run `uv sync --extra ai` any time to add it.
+The AI (chat, AI commands) runs only when you ask for it: `uv run paper-pile --ai`. Without
+`--ai` the app runs with AI off and never loads the AI libraries.
 
 The native window uses Qt WebEngine (installed by `uv sync`) on Qt's default Wayland backend. If
 you force the X11 backend (`QT_QPA_PLATFORM=xcb`), install the xcb libraries Qt needs, e.g. on
@@ -66,7 +65,8 @@ or any chat model — pick it in the chat's model menu). The app works fully wit
 ## Run
 
 ```bash
-uv run paper-pile ~/notes        # open ~/notes as the vault in a native window
+uv run paper-pile ~/notes        # open ~/notes as the vault in a native window (no AI)
+uv run paper-pile --ai ~/notes   # the same, with the AI (chat, AI commands)
 uv run paper-pile                # reopen the last vault (asks for one the first time)
 uv run paper-pile --serve ~/notes [--port 8080]   # web mode: prints a 127.0.0.1 URL with a token
 uv run paper-pile --debug ~/notes  # also log window sizes / screens / scale on the terminal

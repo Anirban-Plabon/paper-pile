@@ -4,7 +4,7 @@ import os
 from collections.abc import AsyncIterator, Sequence
 
 from paper_pile.core.ai.fake import FakeProvider
-from paper_pile.core.ai.install import NOT_INSTALLED, ai_installed
+from paper_pile.core.ai.install import ai_available, ai_unavailable
 from paper_pile.core.ai.provider import (
     DEFAULT_HOST,
     ChatMessage,
@@ -17,8 +17,8 @@ from paper_pile.core.config import Config
 
 
 class MissingProvider:
-    """Stands in while the ``ai`` extra is not installed: never reached (AI is off then), but
-    whatever asks gets the install hint instead of an ImportError."""
+    """Stands in while the AI cannot run (not started with ``--ai``, or ``ollama`` missing):
+    never reached (AI is off then), but whatever asks gets the reason, not an ImportError."""
 
     host = ""
 
@@ -29,11 +29,11 @@ class MissingProvider:
         model: str | None = None,
         options: GenerationOptions | None = None,
     ) -> AsyncIterator[str]:
-        raise ProviderUnavailableError(NOT_INSTALLED)
+        raise ProviderUnavailableError(ai_unavailable())
         yield ""  # makes this an async generator, like the real ones
 
     async def embed(self, texts: Sequence[str], *, model: str | None = None) -> list[list[float]]:
-        raise ProviderUnavailableError(NOT_INSTALLED)
+        raise ProviderUnavailableError(ai_unavailable())
 
     async def models(self) -> list[str]:
         return []
@@ -42,17 +42,17 @@ class MissingProvider:
         return None
 
     async def health(self) -> Health:
-        return Health(False, NOT_INSTALLED)
+        return Health(False, ai_unavailable())
 
 
 def make_provider(config: Config | None) -> Provider:
     """The configured provider (``ai.host``, ``ai.model``, ``ai.embed_model``). With the
     environment variable ``PAPER_PILE_FAKE_AI=1`` a stand-in that needs no model is used
     (``PAPER_PILE_FAKE_AI_REPLY`` sets the text it answers with). ``ollama`` is imported only
-    here, so the app starts without the ``ai`` extra."""
+    here, so the app also starts without it."""
     if os.environ.get("PAPER_PILE_FAKE_AI"):
         return FakeProvider(reply=os.environ.get("PAPER_PILE_FAKE_AI_REPLY") or None)
-    if not ai_installed():
+    if not ai_available():
         return MissingProvider()
     from paper_pile.core.ai.ollama import OllamaProvider
 
