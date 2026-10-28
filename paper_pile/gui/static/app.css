@@ -568,6 +568,7 @@ body.pp-page-dragging, body.pp-page-dragging * { cursor: row-resize !important; 
 .pp-chat-diagram { overflow-x: auto; }
 .pp-msg-error .pp-msg-body { color: var(--pp-warn); }
 .pp-msg-ctx { font-size: 11px; }
+.pp-chat-compacted { font-size: 11px; align-self: center; }
 .pp-msg-actions { gap: 0; opacity: .6; }
 .pp-msg:hover .pp-msg-actions { opacity: 1; }
 .pp-chat-compose { position: relative; width: 100%; flex: none; gap: 2px; padding: 8px 12px 12px; }

@@ -59,6 +59,8 @@ class SavedChat:
     created: float
     updated: float
     turns: list[SavedTurn] = field(default_factory=list)
+    summary: str = ""  # "Summary so far" of the first ``summarized`` turns (compaction)
+    summarized: int = 0
 
 
 def new_chat_id() -> str:
@@ -154,12 +156,16 @@ def load_chat(folder: Path, chat_id: str) -> SavedChat | None:
     turns = [t for t in map(_turn, data["turns"]) if t is not None]
     created = data.get("created")
     updated = data.get("updated")
+    summary = data.get("summary")
+    summarized = data.get("summarized")
     return SavedChat(
         chat_id,
         str(data.get("title") or chat_title(turns)),
         float(created) if isinstance(created, int | float) else 0.0,
         float(updated) if isinstance(updated, int | float) else 0.0,
         turns,
+        summary if isinstance(summary, str) else "",
+        min(summarized, len(turns)) if isinstance(summarized, int) and summarized > 0 else 0,
     )
 
 

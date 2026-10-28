@@ -40,7 +40,7 @@ from paper_pile.core.ai.context import (
 from paper_pile.core.ai.factory import chat_model, generation_options, make_provider
 from paper_pile.core.ai.instructions import system_instruction
 from paper_pile.core.ai.notecache import NoteCache
-from paper_pile.core.ai.provider import ChatMessage, Health, Provider
+from paper_pile.core.ai.provider import ChatMessage, Health, Provider, ProviderError
 from paper_pile.core.commands import StreamInsert
 from paper_pile.core.config import Config
 from paper_pile.core.links import wikilink_to
@@ -57,6 +57,14 @@ DEFAULT_BUDGET = 6000
 AUTO_WINDOW = 8192
 MESSAGE_OVERHEAD = 4  # tokens a message costs besides its text (role, separators)
 CONTEXT_SHARE = 0.6  # of the prompt's room, notes may take this much; history gets the rest
+COMPACT_AT = 0.6  # earlier messages above this share of the prompt's room get summarized
+KEEP_RECENT = 4  # messages never summarized (the last two exchanges)
+COMPACT_PROMPT = (
+    "You keep the memory of a conversation between a user and an assistant in a note app. "
+    "Write a short summary of the conversation below so it can go on without it: the user's "
+    "goals and questions, facts and decisions, names of notes, and anything left open. Plain "
+    "markdown bullet points, at most 200 words, no introduction."
+)
 BEFORE_CARET_CHARS = 4000  # "Continue writing" sees this much of the text before the caret
 NOTE_ONLY = (
     "\n\nReply with only the text to put into the note: no introduction, no comments about what "
@@ -113,6 +121,8 @@ class AiEngine:
         self.notes = NoteCache(vault)
         self._max_context: dict[str, int | None] = {}  # model -> its context length
         self.turns: list[SavedTurn] = []
+        self.summary = ""  # "Summary so far": replaces the first ``summarized`` turns
+        self.summarized = 0
         self.chat_id = new_chat_id()
         self.created = time.time()
 
@@ -177,6 +187,7 @@ class AiEngine:
 
     def new_chat(self) -> None:
         self.turns = []
+        self.summary, self.summarized = "", 0
         self.chat_id, self.created = new_chat_id(), time.time()
 
     def open_chat(self, chat_id: str) -> bool:
@@ -187,6 +198,7 @@ class AiEngine:
         if chat is None:
             return False
         self.turns = list(chat.turns)
+        self.summary, self.summarized = chat.summary, chat.summarized
         self.chat_id, self.created = chat.id, chat.created
         return True
 
@@ -212,7 +224,15 @@ class AiEngine:
         turns = list(self.turns)
         save_chat(
             self.chats_dir(),
-            SavedChat(self.chat_id, chat_title(turns), self.created, time.time(), turns),
+            SavedChat(
+                self.chat_id,
+                chat_title(turns),
+                self.created,
+                time.time(),
+                turns,
+                self.summary,
+                self.summarized,
+            ),
         )
 
     def prune(self) -> int:
@@ -344,12 +364,12 @@ class AiEngine:
         the question with its notes. Earlier turns are taken newest first while they fit in
         ``room`` tokens (all of the prompt; None = no limit), at most ``ai.history_turns``;
         failed and empty ones are left out."""
-        system = ChatMessage("system", self.system_prompt())
+        system = ChatMessage("system", self.system_prompt() + self._summary_text())
         ask = ChatMessage("user", self.with_notes(context, question))
         keep = int(str(self.setting("ai.history_turns", HISTORY_TURNS)))
         left = None if room is None else room - message_tokens([system, ask])
         past: list[ChatMessage] = []
-        for turn in reversed(self.turns[:-2]):
+        for turn in reversed(self.turns[self.summarized : -2]):
             if len(past) >= keep:
                 break
             if turn.error or not turn.text.strip():
@@ -374,6 +394,7 @@ class AiEngine:
         question = out.turn.text
         window = await self.window()
         room = window - self.answer_room(window)
+        compacted = await self.compact_if_needed(room)
         context = self.chat_context(
             snap,
             question,
@@ -385,9 +406,57 @@ class AiEngine:
         messages = self.chat_messages(context, question, room)
         used = message_tokens(messages)
         reply.summary = f"{context.summary()} · {short_count(used)} / {short_count(window)} tokens"
+        if compacted:
+            reply.summary += " · earlier messages summarized"
         async for piece in self.stream(messages, window):
             reply.text += piece
             yield piece
+
+    # ---- compaction ----------------------------------------------------------------------
+
+    def _summary_text(self) -> str:
+        return f"\n\nSummary of the conversation so far:\n{self.summary}" if self.summary else ""
+
+    def _past(self, end: int) -> list[SavedTurn]:
+        """The turns from the last summary up to ``end`` that would be sent again."""
+        return [t for t in self.turns[self.summarized : end] if not t.error and t.text.strip()]
+
+    async def compact_if_needed(self, room: int) -> bool:
+        """Summarize the earlier messages when they take more than ``COMPACT_AT`` of ``room``
+        (the newest exchange, still being answered, does not count). True when it did."""
+        past = self._past(len(self.turns) - 2)
+        tokens = sum(estimate_tokens(self.past_text(t)) + MESSAGE_OVERHEAD for t in past)
+        if tokens <= room * COMPACT_AT:
+            return False
+        return await self.compact(len(self.turns) - 2, room)
+
+    async def compact(self, end: int | None = None, room: int | None = None) -> bool:
+        """Fold the turns before the last ``KEEP_RECENT`` (counted back from ``end``, default all
+        turns) into "Summary so far", with one model call. The turns stay in the chat; only what
+        the model is sent changes. False when there is too little to fold or the call fails."""
+        end = len(self.turns) if end is None else end
+        upto = end - KEEP_RECENT
+        if upto <= self.summarized:
+            return False
+        room = room if room is not None else await self.prompt_room()
+        lines = [f"Earlier summary:\n{self.summary}"] if self.summary else []
+        for turn in self.turns[self.summarized : upto]:
+            if not turn.error and turn.text.strip():
+                who = "User" if turn.role == "user" else "Assistant"
+                lines.append(f"{who}: {self.past_text(turn)}")
+        transcript = "\n\n".join(lines)
+        limit = max(0, room - estimate_tokens(COMPACT_PROMPT) - 2 * MESSAGE_OVERHEAD)
+        transcript = transcript[-limit * 4 :] if estimate_tokens(transcript) > limit else transcript
+        messages = [ChatMessage("system", COMPACT_PROMPT), ChatMessage("user", transcript)]
+        try:
+            summary = "".join([piece async for piece in self.stream(messages)]).strip()
+        except ProviderError:
+            log.warning("could not summarize the chat", exc_info=True)
+            return False
+        if not summary:
+            return False
+        self.summary, self.summarized = summary, upto
+        return True
 
     @staticmethod
     def stopped(reply: SavedTurn) -> None:

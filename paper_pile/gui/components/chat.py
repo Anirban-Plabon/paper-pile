@@ -394,8 +394,10 @@ class ChatPane:
         with self._log:
             if not self.ai.turns:
                 ui.label("No messages yet").classes("pp-muted pp-chat-empty")
-            for turn in self.ai.turns:
+            for i, turn in enumerate(self.ai.turns):
                 self._bubble(turn)
+                if i == self.ai.summarized - 1:  # the model gets a summary of what is above
+                    ui.label("Earlier messages summarized").classes("pp-muted pp-chat-compacted")
         self._scroll_down()
 
     def _bubble(self, turn: Turn) -> ui.html | None:
@@ -786,6 +788,10 @@ class ChatPane:
         text = (self._input.value or "").strip()
         if not text or self._task is not None:
             return
+        if text == "/compact":
+            self._input.set_value("")
+            self._task = background_tasks.create(self._compact())
+            return
         self._input.set_value("")
         self._mentions.set_visibility(False)
         picked, self._selections, self._open = self._selections, [], None
@@ -823,6 +829,23 @@ class ChatPane:
             set_icon(self._send, "arrow-up")
             self._render_log()
             self.ai.save()
+
+    async def _compact(self) -> None:
+        """``/compact``: summarize the earlier messages for the model now."""
+        set_icon(self._send, "square")
+        try:
+            done = await self.ai.compact()
+        except asyncio.CancelledError:
+            done = False
+        finally:
+            self._task = None
+            set_icon(self._send, "arrow-up")
+        with self._client:  # a background task has no UI context of its own
+            if done:
+                self.ai.save()
+                self._render_log()
+            message = "Earlier messages summarized" if done else "Nothing to summarize yet"
+            ui.notify(message, timeout=1800, position="bottom")
 
     def _fail(self, reply: Turn, message: str, *, unavailable: bool = False) -> None:
         self.ai.failed(reply, message)

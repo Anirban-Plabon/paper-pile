@@ -173,7 +173,8 @@ async def test_long_chat_never_overflows_the_window(vault: Vault, fake: FakeProv
     assert sent[-1].content.endswith(DIVIDER + "last one")
     assert sent[-2].content.startswith("answer 29")  # the newest turns are the ones kept
     assert len(sent) < 30
-    assert ai.turns[-1].summary.endswith("/ 2k tokens") and "(some cut)" in ai.turns[-1].summary
+    line = ai.turns[-1].summary
+    assert "/ 2k tokens" in line and "(some cut)" in line and "summarized" in line
 
 
 def test_short_count() -> None:
@@ -239,3 +240,35 @@ def test_old_chat_files_load(vault: Vault, tmp_path: Path) -> None:
     (folder / "20260101-000000-aaaaaa.json").write_text(json.dumps({"turns": turns}))
     chat = load_chat(folder, "20260101-000000-aaaaaa")
     assert chat is not None and [t.notes for t in chat.turns] == [[], []]
+
+
+async def test_long_chat_is_compacted_and_the_summary_kept(
+    vault: Vault, fake: FakeProvider
+) -> None:
+    fake.max_context = 2048  # room 1536: compaction above ~920 tokens of earlier messages
+    ai = engine(vault, fake, ai__history_turns=50)
+    for i in range(12):
+        await ask(ai, f"q{i} " + "w" * 400)
+    assert ai.summarized > 0 and ai.summary
+    assert len(ai.turns) == 24  # every message is still in the chat
+    compact_call = next(c for c in fake.calls if c[0].content.startswith("You keep the memory"))
+    assert "User: q0" in compact_call[1].content
+    last = fake.calls[-1]
+    assert "Summary of the conversation so far" in last[0].content
+    assert all("q0 " not in m.content for m in last[1:])  # folded turns are not sent again
+    assert any("earlier messages summarized" in t.summary for t in ai.turns)
+    ai.save()
+    again = engine(vault, fake)
+    assert again.open_chat(ai.chat_id)
+    assert (again.summary, again.summarized) == (ai.summary, ai.summarized)
+
+
+async def test_compact_by_hand(vault: Vault, fake: FakeProvider) -> None:
+    ai = engine(vault, fake)
+    await ask(ai, "one")
+    assert not await ai.compact()  # nothing before the last 4 messages
+    for word in ("two", "three"):
+        await ask(ai, word)
+    assert await ai.compact() and ai.summarized == 2
+    ai.new_chat()
+    assert (ai.summary, ai.summarized) == ("", 0)

@@ -6,7 +6,7 @@
 Legend: 🧠 = needs Opus (see PLAN §6 model guidance) · ⬜ todo · 🔄 in progress · ✅ done · ⛔ blocked · ⏭️ skipped/deferred
 
 ## Current focus
-- **Phase:** P22 — AI redesign (user request 2026-10-28, PLAN §4.26): P22.1–P22.4 done; next: P22.5 (basic compaction)
+- **Phase:** P22 — AI redesign (user request 2026-10-28, PLAN §4.26): P22.1–P22.5 done; next: P22.6 (access scope + per-vault grants)
 - **Phase:** P21 — Note header, pins, small UI fixes (user request 2026-10-24, PLAN §4.25): built; P20's next step (Tailwind off) waits
 - **Phase:** P20 — Memory (user request 2026-10-24, PLAN §4.24): leaks fixed (dialogs, timing entries); small heap creep left (Open issue); next: Tailwind off with a screenshot comparison, then the engine options (system WebKitGTK, browser app mode)
 - **Before:** P19 — Performance (PLAN §4.23): done; next candidates in the Decision log (save off the UI thread, watcher echo, tab strip in place)
@@ -266,7 +266,7 @@ Legend: 🧠 = needs Opus (see PLAN §6 model guidance) · ⬜ todo · 🔄 in p
 | P22.2 🧠 | `AiEngine` in core; chat + AI commands use it | ✅ | `core/ai/engine.py`; 8 engine tests (FakeProvider); chat.py −250 lines (no prompt / history / saving logic), editor pane and *Write with AI* go through `AiEngine.stream`; real app (fake AI): chat reply + saved chat + title, `/summarize` streams into the note |
 | P22.3 | Context budget from the model; token-based history; token count | ✅ | `context_length` on every provider (Ollama `show`); 7 new tests (window per case, 30-turn chat + huge note fits a 2k window, newest kept); real app: "Context: note · 81 / 8k tokens" |
 | P22.4 | Cache-friendly prompt order; per-turn notes; note cache | ✅ | `NoteCache` + 2 tests; 4 engine tests (stable prefix over 4 messages with the note edited between, sticky note + quote, one walk / one read for 3 messages, old chat files); `@` picker no longer walks the vault per keystroke; real app (fake AI) |
-| P22.5 | Basic compaction + `/compact` | ⬜ | |
+| P22.5 | Basic compaction + `/compact` | ✅ | 2 engine tests (12 long messages in a 2k window; by hand); real app: `/compact` after 3 exchanges → marker, notice, `summarized: 2` in the file (screenshot) |
 | P22.6 | Access scope + per-vault grants (`ai_access.json`) + Settings → AI → Access | ⬜ | |
 | P22.7 🧠 | Edit proposals + inline diff | ⬜ | |
 | P22.8 | Edit permission setting | ⬜ | |
@@ -707,3 +707,4 @@ Legend: 🧠 = needs Opus (see PLAN §6 model guidance) · ⬜ todo · 🔄 in p
 - 2026-10-28 · P22.2 `AiEngine` · 1160 tests; real app with fake AI (chat, saved chat, `/summarize`)
 - 2026-10-28 · P22.3 context window from the model · 1167 tests; real app reply line
 - 2026-10-28 · P22.4 cache-friendly prompts + note cache · 1173 tests; real app with fake AI
+- 2026-10-28 · P22.5 compaction + `/compact` · 1175 tests; real app screenshot
