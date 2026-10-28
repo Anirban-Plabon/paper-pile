@@ -12,6 +12,7 @@ from paper_pile.core.ai.provider import (
     Health,
     Provider,
     ProviderUnavailableError,
+    Reasoning,
 )
 from paper_pile.core.config import Config
 
@@ -28,7 +29,7 @@ class MissingProvider:
         *,
         model: str | None = None,
         options: GenerationOptions | None = None,
-    ) -> AsyncIterator[str]:
+    ) -> AsyncIterator[str | Reasoning]:
         raise ProviderUnavailableError(ai_unavailable())
         yield ""  # makes this an async generator, like the real ones
 
@@ -48,10 +49,12 @@ class MissingProvider:
 def make_provider(config: Config | None) -> Provider:
     """The configured provider (``ai.host``, ``ai.model``, ``ai.embed_model``). With the
     environment variable ``PAPER_PILE_FAKE_AI=1`` a stand-in that needs no model is used
-    (``PAPER_PILE_FAKE_AI_REPLY`` sets the text it answers with). ``ollama`` is imported only
-    here, so the app also starts without it."""
+    (``PAPER_PILE_FAKE_AI_REPLY`` sets the text it answers with, ``…_THINKING`` its reasoning).
+    ``ollama`` is imported only here, so the app also starts without it."""
     if os.environ.get("PAPER_PILE_FAKE_AI"):
-        return FakeProvider(reply=os.environ.get("PAPER_PILE_FAKE_AI_REPLY") or None)
+        fake = FakeProvider(reply=os.environ.get("PAPER_PILE_FAKE_AI_REPLY") or None)
+        fake.thinking = os.environ.get("PAPER_PILE_FAKE_AI_THINKING", "")
+        return fake
     if not ai_available():
         return MissingProvider()
     from paper_pile.core.ai.ollama import OllamaProvider

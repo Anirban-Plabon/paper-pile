@@ -6,7 +6,7 @@
 Legend: 🧠 = needs Opus (see PLAN §6 model guidance) · ⬜ todo · 🔄 in progress · ✅ done · ⛔ blocked · ⏭️ skipped/deferred
 
 ## Current focus
-- **Phase:** P22 — AI redesign (user request 2026-10-28, PLAN §4.26): P22.1–P22.7 and P22.9 done; next: P22.8 (edit permission setting)
+- **Phase:** P22 — AI redesign (user request 2026-10-28, PLAN §4.26): all 12 tasks done; waiting for the user's real-model pass (`uv run paper-pile --ai` with Ollama)
 - **Phase:** P21 — Note header, pins, small UI fixes (user request 2026-10-24, PLAN §4.25): built; P20's next step (Tailwind off) waits
 - **Phase:** P20 — Memory (user request 2026-10-24, PLAN §4.24): leaks fixed (dialogs, timing entries); small heap creep left (Open issue); next: Tailwind off with a screenshot comparison, then the engine options (system WebKitGTK, browser app mode)
 - **Before:** P19 — Performance (PLAN §4.23): done; next candidates in the Decision log (save off the UI thread, watcher echo, tab strip in place)
@@ -269,11 +269,11 @@ Legend: 🧠 = needs Opus (see PLAN §6 model guidance) · ⬜ todo · 🔄 in p
 | P22.5 | Basic compaction + `/compact` | ✅ | 2 engine tests (12 long messages in a 2k window; by hand); real app: `/compact` after 3 exchanges → marker, notice, `summarized: 2` in the file (screenshot) |
 | P22.6 | Access scope + per-vault grants (`ai_access.json`) + Settings → AI → Access | ✅ | 9 tests (exact-path grants: parent / child / other / moved vault get nothing; damaged records; never-folders, exclusions, patterns; `ai: false`; outside paths; engine refuses without a grant and drops what is not allowed); real app: ask → Not now keeps text → Allow → reply, record key = vault path, Access group (screenshots), outside path added + listed in the + menu, AI command on an `ai: false` note refused |
 | P22.7 🧠 | Edit proposals + inline diff | ✅ | 6 proposal tests + 1 engine test (`edit_from_reply`); `qa_editor.py` 358/358; real app (fake AI): Fix grammar → diff (− red / + green, computed colours checked), Reject all leaves the note, Accept applies, one Ctrl+Z restores; chat *Apply to note* → diff of only the changed line (screenshots) |
-| P22.8 | Edit permission setting | ⬜ | |
+| P22.8 | Edit permission setting | ✅ | `ai.edits` ask / auto / readonly; 1 settings test; qa_editor 358/358; real app per mode: diff with Accept / changed at once / diff with Copy + Close only and `/summarize` refused |
 | P22.9 | Selection bar (Ask / Edit) + selection-to-chat setting + folder permission asked in the chat | ✅ | 4 tests (paths in a message, Allow from chat: recorded per vault, folder files sent, sub-folder covered, other vault not; setting; Edit spec); qa_editor 358/358; real app (fake AI): bar on a settled selection, Edit prompt focused → diff, With Ask: no chip until Ask, Ask focuses the chat, a folder in a message → card in the chat → Allow → saved + `[Outside file]` attached, not asked again (screenshots) |
-| P22.10 | Suggested prompts + own prompts file | ⬜ | |
-| P22.11 | Chat extras: regenerate, edit last, sources, folded reasoning | ⬜ | |
-| P22.12 | `@vault` search | ⬜ | |
+| P22.10 | Suggested prompts + own prompts file | ✅ | 4 tests; real app: selection → 4 chips + own prompt, click fills (not sent), chips hide while typing |
+| P22.11 | Chat extras: regenerate, edit last, sources, folded reasoning | ✅ | 2 engine tests + provider test; real app: Reasoning folded, sources a / b (b opens), ↻ keeps one answer, ✎ puts message + chip back |
+| P22.12 | `@vault` search | ✅ | 2 tests (index any-words query; best readable notes in, excluded out); real app: garden note found, private one not |
 
 ## Decision log
 <!-- YYYY-MM-DD · decision · reason · (who: user / claude) -->
@@ -716,3 +716,4 @@ Legend: 🧠 = needs Opus (see PLAN §6 model guidance) · ⬜ todo · 🔄 in p
 - 2026-10-28 · P22.7 AI edits as a diff · 1191 tests; qa_editor 358/358; real-app diff + Apply to note
 - 2026-10-28 · P22.1 changed to the `--ai` start flag · 1196 tests; real app with / without `--ai`
 - 2026-10-29 · P22.9 selection bar + setting + folder permission in chat · 1200 tests; qa_editor 358/358; real app
+- 2026-10-29 · P22.8, P22.10–P22.12 edit modes, suggested prompts, chat extras, @vault · 1209 tests; qa_editor 358/358; real app

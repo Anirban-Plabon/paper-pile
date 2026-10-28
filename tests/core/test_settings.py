@@ -327,3 +327,11 @@ def test_edit_selection_spec() -> None:
     spec = edit_selection("  make it shorter ")
     assert spec.source == "selection" and spec.replace_selection
     assert "as asked: make it shorter." in spec.instruction
+
+
+def test_ai_edits_setting() -> None:
+    from paper_pile.core.settings import ALL, parse_value, sanitized
+
+    assert sanitized({})["ai.edits"] == "ask"
+    assert all(parse_value(ALL["ai.edits"], v).ok for v in ("ask", "auto", "readonly"))
+    assert not parse_value(ALL["ai.edits"], "always").ok

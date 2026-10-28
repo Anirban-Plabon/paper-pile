@@ -42,12 +42,13 @@ const button = (label, cls, onClick) => {
 };
 
 class AddedLines extends WidgetType {
-  constructor(hunk) {
+  constructor(hunk, readonly) {
     super();
     this.hunk = hunk;
+    this.readonly = readonly;
   }
   eq(other) {
-    return other.hunk.id === this.hunk.id && other.hunk.insert === this.hunk.insert;
+    return other.hunk.id === this.hunk.id && other.hunk.insert === this.hunk.insert && other.readonly === this.readonly;
   }
   toDOM(view) {
     const box = document.createElement("div");
@@ -63,10 +64,18 @@ class AddedLines extends WidgetType {
     }
     const actions = document.createElement("div");
     actions.className = "pp-aidiff-actions";
-    actions.append(
-      button("Accept", "pp-aidiff-accept", () => report(view, "accept", this.hunk.id)),
-      button("Reject", "pp-aidiff-reject", () => report(view, "reject", this.hunk.id)),
-    );
+    if (this.readonly) {
+      // read-only (Settings → AI): nothing is applied; the new text can be copied
+      actions.append(
+        button("Copy", "pp-aidiff-copy", () => navigator.clipboard?.writeText(this.hunk.insert)),
+        button("Close", "pp-aidiff-reject", () => report(view, "reject", this.hunk.id)),
+      );
+    } else {
+      actions.append(
+        button("Accept", "pp-aidiff-accept", () => report(view, "accept", this.hunk.id)),
+        button("Reject", "pp-aidiff-reject", () => report(view, "reject", this.hunk.id)),
+      );
+    }
     box.appendChild(actions);
     return box;
   }
@@ -93,10 +102,10 @@ export const proposalDecorations = EditorView.decorations.compute([proposalField
       const last = doc.lineAt(Math.max(from, to - 1)).number;
       for (let n = first; n <= last; n++) out.push(lineDel.range(doc.line(n).from));
       const after = to >= doc.length ? doc.length : doc.lineAt(to - 1).to;
-      out.push(Decoration.widget({ widget: new AddedLines(h), block: true, side: 1 }).range(after));
+      out.push(Decoration.widget({ widget: new AddedLines(h, !!p.readonly), block: true, side: 1 }).range(after));
     } else {
       const at = doc.lineAt(from).from;
-      out.push(Decoration.widget({ widget: new AddedLines(h), block: true, side: -1 }).range(at));
+      out.push(Decoration.widget({ widget: new AddedLines(h, !!p.readonly), block: true, side: -1 }).range(at));
     }
   }
   return Decoration.set(out, true);
@@ -109,14 +118,13 @@ function barPanel(view) {
   label.className = "pp-aidiff-bar-text";
   const fill = (p) => {
     const n = p ? p.hunks.length : 0;
-    label.textContent = `AI suggests ${n} change${n === 1 ? "" : "s"}`;
+    label.textContent = `AI suggests ${n} change${n === 1 ? "" : "s"}${p && p.readonly ? " (read-only)" : ""}`;
   };
-  fill(view.state.field(proposalField));
-  dom.append(
-    label,
-    button("Accept all", "pp-aidiff-accept", () => report(view, "accept")),
-    button("Reject all", "pp-aidiff-reject", () => report(view, "reject")),
-  );
+  const p = view.state.field(proposalField);
+  fill(p);
+  dom.append(label);
+  if (!p || !p.readonly) dom.append(button("Accept all", "pp-aidiff-accept", () => report(view, "accept")));
+  dom.append(button(p && p.readonly ? "Close" : "Reject all", "pp-aidiff-reject", () => report(view, "reject")));
   return {
     dom,
     top: true,

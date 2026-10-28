@@ -290,3 +290,34 @@ async def test_edit_from_reply(vault: Vault, fake: FakeProvider) -> None:
     assert ai.edit_from_reply(ai.turns[-1]) is None
     await ask(ai, "loose text", selections=[ai.selection("free", "")])
     assert ai.edit_from_reply(ai.turns[-1]) is None  # not from a note
+
+
+async def test_sources_and_reasoning_kept_with_the_answer(vault: Vault, fake: FakeProvider) -> None:
+    ai = engine(vault, fake)
+    fake.thinking = "let me think"
+    text = await ask(ai, "about @b", EditorSnapshot("a.md", "# A\nalpha body\n"))
+    reply = ai.turns[-1]
+    assert reply.sources == ["a.md", "b.md"]
+    assert reply.reasoning == "let me think" and "think" not in text
+    ai.save()
+    again = engine(vault, fake)
+    assert again.open_chat(ai.chat_id)
+    assert again.turns[-1].sources == ["a.md", "b.md"] and again.turns[-1].reasoning
+
+
+async def test_regenerate_and_take_back(vault: Vault, fake: FakeProvider) -> None:
+    ai = engine(vault, fake)
+    assert ai.regenerate() is None and ai.take_back() is None
+    await ask(ai, "first")
+    await ask(ai, "second", selections=[ai.selection("picked words", "a.md")], notes=["b.md"])
+    out = ai.regenerate()
+    assert out is not None and [t.role for t in ai.turns] == ["user", "assistant", "user"]
+    assert out.turn.text == "second" and "picked words" in out.attached and out.notes == ["b"]
+    reply = ai.start_reply()
+    async for _ in ai.answer(reply, out, EditorSnapshot()):
+        pass
+    sent = fake.calls[-1]
+    assert sent[-1].content.endswith("second") and "picked words" in sent[-1].content
+    back = ai.take_back()
+    assert back is not None and back.text == "second" and back.quotes[0].text == "picked words"
+    assert [t.text.strip() for t in ai.turns] == ["first", "You said: first"]

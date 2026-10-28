@@ -143,6 +143,24 @@ def fts_query(user: str) -> str | None:
     return " ".join(quoted)
 
 
+_COMMON_WORDS = (  # left out of an any-words search
+    "the and for are but not you all any can her was one our out has have had his how its may "
+    "new now see who did get let put say she too use what when where which while with this that "
+    "from into about there their them they then than your some more most also just like does "
+    "will would could should please tell give show find notes note vault"
+)
+_COMMON = frozenset(_COMMON_WORDS.split())
+
+
+def fts_any_query(user: str, most: int = 12) -> str | None:
+    """A safe FTS5 query matching notes with ANY of the question's words (3+ letters, common
+    words left out), for finding notes about a question rather than an exact phrase."""
+    words = [w for w in _WORD.findall(user) if len(w) >= 3 and w.lower() not in _COMMON]
+    if not words:
+        return None
+    return " OR ".join(f'"{w}"' for w in list(dict.fromkeys(words))[:most])
+
+
 class Index:
     def __init__(self, vault: Vault) -> None:
         self.vault = vault
@@ -441,9 +459,10 @@ class Index:
                 found.append(Backlink(src, title, kind, line, raw, mtime))
         return found
 
-    def search(self, query: str, limit: int = 50) -> list[SearchHit]:
-        """Full-text search over title and body, best match first. Free text is safe to pass."""
-        match = fts_query(query)
+    def search(self, query: str, limit: int = 50, *, any_words: bool = False) -> list[SearchHit]:
+        """Full-text search over title and body, best match first. Free text is safe to pass.
+        ``any_words``: notes with any of the words (the AI's ``@vault``), not all of them."""
+        match = fts_any_query(query) if any_words else fts_query(query)
         if match is None:
             return []
         with self._lock:

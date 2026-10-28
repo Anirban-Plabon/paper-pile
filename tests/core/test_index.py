@@ -277,3 +277,13 @@ def test_search_snippets_leave_out_front_matter_and_heading_marks(vault: Vault) 
     assert "title:" not in hit.snippet and "---" not in hit.snippet and "#" not in hit.snippet
     assert "Filling" in hit.snippet
     assert [h.path for h in ix.search("Pie")][:1] == ["fm.md"]  # the title still counts
+
+
+def test_any_words_query() -> None:
+    from paper_pile.core.index import fts_any_query
+
+    assert (
+        fts_any_query("how often should I water the tomatoes?")
+        == '"often" OR "water" OR "tomatoes"'
+    )
+    assert fts_any_query("the and") is None

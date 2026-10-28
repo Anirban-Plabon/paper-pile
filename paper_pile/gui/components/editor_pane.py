@@ -175,6 +175,7 @@ class EditorPane:
         self._engine = ai
         self._ask_selection = ask_selection  # the selection bar's Ask: attach it to the chat
         self._proposals: dict[int, Proposal] = {}  # AI edits waiting for Accept / Reject, by tab
+        self._readonly: dict[int, bool] = {}  # shown read-only (Settings → AI → AI changes)
         self._ai_selection: dict[str, Any] | None = None  # set by Ctrl+J in the editor
         self._streams = 0
         self._table_lock = asyncio.Lock()  # table edits apply one after the other
@@ -848,6 +849,7 @@ class EditorPane:
         self._tops.pop(tab_id, None)
         self._section_heads.pop(tab_id, None)
         self._proposals.pop(tab_id, None)
+        self._readonly.pop(tab_id, None)
         next_active = self.tabs.close(tab_id)
         if next_active is not None and was_active:
             self._activate(next_active)  # switches the editor away from the closed tab first
@@ -1297,6 +1299,9 @@ class EditorPane:
             return
         if not await confirm_access(ai, self._host):
             return
+        if not spec.replace_selection and self._edit_mode() == "readonly":
+            self._toast("AI changes to notes are read-only (Settings → AI).", error=True)
+            return
         question = ""
         if spec.ask:
             asked = await self._ask_dialog()
@@ -1374,14 +1379,32 @@ class EditorPane:
             return
         await self.propose_edit(tab_id, text, start, start + len(original), result)
 
+    def _edit_mode(self) -> str:
+        """``ai.edits``: ask (a diff to accept), auto (applied at once) or readonly."""
+        return str(self._config.get("ai.edits", "ask")) if self._config else "ask"
+
     async def propose_edit(self, tab_id: int, text: str, start: int, end: int, new: str) -> None:
-        """Show replacing ``text[start:end]`` of tab ``tab_id`` by ``new`` as a diff."""
+        """Replace ``text[start:end]`` of tab ``tab_id`` by ``new`` as Settings → AI says: a diff
+        to accept (default), applied at once (one undo step), or a diff to read only."""
         path = self._tab_path(tab_id)
         proposal = propose(path or "", text, start, end, new) if path else None
         if proposal is None:
             self._toast("The AI suggests no changes.")
             return
+        mode = self._edit_mode()
+        if mode == "auto":
+            result = accept(proposal, text)
+            if result is not None:
+                changes = result[0]
+                edit = TextEdit(
+                    tuple(TextChange(c.start, c.end, c.insert) for c in changes),
+                    changes[-1].start + len(changes[-1].insert),
+                )
+                if await self._apply_edit(tab_id, text, edit, move_caret=False):
+                    self._toast("Changed by the AI · Ctrl+Z undoes it")
+            return
         self._proposals[tab_id] = proposal
+        self._readonly[tab_id] = mode == "readonly"
         await self._show_proposal(tab_id, text)
 
     async def propose_in_note(self, path: str, old: str, new: str) -> None:
@@ -1410,7 +1433,7 @@ class EditorPane:
                 }
                 for h in proposal.hunks
             ]
-            payload = {"id": proposal.id, "hunks": hunks}
+            payload = {"id": proposal.id, "hunks": hunks, "readonly": self._readonly.get(tab_id)}
         await self._editor_for(tab_id).show_proposal(tab_id, payload)
 
     async def _on_proposal(self, args: dict[str, Any]) -> None:
@@ -1423,6 +1446,8 @@ class EditorPane:
         text = await self._live_text(tab_id)
         if text is None:
             return
+        if args.get("action") == "accept" and self._readonly.get(tab_id):
+            return  # read-only: the diff only shows what the AI would change
         if args.get("action") == "reject":
             left = reject(proposal, int(hunk) if hunk is not None else None)
         else:

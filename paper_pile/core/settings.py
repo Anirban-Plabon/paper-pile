@@ -38,6 +38,7 @@ MOTIONS = ("off", "fast", "normal", "slow")
 MOTION_LABELS = {"off": "Off", "fast": "Fast", "normal": "Normal", "slow": "Slow"}
 ICON_COLORS = {"default": "Default", "accent": "Accent"}  # value -> shown
 SELECTION_TO_CHAT = {"auto": "Automatically", "button": "With Ask"}  # value -> shown
+EDIT_MODES = {"ask": "Ask first", "auto": "Apply at once", "readonly": "Read-only"}  # ai.edits
 MOTION_FACTORS = {"off": 0.0, "fast": 0.6, "normal": 1.0, "slow": 1.6}  # × every duration
 MODES = ("live", "source")
 PAPER_SIZES = ("A4", "Letter")  # core/printdoc.py PAPERS
@@ -433,6 +434,15 @@ SECTIONS: dict[str, tuple[Setting, ...]] = {
             essential=True,
         ),
         Setting(
+            "ai.edits",
+            "AI changes to notes",
+            "choice",
+            tuple(EDIT_MODES),
+            help="Ask first shows a diff to accept",
+            group="Context",
+            essential=True,
+        ),
+        Setting(
             "ai.selection_to_chat",
             "Selected text to chat",
             "choice",
@@ -440,6 +450,14 @@ SECTIONS: dict[str, tuple[Setting, ...]] = {
             help="Attached as you select, or only with Ask",
             group="Context",
             essential=True,
+        ),
+        Setting(
+            "ai.prompts_file",
+            "Your prompts",
+            "text",
+            placeholder="e.g. AI/prompts.md",
+            help="A list (- …) offered in the chat",
+            group="Context",
         ),
         Setting(
             "ai.context_budget",

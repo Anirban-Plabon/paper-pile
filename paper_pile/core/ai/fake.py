@@ -8,7 +8,7 @@ import asyncio
 from collections.abc import AsyncIterator, Sequence
 
 from paper_pile.core.ai.context import DIVIDER
-from paper_pile.core.ai.provider import ChatMessage, GenerationOptions, Health
+from paper_pile.core.ai.provider import ChatMessage, GenerationOptions, Health, Reasoning
 
 
 class FakeProvider:
@@ -21,6 +21,7 @@ class FakeProvider:
         self.up = True
         self.options: GenerationOptions | None = None
         self.max_context: int | None = 8192  # what context_length reports
+        self.thinking = ""  # reasoning streamed before the answer (a thinking model)
 
     async def chat(
         self,
@@ -28,12 +29,14 @@ class FakeProvider:
         *,
         model: str | None = None,
         options: GenerationOptions | None = None,
-    ) -> AsyncIterator[str]:
+    ) -> AsyncIterator[str | Reasoning]:
         self.calls.append(list(messages))
         self.options = options
         last = next((m.content for m in reversed(messages) if m.role == "user"), "")
         last = last.rsplit(DIVIDER, 1)[-1]
         text = self.reply if self.reply is not None else f"You said: {last.strip()[:200]}"
+        if self.thinking:
+            yield Reasoning(self.thinking)
         for word in text.split(" "):
             await asyncio.sleep(self.delay)
             yield word + " "

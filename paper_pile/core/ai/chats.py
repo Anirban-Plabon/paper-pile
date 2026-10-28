@@ -50,6 +50,8 @@ class SavedTurn:
     error: bool = False
     quotes: list[SavedQuote] = field(default_factory=list)
     notes: list[str] = field(default_factory=list)  # attached notes (link names), kept in context
+    sources: list[str] = field(default_factory=list)  # notes an answer was given from (paths)
+    reasoning: str = ""  # a thinking model's reasoning for an answer
 
 
 @dataclass(slots=True)
@@ -131,6 +133,8 @@ def _turn(raw: Any) -> SavedTurn | None:
         bool(raw.get("error", False)),
         [q for q in map(_quote, _list(raw.get("quotes"))) if q is not None],
         [n for n in _list(raw.get("notes")) if isinstance(n, str)],
+        [n for n in _list(raw.get("sources")) if isinstance(n, str)],
+        str(raw.get("reasoning", "") or ""),
     )
 
 

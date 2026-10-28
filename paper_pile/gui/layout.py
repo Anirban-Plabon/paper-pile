@@ -687,6 +687,7 @@ class MainLayout:
             open_settings=lambda: self.open_settings("AI"),
             enabled=self.ai_on,
             apply_to_note=self._apply_to_note,
+            open_note=lambda path: self.bus.publish("tree.open", path=path),
         )
         self.chat.build()
 

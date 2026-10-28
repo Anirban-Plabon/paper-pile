@@ -20,6 +20,13 @@ class ChatMessage:
 
 
 @dataclass(frozen=True, slots=True)
+class Reasoning:
+    """A piece of a thinking model's reasoning: streamed along with the answer, not part of it."""
+
+    text: str
+
+
+@dataclass(frozen=True, slots=True)
 class Health:
     ok: bool
     message: str = ""  # what to tell the user when not ok
@@ -58,9 +65,10 @@ class Provider(Protocol):
         *,
         model: str | None = None,
         options: GenerationOptions | None = None,
-    ) -> AsyncIterator[str]:
-        """The reply to ``messages`` as it is generated, piece by piece. Cancelling the task that
-        iterates it stops the generation."""
+    ) -> AsyncIterator[str | Reasoning]:
+        """The reply to ``messages`` as it is generated, piece by piece (a thinking model's
+        reasoning as :class:`Reasoning` pieces). Cancelling the task that iterates it stops the
+        generation."""
         ...
 
     async def embed(self, texts: Sequence[str], *, model: str | None = None) -> list[list[float]]:

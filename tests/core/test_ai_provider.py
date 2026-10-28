@@ -14,6 +14,7 @@ from paper_pile.core.ai.provider import (
     ModelNotFoundError,
     ProviderError,
     ProviderUnavailableError,
+    Reasoning,
 )
 
 MSGS = [ChatMessage("system", "be brief"), ChatMessage("user", "hi")]
@@ -28,7 +29,7 @@ def provider(handler: Callable[[httpx.Request], httpx.Response]) -> OllamaProvid
 
 
 async def collect(p: OllamaProvider, **kw: str) -> str:
-    return "".join([piece async for piece in p.chat(MSGS, **kw)])
+    return "".join([piece async for piece in p.chat(MSGS, **kw) if isinstance(piece, str)])
 
 
 async def test_chat_streams_the_reply_in_pieces() -> None:
@@ -67,6 +68,8 @@ async def test_reasoning_text_is_not_part_of_the_answer() -> None:
         )
 
     assert await collect(provider(handler)) == "Answer"
+    pieces = [piece async for piece in provider(handler).chat(MSGS)]
+    assert pieces == [Reasoning("hmm"), "Answer"]  # kept apart, shown folded
 
 
 async def test_not_running_is_a_friendly_error() -> None:

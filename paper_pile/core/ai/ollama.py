@@ -16,6 +16,7 @@ from paper_pile.core.ai.provider import (
     ModelNotFoundError,
     ProviderError,
     ProviderUnavailableError,
+    Reasoning,
 )
 
 log = logging.getLogger("paper_pile.ai")
@@ -76,15 +77,18 @@ class OllamaProvider:
         *,
         model: str | None = None,
         options: GenerationOptions | None = None,
-    ) -> AsyncIterator[str]:
+    ) -> AsyncIterator[str | Reasoning]:
         name = model or self.model
         payload = [{"role": m.role, "content": m.content} for m in messages]
         extra = ollama_options(options)
         try:
             stream = await self._client.chat(model=name, messages=payload, stream=True, **extra)
             async for part in stream:
+                thinking = (part.message.thinking or "") if part.message else ""
+                if thinking:  # reasoning is not part of the answer; shown folded above it
+                    yield Reasoning(thinking)
                 text = part.message.content if part.message else ""
-                if text:  # reasoning ("thinking") text is not part of the answer
+                if text:
                     yield text
         except Exception as exc:
             raise self._friendly(exc, name) from exc

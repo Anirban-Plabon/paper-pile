@@ -235,3 +235,33 @@ async def test_allow_a_folder_from_the_chat(vault: Vault, cfg_dir: Path, tmp_pat
     assert grant is not None and grant.allow_paths == [str(papers.resolve())]
     other = make(Vault(tmp_path), FakeProvider(delay=0), cfg_dir)  # another vault: not granted
     assert not other.has_access()
+
+
+async def test_vault_search_attaches_the_best_readable_notes(cfg_dir: Path, tmp_path: Path) -> None:
+    from paper_pile.core.ai.access import Grant
+    from paper_pile.core.index import Index
+
+    v = Vault(tmp_path / "sv")
+    v.root.mkdir()
+    v.create_note("garden.md", "Tomatoes need sun. Water the tomatoes daily.")
+    v.create_note("cooking.md", "A tomato soup recipe.")
+    v.create_folder("private")
+    v.create_note("private/diary.md", "My tomatoes died.")
+    v.create_note("other.md", "Nothing about plants.")
+    index = Index(v)
+    index.rebuild()
+    fake = FakeProvider(delay=0)
+    save_grant(v.root, Grant("now", [".md"], exclude=["private"]), cfg_dir)
+    ai = AiEngine(v, Config(vault=v.root), index, provider_factory=lambda _c: fake,
+                  access_dir=cfg_dir)  # fmt: skip
+    out = ai.add_message("@vault how often should I water the tomatoes?")
+    async for _ in ai.answer(ai.start_reply(), out, EditorSnapshot()):
+        pass
+    sent = fake.calls[-1][-1].content
+    assert "Water the tomatoes daily" in sent
+    assert "My tomatoes died" not in sent and "Nothing about plants" not in sent
+    out = ai.add_message("no search here about tomatoes")
+    async for _ in ai.answer(ai.start_reply(), out, EditorSnapshot()):
+        pass
+    assert "tomato soup" not in fake.calls[-1][-1].content
+    index.close()

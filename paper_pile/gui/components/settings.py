@@ -31,6 +31,7 @@ from paper_pile.core.settings import (
     ACCENTS,
     ALL,
     CODE_FONTS,
+    EDIT_MODES,
     FONTS,
     ICON_COLORS,
     LANGUAGES,
@@ -89,6 +90,7 @@ _SEGMENTED = {
     "print.paper",
     "editor.page_view",
     "ai.selection_to_chat",
+    "ai.edits",
 }
 _SCOPES = (("global", "All vaults"), ("vault", "This vault"))
 _FOLDED = {("AI", "Advanced")}  # (section, group) shown in a closed expansion
@@ -420,6 +422,7 @@ class SettingsPane:
                 "appearance.motion": MOTION_LABELS,
                 "appearance.icons": ICON_COLORS,
                 "ai.selection_to_chat": SELECTION_TO_CHAT,
+                "ai.edits": EDIT_MODES,
             }.get(setting.key, {})
             self._segmented(
                 [(c, labels.get(c, c) if not icons else "", icons.get(c)) for c in setting.choices],

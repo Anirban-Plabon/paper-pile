@@ -78,6 +78,8 @@ DEFAULTS: dict[str, Any] = {
         "save_chats": True,
         "keep_chats_days": 0,  # 0 = forever
         "chats_folder": ".memory",  # vault-relative, or absolute
+        "edits": "ask",  # ask: a diff to accept | auto: applied at once | readonly: shown only
+        "prompts_file": "",  # your suggested prompts: a markdown list (vault-relative / absolute)
         "selection_to_chat": "auto",  # auto: a selection becomes a chip | button: only with Ask
     },
     "paste": {"smart_paste": True},

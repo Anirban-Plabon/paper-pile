@@ -30,8 +30,9 @@ from paper_pile.core.ai.chats import SavedChat, SavedQuote, list_chats
 from paper_pile.core.ai.chats import SavedTurn as Turn
 from paper_pile.core.ai.context import EditorSnapshot, source_view
 from paper_pile.core.ai.engine import AiEngine, Outgoing, Selection
+from paper_pile.core.ai.prompts import load_prompts, prompts_file, selection_kind, suggestions
 from paper_pile.core.ai.provider import Health, ProviderError, ProviderUnavailableError
-from paper_pile.core.links import wikilink_to
+from paper_pile.core.links import resolve_wikilink, wikilink_to
 from paper_pile.core.parser import render_html
 from paper_pile.core.picker import search_notes
 from paper_pile.gui.components.ai_access import confirm_access
@@ -68,12 +69,14 @@ class ChatPane:
         open_settings: Callable[[], None] = lambda: None,
         enabled: Callable[[], bool] = lambda: True,  # the AI feature switch
         apply_to_note: Callable[[str, str, str], Awaitable[None]] | None = None,
+        open_note: Callable[[str], None] = lambda path: None,
     ) -> None:
         self.ai = ai
         self.vault = ai.vault
         self.config = ai.config
         self._enabled = enabled
         self._apply_to_note = apply_to_note  # (path, old, new): show an answer as a diff there
+        self._open_note = open_note  # a source under an answer was clicked
         self._snapshot = snapshot
         self._insert = insert_text
         self._on_health = on_health
@@ -107,6 +110,7 @@ class ChatPane:
         self._chips: ui.column
         self._refs: ui.row
         self._strip: ui.row
+        self._suggest: ui.row
         self._preview: ui.column
         self._card: ui.column
         self._plus: ui.button
@@ -143,6 +147,8 @@ class ChatPane:
                         self._refs = ui.row().classes("pp-chat-refs")
                         self._chips = ui.row().classes("pp-chat-chips")
                         self._preview = ui.column().classes("pp-chat-preview")
+                    self._suggest = ui.row().classes("pp-chat-suggest")  # prompts for it
+                    self._suggest.set_visibility(False)
                     # one line: + | text | model | send (the buttons stay at the bottom as it grows)
                     with ui.row().classes("pp-chat-row items-end no-wrap w-full"):
                         self._plus_button()
@@ -416,9 +422,17 @@ class ChatPane:
                 if rest:  # notes and files (the quotes' lines come first)
                     ui.label(rest).classes("pp-muted pp-msg-attach")
                 ui.label(turn.text).classes("pp-msg-text")
+                if self._task is None and turn is self._last("user"):
+                    with ui.row().classes("pp-msg-actions pp-msg-actions-user items-center"):
+                        ui.button(icon=ico("pencil"), on_click=self._edit_last).props(
+                            "flat dense size=xs"
+                        ).props('data-tip="Edit and send again"')
             return None
         with ui.column().classes("pp-msg pp-msg-ai" + (" pp-msg-error" if turn.error else "")):
             ui.label("Assistant").classes("pp-msg-who")
+            if turn.reasoning:  # a thinking model's reasoning, folded away
+                with ui.expansion("Reasoning").props("dense").classes("pp-msg-reasoning"):
+                    ui.label(turn.reasoning.strip()).classes("pp-muted pp-msg-reasoning-text")
             waiting = not turn.text and not turn.error and self._task is not None
             if waiting and self.ai.turns and turn is self.ai.turns[-1]:  # until the first words
                 content = (
@@ -429,15 +443,30 @@ class ChatPane:
             body = ui.html(content, sanitize=False).classes("pp-msg-body")
             if turn.summary:
                 ui.label(turn.summary).classes("pp-muted pp-msg-ctx")
+            if turn.sources and not turn.error:
+                with ui.row().classes("pp-msg-sources items-center"):
+                    ui.label("Sources").classes("pp-muted")
+                    for path in turn.sources:
+                        name = path.rsplit("/", 1)[-1].rsplit(".", 1)[0]
+                        source = ui.button(
+                            name, on_click=lambda _e=None, p=path: self._open_note(p)
+                        )
+                        source.props("flat dense no-caps").classes("pp-msg-source")
+                        tip(source, path)
             if not turn.error and turn.text.strip():
                 with ui.row().classes("pp-msg-actions items-center"):
                     ui.button(icon=ico("copy"), on_click=lambda t=turn: self._copy(t.text)).props(
                         "flat dense size=xs"
                     ).props('data-tip="Copy"')
-                    ui.button(
-                        icon=ico("file-plus"),
-                        on_click=lambda t=turn: self._insert_reply(t.text),
-                    ).props("flat dense size=xs").props('data-tip="Insert into note"')
+                    if self.ai.setting("ai.edits", "ask") != "readonly":
+                        ui.button(
+                            icon=ico("file-plus"),
+                            on_click=lambda t=turn: self._insert_reply(t.text),
+                        ).props("flat dense size=xs").props('data-tip="Insert into note"')
+                    if self._task is None and turn is self.ai.turns[-1]:
+                        ui.button(icon=ico("refresh-cw"), on_click=self._regenerate).props(
+                            "flat dense size=xs"
+                        ).props('data-tip="Answer again"')
                     target = self.ai.edit_from_reply(turn) if self._apply_to_note else None
                     if target is not None and self._apply_to_note is not None:
                         apply = self._apply_to_note
@@ -582,6 +611,30 @@ class ChatPane:
         self._strip.set_visibility(
             bool(self._selections or self._notes or self._files or self._include_tabs)
         )
+        self._render_suggestions()
+
+    def _render_suggestions(self) -> None:
+        """Prompts that fit what is attached (and the user's own), while the box is empty."""
+        kinds = [selection_kind(p.kind, p.text) for p in reversed(self._selections)]
+        if self._notes or self._files or self._include_tabs:
+            kinds.append("note")
+        empty = not (self._input.value or "").strip()
+        shown = suggestions(kinds, self._own_prompts()) if empty else []
+        self._suggest.clear()
+        with self._suggest:
+            for prompt in shown:
+                chip = ui.button(prompt, on_click=lambda _e=None, p=prompt: self._use_prompt(p))
+                chip.props("flat dense no-caps").classes("pp-chat-suggestion")
+        self._suggest.set_visibility(bool(shown))
+
+    def _own_prompts(self) -> list[str]:
+        setting = str(self.ai.setting("ai.prompts_file", "") or "")
+        return load_prompts(prompts_file(self.vault.root, setting))
+
+    def _use_prompt(self, prompt: str) -> None:
+        """A suggested prompt was picked: it fills the box (sent only with Enter / Send)."""
+        self._input.set_value(prompt)
+        self.focus_input()
 
     def _ref_chip(self, icon: str, label: str, remove: Callable[[], None], tip: str = "") -> None:
         row = ui.row().classes("pp-chat-ref items-center no-wrap")
@@ -794,6 +847,8 @@ class ChatPane:
                 f"(document.querySelector('#c{self._card.id} textarea'))"
             )
         self._update_mentions(value)
+        if bool(value.strip()) == self._suggest.visible:
+            self._render_suggestions()  # typing hides the prompts, an empty box shows them
 
     def _update_mentions(self, value: str) -> None:
         m = _MENTION_TAIL.search(value)
@@ -895,6 +950,41 @@ class ChatPane:
             set_icon(self._send, "arrow-up")
             self._render_log()
             self.ai.save()
+
+    def _last(self, role: str) -> Turn | None:
+        return next((t for t in reversed(self.ai.turns) if t.role == role), None)
+
+    def _regenerate(self) -> None:
+        """Answer the last message again (the old answer goes)."""
+        if self._task is not None:
+            return
+        out = self.ai.regenerate()
+        if out is None:
+            return
+        self._task = background_tasks.create(self._answer(out))
+        set_icon(self._send, "square")
+
+    def _edit_last(self) -> None:
+        """Take the last message back into the box, with what was attached to it."""
+        if self._task is not None:
+            return
+        turn = self.ai.take_back()
+        if turn is None:
+            return
+        self._selections = [
+            Selection(q.text, q.label, q.note, q.kind, q.size if q.kind != "Selected text" else "")
+            for q in turn.quotes
+        ]
+        paths = self.ai.note_paths()
+        found = (resolve_wikilink(name, "", paths) for name in turn.notes)
+        self._notes = [p for p in found if p is not None]
+        self._open = None
+        self._render_log()
+        self._render_selections()
+        self._render_refs()
+        self._input.set_value(turn.text)
+        self.ai.save()
+        self.focus_input()
 
     async def _ask_path(self, path: Path) -> bool:
         """The message names a folder or file outside the vault: ask in the chat whether the AI

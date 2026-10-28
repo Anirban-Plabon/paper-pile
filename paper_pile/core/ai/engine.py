@@ -51,7 +51,7 @@ from paper_pile.core.ai.context import (
 from paper_pile.core.ai.factory import chat_model, generation_options, make_provider
 from paper_pile.core.ai.instructions import system_instruction
 from paper_pile.core.ai.notecache import NoteCache
-from paper_pile.core.ai.provider import ChatMessage, Health, Provider, ProviderError
+from paper_pile.core.ai.provider import ChatMessage, Health, Provider, ProviderError, Reasoning
 from paper_pile.core.commands import StreamInsert
 from paper_pile.core.config import Config
 from paper_pile.core.links import resolve_wikilink, wikilink_to
@@ -60,6 +60,8 @@ from paper_pile.core.vault import Vault
 
 log = logging.getLogger("paper_pile.ai.engine")
 
+VAULT_TAG = re.compile(r"(?<![\w@])@vault\b", re.IGNORECASE)  # search the vault for the message
+VAULT_HITS = 3
 _ONE_FENCE = re.compile(r"```[\w-]*\n(.*?)\n?```", re.DOTALL)  # a reply that is one code block
 
 HISTORY_TURNS = 12  # at most this many earlier messages go with a new one (ai.history_turns)
@@ -427,6 +429,8 @@ class AiEngine:
         """What goes with the newest message: its attachments, the open note, the notes it and
         the earlier messages of the chat mention or attach (newest first), tabs, linked notes."""
         policy = self._require_access()
+        found = self.vault_search(question)
+        question = VAULT_TAG.sub(" ", question)
         earlier: list[str] = []
         for turn in reversed(self.turns[:-2]):
             if turn.role == "user":
@@ -437,7 +441,7 @@ class AiEngine:
             current_path=current,
             current_text=snap.text if current else "",
             selection=attached or (snap.selection if current else ""),  # chips: sent on purpose
-            mentions=list(dict.fromkeys([*extract_mentions(question), *notes, *earlier])),
+            mentions=list(dict.fromkeys([*extract_mentions(question), *notes, *found, *earlier])),
             open_tabs=[(p, t) for p, t in snap.tabs if policy.may_send(p, t)],
             include_tabs=include_tabs,
             index=self.index,
@@ -445,6 +449,20 @@ class AiEngine:
             paths=self.readable_paths(),
             read=self.read_note,
         )
+
+    def vault_search(self, question: str) -> list[str]:
+        """``@vault`` in a message: the best few notes for it from the vault's index, that the AI
+        may read (as link names)."""
+        if not VAULT_TAG.search(question):
+            return []
+        search = getattr(self.index, "search", None)
+        if not callable(search):
+            return []
+        hits = search(VAULT_TAG.sub(" ", question), limit=VAULT_HITS * 4, any_words=True)
+        policy = self.policy()
+        paths = [h.path for h in hits if policy.may_read(h.path)][:VAULT_HITS]
+        known = set(self.note_paths())
+        return [wikilink_to(p, "", known) for p in paths]
 
     def system_prompt(self) -> str:
         """The same for every message of a chat (nothing that changes per message), so the
@@ -519,9 +537,43 @@ class AiEngine:
         reply.summary = f"{context.summary()} · {short_count(used)} / {short_count(window)} tokens"
         if compacted:
             reply.summary += " · earlier messages summarized"
-        async for piece in self.stream(messages, window):
+        reply.sources = list(dict.fromkeys(p.path for p in context.parts if p.path))
+
+        def reasoned(text: str) -> None:
+            reply.reasoning += text
+
+        async for piece in self.stream(messages, window, reasoned):
             reply.text += piece
             yield piece
+
+    # ---- redoing the last exchange -------------------------------------------------------
+
+    def _outgoing_for(self, turn: SavedTurn) -> Outgoing:
+        """What an earlier user message sent along, rebuilt from the saved turn."""
+        attached = [f"{q.label}:\n{q.text.strip()}" for q in turn.quotes]
+        attached += [f"File {p}:\n{body.strip()}" for p, body in self.outside_text(turn.text)]
+        return Outgoing(turn, "\n\n".join(attached), list(turn.notes))
+
+    def regenerate(self) -> Outgoing | None:
+        """Drop the last answer so the last message is answered again (None when the chat does
+        not end with a message and its answer)."""
+        if len(self.turns) < 2 or self.turns[-1].role != "assistant":
+            return None
+        asked = self.turns[-2]
+        if asked.role != "user":
+            return None
+        self.turns.pop()
+        return self._outgoing_for(asked)
+
+    def take_back(self) -> SavedTurn | None:
+        """Remove the last message (and its answer) to edit and send it again; the message."""
+        end = len(self.turns) - (1 if self.turns and self.turns[-1].role == "assistant" else 0)
+        if end < 1 or self.turns[end - 1].role != "user":
+            return None
+        asked = self.turns[end - 1]
+        del self.turns[end - 1 :]
+        self.summarized = min(self.summarized, len(self.turns))
+        return asked
 
     # ---- compaction ----------------------------------------------------------------------
 
@@ -600,14 +652,22 @@ class AiEngine:
     # ---- the provider --------------------------------------------------------------------
 
     async def stream(
-        self, messages: Sequence[ChatMessage], window: int | None = None
+        self,
+        messages: Sequence[ChatMessage],
+        window: int | None = None,
+        on_reasoning: Callable[[str], None] | None = None,
     ) -> AsyncIterator[str]:
         """The model's answer to ``messages``, with the chosen model, the options and the
-        context window (``window``, else :meth:`window`)."""
+        context window (``window``, else :meth:`window`). Reasoning goes to ``on_reasoning``
+        (dropped without it), never into the answer."""
         size = window or await self.window()
         options = replace(generation_options(self.config), num_ctx=size)
         async for piece in self.provider.chat(messages, model=self.model(), options=options):
-            yield piece
+            if isinstance(piece, Reasoning):
+                if on_reasoning is not None:
+                    on_reasoning(piece.text)
+            else:
+                yield piece
 
     # ---- AI commands (answers written into the note) -------------------------------------
 
