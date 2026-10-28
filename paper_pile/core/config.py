@@ -72,7 +72,7 @@ DEFAULTS: dict[str, Any] = {
         "instructions_file": "",
         "temperature": 0.8,
         "top_p": 0.9,
-        "num_ctx": 0,  # 0 = the model's default
+        "num_ctx": 0,  # 0 = automatic: the model's limit, at most 8192 (ai/engine.py)
         "keep_alive": 5,  # minutes
         "history_turns": 12,
         "save_chats": True,

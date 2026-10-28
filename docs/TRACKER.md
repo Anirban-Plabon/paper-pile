@@ -6,7 +6,7 @@
 Legend: 🧠 = needs Opus (see PLAN §6 model guidance) · ⬜ todo · 🔄 in progress · ✅ done · ⛔ blocked · ⏭️ skipped/deferred
 
 ## Current focus
-- **Phase:** P22 — AI redesign (user request 2026-10-28, PLAN §4.26): P22.1–P22.2 done; next: P22.3 (context budget from the model)
+- **Phase:** P22 — AI redesign (user request 2026-10-28, PLAN §4.26): P22.1–P22.3 done; next: P22.4 (cache-friendly prompt order)
 - **Phase:** P21 — Note header, pins, small UI fixes (user request 2026-10-24, PLAN §4.25): built; P20's next step (Tailwind off) waits
 - **Phase:** P20 — Memory (user request 2026-10-24, PLAN §4.24): leaks fixed (dialogs, timing entries); small heap creep left (Open issue); next: Tailwind off with a screenshot comparison, then the engine options (system WebKitGTK, browser app mode)
 - **Before:** P19 — Performance (PLAN §4.23): done; next candidates in the Decision log (save off the UI thread, watcher echo, tab strip in place)
@@ -264,7 +264,7 @@ Legend: 🧠 = needs Opus (see PLAN §6 model guidance) · ⬜ todo · 🔄 in p
 |---|---|---|---|
 | P22.1 | AI as the `ai` extra | ✅ | 3 tests (no `ollama` import at start; hidden `ollama` → AI off + hint); real no-extra venv: `--serve` starts, no Chat tab, AI button hidden, Settings AI switch disabled with the hint (screenshot) |
 | P22.2 🧠 | `AiEngine` in core; chat + AI commands use it | ✅ | `core/ai/engine.py`; 8 engine tests (FakeProvider); chat.py −250 lines (no prompt / history / saving logic), editor pane and *Write with AI* go through `AiEngine.stream`; real app (fake AI): chat reply + saved chat + title, `/summarize` streams into the note |
-| P22.3 | Context budget from the model; token-based history; meter | ⬜ | |
+| P22.3 | Context budget from the model; token-based history; token count | ✅ | `context_length` on every provider (Ollama `show`); 7 new tests (window per case, 30-turn chat + huge note fits a 2k window, newest kept); real app: "Context: note · 81 / 8k tokens" |
 | P22.4 | Cache-friendly prompt order; per-turn context; mtime cache | ⬜ | |
 | P22.5 | Basic compaction + `/compact` | ⬜ | |
 | P22.6 | Access scope + per-vault grants (`ai_access.json`) + Settings → AI → Access | ⬜ | |
@@ -467,6 +467,7 @@ Legend: 🧠 = needs Opus (see PLAN §6 model guidance) · ⬜ todo · 🔄 in p
 | 2026-10-28 | P22 order: engine + extra first (P22.1–2), then context / cache / compaction (3–5), access (6), edits (7–9), prompts and extras (10–12) | Everything else plugs into the engine; access must exist before `@vault` search | claude |
 | 2026-10-28 | AI access is granted per vault and recorded in `ai_access.json` (config folder, not the vault), keyed by the exact resolved vault path; no inheritance between parent / child / other vaults; first use asks | User: access must be recorded in a settings file like a vault permission; opening another vault must ask again and never reuse B's grant. Kept outside the vault so a copied vault cannot grant itself | user |
 | 2026-10-28 | `ollama` only in the `ai` extra (not also in the dev group): `uv sync --extra ai` = with AI, plain `uv sync` = without; `uv run` is an inexact sync, so it keeps what was installed. Provider tests skip without it. `PAPER_PILE_NO_AI=1` simulates the missing extra. AI-off-when-missing lives in `feature_on` / `sanitized`, so every existing "AI off" path applies | One switch point instead of checks in every caller; a dev-group copy would make plain `uv sync` install AI too | claude |
+| 2026-10-28 | P22.3: `num_ctx` is always sent (automatic = the model's limit, at most 8k); the token count goes in each reply's context line, not the composer; no calibration from Ollama's `prompt_eval_count` | Found: with "0 = model default" nothing was sent, so Ollama used its smaller server default (2–4k) and silently cut prompts the app built up to 6k + history. A composer meter would rebuild the context (reading notes) on every keystroke (UI-path rule). `prompt_eval_count` leaves out the cached prefix, so it cannot correct the estimate | claude |
 
 ## Issues log
 <!-- YYYY-MM-DD · task · symptom → root cause → fix · (gotcha added? y/n) -->
@@ -703,3 +704,4 @@ Legend: 🧠 = needs Opus (see PLAN §6 model guidance) · ⬜ todo · 🔄 in p
 - 2026-10-25 · Settings first heading spacing equal above / below · ink measured at 4×
 - 2026-10-28 · P22.1 AI as the `ai` extra · 1152 tests; no-extra venv run in `--serve` + offscreen screenshot
 - 2026-10-28 · P22.2 `AiEngine` · 1160 tests; real app with fake AI (chat, saved chat, `/summarize`)
+- 2026-10-28 · P22.3 context window from the model · 1167 tests; real app reply line

@@ -119,6 +119,18 @@ class OllamaProvider:
                 )
         return out
 
+    async def context_length(self, model: str | None = None) -> int | None:
+        """From the model's metadata (``<architecture>.context_length``)."""
+        try:
+            info = await self._probe.show(model or self.model)
+        except Exception:
+            log.debug("no model info for %s", model or self.model, exc_info=True)
+            return None
+        for key, value in (info.modelinfo or {}).items():
+            if key.endswith(".context_length") and isinstance(value, int) and value > 0:
+                return value
+        return None
+
     async def health(self) -> Health:
         try:
             listing = await self._listing()

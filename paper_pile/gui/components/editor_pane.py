@@ -1278,7 +1278,7 @@ class EditorPane:
         selected = text[selection[0] : selection[1]] if selection else ""
         body_text = text[:anchor] + text[end:]
         self.keep_version(path, body_text, "before AI")
-        messages = ai.command_messages(
+        messages = await ai.command_messages(
             spec, path=path, text=body_text, caret=anchor, selected=selected, question=question
         )
         self._streams += 1

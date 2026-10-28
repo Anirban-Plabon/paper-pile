@@ -437,7 +437,7 @@ SECTIONS: dict[str, tuple[Setting, ...]] = {
             "int",
             minimum=500,
             maximum=200000,
-            help="Note text per message",
+            help="Most note text per message",
             group="Context",
         ),
         Setting(
@@ -514,7 +514,7 @@ SECTIONS: dict[str, tuple[Setting, ...]] = {
             minimum=0,
             maximum=262144,
             step=2048,
-            help="0 = model default",
+            help="0 = automatic (up to 8k)",
             group="Advanced",
         ),
         Setting(

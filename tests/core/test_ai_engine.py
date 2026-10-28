@@ -7,7 +7,7 @@ import pytest
 from paper_pile.core.ai.attachments import FileRef
 from paper_pile.core.ai.chats import load_chat
 from paper_pile.core.ai.context import EditorSnapshot
-from paper_pile.core.ai.engine import NOTE_ONLY, AiEngine
+from paper_pile.core.ai.engine import NOTE_ONLY, AiEngine, message_tokens, short_count
 from paper_pile.core.ai.fake import FakeProvider
 from paper_pile.core.commands import StreamInsert
 from paper_pile.core.config import Config
@@ -115,18 +115,18 @@ def test_save_off_and_empty_chat(vault: Vault, fake: FakeProvider) -> None:
     assert list(ai.chats_dir().glob("*.json")) == []
 
 
-def test_command_messages(vault: Vault, fake: FakeProvider) -> None:
+async def test_command_messages(vault: Vault, fake: FakeProvider) -> None:
     ai = engine(vault, fake)
     text = "intro\n" + "x" * 5000 + "\nEND"
     fix = StreamInsert("Fix it.", source="selection", replace_selection=True)
-    msgs = ai.command_messages(fix, path="a.md", text=text, caret=0, selected="teh cat")
+    msgs = await ai.command_messages(fix, path="a.md", text=text, caret=0, selected="teh cat")
     assert msgs[0].content.endswith(NOTE_ONLY) and "teh cat" in msgs[0].content
     assert msgs[1].content == "Fix it.\n\nText:\nteh cat"
     cont = StreamInsert("Continue.", source="before")
-    msgs = ai.command_messages(cont, path="a.md", text=text, caret=len(text))
+    msgs = await ai.command_messages(cont, path="a.md", text=text, caret=len(text))
     assert msgs[1].content.endswith("END") and len(msgs[1].content) < 4100
     ask_it = StreamInsert("", source="auto", ask=True)
-    msgs = ai.command_messages(ask_it, path="a.md", text="note", caret=0, question="Why?")
+    msgs = await ai.command_messages(ask_it, path="a.md", text="note", caret=0, question="Why?")
     assert msgs[1].content == "Why?" and not msgs[0].content.endswith(NOTE_ONLY)
 
 
@@ -134,3 +134,44 @@ async def test_stream_passes_model_and_options(vault: Vault, fake: FakeProvider)
     ai = engine(vault, fake, ai__temperature=0.3)
     assert "".join([p async for p in ai.stream([])]) == "You said:  "
     assert fake.options is not None and fake.options.temperature == 0.3
+
+
+@pytest.mark.parametrize(
+    ("model_max", "num_ctx", "expected"),
+    [(131072, 0, 8192), (4096, 0, 4096), (None, 0, 8192), (4096, 16384, 16384)],
+)
+async def test_window_from_the_model_and_sent_to_it(
+    vault: Vault, fake: FakeProvider, model_max: int | None, num_ctx: int, expected: int
+) -> None:
+    fake.max_context = model_max
+    ai = engine(vault, fake, ai__num_ctx=num_ctx)
+    assert await ai.window() == expected
+    await ask(ai, "hi")
+    assert fake.options is not None and fake.options.num_ctx == expected
+
+
+async def test_long_chat_never_overflows_the_window(vault: Vault, fake: FakeProvider) -> None:
+    fake.max_context = 2048
+    ai = engine(vault, fake, ai__history_turns=50)
+    for i in range(30):
+        ai.add_message(f"question {i} " + "q" * 300)
+        ai.start_reply().text = f"answer {i} " + "a" * 300
+    big = "note line\n" * 2000  # far more than the window
+    await ask(ai, "last one", EditorSnapshot("a.md", big))
+    sent = fake.calls[-1]
+    assert message_tokens(sent) <= 2048 - AiEngine.answer_room(2048)
+    assert sent[-1].content == "last one"
+    assert sent[-2].content.startswith("answer 29")  # the newest turns are the ones kept
+    assert len(sent) < 30
+    assert ai.turns[-1].summary.endswith("/ 2k tokens") and "(some cut)" in ai.turns[-1].summary
+
+
+def test_short_count() -> None:
+    assert [short_count(n) for n in (850, 1536, 2048, 2150, 8192, 131072)] == [
+        "850",
+        "1.5k",
+        "2k",
+        "2.1k",
+        "8k",
+        "128k",
+    ]

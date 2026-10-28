@@ -220,3 +220,16 @@ def test_generation_options_from_the_config(tmp_path: Path) -> None:
     opts = generation_options(config)
     assert (opts.temperature, opts.top_p, opts.num_ctx) == (0.3, 0.9, 16384)
     assert generation_options(None).temperature is None
+
+
+async def test_context_length_from_model_info() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.url.path == "/api/show"
+        name = json.loads(request.content)["model"]
+        if name == "gone":
+            return httpx.Response(404, json={"error": "model not found"})
+        return httpx.Response(200, json={"model_info": {"gemma3.context_length": 131072}})
+
+    p = provider(handler)
+    assert await p.context_length() == 131072
+    assert await p.context_length("gone") is None

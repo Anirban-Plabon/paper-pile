@@ -71,6 +71,10 @@ class Provider(Protocol):
         """Names of the installed chat models."""
         ...
 
+    async def context_length(self, model: str | None = None) -> int | None:
+        """The longest context ``model`` takes, in tokens; None when unknown. Never raises."""
+        ...
+
     async def health(self) -> Health:
         """Can the backend be reached? Never raises."""
         ...

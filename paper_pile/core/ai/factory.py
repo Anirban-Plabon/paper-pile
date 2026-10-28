@@ -38,6 +38,9 @@ class MissingProvider:
     async def models(self) -> list[str]:
         return []
 
+    async def context_length(self, model: str | None = None) -> int | None:
+        return None
+
     async def health(self) -> Health:
         return Health(False, NOT_INSTALLED)
 

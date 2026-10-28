@@ -19,6 +19,7 @@ class FakeProvider:
         self.calls: list[list[ChatMessage]] = []
         self.up = True
         self.options: GenerationOptions | None = None
+        self.max_context: int | None = 8192  # what context_length reports
 
     async def chat(
         self,
@@ -40,6 +41,9 @@ class FakeProvider:
 
     async def models(self) -> list[str]:
         return ["fake-model", "fake-model-2"]
+
+    async def context_length(self, model: str | None = None) -> int | None:
+        return self.max_context
 
     async def health(self) -> Health:
         return (
