@@ -49,6 +49,7 @@ class SavedTurn:
     summary: str = ""
     error: bool = False
     quotes: list[SavedQuote] = field(default_factory=list)
+    notes: list[str] = field(default_factory=list)  # attached notes (link names), kept in context
 
 
 @dataclass(slots=True)
@@ -126,8 +127,13 @@ def _turn(raw: Any) -> SavedTurn | None:
         str(raw.get("attachment", "")),
         str(raw.get("summary", "")),
         bool(raw.get("error", False)),
-        [q for q in map(_quote, raw.get("quotes") or []) if q is not None],
+        [q for q in map(_quote, _list(raw.get("quotes"))) if q is not None],
+        [n for n in _list(raw.get("notes")) if isinstance(n, str)],
     )
+
+
+def _list(raw: Any) -> list[Any]:
+    return raw if isinstance(raw, list) else []
 
 
 def _quote(raw: Any) -> SavedQuote | None:

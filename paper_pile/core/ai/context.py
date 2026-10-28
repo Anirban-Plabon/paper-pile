@@ -8,8 +8,9 @@ model or to the UI.
 
 import math
 import re
-from collections.abc import Collection, Sequence
+from collections.abc import Callable, Collection, Sequence
 from dataclasses import dataclass, field
+from functools import partial
 from typing import Literal, Protocol
 
 from paper_pile.core.links import parse_wikilink, resolve_md_link, resolve_wikilink
@@ -21,6 +22,7 @@ DEFAULT_BUDGET = 6000
 RESERVED_TOKENS = 250  # the instructions, the question and some room for the answer's start
 MIN_PART_TOKENS = 40  # a part with less room than this is left out
 MAX_LINKED = 8
+DIVIDER = "\n\n---\n\n"  # between the notes sent with a message and the message itself
 TRUNCATED = "\n…[truncated]"
 
 Kind = Literal["selection", "note", "mention", "tab", "linked"]
@@ -102,21 +104,33 @@ class Context:
         cut = " (some cut)" if any(p.truncated for p in self.parts) else ""
         return ("Context: " + ", ".join(bits) + cut) if bits else "No context"
 
-    def system_prompt(self, user_name: str = "", language: str = "", instructions: str = "") -> str:
-        who = f" The user is called {user_name}." if user_name else ""
-        if language:
-            who += f" Answer in {language} unless the user writes in another language."
-        if instructions.strip():
-            who += f" The user asks you to follow this: {instructions.strip()}"
-        head = (
-            "You are the assistant inside paper-pile, a local markdown note app. Answer in "
-            "markdown; write math as $...$ (inline) or $$...$$ (display). Be direct and keep "
-            f"to what was asked.{who}"
-        )
+    def notes_block(self) -> str:
+        """The parts as one markdown block ("" when there are none)."""
         if not self.parts:
-            return head
+            return ""
         blocks = [f"## {p.title}\n{p.text}" for p in self.parts]
-        return head + "\n\nThe user's notes, for context:\n\n" + "\n\n".join(blocks)
+        return "The user's notes, for context:\n\n" + "\n\n".join(blocks)
+
+    def system_prompt(self, user_name: str = "", language: str = "", instructions: str = "") -> str:
+        """The system prompt with the notes in it (one-shot prompts; the chat keeps the system
+        prompt fixed and sends the notes with the message, see ``engine``)."""
+        head = system_head(user_name, language, instructions)
+        notes = self.notes_block()
+        return f"{head}\n\n{notes}" if notes else head
+
+
+def system_head(user_name: str = "", language: str = "", instructions: str = "") -> str:
+    """Who the assistant is and how to answer: the same for every message of a chat."""
+    who = f" The user is called {user_name}." if user_name else ""
+    if language:
+        who += f" Answer in {language} unless the user writes in another language."
+    if instructions.strip():
+        who += f" The user asks you to follow this: {instructions.strip()}"
+    return (
+        "You are the assistant inside paper-pile, a local markdown note app. Answer in "
+        "markdown; write math as $...$ (inline) or $$...$$ (display). Be direct and keep "
+        f"to what was asked. Notes the user shares come with their message.{who}"
+    )
 
 
 def extract_mentions(text: str) -> list[str]:
@@ -195,20 +209,27 @@ def build_context(
     include_tabs: bool = False,
     index: BacklinkSource | None = None,
     budget: int = DEFAULT_BUDGET,
+    paths: Collection[str] | None = None,
+    read: Callable[[str], str | None] | None = None,
 ) -> Context:
     """Fill the context in priority order within ``budget`` tokens (see the module docstring).
 
     ``open_tabs`` is ``(path, text)`` of every open note; it is used only when ``include_tabs``.
+    ``paths`` (every note) and ``read`` (a note's text, None if unreadable) default to walking
+    and reading the vault; the engine passes its cache.
     """
     b = _Builder(budget)
-    paths = list(vault.walk_notes())
+    if paths is None:
+        paths = list(vault.walk_notes())
+    if read is None:
+        read = partial(_read, vault)
     if selection.strip():
         b.add("selection", "", None, selection)
     if current_path and current_text.strip():
         b.add("note", current_path, current_path, current_text)
     for name in mentions:
         path = resolve_wikilink(name, current_path or "", paths)
-        text = _read(vault, path) if path else None
+        text = read(path) if path else None
         if path is None or text is None:
             b.context.missing.append(name)
         elif path != current_path:
@@ -225,7 +246,7 @@ def build_context(
                 if src and src not in linked:
                     linked.append(src)
         for path in linked[:MAX_LINKED]:
-            text = _read(vault, path)
+            text = read(path)
             if text is not None:
                 b.add("linked", path, path, text)
     return b.context

@@ -7,7 +7,13 @@ import pytest
 from paper_pile.core.ai.attachments import FileRef
 from paper_pile.core.ai.chats import load_chat
 from paper_pile.core.ai.context import EditorSnapshot
-from paper_pile.core.ai.engine import NOTE_ONLY, AiEngine, message_tokens, short_count
+from paper_pile.core.ai.engine import (
+    DIVIDER,
+    NOTE_ONLY,
+    AiEngine,
+    message_tokens,
+    short_count,
+)
 from paper_pile.core.ai.fake import FakeProvider
 from paper_pile.core.commands import StreamInsert
 from paper_pile.core.config import Config
@@ -48,12 +54,14 @@ async def test_chat_turns_messages_and_save(vault: Vault, fake: FakeProvider) ->
     assert await ask(ai, "first") == "You said: first "
     await ask(ai, "second", EditorSnapshot("a.md", "# A\nalpha body\n"))
     sent = fake.calls[-1]
-    assert sent[0].role == "system" and "alpha body" in sent[0].content and "Ana" in sent[0].content
-    assert [(m.role, m.content.strip()) for m in sent[1:]] == [
+    assert sent[0].role == "system" and "Ana" in sent[0].content
+    assert "alpha body" not in sent[0].content  # notes go with the message
+    assert [(m.role, m.content.strip()) for m in sent[1:3]] == [
         ("user", "first"),
         ("assistant", "You said: first"),
-        ("user", "second"),
     ]
+    assert sent[3].content.startswith("The user's notes") and "alpha body" in sent[3].content
+    assert sent[3].content.endswith(DIVIDER + "second")
     assert ai.title == "first"
     ai.save()
     saved = load_chat(ai.chats_dir(), ai.chat_id)
@@ -77,8 +85,8 @@ async def test_attachments_go_to_context_and_quotes(vault: Vault, fake: FakeProv
     picked = ai.selection("chosen words", "a.md")
     files = [FileRef("x.txt", "file text")]
     await ask(ai, "what?", selections=[picked], notes=["b.md", "missing.md"], files=files)
-    system = fake.calls[-1][0].content
-    assert "chosen words" in system and "file text" in system and "beta body" in system
+    message = fake.calls[-1][-1].content
+    assert "chosen words" in message and "file text" in message and "beta body" in message
     user = ai.turns[0]
     assert user.attachment.splitlines() == ["From [[a]]: [Selected text]", "[[b]]", "x.txt: [File]"]
     assert user.quotes[0].text == "chosen words" and user.quotes[0].note == "a"
@@ -120,14 +128,16 @@ async def test_command_messages(vault: Vault, fake: FakeProvider) -> None:
     text = "intro\n" + "x" * 5000 + "\nEND"
     fix = StreamInsert("Fix it.", source="selection", replace_selection=True)
     msgs = await ai.command_messages(fix, path="a.md", text=text, caret=0, selected="teh cat")
-    assert msgs[0].content.endswith(NOTE_ONLY) and "teh cat" in msgs[0].content
-    assert msgs[1].content == "Fix it.\n\nText:\nteh cat"
+    assert msgs[0].content.endswith(NOTE_ONLY) and "teh cat" not in msgs[0].content
+    assert msgs[1].content.endswith(DIVIDER + "Fix it.\n\nText:\nteh cat")
+    assert msgs[1].content.count("teh cat") == 1  # the selection is sent once
     cont = StreamInsert("Continue.", source="before")
     msgs = await ai.command_messages(cont, path="a.md", text=text, caret=len(text))
-    assert msgs[1].content.endswith("END") and len(msgs[1].content) < 4100
+    task = msgs[1].content.split(DIVIDER)[-1]
+    assert task.endswith("END") and len(task) < 4100
     ask_it = StreamInsert("", source="auto", ask=True)
     msgs = await ai.command_messages(ask_it, path="a.md", text="note", caret=0, question="Why?")
-    assert msgs[1].content == "Why?" and not msgs[0].content.endswith(NOTE_ONLY)
+    assert msgs[1].content.endswith(DIVIDER + "Why?") and not msgs[0].content.endswith(NOTE_ONLY)
 
 
 async def test_stream_passes_model_and_options(vault: Vault, fake: FakeProvider) -> None:
@@ -160,7 +170,7 @@ async def test_long_chat_never_overflows_the_window(vault: Vault, fake: FakeProv
     await ask(ai, "last one", EditorSnapshot("a.md", big))
     sent = fake.calls[-1]
     assert message_tokens(sent) <= 2048 - AiEngine.answer_room(2048)
-    assert sent[-1].content == "last one"
+    assert sent[-1].content.endswith(DIVIDER + "last one")
     assert sent[-2].content.startswith("answer 29")  # the newest turns are the ones kept
     assert len(sent) < 30
     assert ai.turns[-1].summary.endswith("/ 2k tokens") and "(some cut)" in ai.turns[-1].summary
@@ -175,3 +185,57 @@ def test_short_count() -> None:
         "8k",
         "128k",
     ]
+
+
+async def test_prompt_start_stays_the_same_from_message_to_message(
+    vault: Vault, fake: FakeProvider
+) -> None:
+    ai = engine(vault, fake)
+    note = "# A\nalpha body\n"
+    for i in range(4):
+        note += f"edit {i}\n"  # the open note changes between messages
+        await ask(ai, f"question {i}", EditorSnapshot("a.md", note))
+    systems = {call[0].content for call in fake.calls}
+    assert len(systems) == 1 and "edit" not in systems.pop()
+    for before, after in zip(fake.calls, fake.calls[1:], strict=False):
+        assert after[: len(before) - 1] == before[:-1]  # only the last message differs
+
+
+async def test_attached_note_and_quote_stay_for_later_messages(
+    vault: Vault, fake: FakeProvider
+) -> None:
+    ai = engine(vault, fake)
+    await ask(ai, "about b", selections=[ai.selection("chosen words", "a.md")], notes=["b.md"])
+    assert ai.turns[0].notes == ["b"]
+    await ask(ai, "and now?")
+    sent = fake.calls[-1]
+    assert "beta body" in sent[-1].content  # the note attached earlier is still sent
+    assert "chosen words" in sent[1].content and sent[1].content.endswith("about b")
+
+
+async def test_no_vault_walk_or_reread_per_message(
+    vault: Vault, fake: FakeProvider, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    walks: list[int] = []
+    reads: list[str] = []
+    walk, read = vault.walk_notes, vault.read_text
+    monkeypatch.setattr(vault, "walk_notes", lambda: (walks.append(1), walk())[1])
+    monkeypatch.setattr(vault, "read_text", lambda rel: (reads.append(str(rel)), read(rel))[1])
+    ai = engine(vault, fake)
+    for i in range(3):
+        await ask(ai, f"see @b {i}")
+    assert len(walks) == 1 and reads.count("b.md") == 1
+    ai.notes_changed()
+    await ask(ai, "@b again")
+    assert len(walks) == 2
+
+
+def test_old_chat_files_load(vault: Vault, tmp_path: Path) -> None:
+    import json
+
+    folder = tmp_path / "chats"
+    folder.mkdir()
+    turns = [{"role": "user", "text": "hi"}, {"role": "user", "text": "x", "notes": "bad"}]
+    (folder / "20260101-000000-aaaaaa.json").write_text(json.dumps({"turns": turns}))
+    chat = load_chat(folder, "20260101-000000-aaaaaa")
+    assert chat is not None and [t.notes for t in chat.turns] == [[], []]

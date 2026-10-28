@@ -28,15 +28,18 @@ from paper_pile.core.ai.chats import (
     save_chat,
 )
 from paper_pile.core.ai.context import (
+    DIVIDER,
     BacklinkSource,
     Context,
     EditorSnapshot,
     build_context,
     estimate_tokens,
     extract_mentions,
+    system_head,
 )
 from paper_pile.core.ai.factory import chat_model, generation_options, make_provider
 from paper_pile.core.ai.instructions import system_instruction
+from paper_pile.core.ai.notecache import NoteCache
 from paper_pile.core.ai.provider import ChatMessage, Health, Provider
 from paper_pile.core.commands import StreamInsert
 from paper_pile.core.config import Config
@@ -107,6 +110,7 @@ class AiEngine:
         self._user_name = user_name
         self._factory = provider_factory
         self.provider: Provider = provider_factory(config)
+        self.notes = NoteCache(vault)
         self._max_context: dict[str, int | None] = {}  # model -> its context length
         self.turns: list[SavedTurn] = []
         self.chat_id = new_chat_id()
@@ -219,9 +223,17 @@ class AiEngine:
 
     # ---- attachments ---------------------------------------------------------------------
 
+    def note_paths(self) -> list[str]:
+        """Every note of the vault (cached; see :class:`NoteCache`)."""
+        return self.notes.paths()
+
+    def notes_changed(self) -> None:
+        """A note was created, renamed or deleted."""
+        self.notes.invalidate()
+
     def link_name(self, path: str) -> str:
         """How ``path`` is written in a ``[[link]]`` ("" without a path)."""
-        return wikilink_to(path, "", set(self.vault.walk_notes())) if path else ""
+        return wikilink_to(path, "", set(self.note_paths())) if path else ""
 
     def selection(self, text: str, path: str) -> Selection:
         name = self.link_name(path)
@@ -252,7 +264,7 @@ class AiEngine:
         files: Sequence[FileRef] = (),
     ) -> Outgoing:
         """Add the user's message (with what is attached to it) to the open chat."""
-        known = set(self.vault.walk_notes())
+        known = set(self.note_paths())
         names = [wikilink_to(p, "", known) for p in notes if p in known]
         label = "\n".join(
             [f"{p.label}: [{p.kind}]" for p in selections]
@@ -264,7 +276,7 @@ class AiEngine:
             + [f"File {f.name}:\n{f.text.strip()}" for f in files]
         )
         quotes = [SavedQuote(p.label, p.kind, p.size(), p.text, p.note) for p in selections]
-        turn = SavedTurn("user", text, label, quotes=quotes)
+        turn = SavedTurn("user", text, label, quotes=quotes, notes=names)
         self.turns.append(turn)
         return Outgoing(turn, attached, names)
 
@@ -283,32 +295,57 @@ class AiEngine:
         include_tabs: bool = False,
         budget: int | None = None,
     ) -> Context:
+        """What goes with the newest message: its attachments, the open note, the notes it and
+        the earlier messages of the chat mention or attach (newest first), tabs, linked notes."""
+        earlier: list[str] = []
+        for turn in reversed(self.turns[:-2]):
+            if turn.role == "user":
+                earlier += [*turn.notes, *extract_mentions(turn.text)]
         return build_context(
             self.vault,
             current_path=snap.path,
             current_text=snap.text,
             selection=attached or snap.selection,
-            mentions=[*extract_mentions(question), *notes],
+            mentions=list(dict.fromkeys([*extract_mentions(question), *notes, *earlier])),
             open_tabs=snap.tabs,
             include_tabs=include_tabs,
             index=self.index,
             budget=budget if budget is not None else self.budget(),
+            paths=self.note_paths(),
+            read=self.notes.read,
         )
 
-    def system_prompt(self, context: Context) -> str:
-        return context.system_prompt(
+    def system_prompt(self) -> str:
+        """The same for every message of a chat (nothing that changes per message), so the
+        model can reuse the work it did for the start of the conversation."""
+        return system_head(
             self._user_name(), self.language(), system_instruction(self.config, self.vault.root)
         )
+
+    @staticmethod
+    def with_notes(context: Context, message: str) -> str:
+        """``message`` with the context's notes in front of it."""
+        notes = context.notes_block()
+        return notes + DIVIDER + message if notes else message
+
+    @staticmethod
+    def past_text(turn: SavedTurn) -> str:
+        """An earlier message as the model sees it again: the text attached to it stays with it
+        (the same every time, so the prompt's start does not change)."""
+        if turn.role != "user" or not turn.quotes:
+            return turn.text
+        quoted = "\n\n".join(f"{q.label}:\n{q.text.strip()}" for q in turn.quotes)
+        return quoted + DIVIDER + turn.text
 
     def chat_messages(
         self, context: Context, question: str, room: int | None = None
     ) -> list[ChatMessage]:
-        """The messages for the newest question: the system prompt, the earlier turns and the
-        question. Earlier turns are taken newest first while they fit in ``room`` tokens (all
-        of the prompt; None = no limit), at most ``ai.history_turns``; failed and empty ones
-        are left out."""
-        system = ChatMessage("system", self.system_prompt(context))
-        ask = ChatMessage("user", question)
+        """The messages for the newest question: the fixed system prompt, the earlier turns and
+        the question with its notes. Earlier turns are taken newest first while they fit in
+        ``room`` tokens (all of the prompt; None = no limit), at most ``ai.history_turns``;
+        failed and empty ones are left out."""
+        system = ChatMessage("system", self.system_prompt())
+        ask = ChatMessage("user", self.with_notes(context, question))
         keep = int(str(self.setting("ai.history_turns", HISTORY_TURNS)))
         left = None if room is None else room - message_tokens([system, ask])
         past: list[ChatMessage] = []
@@ -317,7 +354,7 @@ class AiEngine:
                 break
             if turn.error or not turn.text.strip():
                 continue
-            msg = ChatMessage("user" if turn.role == "user" else "assistant", turn.text)
+            msg = ChatMessage("user" if turn.role == "user" else "assistant", self.past_text(turn))
             if left is not None:
                 left -= message_tokens([msg])
                 if left < 0:
@@ -388,19 +425,22 @@ class AiEngine:
         source = spec.source if spec.source != "auto" else ("selection" if selected else "note")
         part = {"selection": selected, "before": text[max(0, caret - BEFORE_CARET_CHARS) : caret]}
         given = part.get(source, "")
-        context = build_context(
+        context = build_context(  # the selection goes with the task, not twice
             self.vault,
             current_path=path,
             current_text=text,
-            selection=selected if source == "selection" else "",
             index=self.index,
             budget=await self.context_budget(),
+            paths=self.note_paths(),
+            read=self.notes.read,
         )
         task = question or spec.instruction
         rules = "" if spec.ask else NOTE_ONLY
         return [
-            ChatMessage("system", self.system_prompt(context) + rules),
-            ChatMessage("user", task + (f"\n\nText:\n{given}" if given else "")),
+            ChatMessage("system", self.system_prompt() + rules),
+            ChatMessage(
+                "user", self.with_notes(context, task + (f"\n\nText:\n{given}" if given else ""))
+            ),
         ]
 
 

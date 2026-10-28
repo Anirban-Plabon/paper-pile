@@ -1,12 +1,13 @@
 """A deterministic stand-in for Ollama, for tests and for trying the UI without a model.
 
 Selected by the environment variable ``PAPER_PILE_FAKE_AI=1``. It echoes the last user message
-back word by word.
+back word by word (without the notes sent in front of it).
 """
 
 import asyncio
 from collections.abc import AsyncIterator, Sequence
 
+from paper_pile.core.ai.context import DIVIDER
 from paper_pile.core.ai.provider import ChatMessage, GenerationOptions, Health
 
 
@@ -31,6 +32,7 @@ class FakeProvider:
         self.calls.append(list(messages))
         self.options = options
         last = next((m.content for m in reversed(messages) if m.role == "user"), "")
+        last = last.rsplit(DIVIDER, 1)[-1]
         text = self.reply if self.reply is not None else f"You said: {last.strip()[:200]}"
         for word in text.split(" "):
             await asyncio.sleep(self.delay)

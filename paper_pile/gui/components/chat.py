@@ -492,7 +492,7 @@ class ChatPane:
 
     def add_notes(self, paths: list[str]) -> None:
         """Attach notes as chips; their text goes to the model with the next message."""
-        known = set(self.vault.walk_notes())
+        known = set(self.ai.note_paths())
         added = [p for p in paths if p in known and p not in self._notes]
         if added:
             self._notes.extend(added)
@@ -503,7 +503,7 @@ class ChatPane:
     def ask(self, path: str, prompt: str, *, send: bool) -> None:
         """The note menu's AI items: attach ``path`` and put ``prompt`` in the composer; send it
         right away, or leave it for the user to finish (caret at the end)."""
-        if path not in self._notes and path in set(self.vault.walk_notes()):
+        if path not in self._notes and path in set(self.ai.note_paths()):
             self._notes.append(path)
             self._render_refs()
         self._input.set_value(prompt)
@@ -638,7 +638,7 @@ class ChatPane:
             def fill(query: str) -> None:
                 results.clear()
                 with results:
-                    for path in search_notes(query, self.vault.walk_notes(), limit=8):
+                    for path in search_notes(query, self.ai.note_paths(), limit=8):
                         title = path.rsplit("/", 1)[-1].rsplit(".", 1)[0]
                         with ui.menu_item(on_click=lambda _e=None, p=path: pick(p)):
                             ui.label(title).classes("pp-menu-title")
@@ -746,7 +746,7 @@ class ChatPane:
         if not m:
             self._mentions.set_visibility(False)
             return
-        hits = search_notes(m.group(1), self.vault.walk_notes(), limit=6)
+        hits = search_notes(m.group(1), self.ai.note_paths(), limit=6)
         tail = m.group(0)
         with self._mentions:
             for path in hits:
@@ -761,7 +761,7 @@ class ChatPane:
         self._mentions.set_visibility(bool(hits))
 
     def _pick_mention(self, path: str, tail: str) -> None:
-        name = wikilink_to(path, "", set(self.vault.walk_notes()))
+        name = wikilink_to(path, "", set(self.ai.note_paths()))
         value = self._input.value or ""
         self._input.set_value(value[: len(value) - len(tail)] + f"@[[{name}]] ")
         self._mentions.set_visibility(False)

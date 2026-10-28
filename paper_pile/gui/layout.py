@@ -192,6 +192,8 @@ class MainLayout:
         self.bus.subscribe("tree.add_to_chat", lambda path: self._chat_add_note(path))
         self.bus.subscribe("vault.renamed", lambda old, new: self._recent_renamed(old, new))
         self.bus.subscribe("note.reveal", lambda path: self._reveal_in_tree(path))
+        for event in ("vault.created", "vault.renamed", "vault.deleted"):
+            self.bus.subscribe(event, lambda **_: self.ai.notes_changed())
         self._follow_external_changes()
         ui.context.client.on_disconnect(self._flush_save)  # a debounced save still pending
         if self.editor_pane is not None:  # reopen last session's tabs (after the status bar exists)
@@ -212,6 +214,7 @@ class MainLayout:
         self._refresh_calendar()
 
     def _on_external(self, events: list[FsEvent]) -> None:
+        self.ai.notes_changed()
         if self.tree is not None:
             self.tree.refresh()
         self._refresh_calendar()
