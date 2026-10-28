@@ -23,6 +23,7 @@ import { selectionSync } from "./selectionsync.js";
 import { closeSlash, setSlashResults, slashExtension } from "./slash.js";
 import { focusTableCell, tableKeys } from "./tablewidget.js";
 import { streamAppend, streamBegin, streamEnd, streamField } from "./stream.js";
+import { proposalExtension, showProposal } from "./proposal.js";
 import { typeset } from "./typeset.js";
 
 const CHANGE_DEBOUNCE_MS = 300;
@@ -233,6 +234,7 @@ export function createEditor(
       // all the pieces of one AI answer belong to one undo step (the first one is isolated, see stream.js)
       history({ joinToEvent: (tr, adjacent) => (tr.isUserEvent("input.type.ai") && !tr.annotation(isolateHistory)) || adjacent }),
       streamField,
+      proposalExtension,
       drawSelection(),
       dropCursor(),
       tooltips({ tooltipSpace }),
@@ -550,6 +552,13 @@ export function createEditor(
     streamEnd(id) {
       streamEnd(view, id);
       flush();
+    },
+    // An AI edit to approve, as a diff (see proposal.js): {id, hunks: [{id, from, to, insert}]}
+    // in UTF-16 offsets of doc `id`, or null to clear it. Ignored when another doc is on screen.
+    showProposal(id, proposal) {
+      if (id !== docId) return false;
+      showProposal(view, proposal ? { ...proposal, docId } : null);
+      return true;
     },
     // The selected text (for the AI): {from, to, text} in UTF-16 offsets, from == to when empty.
     getSelection() {

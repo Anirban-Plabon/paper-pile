@@ -67,6 +67,9 @@ export default {
     async streamEnd(id) {
       (await this.ready).streamEnd(id);
     },
+    async showProposal(docId, proposal) {
+      return (await this.ready).showProposal(docId, proposal);
+    },
     async getSelection() {
       return (await this.ready).getSelection();
     },

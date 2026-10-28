@@ -7,6 +7,7 @@ history itself, so another front end (a TUI) reuses this unchanged. No UI import
 """
 
 import logging
+import re
 import time
 from collections.abc import AsyncIterator, Callable, Sequence
 from dataclasses import dataclass, replace
@@ -50,11 +51,13 @@ from paper_pile.core.ai.notecache import NoteCache
 from paper_pile.core.ai.provider import ChatMessage, Health, Provider, ProviderError
 from paper_pile.core.commands import StreamInsert
 from paper_pile.core.config import Config
-from paper_pile.core.links import wikilink_to
+from paper_pile.core.links import resolve_wikilink, wikilink_to
 from paper_pile.core.settings import language_name
 from paper_pile.core.vault import Vault
 
 log = logging.getLogger("paper_pile.ai.engine")
+
+_ONE_FENCE = re.compile(r"```[\w-]*\n(.*?)\n?```", re.DOTALL)  # a reply that is one code block
 
 HISTORY_TURNS = 12  # at most this many earlier messages go with a new one (ai.history_turns)
 DEFAULT_BUDGET = 6000
@@ -522,6 +525,26 @@ class AiEngine:
             return False
         self.summary, self.summarized = summary, upto
         return True
+
+    # ---- answers that edit a note --------------------------------------------------------
+
+    def edit_from_reply(self, reply: SavedTurn) -> tuple[str, str, str] | None:
+        """``(note path, old text, new text)`` when ``reply`` answers a message with exactly one
+        attached selection from a note: the answer can replace it (shown as a diff first). A
+        selection answered with one code block gets the block's content."""
+        i = next((n for n, t in enumerate(self.turns) if t is reply), -1)
+        asked = self.turns[i - 1] if i > 0 else None
+        if asked is None or asked.role != "user" or len(asked.quotes) != 1 or reply.error:
+            return None
+        quote = asked.quotes[0]
+        path = resolve_wikilink(quote.note, "", self.note_paths()) if quote.note else None
+        if path is None or not reply.text.strip():
+            return None
+        new = reply.text.strip()
+        fenced = _ONE_FENCE.fullmatch(new)
+        if fenced and quote.kind == "Selected text":
+            new = fenced.group(1)
+        return path, quote.text, new
 
     @staticmethod
     def stopped(reply: SavedTurn) -> None:

@@ -67,11 +67,13 @@ class ChatPane:
         active_path: Callable[[], str | None] = lambda: None,
         open_settings: Callable[[], None] = lambda: None,
         enabled: Callable[[], bool] = lambda: True,  # the AI feature switch
+        apply_to_note: Callable[[str, str, str], Awaitable[None]] | None = None,
     ) -> None:
         self.ai = ai
         self.vault = ai.vault
         self.config = ai.config
         self._enabled = enabled
+        self._apply_to_note = apply_to_note  # (path, old, new): show an answer as a diff there
         self._snapshot = snapshot
         self._insert = insert_text
         self._on_health = on_health
@@ -435,6 +437,16 @@ class ChatPane:
                         icon=ico("file-plus"),
                         on_click=lambda t=turn: self._insert_reply(t.text),
                     ).props("flat dense size=xs").props('data-tip="Insert into note"')
+                    target = self.ai.edit_from_reply(turn) if self._apply_to_note else None
+                    if target is not None and self._apply_to_note is not None:
+                        apply = self._apply_to_note
+
+                        async def apply_reply(t: tuple[str, str, str] = target) -> None:
+                            await apply(*t)
+
+                        ui.button(icon=ico("file-diff"), on_click=apply_reply).props(
+                            "flat dense size=xs"
+                        ).props('data-tip="Apply to note (shows the changes first)"')
             self._typeset(body)
         return body
 

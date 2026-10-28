@@ -1416,3 +1416,22 @@ body.body--dark { --pp-set-box-bg: rgba(255, 255, 255, .035); }
 .pp-notehead-split .pp-notehead-title { cursor: pointer; }
 .pp-notehead-split .pp-notehead-title:hover { background: rgba(127, 127, 127, .12); }
 .pp-notehead-active .pp-notehead-title { color: var(--pp-accent); }
+
+/* AI edits as a diff (P22.7, tools/editor_src/proposal.js): removed lines light red with a "−",
+   added lines light green with a "+", like a code editor. The marks sit in the content's left
+   padding; no margins (CodeMirror measures lines and widgets). */
+:root { --pp-aidiff-del-bg: rgba(248, 81, 73, .13); --pp-aidiff-del-fg: #cf222e; --pp-aidiff-add-bg: rgba(46, 160, 67, .15); --pp-aidiff-add-fg: #1a7f37; }
+body.body--dark { --pp-aidiff-del-bg: rgba(248, 81, 73, .18); --pp-aidiff-del-fg: #ff7b72; --pp-aidiff-add-bg: rgba(46, 160, 67, .2); --pp-aidiff-add-fg: #56d364; }
+.pp-editor .cm-line.pp-aidiff-del { position: relative; background-color: var(--pp-aidiff-del-bg); }
+.pp-editor .cm-line.pp-aidiff-del::before { content: "−"; position: absolute; left: -16px; color: var(--pp-aidiff-del-fg); font-weight: 600; }
+.pp-aidiff-block { padding: 0 0 4px; }
+.pp-aidiff-add { position: relative; padding: 0 2px 0 6px; background-color: var(--pp-aidiff-add-bg); white-space: pre-wrap; overflow-wrap: anywhere; }
+.pp-aidiff-add::before { content: "+"; position: absolute; left: -16px; color: var(--pp-aidiff-add-fg); font-weight: 600; }
+.pp-aidiff-actions { display: flex; gap: 6px; padding: 4px 6px 0; }
+.pp-aidiff-btn { font: inherit; font-size: 12px; line-height: 20px; padding: 0 10px; border-radius: var(--pp-r-ctrl); border: 1px solid var(--pp-border); background: var(--pp-bg); color: var(--pp-fg); cursor: pointer; }
+.pp-aidiff-btn:hover { background: rgba(127, 127, 127, .12); }
+.pp-aidiff-btn.pp-aidiff-accept { border-color: var(--pp-aidiff-add-fg); color: var(--pp-aidiff-add-fg); }
+.pp-aidiff-bar { display: flex; align-items: center; gap: 8px; padding: 6px 28px; font-size: 12.5px; background: var(--pp-bg-side); border-bottom: 1px solid var(--pp-border); }
+.pp-aidiff-bar-text { flex: 1; color: var(--pp-muted); }
+.pp-aidiff-actions, .pp-aidiff-bar { font-family: Roboto, -apple-system, "Helvetica Neue", Helvetica, Arial, sans-serif; }  /* Quasar's UI font, not the note's */
+

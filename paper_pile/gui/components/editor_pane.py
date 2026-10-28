@@ -33,6 +33,7 @@ from paper_pile.core import (
 from paper_pile.core.ai.access import AccessDeniedError
 from paper_pile.core.ai.context import EditorSnapshot
 from paper_pile.core.ai.engine import AiEngine
+from paper_pile.core.ai.proposals import Proposal, accept, propose, reject
 from paper_pile.core.ai.provider import ProviderError
 from paper_pile.core.buffer import NoteBuffer, Outcome, content_hash, find_recoverable
 from paper_pile.core.command_actions import (
@@ -173,6 +174,7 @@ class EditorPane:
         self._config = config
         self._get_recents = get_recents
         self._engine = ai
+        self._proposals: dict[int, Proposal] = {}  # AI edits waiting for Accept / Reject, by tab
         self._ai_selection: dict[str, Any] | None = None  # set by Ctrl+J in the editor
         self._streams = 0
         self._table_lock = asyncio.Lock()  # table edits apply one after the other
@@ -300,6 +302,7 @@ class EditorPane:
             on_slash_run=lambda e: self._spawn(self._on_slash_run(e.args)),
             on_table_op=lambda e: self._spawn(self._on_table_op(e.args)),
             on_paste=lambda e: self._on_paste(e.args),
+            on_proposal=lambda e: self._spawn(self._on_proposal(e.args)),
             on_ai_selection=lambda e: self._on_ai_selection(e.args),
             on_selection=lambda e: self._on_selection(e.args),
             on_block_to_chat=lambda e: self._on_block_to_chat(e.args),
@@ -843,6 +846,7 @@ class EditorPane:
         self.buffers.pop(tab_id, None)
         self._tops.pop(tab_id, None)
         self._section_heads.pop(tab_id, None)
+        self._proposals.pop(tab_id, None)
         next_active = self.tabs.close(tab_id)
         if next_active is not None and was_active:
             self._activate(next_active)  # switches the editor away from the closed tab first
@@ -1322,7 +1326,9 @@ class EditorPane:
             if live and pending:
                 await editor.stream_append(stream_id, pending)
             elif spec.replace_selection and selection:
-                await self._replace_selection(tab_id, selected, collected.strip("\n"), selection[0])
+                await self._propose_replacement(
+                    tab_id, selected, collected.strip("\n"), selection[0]
+                )
         except ProviderError as exc:
             self._toast(str(exc), error=True)
         finally:
@@ -1331,18 +1337,92 @@ class EditorPane:
             if live:
                 editor.stream_end(stream_id)
 
-    async def _replace_selection(self, tab_id: int, original: str, result: str, start: int) -> None:
-        """Replace the selected text by the AI's version, as one undo step."""
+    # ---- AI edits as proposals (PLAN §4.26) -------------------------------------------------
+
+    async def _propose_replacement(
+        self, tab_id: int, original: str, result: str, start: int
+    ) -> None:
+        """The AI's version of ``original`` (at ``start``), shown as a diff to accept or reject."""
         if not result.strip():
             return
         text = await self._live_text(tab_id)
         if text is None or text[start : start + len(original)] != original:
             self._toast(
-                "The text changed while the AI was writing; nothing was replaced.", error=True
+                "The text changed while the AI was writing; nothing was suggested.", error=True
             )
             return
-        edit = TextEdit((TextChange(start, start + len(original), result),), start + len(result))
-        await self._apply_edit(tab_id, text, edit)
+        await self.propose_edit(tab_id, text, start, start + len(original), result)
+
+    async def propose_edit(self, tab_id: int, text: str, start: int, end: int, new: str) -> None:
+        """Show replacing ``text[start:end]`` of tab ``tab_id`` by ``new`` as a diff."""
+        path = self._tab_path(tab_id)
+        proposal = propose(path or "", text, start, end, new) if path else None
+        if proposal is None:
+            self._toast("The AI suggests no changes.")
+            return
+        self._proposals[tab_id] = proposal
+        await self._show_proposal(tab_id, text)
+
+    async def propose_in_note(self, path: str, old: str, new: str) -> None:
+        """A chat answer for text of ``path``: open it and show the answer as a diff there."""
+        await self.open(path)
+        tab = self.tabs.find(path)
+        text = await self._live_text(tab.id) if tab is not None else None
+        if tab is None or text is None:
+            return
+        start = text.find(old)
+        if not old.strip() or start < 0 or text.find(old, start + 1) >= 0:
+            self._toast("That text is no longer in the note (or is there twice).", error=True)
+            return
+        await self.propose_edit(tab.id, text, start, start + len(old), new)
+
+    async def _show_proposal(self, tab_id: int, text: str) -> None:
+        proposal = self._proposals.get(tab_id)
+        payload = None
+        if proposal is not None:
+            hunks = [
+                {
+                    "id": h.id,
+                    "from": utf16_index(text, h.start),
+                    "to": utf16_index(text, h.end),
+                    "insert": h.new,
+                }
+                for h in proposal.hunks
+            ]
+            payload = {"id": proposal.id, "hunks": hunks}
+        await self._editor_for(tab_id).show_proposal(tab_id, payload)
+
+    async def _on_proposal(self, args: dict[str, Any]) -> None:
+        """Accept / Reject (one change, or all) on the diff of an AI edit."""
+        tab_id = int(args.get("docId", -1))
+        proposal = self._proposals.get(tab_id)
+        if proposal is None or proposal.id != args.get("proposal"):
+            return
+        hunk = args.get("hunk")
+        text = await self._live_text(tab_id)
+        if text is None:
+            return
+        if args.get("action") == "reject":
+            left = reject(proposal, int(hunk) if hunk is not None else None)
+        else:
+            result = accept(proposal, text, {int(hunk)} if hunk is not None else None)
+            if result is None:
+                self._toast("The note changed there; the suggestion is out of date.", error=True)
+                left = None
+            else:
+                changes, left = result
+                edit = TextEdit(
+                    tuple(TextChange(c.start, c.end, c.insert) for c in changes),
+                    changes[-1].start if changes else 0,
+                )
+                if not await self._apply_edit(tab_id, text, edit, move_caret=False):
+                    return  # a keystroke raced in: the diff stays, try again
+                text = self.buffers[tab_id].text
+        if left is None:
+            self._proposals.pop(tab_id, None)
+        else:
+            self._proposals[tab_id] = left
+        await self._show_proposal(tab_id, text)
 
     async def _apply_edit(
         self, tab_id: int, before: str, edit: TextEdit, *, move_caret: bool = True

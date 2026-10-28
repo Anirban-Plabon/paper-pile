@@ -686,8 +686,14 @@ class MainLayout:
             active_path=self._active_path,
             open_settings=lambda: self.open_settings("AI"),
             enabled=self.ai_on,
+            apply_to_note=self._apply_to_note,
         )
         self.chat.build()
+
+    async def _apply_to_note(self, path: str, old: str, new: str) -> None:
+        """A chat answer replaces the text it was asked about: shown as a diff in that note."""
+        if self.editor_pane is not None:
+            await self.editor_pane.propose_in_note(path, old, new)
 
     def _on_ollama_health(self, health: Health) -> None:
         if self._status is not None:

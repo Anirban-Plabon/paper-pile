@@ -49,6 +49,7 @@ class Editor(
         on_link: Handler | None = None,
         on_wikilink: Handler | None = None,
         on_paste: Handler | None = None,
+        on_proposal: Handler | None = None,
         on_focus: Handler | None = None,
         on_tag: Handler | None = None,
         on_caret: Handler | None = None,
@@ -111,6 +112,8 @@ class Editor(
             self.on("wikilink", on_wikilink)
         if on_paste:
             self.on("paste", on_paste)
+        if on_proposal:  # Accept / Reject on an AI edit shown as a diff
+            self.on("proposal", on_proposal)
 
     async def get_text(self, doc_id: int) -> str | None:
         """The text of doc ``doc_id`` if it is the one on screen; ``None`` if another doc is
@@ -178,6 +181,14 @@ class Editor(
 
     def stream_end(self, stream_id: int) -> None:
         self.run_method("streamEnd", stream_id)
+
+    async def show_proposal(self, doc_id: int, proposal: dict[str, Any] | None) -> bool:
+        """Show an AI edit as a diff on doc ``doc_id`` (``{id, hunks: [{id, from, to, insert}]}``,
+        UTF-16 offsets), or clear it (None). False when that doc is not on screen."""
+        try:
+            return bool(await self.run_method("showProposal", doc_id, proposal))
+        except TimeoutError:
+            return False
 
     async def get_selection(self) -> tuple[str, int, int] | None:
         """The selected text and its JavaScript offsets ``(text, from, to)``; ``None`` if the

@@ -6,7 +6,7 @@
 Legend: 🧠 = needs Opus (see PLAN §6 model guidance) · ⬜ todo · 🔄 in progress · ✅ done · ⛔ blocked · ⏭️ skipped/deferred
 
 ## Current focus
-- **Phase:** P22 — AI redesign (user request 2026-10-28, PLAN §4.26): P22.1–P22.6 done; next: P22.7 (edit proposals + inline diff)
+- **Phase:** P22 — AI redesign (user request 2026-10-28, PLAN §4.26): P22.1–P22.7 done; next: P22.8 (edit permission setting)
 - **Phase:** P21 — Note header, pins, small UI fixes (user request 2026-10-24, PLAN §4.25): built; P20's next step (Tailwind off) waits
 - **Phase:** P20 — Memory (user request 2026-10-24, PLAN §4.24): leaks fixed (dialogs, timing entries); small heap creep left (Open issue); next: Tailwind off with a screenshot comparison, then the engine options (system WebKitGTK, browser app mode)
 - **Before:** P19 — Performance (PLAN §4.23): done; next candidates in the Decision log (save off the UI thread, watcher echo, tab strip in place)
@@ -268,7 +268,7 @@ Legend: 🧠 = needs Opus (see PLAN §6 model guidance) · ⬜ todo · 🔄 in p
 | P22.4 | Cache-friendly prompt order; per-turn notes; note cache | ✅ | `NoteCache` + 2 tests; 4 engine tests (stable prefix over 4 messages with the note edited between, sticky note + quote, one walk / one read for 3 messages, old chat files); `@` picker no longer walks the vault per keystroke; real app (fake AI) |
 | P22.5 | Basic compaction + `/compact` | ✅ | 2 engine tests (12 long messages in a 2k window; by hand); real app: `/compact` after 3 exchanges → marker, notice, `summarized: 2` in the file (screenshot) |
 | P22.6 | Access scope + per-vault grants (`ai_access.json`) + Settings → AI → Access | ✅ | 9 tests (exact-path grants: parent / child / other / moved vault get nothing; damaged records; never-folders, exclusions, patterns; `ai: false`; outside paths; engine refuses without a grant and drops what is not allowed); real app: ask → Not now keeps text → Allow → reply, record key = vault path, Access group (screenshots), outside path added + listed in the + menu, AI command on an `ai: false` note refused |
-| P22.7 🧠 | Edit proposals + inline diff | ⬜ | |
+| P22.7 🧠 | Edit proposals + inline diff | ✅ | 6 proposal tests + 1 engine test (`edit_from_reply`); `qa_editor.py` 358/358; real app (fake AI): Fix grammar → diff (− red / + green, computed colours checked), Reject all leaves the note, Accept applies, one Ctrl+Z restores; chat *Apply to note* → diff of only the changed line (screenshots) |
 | P22.8 | Edit permission setting | ⬜ | |
 | P22.9 | Selection bar (Ask / Edit) + selection-to-chat setting | ⬜ | |
 | P22.10 | Suggested prompts + own prompts file | ⬜ | |
@@ -554,6 +554,7 @@ Legend: 🧠 = needs Opus (see PLAN §6 model guidance) · ⬜ todo · 🔄 in p
 | 2026-10-14 | P1.1 | `test_websocket_with_cookie_ok` got `WebSocketDisconnect` although cookie was valid | Starlette `TestClient` neither replays its cookie jar nor uses `base_url`'s host on websocket handshakes (sends `Host: testserver`, rejected by the loopback check) — test artifact, gate was right | Pass `host` + `cookie` headers explicitly in websocket tests | n |
 | 2026-10-14 | P0.6 | `xdotool key` reached nothing in the Qt window | `windowactivate` did not move keyboard focus under XWayland; page handler itself was fine (proved with a synthetic key from headless Chrome) | `xdotool windowfocus <id>` + click into the page first | n (test tooling only) |
 | 2026-10-28 | P22.2 | `/summarize` removed the slash text but wrote nothing; log: `'bool' object has no attribute 'command_messages'` | `EditorPane` already had `self._ai` (the AI on/off flag, `set_ai`); the new engine attribute of the same name was overwritten by it. mypy only checks `core/`, so nothing caught it | Engine attribute renamed `_engine`; found by the real-app check | y |
+| 2026-10-28 | P22.7 | Removed lines of the AI diff were struck through; the + / − of the version history dialog would have moved | `app.css` already had `.pp-diff-add` / `.pp-diff-del` (history dialog, line-through); the new rules used the same names | AI diff classes renamed `pp-aidiff-*`; found by checking the computed `text-decoration` | n |
 
 ## Session log
 <!-- YYYY-MM-DD · tasks completed · short note -->
@@ -710,3 +711,4 @@ Legend: 🧠 = needs Opus (see PLAN §6 model guidance) · ⬜ todo · 🔄 in p
 - 2026-10-28 · P22.4 cache-friendly prompts + note cache · 1173 tests; real app with fake AI
 - 2026-10-28 · P22.5 compaction + `/compact` · 1175 tests; real app screenshot
 - 2026-10-28 · P22.6 AI access per vault · 1184 tests; real-app access flow + screenshots
+- 2026-10-28 · P22.7 AI edits as a diff · 1191 tests; qa_editor 358/358; real-app diff + Apply to note

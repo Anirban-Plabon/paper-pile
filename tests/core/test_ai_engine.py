@@ -274,3 +274,19 @@ async def test_compact_by_hand(vault: Vault, fake: FakeProvider) -> None:
     assert await ai.compact() and ai.summarized == 2
     ai.new_chat()
     assert (ai.summary, ai.summarized) == ("", 0)
+
+
+async def test_edit_from_reply(vault: Vault, fake: FakeProvider) -> None:
+    ai = engine(vault, fake)
+    picked = ai.selection("alpha body", "a.md")
+    fake.reply = "```markdown\nALPHA BODY\n```"
+    await ask(ai, "shout it", selections=[picked])
+    assert ai.edit_from_reply(ai.turns[-1]) == ("a.md", "alpha body", "ALPHA BODY")
+    fake.reply = "plain answer"
+    await ask(ai, "no selection here")
+    assert ai.edit_from_reply(ai.turns[-1]) is None
+    two = [ai.selection("x", "a.md"), ai.selection("y", "b.md")]
+    await ask(ai, "two of them", selections=two)
+    assert ai.edit_from_reply(ai.turns[-1]) is None
+    await ask(ai, "loose text", selections=[ai.selection("free", "")])
+    assert ai.edit_from_reply(ai.turns[-1]) is None  # not from a note
