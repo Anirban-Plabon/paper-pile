@@ -267,7 +267,7 @@ Legend: 🧠 = needs Opus (see PLAN §6 model guidance) · ⬜ todo · 🔄 in p
 | P22.3 | Context budget from the model; token-based history; meter | ⬜ | |
 | P22.4 | Cache-friendly prompt order; per-turn context; mtime cache | ⬜ | |
 | P22.5 | Basic compaction + `/compact` | ⬜ | |
-| P22.6 | Access scope + Settings → AI → Access | ⬜ | |
+| P22.6 | Access scope + per-vault grants (`ai_access.json`) + Settings → AI → Access | ⬜ | |
 | P22.7 🧠 | Edit proposals + inline diff | ⬜ | |
 | P22.8 | Edit permission setting | ⬜ | |
 | P22.9 | Selection bar (Ask / Edit) + selection-to-chat setting | ⬜ | |
@@ -465,6 +465,7 @@ Legend: 🧠 = needs Opus (see PLAN §6 model guidance) · ⬜ todo · 🔄 in p
 | 2026-10-23 | P18 re-applied in part: tab-row double-click, opaque arrow hover, picker (no animation, ×, key caps), slash menu side, line numbers after properties; the note buttons stay in the tab strip, split backlinks still open together | User: "need the corrected versions of p18, they were useful" (listing those five) | user |
 | 2026-10-28 | AI redesign planned as P22 (PLAN §4.26): one `AiEngine` in core, `ollama` as the optional `ai` extra, edits only as approved inline diffs (− light red / + light green), access scope (whole vault by allowed file types + granted outside paths), selection-to-chat as a choice (today's auto chips stay default), suggested prompts, model-sized context, cache-friendly prompts, basic compaction | User: pack the AI to port with the app, show added / deleted lines, permission gate, access settings, less messy selections, prompt suggestions, no overflow, caching, compaction; AI must be installable separately on Linux | user |
 | 2026-10-28 | P22 order: engine + extra first (P22.1–2), then context / cache / compaction (3–5), access (6), edits (7–9), prompts and extras (10–12) | Everything else plugs into the engine; access must exist before `@vault` search | claude |
+| 2026-10-28 | AI access is granted per vault and recorded in `ai_access.json` (config folder, not the vault), keyed by the exact resolved vault path; no inheritance between parent / child / other vaults; first use asks | User: access must be recorded in a settings file like a vault permission; opening another vault must ask again and never reuse B's grant. Kept outside the vault so a copied vault cannot grant itself | user |
 
 ## Issues log
 <!-- YYYY-MM-DD · task · symptom → root cause → fix · (gotcha added? y/n) -->
