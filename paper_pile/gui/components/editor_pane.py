@@ -30,10 +30,9 @@ from paper_pile.core import (
     assets,
     commands_builtin,  # noqa: F401  (registers the slash commands)
 )
-from paper_pile.core.ai.context import EditorSnapshot, build_context
-from paper_pile.core.ai.factory import chat_model, generation_options
-from paper_pile.core.ai.instructions import system_instruction
-from paper_pile.core.ai.provider import ChatMessage, Provider, ProviderError
+from paper_pile.core.ai.context import EditorSnapshot
+from paper_pile.core.ai.engine import AiEngine
+from paper_pile.core.ai.provider import ProviderError
 from paper_pile.core.buffer import NoteBuffer, Outcome, content_hash, find_recoverable
 from paper_pile.core.command_actions import (
     TextChange,
@@ -78,7 +77,7 @@ from paper_pile.core.sections import (
     section_heads,
 )
 from paper_pile.core.session import renamed
-from paper_pile.core.settings import PAGE_VIEWS, get_nested, language_name, sanitized
+from paper_pile.core.settings import PAGE_VIEWS, get_nested, sanitized
 from paper_pile.core.snippets import Snippet, link_snippet
 from paper_pile.core.spacing import spaced_block
 from paper_pile.core.stats import word_count
@@ -132,8 +131,7 @@ class EditorPane:
         history: History | None = None,
         config: Config | None = None,
         get_recents: Callable[[], list[str]] = lambda: [],
-        get_provider: Callable[[], Provider | None] = lambda: None,
-        user_name: Callable[[], str] = lambda: "",
+        ai: AiEngine | None = None,
         on_command_used: Callable[[str], None] = lambda command_id: None,
         selection_changed: Callable[[str, str], None] = lambda text, path: None,
         add_note_to_chat: Callable[[str], None] = lambda path: None,
@@ -172,8 +170,7 @@ class EditorPane:
         self._sessions = Sessions()  # when a save starts an editing session
         self._config = config
         self._get_recents = get_recents
-        self._get_provider = get_provider
-        self._user_name = user_name
+        self._engine = ai
         self._ai_selection: dict[str, Any] | None = None  # set by Ctrl+J in the editor
         self._streams = 0
         self._table_lock = asyncio.Lock()  # table edits apply one after the other
@@ -1119,10 +1116,6 @@ class EditorPane:
         tabs = [(b.path, b.text) for b in self.buffers.values()]
         return EditorSnapshot(path, text, picked[0] if picked else "", tabs)
 
-    def _language(self) -> str:
-        code = str(self._config.get("general.language", "en")) if self._config else "en"
-        return language_name(code)
-
     def insert_text(self, text: str) -> None:
         """Put ``text`` at the caret of the note on screen (replacing a selection)."""
         if self.tabs.active is not None:
@@ -1270,9 +1263,9 @@ class EditorPane:
         selection: tuple[int, int] | None,
     ) -> None:
         """Run an AI command: ask the model and write its answer into the note as it arrives."""
-        provider = self._get_provider()
+        ai = self._engine
         path = self._active_path()
-        if provider is None or path is None:
+        if ai is None or path is None:
             self._toast("AI is not available.", error=True)
             return
         question = ""
@@ -1285,38 +1278,9 @@ class EditorPane:
         selected = text[selection[0] : selection[1]] if selection else ""
         body_text = text[:anchor] + text[end:]
         self.keep_version(path, body_text, "before AI")
-        source = spec.source if spec.source != "auto" else ("selection" if selected else "note")
-        part = {"selection": selected, "before": body_text[max(0, anchor - 4000) : anchor]}.get(
-            source, ""
+        messages = ai.command_messages(
+            spec, path=path, text=body_text, caret=anchor, selected=selected, question=question
         )
-        context = build_context(
-            self.vault,
-            current_path=path,
-            current_text=body_text,
-            selection=selected if source == "selection" else "",
-            index=self.index,
-            budget=int(self._config.get("ai.context_budget", 6000)) if self._config else 6000,
-        )
-        task_text = question or spec.instruction
-        user = task_text + (f"\n\nText:\n{part}" if part else "")
-        rules = (
-            ""
-            if spec.ask
-            else "\n\nReply with only the text to put into the note: no introduction, no "
-            "comments about what you did, and no code block around the answer."
-        )
-        messages = [
-            ChatMessage(
-                "system",
-                context.system_prompt(
-                    self._user_name(),
-                    self._language(),
-                    system_instruction(self._config, self.vault.root),
-                )
-                + rules,
-            ),
-            ChatMessage("user", user),
-        ]
         self._streams += 1
         stream_id = self._streams
         task = asyncio.current_task()
@@ -1340,8 +1304,7 @@ class EditorPane:
                 await editor.stream_begin(stream_id, utf16_index(body_text, anchor))
                 if spec.lead and not await editor.stream_append(stream_id, spec.lead):
                     return
-            model, options = chat_model(provider, self._config), generation_options(self._config)
-            async for piece in provider.chat(messages, model=model, options=options):
+            async for piece in ai.stream(messages):
                 collected += piece
                 pending += piece
                 if live and time.monotonic() - last >= STREAM_FLUSH_S:

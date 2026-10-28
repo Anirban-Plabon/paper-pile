@@ -4,12 +4,12 @@ Streamed replies rendered as markdown (math and diagrams typeset), Stop, Copy an
 note* per reply. The composer is one rounded card: attachment chips (selections, notes, text
 files), a ``+`` menu (open tabs, other notes, the editor's selection, upload, include all open
 tabs), the input with its ``@`` picker, the model picker and Send. What the model sees is built
-by :mod:`paper_pile.core.ai.context`; the provider is :mod:`paper_pile.core.ai`. If Ollama is
-not running the pane says so and everything else keeps working.
+by the AI engine (:mod:`paper_pile.core.ai.engine`), which also keeps the open chat; this pane
+only draws. If Ollama is not running the pane says so and everything else keeps working.
 
 A header row shows the chat's title; its ⋮ button opens the chat menu: New chat, the latest
 saved chats (*Memories*, one line each; older ones under *More chats*) and *AI settings*. Chats
-are saved per vault by :mod:`paper_pile.core.ai.chats` after every message (unless turned off);
+are saved per vault (:mod:`paper_pile.core.ai.chats`) after every message (unless turned off);
 Settings → AI → Memories browses, reads and deletes them.
 """
 
@@ -20,85 +20,28 @@ import logging
 import re
 import time
 from collections.abc import Awaitable, Callable
-from dataclasses import dataclass
-from pathlib import Path
 
 from nicegui import Client, background_tasks, ui
 
 from paper_pile.core.ai.attachments import AttachmentError, FileRef, read_text_file
-from paper_pile.core.ai.chats import (
-    SavedChat,
-    SavedQuote,
-    chat_title,
-    chats_folder,
-    delete_chat,
-    delete_chats,
-    expired_chats,
-    list_chats,
-    load_chat,
-    new_chat_id,
-    save_chat,
-)
+from paper_pile.core.ai.chats import SavedChat, SavedQuote, list_chats
 from paper_pile.core.ai.chats import SavedTurn as Turn
-from paper_pile.core.ai.context import (
-    Context,
-    EditorSnapshot,
-    build_context,
-    extract_mentions,
-    source_view,
-)
-from paper_pile.core.ai.factory import (
-    chat_model,
-    generation_options,
-    make_provider,
-)
-from paper_pile.core.ai.instructions import system_instruction
-from paper_pile.core.ai.provider import (
-    ChatMessage,
-    Health,
-    Provider,
-    ProviderError,
-    ProviderUnavailableError,
-)
-from paper_pile.core.config import Config
-from paper_pile.core.index import Index
+from paper_pile.core.ai.context import EditorSnapshot, source_view
+from paper_pile.core.ai.engine import AiEngine, Outgoing, Selection
+from paper_pile.core.ai.provider import Health, ProviderError, ProviderUnavailableError
 from paper_pile.core.links import wikilink_to
 from paper_pile.core.parser import render_html
 from paper_pile.core.picker import search_notes
-from paper_pile.core.settings import language_name
-from paper_pile.core.vault import Vault
 from paper_pile.gui.icons import ico, icon_button, line_icon, set_icon
 from paper_pile.gui.tips import tip
 
 THINKING_HTML = '<span class="pp-thinking" aria-label="Thinking"><i></i><i></i><i></i></span>'
 log = logging.getLogger("paper_pile.chat")
 
-HISTORY_TURNS = 12  # earlier messages sent along with a new one (ai.history_turns)
 RENDER_EVERY_S = 0.08  # how often a streaming reply is redrawn
 HEALTH_EVERY_S = 30.0
 RECENT_CHATS = 5  # shown in the ⋮ menu; older ones under "More chats"
 _MENTION_TAIL = re.compile(r"@([^\s@\[\]]*)$")
-
-
-@dataclass(frozen=True, slots=True)
-class Selection:
-    """Text selected in the editor, attached to the next message."""
-
-    text: str
-    label: str  # "From [[a]]" (or "Selected text" without a note)
-    note: str = ""  # the note it came from, shown in the theme colour
-    kind: str = "Selected text"  # or "Code block", "Math block", "Diagram"
-    detail: str = ""  # replaces the size when set (a block's text includes its fences)
-
-    def size(self) -> str:
-        if self.detail:
-            return self.detail
-        lines = len(self.text.strip().splitlines())
-        return f"{lines} lines" if lines > 1 else f"{len(self.text.strip())} chars"
-
-    def preview(self, limit: int = 300) -> str:
-        t = self.text.strip()
-        return t if len(t) <= limit else t[:limit] + "…"
 
 
 def _chip_text(note: str, kind: str, size: str) -> str:
@@ -112,9 +55,7 @@ def _chip_text(note: str, kind: str, size: str) -> str:
 class ChatPane:
     def __init__(
         self,
-        vault: Vault,
-        config: Config | None,
-        index: Index | None,
+        ai: AiEngine,
         snapshot: Callable[[], Awaitable[EditorSnapshot]],
         insert_text: Callable[[str], None],
         on_health: Callable[[Health], None] = lambda health: None,
@@ -124,10 +65,10 @@ class ChatPane:
         open_settings: Callable[[], None] = lambda: None,
         enabled: Callable[[], bool] = lambda: True,  # the AI feature switch
     ) -> None:
-        self.vault = vault
+        self.ai = ai
+        self.vault = ai.vault
+        self.config = ai.config
         self._enabled = enabled
-        self.config = config
-        self.index = index
         self._snapshot = snapshot
         self._insert = insert_text
         self._on_health = on_health
@@ -135,10 +76,6 @@ class ChatPane:
         self._open_paths = open_paths
         self._active_path = active_path
         self._open_settings = open_settings
-        self.provider: Provider = make_provider(config)
-        self.history: list[Turn] = []
-        self._chat_id = new_chat_id()
-        self._created = time.time()
         self.health = Health(False, "Checking Ollama…")
         self._task: asyncio.Task[None] | None = None
         self._include_tabs = False
@@ -233,41 +170,28 @@ class ChatPane:
 
     # ---- provider state ------------------------------------------------------------------
 
-    def _language(self) -> str:
-        code = str(self.config.get("general.language", "en")) if self.config else "en"
-        return language_name(code)
-
     def refresh_names(self) -> None:
         """The profile name changed: show it on the user's messages."""
         self._render_log()
 
-    def _setting(self, key: str, default: object) -> object:
-        return self.config.get(key, default) if self.config else default
-
-    def chats_dir(self) -> Path:
-        """Where chats are saved (``ai.chats_folder``, else the vault's ``.paper-pile/chats``)."""
-        return chats_folder(self.vault.root, str(self._setting("ai.chats_folder", "") or ""))
-
     def prune_chats(self) -> None:
         """Move chats older than ``ai.keep_chats_days`` to the trash (never the open one)."""
-        days = int(str(self._setting("ai.keep_chats_days", 0) or 0))
-        old = [c.id for c in expired_chats(list_chats(self.chats_dir()), days, time.time())]
-        moved = delete_chats(self.vault, self.chats_dir(), [c for c in old if c != self._chat_id])
+        moved = self.ai.prune()
         if moved:
             log.info("moved %d old chats to the trash", moved)
 
     def reload_provider(self) -> None:
         """The AI settings changed (host / model): build the provider again."""
-        self.provider = make_provider(self.config)
+        self.ai.reload()
         background_tasks.create(self.check_health())
 
     async def check_health(self) -> None:
         if not self._enabled():  # AI is switched off: never talk to Ollama
             return
-        health = await self.provider.health()
+        health = await self.ai.health()
         self.health = health
         self.models = list(health.models)
-        current = chat_model(self.provider, self.config)
+        current = self.ai.model()
         options = (
             self.models if current in self.models or not self.models else [current, *self.models]
         )
@@ -310,11 +234,11 @@ class ChatPane:
         )
 
     def _show_model(self) -> None:
-        current = chat_model(self.provider, self.config)
+        current = self.ai.model()
         self._model_label.set_text(self._model_names.get(current, current) or "No model")
 
     def _build_model_menu(self) -> None:
-        current = chat_model(self.provider, self.config)
+        current = self.ai.model()
         self._model_menu.clear()
         with self._model_menu:
             if not self._model_names:
@@ -365,13 +289,13 @@ class ChatPane:
 
     def _build_chat_menu(self, menu: ui.menu) -> None:
         busy = self._task is not None  # no switching while a reply streams in
-        chats = list_chats(self.chats_dir())
+        chats = list_chats(self.ai.chats_dir())
         menu.clear()
         with menu:
             with ui.menu_item(on_click=lambda _e=None: self.new_chat()) as item:
                 line_icon("square-pen").classes("pp-menu-icon")
                 ui.label("New chat").classes("pp-menu-title")
-            if busy or not self.history:
+            if busy or not self.ai.turns:
                 item.props("disable")
             ui.separator()
             ui.label("Memories").classes("pp-menu-caption")
@@ -397,7 +321,7 @@ class ChatPane:
             item.props("disable")
         with item:
             ui.label(chat.title or "Untitled chat").classes("pp-menu-title")
-            if chat.id == self._chat_id:
+            if chat.id == self.ai.chat_id:
                 line_icon("check", "s").classes("pp-menu-check pp-check")
             remove = line_icon("trash-2", "s").classes("pp-chat-saved-del")
             tip(remove, "Delete chat")
@@ -426,69 +350,51 @@ class ChatPane:
         """Start an empty chat (the current one is saved after every message)."""
         if self._task is not None:
             return
-        self.history = []
-        self._chat_id, self._created = new_chat_id(), time.time()
+        self.ai.new_chat()
         self._render_log()
 
     def open_chat(self, chat_id: str) -> bool:
         """Show a saved chat; False while a reply streams in (or when it cannot be read)."""
         if self._task is not None:
             return False
-        if chat_id == self._chat_id:
+        if chat_id == self.ai.chat_id:
             return True
-        chat = load_chat(self.chats_dir(), chat_id)
-        if chat is None:
+        if not self.ai.open_chat(chat_id):
             ui.notify("That chat could not be read.", type="warning")
             return False
-        self.history = list(chat.turns)
-        self._chat_id, self._created = chat.id, chat.created
         self._render_log()
         return True
 
     @property
     def chat_id(self) -> str:
-        return self._chat_id
+        return self.ai.chat_id
 
     def chats_deleted(self, chat_ids: set[str]) -> None:
         """Settings moved chats to the trash: start afresh if the open one was among them."""
-        if self._chat_id in chat_ids and self._task is None:
-            self.history = []
-            self._chat_id, self._created = new_chat_id(), time.time()
+        if self._task is None and self.ai.forget(*chat_ids):
             self._render_log()
 
     def _delete_chat(self, chat_id: str, root: ui.menu) -> None:
         root.close()
         try:
-            delete_chat(self.vault, self.chats_dir(), chat_id)
+            was_open = self.ai.delete_chat(chat_id)
         except OSError:
             log.exception("could not delete chat %s", chat_id)
             ui.notify("Could not delete the chat.", type="negative")
             return
-        if chat_id == self._chat_id:
-            self.history = []
-            self._chat_id, self._created = new_chat_id(), time.time()
+        if was_open:
             self._render_log()
         ui.notify("Chat moved to the trash", timeout=1500, position="bottom")
-
-    def _save(self) -> None:
-        """Write the current chat out (nothing for an empty one)."""
-        if not any(t.text.strip() for t in self.history):
-            return
-        if not self._setting("ai.save_chats", True):
-            return
-        turns = list(self.history)
-        chat = SavedChat(self._chat_id, chat_title(turns), self._created, time.time(), turns)
-        save_chat(self.chats_dir(), chat)
 
     # ---- the message log -----------------------------------------------------------------
 
     def _render_log(self) -> None:
-        self._title.set_text(chat_title(self.history) or "New chat")
+        self._title.set_text(self.ai.title or "New chat")
         self._log.clear()
         with self._log:
-            if not self.history:
+            if not self.ai.turns:
                 ui.label("No messages yet").classes("pp-muted pp-chat-empty")
-            for turn in self.history:
+            for turn in self.ai.turns:
                 self._bubble(turn)
         self._scroll_down()
 
@@ -506,7 +412,7 @@ class ChatPane:
         with ui.column().classes("pp-msg pp-msg-ai" + (" pp-msg-error" if turn.error else "")):
             ui.label("Assistant").classes("pp-msg-who")
             waiting = not turn.text and not turn.error and self._task is not None
-            if waiting and self.history and turn is self.history[-1]:  # until the first words
+            if waiting and self.ai.turns and turn is self.ai.turns[-1]:  # until the first words
                 content = (
                     '<span class="pp-thinking" aria-label="Thinking"><i></i><i></i><i></i></span>'
                 )
@@ -763,30 +669,14 @@ class ChatPane:
         an empty selection (the user clicked away) changes nothing."""
         if not text.strip():
             return
-        name = wikilink_to(path, "", set(self.vault.walk_notes())) if path else ""
-        picked = Selection(text, f"From [[{name}]]" if name else "Selected text", name)
+        picked = self.ai.selection(text, path)
         if picked not in self._selections:
             self._selections.append(picked)
             self._render_selections()
 
     def set_block(self, kind: str, lang: str, text: str, path: str) -> None:
         """Attach a code / math / diagram block (its copy button) like a selection."""
-        body = text.strip("\n")
-        if kind == "math":
-            fenced, label = f"$$\n{body}\n$$", "Math block"
-        elif kind == "diagram":
-            fenced, label = f"```mermaid\n{body}\n```", "Diagram"
-        else:
-            fenced, label = f"```{lang}\n{body}\n```", "Code block"
-        n = len(body.splitlines()) or 1
-        name = wikilink_to(path, "", set(self.vault.walk_notes())) if path else ""
-        picked = Selection(
-            fenced,
-            f"From [[{name}]]" if name else label,
-            name,
-            label,
-            f"{n} line{'s' if n != 1 else ''}",
-        )
+        picked = self.ai.block(kind, lang, text, path)
         if picked not in self._selections:
             self._selections.append(picked)
             self._render_selections()
@@ -903,48 +793,26 @@ class ChatPane:
         files, self._files = self._files, []
         self._render_selections()
         self._render_refs()
-        known = set(self.vault.walk_notes())
-        names = [wikilink_to(p, "", known) for p in notes if p in known]
-        label = "\n".join(
-            [f"{p.label}: [{p.kind}]" for p in picked]
-            + [f"[[{n}]]" for n in names]
-            + [f"{f.name}: [File]" for f in files]
-        )
-        attached = "\n\n".join(
-            [f"{p.label}:\n{p.text.strip()}" for p in picked]
-            + [f"File {f.name}:\n{f.text.strip()}" for f in files]
-        )
-        quotes = [SavedQuote(p.label, p.kind, p.size(), p.text, p.note) for p in picked]
-        self.history.append(Turn("user", text, label, quotes=quotes))
-        self._save()
-        self._task = background_tasks.create(self._answer(text, attached, names))
+        out = self.ai.add_message(text, picked, notes, files)
+        self.ai.save()
+        self._task = background_tasks.create(self._answer(out))
         set_icon(self._send, "square")
 
-    async def _answer(
-        self, question: str, attached: str = "", notes: list[str] | None = None
-    ) -> None:
-        reply = Turn("assistant", "")
-        self.history.append(reply)
+    async def _answer(self, out: Outgoing) -> None:
+        reply = self.ai.start_reply()
         self._render_log()
         body = self._last_body()
         try:
             snap = await self._snapshot()
-            budget = int(self.config.get("ai.context_budget", 6000)) if self.config else 6000
-            context = build_context(
-                self.vault,
-                current_path=snap.path,
-                current_text=snap.text,
-                selection=attached or snap.selection,
-                mentions=[*extract_mentions(question), *(notes or [])],
-                open_tabs=snap.tabs,
-                include_tabs=self._include_tabs,
-                index=self.index,
-                budget=budget,
-            )
-            reply.summary = context.summary()
-            await self._stream(reply, body, self._messages(context, question))
+            last = 0.0
+            async for _piece in self.ai.answer(reply, out, snap, include_tabs=self._include_tabs):
+                now = time.monotonic()
+                if body is not None and now - last >= RENDER_EVERY_S:
+                    last = now
+                    body.set_content(render_html(reply.text))
+                    self._scroll_down()
         except asyncio.CancelledError:
-            reply.text = (reply.text + "\n\n*(stopped)*").strip()
+            self.ai.stopped(reply)
         except ProviderError as exc:
             self._fail(reply, str(exc), unavailable=isinstance(exc, ProviderUnavailableError))
         except Exception:
@@ -954,43 +822,18 @@ class ChatPane:
             self._task = None
             set_icon(self._send, "arrow-up")
             self._render_log()
-            self._save()
+            self.ai.save()
 
     def _fail(self, reply: Turn, message: str, *, unavailable: bool = False) -> None:
-        reply.error, reply.text = True, message
+        self.ai.failed(reply, message)
         if unavailable:
             self.health = Health(False, message)
             self._banner.set_visibility(True)
             self._banner_text.set_text(message)
             self._on_health(self.health)
 
-    def _messages(self, context: Context, question: str) -> list[ChatMessage]:
-        keep = int(str(self._setting("ai.history_turns", HISTORY_TURNS)))
-        past = [t for t in self.history[:-2] if not t.error and t.text.strip()]
-        past = past[-keep:] if keep > 0 else []
-        system = context.system_prompt(
-            self._user_name(), self._language(), system_instruction(self.config, self.vault.root)
-        )
-        return [
-            ChatMessage("system", system),
-            *(ChatMessage("user" if t.role == "user" else "assistant", t.text) for t in past),
-            ChatMessage("user", question),
-        ]
-
     def _last_body(self) -> ui.html | None:
         for el in reversed(list(self._log.descendants())):
             if isinstance(el, ui.html):
                 return el
         return None
-
-    async def _stream(self, reply: Turn, body: ui.html | None, messages: list[ChatMessage]) -> None:
-        last = 0.0
-        model = chat_model(self.provider, self.config)
-        options = generation_options(self.config)
-        async for piece in self.provider.chat(messages, model=model, options=options):
-            reply.text += piece
-            now = time.monotonic()
-            if body is not None and now - last >= RENDER_EVERY_S:
-                last = now
-                body.set_content(render_html(reply.text))
-                self._scroll_down()

@@ -14,7 +14,7 @@ from typing import Any
 from nicegui import background_tasks, run, ui
 
 from paper_pile.core.ai.chats import chats_folder
-from paper_pile.core.ai.factory import chat_model, generation_options, make_provider
+from paper_pile.core.ai.engine import AiEngine
 from paper_pile.core.ai.instructions import draft_messages
 from paper_pile.core.ai.provider import Health
 from paper_pile.core.commands import push_recent
@@ -31,7 +31,7 @@ from paper_pile.core.session import (
     renamed,
     save_session,
 )
-from paper_pile.core.settings import feature_on, language_name, sanitized
+from paper_pile.core.settings import feature_on, sanitized
 from paper_pile.core.templates import template_draft_messages
 from paper_pile.core.vault import Vault, VaultError
 from paper_pile.core.vault_folders import ensure_folders, move_old_chats
@@ -107,6 +107,12 @@ class MainLayout:
         self.history = History(vault)  # earlier versions of notes (.paper-pile/history.db)
         self.chat: ChatPane | None = None
         self.profile: ProfileBlock | None = None
+        self.ai = AiEngine(  # all AI logic; the chat pane and AI commands only draw
+            Vault(vault),
+            self.config,
+            self.index,
+            user_name=lambda: self.profile.name if self.profile else "",
+        )
         self.state: SessionState = load_session(vault)
         if not (vault / ".paper-pile" / "session.json").exists():  # a vault opened the first time
             mode = self.config.get("editor.default_mode", "live")
@@ -576,14 +582,8 @@ class MainLayout:
 
     async def _draft_instruction(self, kind: str, brief: str) -> AsyncIterator[str]:
         """Settings → Write with AI: the model drafts a system instruction or a template."""
-        provider = self.chat.provider if self.chat is not None else make_provider(self.config)
-        language = language_name(str(self.config.get("general.language", "en")))
         ask = template_draft_messages if kind == "template" else draft_messages
-        async for piece in provider.chat(
-            ask(brief, language),
-            model=chat_model(provider, self.config),
-            options=generation_options(self.config),
-        ):
+        async for piece in self.ai.stream(ask(brief, self.ai.language())):
             yield piece
 
     def _open_new_note(self, path: str) -> None:
@@ -671,9 +671,7 @@ class MainLayout:
     def _chat_pane(self) -> None:
         assert self.editor_pane is not None
         self.chat = ChatPane(
-            Vault(self.vault),
-            self.config,
-            self.index,
+            self.ai,
             snapshot=self.editor_pane.ai_snapshot,
             insert_text=self.editor_pane.insert_text,
             on_health=self._on_ollama_health,
@@ -705,8 +703,7 @@ class MainLayout:
             config=self.config,
             get_recents=lambda: self.state.recent_commands,
             on_settings_changed=self._settings_changed_elsewhere,
-            get_provider=lambda: self.chat.provider if self.chat else None,
-            user_name=lambda: self.profile.name if self.profile else "",
+            ai=self.ai,
             on_command_used=self._on_command_used,
             selection_changed=self._chat_selection,
             add_note_to_chat=self._chat_add_note,

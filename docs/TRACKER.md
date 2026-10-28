@@ -6,7 +6,7 @@
 Legend: 🧠 = needs Opus (see PLAN §6 model guidance) · ⬜ todo · 🔄 in progress · ✅ done · ⛔ blocked · ⏭️ skipped/deferred
 
 ## Current focus
-- **Phase:** P22 — AI redesign (user request 2026-10-28, PLAN §4.26): P22.1 done; now P22.2 (`AiEngine`)
+- **Phase:** P22 — AI redesign (user request 2026-10-28, PLAN §4.26): P22.1–P22.2 done; next: P22.3 (context budget from the model)
 - **Phase:** P21 — Note header, pins, small UI fixes (user request 2026-10-24, PLAN §4.25): built; P20's next step (Tailwind off) waits
 - **Phase:** P20 — Memory (user request 2026-10-24, PLAN §4.24): leaks fixed (dialogs, timing entries); small heap creep left (Open issue); next: Tailwind off with a screenshot comparison, then the engine options (system WebKitGTK, browser app mode)
 - **Before:** P19 — Performance (PLAN §4.23): done; next candidates in the Decision log (save off the UI thread, watcher echo, tab strip in place)
@@ -263,7 +263,7 @@ Legend: 🧠 = needs Opus (see PLAN §6 model guidance) · ⬜ todo · 🔄 in p
 | ID | Task | Status | Notes |
 |---|---|---|---|
 | P22.1 | AI as the `ai` extra | ✅ | 3 tests (no `ollama` import at start; hidden `ollama` → AI off + hint); real no-extra venv: `--serve` starts, no Chat tab, AI button hidden, Settings AI switch disabled with the hint (screenshot) |
-| P22.2 🧠 | `AiEngine` in core; chat + AI commands use it | ⬜ | |
+| P22.2 🧠 | `AiEngine` in core; chat + AI commands use it | ✅ | `core/ai/engine.py`; 8 engine tests (FakeProvider); chat.py −250 lines (no prompt / history / saving logic), editor pane and *Write with AI* go through `AiEngine.stream`; real app (fake AI): chat reply + saved chat + title, `/summarize` streams into the note |
 | P22.3 | Context budget from the model; token-based history; meter | ⬜ | |
 | P22.4 | Cache-friendly prompt order; per-turn context; mtime cache | ⬜ | |
 | P22.5 | Basic compaction + `/compact` | ⬜ | |
@@ -550,6 +550,7 @@ Legend: 🧠 = needs Opus (see PLAN §6 model guidance) · ⬜ todo · 🔄 in p
 | 2026-10-14 | P1.3 | `xdotool` keys sent to the native window had no effect (worked in S3) | Desktop-level key injection on Wayland/XWayland is focus-dependent and not reliable | Verified inside the native renderer instead: QtWebEngine exposed via `QTWEBENGINE_REMOTE_DEBUGGING=9222`, raw CDP `Input.dispatchKeyEvent`/mouse events (Playwright cannot attach: no browser-context support) | n |
 | 2026-10-14 | P1.1 | `test_websocket_with_cookie_ok` got `WebSocketDisconnect` although cookie was valid | Starlette `TestClient` neither replays its cookie jar nor uses `base_url`'s host on websocket handshakes (sends `Host: testserver`, rejected by the loopback check) — test artifact, gate was right | Pass `host` + `cookie` headers explicitly in websocket tests | n |
 | 2026-10-14 | P0.6 | `xdotool key` reached nothing in the Qt window | `windowactivate` did not move keyboard focus under XWayland; page handler itself was fine (proved with a synthetic key from headless Chrome) | `xdotool windowfocus <id>` + click into the page first | n (test tooling only) |
+| 2026-10-28 | P22.2 | `/summarize` removed the slash text but wrote nothing; log: `'bool' object has no attribute 'command_messages'` | `EditorPane` already had `self._ai` (the AI on/off flag, `set_ai`); the new engine attribute of the same name was overwritten by it. mypy only checks `core/`, so nothing caught it | Engine attribute renamed `_engine`; found by the real-app check | y |
 
 ## Session log
 <!-- YYYY-MM-DD · tasks completed · short note -->
@@ -701,3 +702,4 @@ Legend: 🧠 = needs Opus (see PLAN §6 model guidance) · ⬜ todo · 🔄 in p
 - 2026-10-25 · Appearance groups (Theme / Interface) · 1149 tests; real app screenshot
 - 2026-10-25 · Settings first heading spacing equal above / below · ink measured at 4×
 - 2026-10-28 · P22.1 AI as the `ai` extra · 1152 tests; no-extra venv run in `--serve` + offscreen screenshot
+- 2026-10-28 · P22.2 `AiEngine` · 1160 tests; real app with fake AI (chat, saved chat, `/summarize`)
