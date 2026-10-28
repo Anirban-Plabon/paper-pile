@@ -720,6 +720,7 @@ class MainLayout:
             selection_changed=self._chat_selection,
             add_note_to_chat=self._chat_add_note,
             ask_chat=self._chat_ask,
+            ask_selection=self._chat_ask_selection,
             open_tag=self.open_tag,
             on_stats=self._set_stats,
             block_to_chat=self._chat_block,
@@ -744,8 +745,19 @@ class MainLayout:
             self.tree.refresh()
 
     def _chat_selection(self, text: str, path: str) -> None:
+        """A selection settled: attached by itself unless Settings says "With Ask"."""
+        if self.config.get("ai.selection_to_chat", "auto") == "button":
+            return
         if self.chat is not None and self.ai_on():
             self.chat.set_selection(text, path)
+
+    def _chat_ask_selection(self, text: str, path: str) -> None:
+        """The selection bar's Ask: attach it and put the caret in the chat box."""
+        if self.chat is None or not self.ai_on() or not text.strip():
+            return
+        self.chat.set_selection(text, path)
+        self._open_chat()
+        self.chat.focus_input()
 
     def _chat_block(self, kind: str, lang: str, text: str, path: str) -> None:
         if self.chat is not None and self.ai_on():

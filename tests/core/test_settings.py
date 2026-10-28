@@ -311,3 +311,19 @@ def test_new_settings_defaults() -> None:
     assert v["general.restore_tabs"] is True and v["general.confirm_delete"] is True
     assert v["editor.readable_width"] is False and v["editor.highlight_line"] is False
     assert v["editor.word_count"] is True
+
+
+def test_selection_to_chat_setting() -> None:
+    from paper_pile.core.settings import ALL, parse_value, sanitized
+
+    setting = ALL["ai.selection_to_chat"]
+    assert sanitized({})["ai.selection_to_chat"] == "auto"
+    assert parse_value(setting, "button").ok and not parse_value(setting, "sometimes").ok
+
+
+def test_edit_selection_spec() -> None:
+    from paper_pile.core.commands_builtin import edit_selection
+
+    spec = edit_selection("  make it shorter ")
+    assert spec.source == "selection" and spec.replace_selection
+    assert "as asked: make it shorter." in spec.instruction

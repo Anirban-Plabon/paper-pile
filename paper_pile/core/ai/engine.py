@@ -18,7 +18,10 @@ from paper_pile.core.ai.access import (
     AccessPolicy,
     grant_now,
     load_grant,
+    paths_in,
     revoke,
+    save_grant,
+    unique,
 )
 from paper_pile.core.ai.attachments import FileRef
 from paper_pile.core.ai.chats import (
@@ -232,6 +235,40 @@ class AiEngine:
         policy = self.policy()
         return [p for p in self.note_paths() if policy.may_read(p)]
 
+    def paths_to_ask(self, text: str) -> list[Path]:
+        """Folders / files outside the vault that a message names and that are not granted yet:
+        the chat asks for each before sending (PLAN §4.26)."""
+        policy = self.policy()
+        return [p for p in paths_in(text, self.vault.root) if not policy.covers(p)]
+
+    def allow_path(self, path: Path) -> None:
+        """The user allowed the AI to read ``path`` (outside the vault) from now on."""
+        grant = load_grant(self.vault.root, self._access_dir)
+        if grant is None:
+            return  # the vault itself comes first (confirm_access)
+        grant.allow_paths = unique([*grant.allow_paths, str(path.expanduser().resolve())])
+        save_grant(self.vault.root, grant, self._access_dir)
+        self.access_changed()
+
+    def outside_text(self, text: str) -> list[tuple[str, str]]:
+        """``(path, text)`` of the granted outside files a message names (a folder: its files of
+        the allowed types), at most the context budget in all."""
+        policy = self.policy()
+        named = [p for p in paths_in(text, self.vault.root) if policy.covers(p)]
+        if not named:
+            return []
+        files = policy.outside_files()
+        left = self.budget() * 4  # characters
+        out: list[tuple[str, str]] = []
+        for root in named:
+            for path in [root] if root.is_file() else [f for f in files if root in f.parents]:
+                body = policy.read_outside(path)
+                if body is None or not body.strip() or left <= 0:
+                    continue
+                out.append((str(path), body[:left]))
+                left -= len(body)
+        return out
+
     def outside_files(self) -> list[Path]:
         """Files of the granted outside folders, for the + menu."""
         return self.policy().outside_files()
@@ -361,6 +398,12 @@ class AiEngine:
             [f"{p.label}:\n{p.text.strip()}" for p in selections]
             + [f"File {f.name}:\n{f.text.strip()}" for f in files]
         )
+        outside = self.outside_text(text) if self.has_access() else []
+        if outside:
+            labels = [f"{p}: [Outside file]" for p, _ in outside]
+            texts = [f"File {p}:\n{body.strip()}" for p, body in outside]
+            label = "\n".join([label, *labels] if label else labels)
+            attached = "\n\n".join([attached, *texts] if attached else texts)
         quotes = [SavedQuote(p.label, p.kind, p.size(), p.text, p.note) for p in selections]
         turn = SavedTurn("user", text, label, quotes=quotes, notes=names)
         self.turns.append(turn)

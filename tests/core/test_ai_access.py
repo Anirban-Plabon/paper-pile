@@ -14,6 +14,7 @@ from paper_pile.core.ai.access import (
     grant_now,
     load_grant,
     parse_types,
+    paths_in,
     revoke,
     save_grant,
     says_private,
@@ -193,3 +194,44 @@ async def test_engine_sends_only_what_the_policy_allows(vault: Vault, cfg_dir: P
         )
     ai.revoke_access()
     assert not ai.has_access()
+
+
+def test_paths_in_a_message(tmp_path: Path) -> None:
+    vault = tmp_path / "vault"
+    papers = tmp_path / "papers"
+    (vault / "sub").mkdir(parents=True)
+    papers.mkdir()
+    one = tmp_path / "one.md"
+    one.write_text("x")
+    text = (
+        f"read {papers}, and {one}. Also {vault / 'sub'} (in the vault), "
+        f"{tmp_path / 'nope'} and http://x.org/a/b and {papers} again"
+    )
+    assert paths_in(text, vault) == [papers.resolve(), one.resolve()]
+
+
+async def test_allow_a_folder_from_the_chat(vault: Vault, cfg_dir: Path, tmp_path: Path) -> None:
+    papers = tmp_path / "papers"
+    (papers / "deep").mkdir(parents=True)
+    (papers / "p1.md").write_text("first paper")
+    (papers / "deep" / "p2.md").write_text("second paper")
+    (papers / "x.bin").write_bytes(b"\x00\x01")
+    fake = FakeProvider(delay=0)
+    ai = make(vault, fake, cfg_dir)
+    question = f"summarize {papers}"
+    assert ai.paths_to_ask(question) == [papers.resolve()]
+    ai.allow_path(papers)  # no vault grant yet: nothing is recorded
+    assert ai.paths_to_ask(question) == [papers.resolve()]
+    ai.allow()
+    ai.allow_path(papers)
+    assert ai.paths_to_ask(question) == [] and ai.paths_to_ask(f"see {papers / 'deep'}") == []
+    out = ai.add_message(question)
+    async for _ in ai.answer(ai.start_reply(), out, EditorSnapshot()):
+        pass
+    sent = fake.calls[-1][-1].content
+    assert "first paper" in sent and "second paper" in sent
+    assert out.turn.attachment.count("[Outside file]") == 2
+    grant = load_grant(vault.root, cfg_dir)
+    assert grant is not None and grant.allow_paths == [str(papers.resolve())]
+    other = make(Vault(tmp_path), FakeProvider(delay=0), cfg_dir)  # another vault: not granted
+    assert not other.has_access()

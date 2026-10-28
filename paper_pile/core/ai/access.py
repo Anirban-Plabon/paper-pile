@@ -16,6 +16,7 @@ import fnmatch
 import json
 import logging
 import os
+import re
 from collections.abc import Iterable
 from dataclasses import asdict, dataclass, field
 from datetime import datetime
@@ -186,6 +187,11 @@ class AccessPolicy:
             return []
         return [Path(p).expanduser().resolve() for p in self.grant.allow_paths]
 
+    def covers(self, path: Path) -> bool:
+        """Is ``path`` (a folder or file outside the vault) granted already?"""
+        real = path.expanduser().resolve()
+        return any(real == root or root in real.parents for root in self._roots())
+
     def may_read_outside(self, path: Path) -> bool:
         """Is ``path`` (outside the vault) one of, or inside one of, the granted paths?"""
         try:
@@ -259,6 +265,23 @@ def check_outside_path(text: str, vault: Path) -> str:
     if real == vault_real or vault_real in real.parents:
         return "That is inside this vault already."
     return ""
+
+
+_PATH = re.compile(r"""(?<![\w/~.])(~?/[^\s'"`<>()\[\]]+)""")
+
+
+def paths_in(text: str, vault: Path) -> list[Path]:
+    """Folders and files outside ``vault`` that ``text`` names by a full path (``/…`` or ``~/…``)
+    and that exist, each once, resolved."""
+    found: list[Path] = []
+    for m in _PATH.finditer(text):
+        raw = m.group(1).rstrip(".,;:!?")
+        if check_outside_path(raw, vault):
+            continue
+        path = Path(raw).expanduser().resolve()
+        if path not in found:
+            found.append(path)
+    return found
 
 
 def unique(items: Iterable[str]) -> list[str]:

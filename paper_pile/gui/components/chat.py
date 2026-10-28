@@ -83,6 +83,7 @@ class ChatPane:
         self._open_settings = open_settings
         self.health = Health(False, "Checking Ollama…")
         self._task: asyncio.Task[None] | None = None
+        self._asking = False  # an Allow / Not now card is waiting in the chat
         self._include_tabs = False
         self._selections: list[Selection] = []
         self._open: Selection | None = None  # the chip whose text is unfolded
@@ -844,8 +845,17 @@ class ChatPane:
             self._input.set_value("")
             self._task = background_tasks.create(self._compact())
             return
-        if not await confirm_access(self.ai, self._card):
-            return  # the message stays in the box
+        if self._asking:
+            return  # a question about access is open in the chat
+        self._asking = True
+        try:
+            if not await confirm_access(self.ai, self._card):
+                return  # the message stays in the box
+            for path in self.ai.paths_to_ask(text):
+                if await self._ask_path(path):
+                    self.ai.allow_path(path)
+        finally:
+            self._asking = False
         self._input.set_value("")
         self._mentions.set_visibility(False)
         picked, self._selections, self._open = self._selections, [], None
@@ -885,6 +895,37 @@ class ChatPane:
             set_icon(self._send, "arrow-up")
             self._render_log()
             self.ai.save()
+
+    async def _ask_path(self, path: Path) -> bool:
+        """The message names a folder or file outside the vault: ask in the chat whether the AI
+        may read it (remembered for this vault; Settings → AI → Access lists it)."""
+        answer: asyncio.Future[bool] = asyncio.get_running_loop().create_future()
+
+        def say(value: bool) -> None:
+            if not answer.done():
+                answer.set_result(value)
+
+        kind = "folder" if path.is_dir() else "file"
+        with self._log:
+            card = ui.column().classes("pp-msg pp-chat-ask")
+            with card:
+                ui.label(f"Allow the AI to read this {kind}?").classes("pp-chat-ask-title")
+                tip(ui.label(str(path)).classes("pp-chat-ask-path"), str(path))
+                ui.label("Allowed for this vault until you remove it in Settings.").classes(
+                    "pp-muted pp-chat-ask-note"
+                )
+                with ui.row().classes("pp-chat-ask-buttons items-center no-wrap"):
+                    ui.button("Not now", on_click=lambda: say(False), color=None).props(
+                        "flat dense no-caps"
+                    ).classes("pp-mem-change")
+                    ui.button("Allow", on_click=lambda: say(True)).props(
+                        "dense no-caps unelevated"
+                    ).classes("pp-chat-ask-allow")
+        self._scroll_down()
+        try:
+            return await answer
+        finally:
+            card.delete()
 
     async def _compact(self) -> None:
         """``/compact``: summarize the earlier messages for the model now."""

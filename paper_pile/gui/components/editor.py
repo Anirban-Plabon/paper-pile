@@ -50,6 +50,7 @@ class Editor(
         on_wikilink: Handler | None = None,
         on_paste: Handler | None = None,
         on_proposal: Handler | None = None,
+        on_selection_action: Handler | None = None,
         on_focus: Handler | None = None,
         on_tag: Handler | None = None,
         on_caret: Handler | None = None,
@@ -114,6 +115,8 @@ class Editor(
             self.on("paste", on_paste)
         if on_proposal:  # Accept / Reject on an AI edit shown as a diff
             self.on("proposal", on_proposal)
+        if on_selection_action:  # Ask / Edit on the bar over a selection
+            self.on("selection_action", on_selection_action)
 
     async def get_text(self, doc_id: int) -> str | None:
         """The text of doc ``doc_id`` if it is the one on screen; ``None`` if another doc is

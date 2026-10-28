@@ -24,6 +24,7 @@ import { closeSlash, setSlashResults, slashExtension } from "./slash.js";
 import { focusTableCell, tableKeys } from "./tablewidget.js";
 import { streamAppend, streamBegin, streamEnd, streamField } from "./stream.js";
 import { proposalExtension, showProposal } from "./proposal.js";
+import { selectBar, settleBar } from "./selectbar.js";
 import { typeset } from "./typeset.js";
 
 const CHANGE_DEBOUNCE_MS = 300;
@@ -109,6 +110,7 @@ export function createEditor(
     EditorState.tabSize.of(o.tabSize),
     indentUnit.of(" ".repeat(o.tabSize)),
     EditorView.contentAttributes.of({ spellcheck: o.spellCheck ? "true" : "false", lang: o.lang || "en" }),
+    o.aiBar ? selectBar : [],
     o.pageView ? pageView({ style: o.pageStyle, paper: o.paper, textWidthMm: o.textWidthMm, paperHeightMm: o.paperHeightMm, marginMm: o.marginMm }) : [],
   ];
   const themeSlot = new Compartment();
@@ -300,7 +302,7 @@ export function createEditor(
           syntaxHighlighting(classHighlighter), // `tok-*` classes inside code blocks; colours live in CSS
           modeSlot.of(modeExt(currentMode)),
           slashExtension(),
-          selectionSync({ emit, getDocId: () => docId }),
+          selectionSync({ emit, getDocId: () => docId, onSettle: settleBar }),
           EditorView.domEventHandlers({
             paste: handlePaste,
             // dropping image files puts them where they were dropped

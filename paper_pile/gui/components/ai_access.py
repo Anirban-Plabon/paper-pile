@@ -13,7 +13,6 @@ from nicegui import ui
 
 from paper_pile.core.ai.access import (
     Grant,
-    check_outside_path,
     load_grant,
     parse_types,
     save_grant,
@@ -102,35 +101,40 @@ class AccessPanel:
             grant,
             "allow_paths",
             "Outside folders and notes",
-            "Full paths the AI may also read",
-            "/home/me/papers",
+            "Name a path in the chat to allow it" if not grant.allow_paths else "Allowed from chat",
+            None,
         )
         self._path_list(
             grant, "exclude", "Never read", "Vault folders, notes or patterns", "private/"
         )
 
-    def _path_list(self, grant: Grant, attr: str, label: str, help_text: str, hint: str) -> None:
-        items: list[str] = getattr(grant, attr)
+    def _path_list(
+        self, grant: Grant, attr: str, label: str, help_text: str, hint: str | None
+    ) -> None:
+        """A list with × per item, and (with a ``hint``) a box to add one."""
         with ui.column().classes("pp-set-row pp-access-list"):
             with ui.row().classes("items-center no-wrap w-full"):
                 with ui.column().classes("pp-set-text"):
                     ui.label(label).classes("pp-set-label")
                     ui.label(help_text).classes("pp-set-help")
-                with ui.row().classes("pp-set-control items-center no-wrap"):
-                    box = ui.input(placeholder=hint).props("dense outlined")
-                    box.classes("pp-set-field")
-                    error = ui.label("").classes("pp-set-error")
-                    error.set_visibility(False)
-
-                    def add(_e: object = None) -> None:
-                        self._add(attr, str(box.value or ""), error)
-
-                    box.on("keydown.enter", add)
-                    icon_button("plus", add, "Add", size="m")
-            for item in items:
+                if hint is not None:  # outside paths are added from the chat (PLAN §4.26)
+                    self._add_box(attr, hint)
+            for item in getattr(grant, attr):
                 with ui.row().classes("pp-access-item items-center no-wrap w-full"):
                     ui.label(item).classes("pp-set-help pp-access-path")
                     icon_button("x", lambda i=item: self._remove(attr, i), "Remove", size="m")
+
+    def _add_box(self, attr: str, hint: str) -> None:
+        with ui.row().classes("pp-set-control items-center no-wrap"):
+            box = ui.input(placeholder=hint).props("dense outlined").classes("pp-set-field")
+            error = ui.label("").classes("pp-set-error")
+            error.set_visibility(False)
+
+            def add(_e: object = None) -> None:
+                self._add(attr, str(box.value or ""), error)
+
+            box.on("keydown.enter", add)
+            icon_button("plus", add, "Add", size="m")
 
     # ---- changes ---------------------------------------------------------------------------
 
@@ -155,13 +159,8 @@ class AccessPanel:
         grant = self._grant()
         if grant is None:
             return
-        value = value.strip()
-        if attr == "allow_paths":
-            why = check_outside_path(value, self.ai.vault.root)
-            value = str(Path(value).expanduser().resolve()) if not why else value
-        else:
-            why = "" if value.strip("/") else "Type a vault path or pattern."
-            value = value.strip("/")
+        value = value.strip().strip("/")
+        why = "" if value else "Type a vault path or pattern."
         if why:
             error.set_text(why)
             error.set_visibility(True)

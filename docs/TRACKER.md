@@ -6,7 +6,7 @@
 Legend: 🧠 = needs Opus (see PLAN §6 model guidance) · ⬜ todo · 🔄 in progress · ✅ done · ⛔ blocked · ⏭️ skipped/deferred
 
 ## Current focus
-- **Phase:** P22 — AI redesign (user request 2026-10-28, PLAN §4.26): P22.1–P22.7 done; next: P22.8 (edit permission setting)
+- **Phase:** P22 — AI redesign (user request 2026-10-28, PLAN §4.26): P22.1–P22.7 and P22.9 done; next: P22.8 (edit permission setting)
 - **Phase:** P21 — Note header, pins, small UI fixes (user request 2026-10-24, PLAN §4.25): built; P20's next step (Tailwind off) waits
 - **Phase:** P20 — Memory (user request 2026-10-24, PLAN §4.24): leaks fixed (dialogs, timing entries); small heap creep left (Open issue); next: Tailwind off with a screenshot comparison, then the engine options (system WebKitGTK, browser app mode)
 - **Before:** P19 — Performance (PLAN §4.23): done; next candidates in the Decision log (save off the UI thread, watcher echo, tab strip in place)
@@ -270,7 +270,7 @@ Legend: 🧠 = needs Opus (see PLAN §6 model guidance) · ⬜ todo · 🔄 in p
 | P22.6 | Access scope + per-vault grants (`ai_access.json`) + Settings → AI → Access | ✅ | 9 tests (exact-path grants: parent / child / other / moved vault get nothing; damaged records; never-folders, exclusions, patterns; `ai: false`; outside paths; engine refuses without a grant and drops what is not allowed); real app: ask → Not now keeps text → Allow → reply, record key = vault path, Access group (screenshots), outside path added + listed in the + menu, AI command on an `ai: false` note refused |
 | P22.7 🧠 | Edit proposals + inline diff | ✅ | 6 proposal tests + 1 engine test (`edit_from_reply`); `qa_editor.py` 358/358; real app (fake AI): Fix grammar → diff (− red / + green, computed colours checked), Reject all leaves the note, Accept applies, one Ctrl+Z restores; chat *Apply to note* → diff of only the changed line (screenshots) |
 | P22.8 | Edit permission setting | ⬜ | |
-| P22.9 | Selection bar (Ask / Edit) + selection-to-chat setting | ⬜ | |
+| P22.9 | Selection bar (Ask / Edit) + selection-to-chat setting + folder permission asked in the chat | ✅ | 4 tests (paths in a message, Allow from chat: recorded per vault, folder files sent, sub-folder covered, other vault not; setting; Edit spec); qa_editor 358/358; real app (fake AI): bar on a settled selection, Edit prompt focused → diff, With Ask: no chip until Ask, Ask focuses the chat, a folder in a message → card in the chat → Allow → saved + `[Outside file]` attached, not asked again (screenshots) |
 | P22.10 | Suggested prompts + own prompts file | ⬜ | |
 | P22.11 | Chat extras: regenerate, edit last, sources, folded reasoning | ⬜ | |
 | P22.12 | `@vault` search | ⬜ | |
@@ -471,6 +471,7 @@ Legend: 🧠 = needs Opus (see PLAN §6 model guidance) · ⬜ todo · 🔄 in p
 | 2026-10-28 | P22.4: notes go in front of the newest message (not the system prompt); earlier messages are re-sent exactly as before, with their attached text; notes attached earlier are sent again with later messages; fake provider echoes only the text after the notes | Ollama reuses its work for the longest unchanged start of the prompt: a system prompt holding the open note changed every message, so nothing was reused. Keeping old messages' attachments makes "this" in a follow-up still mean something | claude |
 | 2026-10-28 | P22.6: chips the user attached (selections, blocks, uploaded files) are sent even from an `ai: false` / excluded note; everything the engine reads by itself (open note, tabs, live selection, mentions, linked notes) is checked. Outside folders are used through the + menu (*Outside files*), attached like uploaded files. In the vault, file types can only pick among notes (`.md`, `.txt`); other types apply to outside paths | Attaching is a deliberate act the user sees in the chat; reading on its own is what the rules are for. Outside files needed a way in without a second note system | claude |
 | 2026-10-28 | AI is switched by a start flag: `paper-pile` = no AI, `paper-pile --ai` = AI; `ollama` back in the normal dependencies (the `ai` extra is gone); tests run as `--ai` (conftest) | User: "as installation will come later. uv run paper-pile should open no ai version and uv run paper-pile --ai should run full ai version" | user |
+| 2026-10-29 | Outside folders / files are granted from the chat: a full path in a message is asked about there (Allow / Not now), Settings only lists them with ×; P22.9 done before P22.8 | User: "user will ask folder permission in chat like will give location in chat you will ask permission there. not in setting"; asked for the selection settings first | user |
 
 ## Issues log
 <!-- YYYY-MM-DD · task · symptom → root cause → fix · (gotcha added? y/n) -->
@@ -714,3 +715,4 @@ Legend: 🧠 = needs Opus (see PLAN §6 model guidance) · ⬜ todo · 🔄 in p
 - 2026-10-28 · P22.6 AI access per vault · 1184 tests; real-app access flow + screenshots
 - 2026-10-28 · P22.7 AI edits as a diff · 1191 tests; qa_editor 358/358; real-app diff + Apply to note
 - 2026-10-28 · P22.1 changed to the `--ai` start flag · 1196 tests; real app with / without `--ai`
+- 2026-10-29 · P22.9 selection bar + setting + folder permission in chat · 1200 tests; qa_editor 358/358; real app

@@ -26,10 +26,7 @@ from typing import Any
 
 from nicegui import ui
 
-from paper_pile.core import (
-    assets,
-    commands_builtin,  # noqa: F401  (registers the slash commands)
-)
+from paper_pile.core import assets
 from paper_pile.core.ai.access import AccessDeniedError
 from paper_pile.core.ai.context import EditorSnapshot
 from paper_pile.core.ai.engine import AiEngine
@@ -53,6 +50,7 @@ from paper_pile.core.commands import (
     UnknownCommandError,
     groups_json,
 )
+from paper_pile.core.commands_builtin import edit_selection  # also registers the slash commands
 from paper_pile.core.config import Config, Scope
 from paper_pile.core.events import EventBus
 from paper_pile.core.history import History, Sessions
@@ -139,6 +137,7 @@ class EditorPane:
         selection_changed: Callable[[str, str], None] = lambda text, path: None,
         add_note_to_chat: Callable[[str], None] = lambda path: None,
         ask_chat: Callable[[str, str, bool], None] = lambda path, prompt, send: None,
+        ask_selection: Callable[[str, str], None] = lambda text, path: None,
         open_tag: Callable[[str], None] = lambda tag: None,
         on_stats: Callable[[int | None, int, int, int], None] = (
             lambda words, line, col, shown: None
@@ -174,6 +173,7 @@ class EditorPane:
         self._config = config
         self._get_recents = get_recents
         self._engine = ai
+        self._ask_selection = ask_selection  # the selection bar's Ask: attach it to the chat
         self._proposals: dict[int, Proposal] = {}  # AI edits waiting for Accept / Reject, by tab
         self._ai_selection: dict[str, Any] | None = None  # set by Ctrl+J in the editor
         self._streams = 0
@@ -303,6 +303,7 @@ class EditorPane:
             on_table_op=lambda e: self._spawn(self._on_table_op(e.args)),
             on_paste=lambda e: self._on_paste(e.args),
             on_proposal=lambda e: self._spawn(self._on_proposal(e.args)),
+            on_selection_action=lambda e: self._spawn(self._on_selection_action(e.args)),
             on_ai_selection=lambda e: self._on_ai_selection(e.args),
             on_selection=lambda e: self._on_selection(e.args),
             on_block_to_chat=lambda e: self._on_block_to_chat(e.args),
@@ -1204,6 +1205,26 @@ class EditorPane:
         """The selection settled: the chat attaches it (an empty one removes the attachment)."""
         if args.get("docId") == self.tabs.active:
             self._selection_changed(str(args.get("text", "")), self._active_path() or "")
+
+    async def _on_selection_action(self, args: dict[str, Any]) -> None:
+        """The bar over a selection: Ask attaches it to the chat; Edit asks the AI to change it
+        as the user typed, and shows its version as a diff."""
+        tab_id = self.tabs.active
+        path = self._active_path()
+        if tab_id is None or path is None or args.get("docId") != tab_id:
+            return
+        if args.get("action") == "ask":
+            self._ask_selection(str(args.get("text", "")), path)
+            return
+        text = await self._live_text(tab_id)
+        if text is None:
+            return
+        start = codepoint_index(text, int(args["from"]))
+        end = codepoint_index(text, int(args["to"]))
+        if text[start:end] != args.get("text") or end <= start:
+            return  # the text moved on since the click
+        spec = edit_selection(str(args.get("instruction", "")))
+        await self._run_stream(spec, tab_id, text, end, end, (start, end))
 
     def _on_block_to_chat(self, args: dict[str, Any]) -> None:
         """The copy button of a code / math / diagram block: attach the block to the chat."""

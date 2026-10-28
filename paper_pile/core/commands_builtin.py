@@ -386,6 +386,16 @@ def ai_fix(ctx: CommandContext) -> Action:
     )
 
 
+def edit_selection(instruction: str) -> StreamInsert:
+    """The selection bar's Edit: change the selected text as the user asked (shown as a diff)."""
+    return StreamInsert(
+        f"Change the text below as asked: {instruction.strip()}. Keep its language and markdown "
+        "formatting unless asked otherwise. Write only the new text.",
+        source="selection",
+        replace_selection=True,
+    )
+
+
 @command(
     "ai-ask",
     "Ask…",

@@ -78,6 +78,7 @@ DEFAULTS: dict[str, Any] = {
         "save_chats": True,
         "keep_chats_days": 0,  # 0 = forever
         "chats_folder": ".memory",  # vault-relative, or absolute
+        "selection_to_chat": "auto",  # auto: a selection becomes a chip | button: only with Ask
     },
     "paste": {"smart_paste": True},
     "features": {"ai": True, "calendar": True},  # PLAN §4.18

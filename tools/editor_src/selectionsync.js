@@ -5,7 +5,7 @@ import { EditorView } from "@codemirror/view";
 const SETTLE_MS = 350;
 const MAX_CHARS = 50000;
 
-export function selectionSync({ emit, getDocId }) {
+export function selectionSync({ emit, getDocId, onSettle = () => {} }) {
   let timer = null;
   let down = false;
   let last = null;
@@ -13,6 +13,7 @@ export function selectionSync({ emit, getDocId }) {
     clearTimeout(timer);
     timer = setTimeout(() => {
       if (down) return;
+      onSettle(view); // the selection bar (selectbar.js)
       const r = view.state.selection.main;
       const text = r.empty || view.state.selection.ranges.length !== 1 ? "" : view.state.sliceDoc(r.from, r.to);
       const key = text.length > MAX_CHARS ? text.slice(0, MAX_CHARS) : text;
