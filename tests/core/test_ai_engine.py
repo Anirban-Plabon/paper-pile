@@ -38,7 +38,9 @@ def engine(vault: Vault, fake: FakeProvider, **config: object) -> AiEngine:
     cfg = Config(vault=vault.root)
     for key, value in config.items():
         cfg.set(key.replace("__", "."), value, "vault")
-    return AiEngine(vault, cfg, user_name=lambda: "Ana", provider_factory=lambda _c: fake)
+    ai = AiEngine(vault, cfg, user_name=lambda: "Ana", provider_factory=lambda _c: fake)
+    ai.allow()  # access is tested in test_ai_access.py
+    return ai
 
 
 async def ask(ai: AiEngine, text: str, snap: EditorSnapshot | None = None, **kw: object) -> str:

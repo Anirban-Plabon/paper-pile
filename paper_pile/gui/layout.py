@@ -38,6 +38,7 @@ from paper_pile.core.vault_folders import ensure_folders, move_old_chats
 from paper_pile.core.watcher import TOPIC as FS_CHANGED
 from paper_pile.core.watcher import FsEvent
 from paper_pile.gui.commands_palette import palette_commands, palette_items, run_command
+from paper_pile.gui.components.ai_access import AccessPanel
 from paper_pile.gui.components.calendar import CalendarPane
 from paper_pile.gui.components.chat import ChatPane
 from paper_pile.gui.components.editor_pane import EditorPane
@@ -145,6 +146,7 @@ class MainLayout:
                 open_note=self._open_new_note,
                 user_name=lambda: self.profile.name if self.profile else "",
             ),
+            access=AccessPanel(self.ai),
             draft=self._draft_instruction,
             native=self.can_reveal,
             on_cleared=self._folder_cleared,
@@ -637,6 +639,7 @@ class MainLayout:
         if changed & {"features.ai", "features.calendar"}:
             self._features_changed()
         elif self.chat is not None and any(k.startswith("ai.") for k in changed):
+            self.ai.access_changed()  # the memories folder is never read
             self.chat.reload_provider()
         if self.profile is not None:
             self.profile.refresh()

@@ -12,6 +12,13 @@ from collections.abc import AsyncIterator, Callable, Sequence
 from dataclasses import dataclass, replace
 from pathlib import Path
 
+from paper_pile.core.ai.access import (
+    AccessDeniedError,
+    AccessPolicy,
+    grant_now,
+    load_grant,
+    revoke,
+)
 from paper_pile.core.ai.attachments import FileRef
 from paper_pile.core.ai.chats import (
     SavedChat,
@@ -111,6 +118,7 @@ class AiEngine:
         *,
         user_name: Callable[[], str] = lambda: "",
         provider_factory: Callable[[Config | None], Provider] = make_provider,
+        access_dir: Path | None = None,  # where ai_access.json is (None: the config folder)
     ) -> None:
         self.vault = vault
         self.config = config
@@ -119,6 +127,8 @@ class AiEngine:
         self._factory = provider_factory
         self.provider: Provider = provider_factory(config)
         self.notes = NoteCache(vault)
+        self._access_dir = access_dir
+        self._policy: AccessPolicy | None = None
         self._max_context: dict[str, int | None] = {}  # model -> its context length
         self.turns: list[SavedTurn] = []
         self.summary = ""  # "Summary so far": replaces the first ``summarized`` turns
@@ -174,6 +184,59 @@ class AiEngine:
 
     async def health(self) -> Health:
         return await self.provider.health()
+
+    # ---- access (PLAN §4.26) ---------------------------------------------------------------
+
+    def policy(self) -> AccessPolicy:
+        """What the AI may read in this vault (from ``ai_access.json``; kept until changed)."""
+        if self._policy is None:
+            grant = load_grant(self.vault.root, self._access_dir)
+            self._policy = AccessPolicy(self.vault.root, grant, self.chats_dir())
+        return self._policy
+
+    def has_access(self) -> bool:
+        return self.policy().granted
+
+    def allow(self) -> None:
+        """The user allowed the AI to read this vault."""
+        grant_now(self.vault.root, self._access_dir)
+        self.access_changed()
+
+    def revoke_access(self) -> None:
+        revoke(self.vault.root, self._access_dir)
+        self.access_changed()
+
+    def access_changed(self) -> None:
+        """``ai_access.json`` (or the memories folder) changed: read it again."""
+        self._policy = None
+
+    def _require_access(self) -> AccessPolicy:
+        policy = self.policy()
+        if not policy.granted:
+            raise AccessDeniedError("Allow the AI to read this vault first (Settings → AI).")
+        return policy
+
+    def read_note(self, path: str) -> str | None:
+        """A note's text for the AI: None when it may not read it (path, type, ``ai: false``)."""
+        policy = self.policy()
+        if not policy.may_read(path):
+            return None
+        text = self.notes.read(path)
+        return text if text is not None and policy.may_send(path, text) else None
+
+    def readable_paths(self) -> list[str]:
+        """The notes the AI may read (by path; their properties are checked on reading)."""
+        policy = self.policy()
+        return [p for p in self.note_paths() if policy.may_read(p)]
+
+    def outside_files(self) -> list[Path]:
+        """Files of the granted outside folders, for the + menu."""
+        return self.policy().outside_files()
+
+    def outside_ref(self, path: Path) -> FileRef | None:
+        """A granted outside file attached like an uploaded one (None when not readable)."""
+        text = self.policy().read_outside(path)
+        return FileRef(str(path), text) if text is not None and text.strip() else None
 
     # ---- the open chat -------------------------------------------------------------------
 
@@ -317,22 +380,24 @@ class AiEngine:
     ) -> Context:
         """What goes with the newest message: its attachments, the open note, the notes it and
         the earlier messages of the chat mention or attach (newest first), tabs, linked notes."""
+        policy = self._require_access()
         earlier: list[str] = []
         for turn in reversed(self.turns[:-2]):
             if turn.role == "user":
                 earlier += [*turn.notes, *extract_mentions(turn.text)]
+        current = snap.path if policy.may_send(snap.path, snap.text) else None
         return build_context(
             self.vault,
-            current_path=snap.path,
-            current_text=snap.text,
-            selection=attached or snap.selection,
+            current_path=current,
+            current_text=snap.text if current else "",
+            selection=attached or (snap.selection if current else ""),  # chips: sent on purpose
             mentions=list(dict.fromkeys([*extract_mentions(question), *notes, *earlier])),
-            open_tabs=snap.tabs,
+            open_tabs=[(p, t) for p, t in snap.tabs if policy.may_send(p, t)],
             include_tabs=include_tabs,
             index=self.index,
             budget=budget if budget is not None else self.budget(),
-            paths=self.note_paths(),
-            read=self.notes.read,
+            paths=self.readable_paths(),
+            read=self.read_note,
         )
 
     def system_prompt(self) -> str:
@@ -490,7 +555,12 @@ class AiEngine:
         selected: str = "",
         question: str = "",
     ) -> list[ChatMessage]:
-        """The messages for an AI command run in note ``path`` (``text``, caret at ``caret``)."""
+        """The messages for an AI command run in note ``path`` (``text``, caret at ``caret``).
+        Raises :class:`AccessDeniedError` when the AI may not read that note."""
+        if not self._require_access().may_send(path, text):
+            raise AccessDeniedError(
+                "The AI may not read this note (its type, an exclusion, or ai: false)."
+            )
         source = spec.source if spec.source != "auto" else ("selection" if selected else "note")
         part = {"selection": selected, "before": text[max(0, caret - BEFORE_CARET_CHARS) : caret]}
         given = part.get(source, "")
@@ -500,8 +570,8 @@ class AiEngine:
             current_text=text,
             index=self.index,
             budget=await self.context_budget(),
-            paths=self.note_paths(),
-            read=self.notes.read,
+            paths=self.readable_paths(),
+            read=self.read_note,
         )
         task = question or spec.instruction
         rules = "" if spec.ask else NOTE_ONLY

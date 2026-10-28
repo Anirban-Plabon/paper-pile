@@ -30,6 +30,7 @@ from paper_pile.core import (
     assets,
     commands_builtin,  # noqa: F401  (registers the slash commands)
 )
+from paper_pile.core.ai.access import AccessDeniedError
 from paper_pile.core.ai.context import EditorSnapshot
 from paper_pile.core.ai.engine import AiEngine
 from paper_pile.core.ai.provider import ProviderError
@@ -91,6 +92,7 @@ from paper_pile.core.vault import Vault, VaultError, is_note_name, is_plain_text
 from paper_pile.core.watcher import FsEvent
 from paper_pile.core.when import edited_when
 from paper_pile.gui import printing
+from paper_pile.gui.components.ai_access import confirm_access
 from paper_pile.gui.components.backlinks import BacklinkItem, BacklinksPane
 from paper_pile.gui.components.editor import Editor, Mode
 from paper_pile.gui.components.note_actions import note_actions, pick_split_note
@@ -1268,6 +1270,8 @@ class EditorPane:
         if ai is None or path is None:
             self._toast("AI is not available.", error=True)
             return
+        if not await confirm_access(ai, self._host):
+            return
         question = ""
         if spec.ask:
             asked = await self._ask_dialog()
@@ -1278,9 +1282,13 @@ class EditorPane:
         selected = text[selection[0] : selection[1]] if selection else ""
         body_text = text[:anchor] + text[end:]
         self.keep_version(path, body_text, "before AI")
-        messages = await ai.command_messages(
-            spec, path=path, text=body_text, caret=anchor, selected=selected, question=question
-        )
+        try:
+            messages = await ai.command_messages(
+                spec, path=path, text=body_text, caret=anchor, selected=selected, question=question
+            )
+        except AccessDeniedError as exc:
+            self._toast(str(exc), error=True)
+            return
         self._streams += 1
         stream_id = self._streams
         task = asyncio.current_task()

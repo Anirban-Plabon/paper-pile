@@ -20,9 +20,11 @@ import logging
 import re
 import time
 from collections.abc import Awaitable, Callable
+from pathlib import Path
 
 from nicegui import Client, background_tasks, ui
 
+from paper_pile.core.ai.access import AccessDeniedError
 from paper_pile.core.ai.attachments import AttachmentError, FileRef, read_text_file
 from paper_pile.core.ai.chats import SavedChat, SavedQuote, list_chats
 from paper_pile.core.ai.chats import SavedTurn as Turn
@@ -32,6 +34,7 @@ from paper_pile.core.ai.provider import Health, ProviderError, ProviderUnavailab
 from paper_pile.core.links import wikilink_to
 from paper_pile.core.parser import render_html
 from paper_pile.core.picker import search_notes
+from paper_pile.gui.components.ai_access import confirm_access
 from paper_pile.gui.icons import ico, icon_button, line_icon, set_icon
 from paper_pile.gui.tips import tip
 
@@ -600,6 +603,7 @@ class ChatPane:
         active = self._active_path()
         paths = self._open_paths()
         with menu:
+            ui.label(self.ai.policy().describe()).classes("pp-muted pp-chat-access")
             for path in paths:
                 title = path.rsplit("/", 1)[-1].rsplit(".", 1)[0]
                 with ui.menu_item(on_click=lambda _e=None, p=path: self.add_notes([p])):
@@ -621,6 +625,13 @@ class ChatPane:
             with ui.menu_item(on_click=lambda _e=None: self._upload.run_method("pickFiles")):
                 line_icon("paperclip").classes("pp-menu-icon")
                 ui.label("Upload files").classes("pp-menu-title")
+            outside = self.ai.outside_files() if self.ai.has_access() else []
+            if outside:
+                with ui.menu_item(auto_close=False):
+                    line_icon("folder-open").classes("pp-menu-icon")
+                    ui.label("Outside files").classes("pp-menu-title")
+                    line_icon("chevron-right", "s").classes("pp-menu-check")
+                    self._outside_menu(menu, outside)
             ui.separator()
             with ui.menu_item(auto_close=False):
                 line_icon("app-window").classes("pp-menu-icon")
@@ -649,6 +660,35 @@ class ChatPane:
                                 ui.label(folder).classes("pp-muted")
 
             ui.input(placeholder="Search notes", on_change=lambda e: fill(e.value or "")).props(
+                "dense borderless autofocus"
+            ).classes("pp-chat-more-search")
+            fill("")
+
+    def _outside_menu(self, root: ui.menu, files: list[Path]) -> None:
+        """Files of the outside folders the AI may read (Settings → AI → Access)."""
+        with ui.menu().props('anchor="top end" self="top start"').classes("pp-chat-menu"):
+            results = ui.column().classes("pp-chat-more")
+
+            def pick(path: Path) -> None:
+                ref = self.ai.outside_ref(path)
+                root.close()
+                if ref is None:
+                    ui.notify("That file cannot be read.", type="warning")
+                elif ref not in self._files:
+                    self._files.append(ref)
+                    self._render_refs()
+
+            def fill(query: str) -> None:
+                words = query.lower().split()
+                results.clear()
+                with results:
+                    shown = [f for f in files if all(w in str(f).lower() for w in words)][:8]
+                    for path in shown:
+                        with ui.menu_item(on_click=lambda _e=None, p=path: pick(p)):
+                            ui.label(path.name).classes("pp-menu-title")
+                            ui.label(str(path.parent)).classes("pp-muted")
+
+            ui.input(placeholder="Search files", on_change=lambda e: fill(e.value or "")).props(
                 "dense borderless autofocus"
             ).classes("pp-chat-more-search")
             fill("")
@@ -792,6 +832,8 @@ class ChatPane:
             self._input.set_value("")
             self._task = background_tasks.create(self._compact())
             return
+        if not await confirm_access(self.ai, self._card):
+            return  # the message stays in the box
         self._input.set_value("")
         self._mentions.set_visibility(False)
         picked, self._selections, self._open = self._selections, [], None
@@ -821,6 +863,8 @@ class ChatPane:
             self.ai.stopped(reply)
         except ProviderError as exc:
             self._fail(reply, str(exc), unavailable=isinstance(exc, ProviderUnavailableError))
+        except AccessDeniedError as exc:
+            self._fail(reply, str(exc))
         except Exception:
             log.exception("chat failed")
             self._fail(reply, "Something went wrong; see the log.")

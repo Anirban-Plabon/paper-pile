@@ -56,6 +56,7 @@ from paper_pile.core.vault_folders import (
     files_in,
     folder_path,
 )
+from paper_pile.gui.components.ai_access import AccessPanel
 from paper_pile.gui.components.memories import MemoriesPanel
 from paper_pile.gui.dialog import Dialog
 from paper_pile.gui.icons import close_button, ico, line_icon
@@ -107,6 +108,7 @@ class SettingsPane:
         folders: Callable[[], list[str]] = lambda: [],
         notes: Callable[[], list[str]] = lambda: [],
         memories: MemoriesPanel | None = None,
+        access: AccessPanel | None = None,
         draft: Callable[[str, str], AsyncIterator[str]] | None = None,  # (kind, brief)
         native: bool = False,
         gallery: Callable[[], None] | None = None,
@@ -124,6 +126,7 @@ class SettingsPane:
         self._folders = folders
         self._notes = notes
         self._memories = memories
+        self._access = access
         self._draft = draft
         self._gallery = gallery
         self._on_cleared = on_cleared
@@ -291,6 +294,8 @@ class SettingsPane:
         return out
 
     def _after_group(self, group: str | None) -> None:
+        if self.page == "AI" and group == "Model" and self._access is not None:
+            self._access.build(self._open_box)  # what the AI may read: also in minimal settings
         if self._minimal():
             return  # the hand-made panels are for the full settings
         if self.page == "AI" and group == "Memories" and self._memories is not None:

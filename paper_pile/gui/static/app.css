@@ -569,6 +569,10 @@ body.pp-page-dragging, body.pp-page-dragging * { cursor: row-resize !important; 
 .pp-msg-error .pp-msg-body { color: var(--pp-warn); }
 .pp-msg-ctx { font-size: 11px; }
 .pp-chat-compacted { font-size: 11px; align-self: center; }
+.pp-chat-access { padding: 6px 12px 4px; font-size: 11.5px; white-space: normal; max-width: 300px; }
+.pp-access-list { gap: 2px; }
+.pp-access-item { gap: 6px; }
+.pp-access-path { flex: 1; min-width: 0; overflow-wrap: anywhere; }
 .pp-msg-actions { gap: 0; opacity: .6; }
 .pp-msg:hover .pp-msg-actions { opacity: 1; }
 .pp-chat-compose { position: relative; width: 100%; flex: none; gap: 2px; padding: 8px 12px 12px; }
