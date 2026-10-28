@@ -10,6 +10,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any, Literal
 
+from paper_pile.core.ai.install import ai_installed
 from paper_pile.core.colors import lighten, parse_color
 from paper_pile.core.vault import is_hidden_part
 
@@ -582,7 +583,10 @@ def search_settings(query: str, values: Mapping[str, Any] | None = None) -> list
 
 
 def feature_on(values: Mapping[str, Any], key: str) -> bool:
-    """A feature switch (``features.ai``, ``features.calendar``): on unless set to false."""
+    """A feature switch (``features.ai``, ``features.calendar``): on unless set to false. AI is
+    also off while its extra is not installed."""
+    if key == "features.ai" and not ai_installed():
+        return False
     return get_nested(values, key, True) is not False
 
 
@@ -721,6 +725,8 @@ def sanitized(values: Mapping[str, Any]) -> dict[str, Any]:
     for key, setting in ALL.items():
         parsed = parse_value(setting, get_nested(values, key))
         out[key] = parsed.value if parsed.ok else get_nested(DEFAULTS, key)
+    if not ai_installed():  # without the ``ai`` extra the switch cannot be on
+        out["features.ai"] = False
     return out
 
 

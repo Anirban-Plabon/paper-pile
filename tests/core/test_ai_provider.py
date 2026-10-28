@@ -5,6 +5,8 @@ from pathlib import Path
 import httpx
 import pytest
 
+pytest.importorskip("ollama", reason="the ai extra is not installed (uv sync --extra ai)")
+
 from paper_pile.core.ai.fake import FakeProvider
 from paper_pile.core.ai.ollama import NOT_RUNNING, OllamaProvider, describe_model
 from paper_pile.core.ai.provider import (

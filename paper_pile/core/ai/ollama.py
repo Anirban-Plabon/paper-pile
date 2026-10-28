@@ -9,6 +9,7 @@ import httpx
 import ollama
 
 from paper_pile.core.ai.provider import (
+    DEFAULT_HOST,
     ChatMessage,
     GenerationOptions,
     Health,
@@ -19,7 +20,6 @@ from paper_pile.core.ai.provider import (
 
 log = logging.getLogger("paper_pile.ai")
 
-DEFAULT_HOST = "http://localhost:11434"
 NOT_RUNNING = "Ollama isn't running — start it with `ollama serve`."
 HEALTH_TIMEOUT_S = 3.0
 

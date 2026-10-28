@@ -10,6 +10,8 @@ from typing import Literal, Protocol
 
 Role = Literal["system", "user", "assistant"]
 
+DEFAULT_HOST = "http://localhost:11434"  # Ollama's
+
 
 @dataclass(frozen=True, slots=True)
 class ChatMessage:

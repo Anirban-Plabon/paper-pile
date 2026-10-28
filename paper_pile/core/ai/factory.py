@@ -1,19 +1,58 @@
 """Which provider the app uses, from the configuration."""
 
 import os
+from collections.abc import AsyncIterator, Sequence
 
 from paper_pile.core.ai.fake import FakeProvider
-from paper_pile.core.ai.ollama import DEFAULT_HOST, OllamaProvider
-from paper_pile.core.ai.provider import GenerationOptions, Provider
+from paper_pile.core.ai.install import NOT_INSTALLED, ai_installed
+from paper_pile.core.ai.provider import (
+    DEFAULT_HOST,
+    ChatMessage,
+    GenerationOptions,
+    Health,
+    Provider,
+    ProviderUnavailableError,
+)
 from paper_pile.core.config import Config
+
+
+class MissingProvider:
+    """Stands in while the ``ai`` extra is not installed: never reached (AI is off then), but
+    whatever asks gets the install hint instead of an ImportError."""
+
+    host = ""
+
+    async def chat(
+        self,
+        messages: Sequence[ChatMessage],
+        *,
+        model: str | None = None,
+        options: GenerationOptions | None = None,
+    ) -> AsyncIterator[str]:
+        raise ProviderUnavailableError(NOT_INSTALLED)
+        yield ""  # makes this an async generator, like the real ones
+
+    async def embed(self, texts: Sequence[str], *, model: str | None = None) -> list[list[float]]:
+        raise ProviderUnavailableError(NOT_INSTALLED)
+
+    async def models(self) -> list[str]:
+        return []
+
+    async def health(self) -> Health:
+        return Health(False, NOT_INSTALLED)
 
 
 def make_provider(config: Config | None) -> Provider:
     """The configured provider (``ai.host``, ``ai.model``, ``ai.embed_model``). With the
     environment variable ``PAPER_PILE_FAKE_AI=1`` a stand-in that needs no model is used
-    (``PAPER_PILE_FAKE_AI_REPLY`` sets the text it answers with)."""
+    (``PAPER_PILE_FAKE_AI_REPLY`` sets the text it answers with). ``ollama`` is imported only
+    here, so the app starts without the ``ai`` extra."""
     if os.environ.get("PAPER_PILE_FAKE_AI"):
         return FakeProvider(reply=os.environ.get("PAPER_PILE_FAKE_AI_REPLY") or None)
+    if not ai_installed():
+        return MissingProvider()
+    from paper_pile.core.ai.ollama import OllamaProvider
+
     get = config.get if config is not None else (lambda _key, default=None: default)
     return OllamaProvider(
         host=str(get("ai.host", DEFAULT_HOST)),

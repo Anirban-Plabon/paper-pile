@@ -23,6 +23,7 @@ from typing import Any
 from nicegui import ui
 
 from paper_pile import __version__
+from paper_pile.core.ai.install import NOT_INSTALLED, ai_installed
 from paper_pile.core.ai.instructions import MAX_TEXT_CHARS
 from paper_pile.core.colors import parse_color
 from paper_pile.core.config import Config, Scope
@@ -384,10 +385,11 @@ class SettingsPane:
             return
         inline = " pp-set-row-inline" if setting.kind == "bool" else ""  # a switch never drops
         with ui.row().classes("pp-set-row items-center" + inline):
+            missing = setting.key == "features.ai" and not ai_installed()
             with ui.column().classes("pp-set-text"):
                 ui.label(setting.label).classes("pp-set-label")
-                if setting.help:
-                    ui.label(setting.help).classes("pp-set-help")
+                if setting.help or missing:
+                    ui.label(NOT_INSTALLED if missing else setting.help).classes("pp-set-help")
                 error = ui.label("").classes("pp-set-error")
                 error.set_visibility(False)
                 self._errors[setting.key] = error
@@ -399,7 +401,9 @@ class SettingsPane:
             self._commit(s, value)
 
         if setting.kind == "bool":
-            ui.switch(value=bool(current), on_change=lambda e: commit(e.value))
+            switch = ui.switch(value=bool(current), on_change=lambda e: commit(e.value))
+            if setting.key == "features.ai" and not ai_installed():
+                switch.disable()
         elif setting.key == "appearance.accent":
             self._accent_picker(setting, str(current))
         elif setting.key in _SEGMENTED:

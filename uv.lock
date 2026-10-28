@@ -1271,13 +1271,17 @@ dependencies = [
     { name = "markdownify" },
     { name = "mdit-py-plugins" },
     { name = "nicegui" },
-    { name = "ollama" },
     { name = "pillow" },
     { name = "platformdirs" },
     { name = "pywebview", extra = ["qt"] },
     { name = "pyyaml" },
     { name = "tomli-w" },
     { name = "watchdog" },
+]
+
+[package.optional-dependencies]
+ai = [
+    { name = "ollama" },
 ]
 
 [package.dev-dependencies]
@@ -1296,7 +1300,7 @@ requires-dist = [
     { name = "markdownify", specifier = "==1.2.3" },
     { name = "mdit-py-plugins", specifier = "==0.6.1" },
     { name = "nicegui", specifier = "==3.18.0" },
-    { name = "ollama", specifier = "==0.6.3" },
+    { name = "ollama", marker = "extra == 'ai'", specifier = "==0.6.3" },
     { name = "pillow", specifier = "==12.3.0" },
     { name = "platformdirs", specifier = "==4.13.0" },
     { name = "pywebview", extras = ["qt"], specifier = "==6.2.1" },
@@ -1304,6 +1308,7 @@ requires-dist = [
     { name = "tomli-w", specifier = "==1.2.0" },
     { name = "watchdog", specifier = "==6.0.0" },
 ]
+provides-extras = ["ai"]
 
 [package.metadata.requires-dev]
 dev = [

@@ -48,15 +48,19 @@ Linux (and Windows through WSL2 / WSLg). Needs Python ≥ 3.12 and [uv](https://
 
 ```bash
 git clone <this repo> paper-pile && cd paper-pile
-uv sync
+uv sync --extra ai   # the app with AI (chat, AI commands)
+uv sync              # or: the app without AI (no AI libraries installed)
 ```
+
+AI is an optional part (the `ai` extra): without it the app runs with AI off, and
+Settings → General → AI says how to add it. Run `uv sync --extra ai` any time to add it.
 
 The native window uses Qt WebEngine (installed by `uv sync`) on Qt's default Wayland backend. If
 you force the X11 backend (`QT_QPA_PLATFORM=xcb`), install the xcb libraries Qt needs, e.g. on
 Ubuntu: `sudo apt install libxcb-cursor0 libxcb-icccm4 libxcb-keysyms1 libxcb-xkb1
 libxkbcommon-x11-0 libxcb-image0 libxcb-render-util0`.
 
-For AI, install and start [Ollama](https://ollama.com) and pull a model (`ollama pull gemma4:12b`,
+For AI answers, also install and start [Ollama](https://ollama.com) and pull a model (`ollama pull gemma4:12b`,
 or any chat model — pick it in the chat's model menu). The app works fully without it.
 
 ## Run
