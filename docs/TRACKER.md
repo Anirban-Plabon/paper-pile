@@ -295,7 +295,7 @@ Legend: 🧠 = needs Opus (see PLAN §6 model guidance) · ⬜ todo · 🔄 in p
 | P23.14 | Retrieval decision: FTS only (`embed` removed) | ✅ | `Provider.embed`, `OllamaProvider.embed`, `ai.embed_model` setting removed |
 | P23.15 | Rewrite shows a diff | ✅ | ⋯ → Rewrite runs `rewrite_note()` on the body (front matter kept) through the replace path (size check, diff / mode) |
 | P23.16 | Small fixes (`NoteCache` bound, docstrings) | ✅ | `NoteCache` keeps the 500 texts read last (LRU, test); `StreamInsert`, `proposals`, `factory` docstrings |
-| P23.17 | PLAN describes reality | ⬜ | |
+| P23.17 | PLAN describes reality | ✅ | §4.11 rewritten (provider with `Finish`, health texts, settings order; P7-era rules marked superseded); §4.26 rewritten (goals / not now, switch precedence, edit table by entry point × mode, proposals life cycle, access incl. revoke and chips, one prompt-assembly definition, window / tokens / 8k reason, caching, compaction, `@vault`, failure table, images, several windows); §3 tree, §4.1 `--ai` / `--debug`, §4.12 global-only keys + `ai.*` table, §4.14 Ctrl+J / Alt+/, §5 chat JSON / `ai_access.json` / `history.db`, §7, §8 AI risks, P7.5–P7.7 rows, P22 acceptance, QA AI lines, 🧠 table, §4.24 renamed "Memory use (RAM)" |
 | P23.18 | Real-model pass (user) | ⬜ | waits for the user |
 
 ## Decision log
@@ -744,3 +744,4 @@ Legend: 🧠 = needs Opus (see PLAN §6 model guidance) · ⬜ todo · 🔄 in p
 - 2026-10-29 · P23.1–P23.2 chat images inert + image CSP; AI security keys global-only, remote host named · tests green
 - 2026-10-30 · P23.3–P23.7, P23.9, P23.12, P23.14, P23.15 safe AI edits, edit modes in core, private notes, access fixes, tokens, compaction, Rewrite diff · 1249 tests
 - 2026-10-30 · P23.8, P23.10, P23.11, P23.13, P23.16 earlier notes in their turn, @vault sections, cut named, failures, NoteCache bound · 1254 tests
+- 2026-10-30 · P23.17 PLAN reconciled with the AI code (spec pass) · docs only

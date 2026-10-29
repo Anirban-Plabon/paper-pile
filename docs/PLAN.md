@@ -13,7 +13,7 @@ built-in local AI via Ollama. Plain `.md`/`.txt` files, no lock-in.
 **Phase-1 target:** Ubuntu desktop, single user, native window.
 **Later:** web/server mode (RHEL, SSH tunnel), TUI (Textual), teams.
 
-**Differentiators:** AI truly built in (local), Smart Paste for chatbot text
+**Differentiators:** local AI via Ollama (opt-in with `--ai`), Smart Paste for chatbot text
 (math-safe), traceless images, Mermaid + math out of the box.
 
 ---
@@ -56,7 +56,7 @@ paper-pile/
 │   └── TRACKER.md
 ├── tools/
 │   ├── build_editor.sh         # esbuild CodeMirror bundle → gui/static/vendor/
-│   ├── editor_src/             # JS source: index.js (createEditor), grammar.js (+ math.js, frontmatter.js), livepreview.js, blocks.js, widgets.js, codelang.js, reveal.js, context.js; check_sync.mjs
+│   ├── editor_src/             # JS source: index.js (createEditor), grammar.js (+ math.js, frontmatter.js), livepreview.js, blocks.js, widgets.js, codelang.js, reveal.js, context.js, proposal.js (AI diffs), selectbar.js + selectionsync.js (the selection bar, selections to the chat); check_sync.mjs
 │   ├── spike_editor.py         # S1/S2 demo page (dev-only, not shipped)
 │   └── spike_native.py         # S3 native-window shortcut test (dev-only)
 ├── paper_pile/
@@ -77,15 +77,27 @@ paper-pile/
 │   │   ├── buffer.py           # NoteBuffer: dirty tracking, save rules, recovery mirror
 │   │   ├── recovery.py         # .paper-pile/recovery store (unsaved buffers)
 │   │   ├── events.py           # simple pub/sub so core can notify UIs
-│   │   └── ai/
-│   │       ├── provider.py     # Provider protocol
+│   │   └── ai/                 # §4.11, §4.26 — no UI imports
+│   │       ├── engine.py       # AiEngine: the open chat, prompts, compaction, stream
+│   │       ├── provider.py     # Provider protocol, Finish / Reasoning pieces
 │   │       ├── ollama.py       # OllamaProvider
-│   │       └── context.py      # context building + token budget
+│   │       ├── fake.py         # FakeProvider (tests, PAPER_PILE_FAKE_AI)
+│   │       ├── factory.py      # which provider; generation options
+│   │       ├── install.py      # is AI available (--ai, ollama installed)
+│   │       ├── context.py      # context building, token estimate, @vault sections
+│   │       ├── access.py       # grants (ai_access.json) + AccessPolicy
+│   │       ├── edits.py        # how an answer may change a note; reply cleaning
+│   │       ├── proposals.py    # diffs to accept / reject
+│   │       ├── notecache.py    # note paths / texts, cached
+│   │       ├── chats.py        # saved chats
+│   │       ├── prompts.py      # suggested prompts
+│   │       ├── instructions.py # the system instruction
+│   │       └── attachments.py  # uploaded files
 │   └── gui/
 │       ├── app.py              # routing, startup (native / serve)
 │       ├── layout.py           # 3-pane frame: splitters, collapse, persistence
 │       ├── shortcuts.py        # capture-phase keydown → Python (registered combos only)
-│       ├── security.py         # --serve token gate (ASGI)
+│       ├── security.py         # --serve token gate + image CSP on every page (ASGI)
 │       ├── files.py            # /_pp/asset route: images referenced from notes
 │       ├── theme.py            # light/dark/system, accent palette, CSS vars
 │       ├── components/
@@ -96,7 +108,9 @@ paper-pile/
 │       │   ├── pp_editor.js    # thin Vue wrapper for the element
 │       │   ├── preview.py      # rendered HTML + mermaid/katex post-render
 │       │   ├── backlinks.py
-│       │   ├── chat.py         # right pane, collapsible
+│       │   ├── chat.py         # right pane: the AI chat (draws what AiEngine returns)
+│       │   ├── ai_access.py    # the Allow card + Settings → AI → Access
+│       │   ├── memories.py     # Settings → AI → Memories
 │       │   ├── statusbar.py
 │       │   ├── palette.py      # Ctrl+P command palette, Ctrl+O switcher
 │       │   └── settings.py     # settings dialog + bottom-left profile
@@ -123,6 +137,8 @@ paper-pile                # open last vault (or prompt to pick folder)
 paper-pile .              # current dir = vault
 paper-pile <path>         # given dir = vault
 paper-pile --serve [path] [--port 8080]   # web mode, 127.0.0.1 only, prints URL with token
+paper-pile --ai [path]    # with the AI (§4.26); combine with --serve
+paper-pile --debug        # verbose log (window and display events)
 ```
 - `--serve` generates a random token per run (`secrets.token_urlsafe(16)`) and prints `http://127.0.0.1:<port>/?token=…`. Enforced by `gui/security.py` (`TokenGate`, pure ASGI): every HTTP request and websocket handshake needs `?token=` or the `pp_token` cookie (HttpOnly, SameSite=Strict, set on the first valid visit), else 401 (websocket closes 1008). `Host` must be `127.0.0.1`/`localhost` (403 otherwise, blocks DNS-rebinding). Bound to `127.0.0.1` only, never configurable. `--port` is only valid with `--serve` (1–65535, default 8080).
 - Native mode (no `--serve`) uses NiceGUI's own random localhost port and no token (phase 1; revisit for multi-user).
@@ -299,28 +315,19 @@ On paste into the editor:
 - **Implemented (P6):** `core/paste.py` (BeautifulSoup + a markdownify subclass; math extracted before anything else, code blocks next, then the page's interface elements are dropped); `EditorPane._on_paste`; fixtures are reconstructed from each chat page's markup shape (`tools/gen_paste_fixtures.py`), real captures can be added with `PAPER_PILE_DUMP_PASTE=1`.
 - Test fixtures: real clipboard HTML captured from ChatGPT, Claude, Gemini, DeepSeek in `tests/fixtures/paste/<source>_<case>.html` + expected `.md`. Cases: inline math, display math, code block, table, nested list, mixed.
 
-### 4.11 AI (Ollama)
-- `Provider` protocol: `chat(messages, stream) -> AsyncIterator[str]`, `embed(texts)`, `models()`, `health()`.
-- `OllamaProvider`: host from config (default `http://localhost:11434`).
-- Startup health check; status bar dot (green/red). If down → friendly banner in chat pane ("Ollama isn't running — start it with `ollama serve`"), app still fully usable.
+### 4.11 AI (Ollama) — basics
+AI is opt-in: only with `paper-pile --ai` (§4.26). How the engine builds prompts, what it may read, how its answers change notes and what happens when something fails is in **§4.26**; this section is the chat pane and the AI settings. (Rewritten 2026-10-30, P23.17: the P7-era context order, 6000-token budget, in-memory history and "replaces the selection" are superseded by §4.26.)
+- `Provider` protocol (`core/ai/provider.py`): `chat(messages, *, model, options) -> AsyncIterator[str | Reasoning | Finish]` (answer pieces, a thinking model's reasoning, then why it ended: `stop` / `length`), `models()`, `context_length(model)`, `health()`, `host`. `OllamaProvider` (host from `ai.host`, default `http://localhost:11434`), `FakeProvider` for tests and `PAPER_PILE_FAKE_AI=1` (echoes the message; `PAPER_PILE_FAKE_AI_REPLY` / `…_THINKING` set its answer / reasoning; test knobs `finish`, `fail_after`, `fail_calls`), `MissingProvider` while AI is off. No embeddings (decided 2026-10-29: `@vault` full-text search is the retrieval, §4.26; RAG is in §7).
+- Health: checked when the chat pane starts and every 30 s, *Retry* in the banner; status-bar dot (green / red; hidden while AI is off). Banner texts: "Ollama isn't running — start it with `ollama serve`." (local host) / "Ollama at <host> can't be reached." (another computer) / "Ollama is running but has no models: `ollama pull gemma4:12b`" / "The model “X” is not installed — run `ollama pull X`, or pick another one above." The app stays fully usable.
 - Composer (changed by the user, 2026-10-16): one rounded card holding attachment chips, a `+` menu, the input, the model picker (populated from `models()`, short name) and a round Send button. The `+` menu lists the open tabs (check on the current one; a click attaches the note as a chip), "Add more notes" (search), "Select from screen" (attaches the editor's selection, or hints to select), "Upload files" (text files up to 200 KB, read in memory, never saved) and an "Include open tabs" switch (shown as an "All open tabs (N)" chip). Editor selections attach themselves as chips (one unfolded at a time, graphics shown as code, removed only by ×). The old options row (switch + "Add all tabs") and the context summary line are gone.
-- **Context building** (`core/ai/context.py`), filled in order until the token budget (configurable, default 6000 tokens; rough estimate chars/4):
-  1. Selection (if any)
-  2. Current note
-  3. `@note` mentions in the chat message
-  4. (option) all open tabs
-  5. Linked notes (outgoing + backlinks, one hop) — truncated
-- Chat: streamed tokens, markdown-rendered replies (math + mermaid render too), Stop button, per-message "Insert into note" and "Copy".
-- `@` in chat input → note picker (fuzzy).
-- Chat history kept per session (in memory) in phase 1. **Changed 2026-10-21 (user request):** each chat is also saved per vault as `<vault>/.paper-pile/chats/<id>.json` (`core/ai/chats.py`; title = first question, atomic write after every message; deleting moves it to `.trash/`).
+- Chat: streamed answers rendered as markdown (math + mermaid; images only from the app itself, §4.26), Stop, per-answer *Copy*, *Insert into note* (an insert, §4.26), *Answer again*, *Apply to note* when it applies. `@` in the box → note picker (fuzzy).
+- Chats are saved per vault as `<vault>/.memory/<id>.json` (`ai.chats_folder`; format in §5; title = first question, atomic write after every message; deleting moves it to `.trash/`). "Memories" = these saved chats; they are never sent to the model unless reopened.
 - **Chat ⋮ menu** (user request 2026-10-21): a slim header row at the top of the chat pane: the open chat's title (its first question, or "New chat") on the left, a ⋮ button on the right. Items: *New chat* (disabled while empty or while a reply streams), *Memories* — the 5 latest saved chats (**one line: the title only, no time** — changed 2026-10-21, user request; a check on the open one, a trash icon on hover), the rest under *More chats (N)* with a search box — and *AI settings*, which opens the Settings tab on its AI section. Switching chats is disabled while a reply streams.
-- **Settings → AI page order (changed 2026-10-21, user request):** connection rows (host, model, embed model, context budget) → *System instruction* → **Memories** → **Advanced** (an expansion, closed until opened; its open state is kept while Settings stays open). Help texts are a few words each.
-- **System instruction** (renamed from "Extra instructions", 2026-10-21; `core/ai/instructions.py`): a segmented *Write* / *From a file* (`ai.instructions_from`). *Write*: a large box (`ai.instructions`, multi-line, up to 4000 chars, saved on blur, "N / 4000") that the user stretches by dragging its bottom-right corner (no Expand dialog, changed 2026-10-21) and *Write with AI* (describe the assistant in a few words → the model drafts the instruction into an editable box; *Write again*, *Use this*). *From a file*: `ai.instructions_file` — a note of the vault (picker) or any typed path to a `.md` / `.txt` (vault-relative or absolute; native window: *Browse*); read on every message, first 8000 chars, a missing file means no instruction. Sent in the system prompt of chat and AI commands.
-- **Settings → AI → Memories** (user request 2026-10-21, `gui/components/memories.py`): *Save chats* switch (`ai.save_chats`), *Auto-delete after (days)* (`ai.keep_chats_days`, 0 = never; checked when the chat pane starts, older chats go to `.trash/`, never the open one), *Memories folder* (`ai.chats_folder`, "" = `<vault>/.paper-pile/chats`; shows the path, Copy, *Change* = the vault dialog's folder browser (`ask_folder`); a folder inside the vault is stored vault-relative; after a change it offers to move the existing chats — a name already taken there is never overwritten), a filter (words in title or messages) with *From* / *To* date boxes (typed `YYYY-MM-DD` or picked in our own calendar popup — a Quasar date in a rounded menu with the theme's colours, not the browser's date input), "N of M memories", *Delete shown (N)* (only while filtered) and *Delete all* — each confirmed, all to `.trash/` (also from a folder outside the vault) — and the list: one line per chat (title, day, trash on hover), the first 10 then *Show all (N)* / *Show less*. A click opens it as a rendered markdown document (`chat_markdown`: `# title`, date · count, `### You` / `### Assistant` per message, attachments in italics) with *Open in chat*, *Copy as Markdown*, *Save as note* (vault root, free name from the title, then opened) and *Delete*.
-- **Settings → AI → Advanced** (user request 2026-10-21): *Temperature* (0–2, default 0.8), *Top-p* (0.05–1, default 0.9), *Context window* (`num_ctx`, 0 = the model's default), *Chat history sent* (`ai.history_turns`, default 12), *Keep model loaded (min)* (`keep_alive`, default 5). Passed as `GenerationOptions` to `Provider.chat(..., options=)`; Ollama gets `options` + `keep_alive`.
-- AI slash commands use the same provider + context builder and stream into the editor at the cursor (`StreamInsert`).
-- Vault-wide RAG (embeddings + `sqlite-vec`): **not phase 1**.
-- **Implemented (P7):** `core/ai/{provider,ollama,fake,factory,context}.py`, `gui/components/chat.py`. AI slash commands: Summarize, Continue writing, Explain selection, Fix grammar (replaces the selection once complete), Ask… (dialog); selection-based ones are reached with **Ctrl+J / Alt+/** (typing `/` would replace the selection). Answers stream into the note and are one undo step; Stop in the notice.
+- **Settings → AI page order:** *Model* (host, model) → *Access* (§4.26) → *Context* (AI changes to notes, selected text to chat, your prompts, context budget, system instruction) → **Memories** → **Advanced** (folded). Every `ai.*` key with its default is in the table in §4.12.
+- **System instruction** (renamed from "Extra instructions", 2026-10-21; `core/ai/instructions.py`): a segmented *Write* / *From a file* (`ai.instructions_from`). *Write*: a large box (`ai.instructions`, multi-line, up to 4000 chars, saved on blur, "N / 4000") that the user stretches by dragging its bottom-right corner (no Expand dialog, changed 2026-10-21) and *Write with AI* (describe the assistant in a few words → the model drafts the instruction into an editable box; *Write again*, *Use this*). *From a file*: `ai.instructions_file` (set for all vaults only, §4.26) — a note of the vault (picker) or any typed path to a `.md` / `.txt` (vault-relative or absolute; native window: *Browse*); read on every message, first 8000 chars, a missing file means no instruction. Sent in the system prompt of chat and AI commands.
+- **Settings → AI → Memories** (user request 2026-10-21, `gui/components/memories.py`): *Save chats* switch (`ai.save_chats`), *Auto-delete after (days)* (`ai.keep_chats_days`, 0 = never; checked when the chat pane starts, older chats go to `.trash/`, never the open one), *Memories folder* (`ai.chats_folder`, "" = `<vault>/.memory`; set for all vaults only, §4.26; shows the path, Copy, *Change* = the vault dialog's folder browser (`ask_folder`); a folder inside the vault is stored vault-relative; after a change it offers to move the existing chats — a name already taken there is never overwritten), a filter (words in title or messages) with *From* / *To* date boxes (typed `YYYY-MM-DD` or picked in our own calendar popup — a Quasar date in a rounded menu with the theme's colours, not the browser's date input), "N of M memories", *Delete shown (N)* (only while filtered) and *Delete all* — each confirmed, all to `.trash/` (also from a folder outside the vault) — and the list: one line per chat (title, day, trash on hover), the first 10 then *Show all (N)* / *Show less*. A click opens it as a rendered markdown document (`chat_markdown`: `# title`, date · count, `### You` / `### Assistant` per message, attachments in italics) with *Open in chat*, *Copy as Markdown*, *Save as note* (vault root, free name from the title, then opened) and *Delete*.
+- **Settings → AI → Advanced:** *Temperature* (0–2, default 0.8), *Top-p* (0.05–1, 0.9), *Context window* (`ai.num_ctx`, 0 = automatic, §4.26), *Chat history sent* (`ai.history_turns`, 12: an upper limit; tokens decide), *Keep model loaded (min)* (`ai.keep_alive`, 5). Sent as `GenerationOptions` (+ `num_ctx`, `num_predict` from the engine).
+- AI slash commands (Summarize, Continue writing, Explain selection, Fix grammar, Ask…): selection-based ones are reached with **Ctrl+J / Alt+/** (typing `/` would replace the selection). Inserts stream in at the caret; Fix grammar is a replacement (a diff). Stop in the notice.
 
 ### 4.12 Settings, theme, profile
 - **Settings layout (2026-10-17):** Settings in the right pane has its own remembered width (`pane_widths["settings"]`, draggable 460–960 px). It always opens at ≥ 640 px (unfolded). Below 560 px the section list folds to an icon rail (search hidden, Restore defaults icon-only); below ~440 px of content each row puts its control under the text and the scope switch moves to its own line (CSS container queries). Help texts are one short line.
@@ -338,10 +345,28 @@ On paste into the editor:
 | Editor | Font family, font size and line height (a number between − / + buttons: 1 px / 0.1 steps within 8–40 px / 1.0–3.0; still typeable, ↑/↓ step too), code font (`editor.code_font_family`, default `monospace`: code blocks, inline code, code in tables, embeds and chat; presets are installed-font names with a monospace fallback, or any CSS list), word wrap, tab size, spell check, page view (`editor.page_view`, §4.17), default preview mode |
 | Print | Paper size: A4 / Letter (`print.paper`, §4.17) |
 | Vault | Attachments behaviour (fixed: hidden per-note), templates folder, daily-notes folder |
-| AI | Ollama host, default chat model, embed model (future), context budget, system instruction (typed / AI-drafted / from a file); Memories: save chats, auto-delete after N days, memories folder, the memory browser; Advanced (folded): temperature, top-p, context window, chat history sent, keep model loaded |
+| AI | See the AI keys table below |
 | Paste | Smart Paste on/off |
 
-- Storage: global `~/.config/paper-pile/config.toml` (via platformdirs), per-vault overrides `<vault>/.paper-pile/vault.toml`. Load order: defaults → global → vault.
+- Storage: global `~/.config/paper-pile/config.toml` (via platformdirs), per-vault overrides `<vault>/.paper-pile/vault.toml`. Load order: defaults → global → vault. **Global only** (P23.2, `config.GLOBAL_ONLY`): `ai.host`, `ai.instructions_file`, `ai.prompts_file`, `ai.chats_folder`, `ai.edits` — ignored in `vault.toml` (a copied vault could otherwise send its notes elsewhere, read other files, or apply AI edits unseen); Settings saves them globally even on the vault scope, with a notice.
+- **AI keys** (Settings → AI; `core/config.py` defaults):
+
+| Key | Default | Group | Meaning |
+|---|---|---|---|
+| `ai.host` | `http://localhost:11434` | Model | Ollama's address (global only) |
+| `ai.model` | `gemma4:12b` | Model | chat model |
+| `ai.edits` | `ask` | Context | AI changes to notes: `ask` / `auto` / `readonly` (global only, §4.26) |
+| `ai.selection_to_chat` | `auto` | Context | a settled selection becomes a chip / only with Ask |
+| `ai.prompts_file` | `""` | Context | your suggested prompts, a markdown list (global only) |
+| `ai.context_budget` | 6000 | Context | upper limit for note text per message (the window usually decides) |
+| `ai.instructions` / `ai.instructions_from` / `ai.instructions_file` | `""` / `text` / `""` | Context | system instruction (the file: global only) |
+| `ai.save_chats` / `ai.keep_chats_days` / `ai.chats_folder` | on / 0 / `.memory` | Memories | saving, auto-delete (0 = never), folder (global only) |
+| `ai.temperature` / `ai.top_p` | 0.8 / 0.9 | Advanced | sampling |
+| `ai.num_ctx` | 0 | Advanced | context window; 0 = automatic (§4.26) |
+| `ai.history_turns` | 12 | Advanced | upper limit of earlier messages sent |
+| `ai.keep_alive` | 5 | Advanced | minutes the model stays loaded |
+
+What the AI may read (file types, outside paths, exclusions) is not a setting: it is the vault's grant in `ai_access.json` (§4.26, §5).
 - **Shape tokens (2026-10-17):** `--pp-r-popup` 12 px (menus, popups, dialogs, cards), `--pp-r-ctrl` 8 px (buttons, inputs, menu items, tiles, content blocks), `--pp-r-sm` 4 px (inline code, kbd, small chips); pills and circles stay pills/circles. Quasar menus, dialogs, tooltips, notifications, fields and buttons follow the same tokens.
 - Theming via CSS variables; editor + preview + mermaid + chat all follow theme (Mermaid theme switches to `dark`).
 - **Implemented (P8):** schema/validation in `core/settings.py`, dialog `gui/components/settings.py` ("Save for: All vaults / This vault", Restore defaults), theme `static/theme.js` + `gui/theme.py`, profile `gui/components/profile.py` + `core/profile.py`. **Ctrl+,** opens the settings.
@@ -364,6 +389,7 @@ On paste into the editor:
 | Ctrl+E | Cycle preview mode |
 | Ctrl+B | Toggle left pane |
 | Ctrl+L | Toggle AI chat |
+| Ctrl+J / Alt+/ | AI commands on the selection (the slash menu without typing `/`, which would replace the selection; with `--ai`) |
 | Ctrl+Shift+F | Vault search |
 | Ctrl+Shift+O | Outline |
 | Ctrl+Shift+V | Raw paste |
@@ -522,24 +548,47 @@ Short, quiet animations that show *where something went*. Render-only (CSS + the
 
 **Not animated:** typing, CodeMirror decorations and folding, pane widths (Ctrl+B / Ctrl+L), sheet heights, drag in progress.
 
-### 4.26 AI redesign: one engine, approved edits, access scope — user request 2026-10-28 (P22)
-User: pack the whole AI part so it ports with the app with little effort; edits must show added / deleted lines; a permission gate before the AI changes a note; settings for where the AI may read; selections in the chat can get messy; suggested prompts when something is attached; no context overflow; caching; basic compaction. Useful features only, nothing that makes the app heavy. Answers (2026-10-28): AI is a separate install (Linux machines may lack libraries, or the app may ship without AI; the code stays, its dependencies are not installed); the diff looks like a code editor's (− lines light red, + lines light green); the AI may read the whole vault (file types the user allows) plus outside folders / notes the user grants by path; the current selection-to-chat stays and the new button flow is offered as a choice; new settings look like the existing ones (no drastic visual change).
-- **One engine, separate install.** All AI logic lives in `paper_pile/core/ai/` behind one `AiEngine` (sessions, context, access policy, edit proposals, compaction, provider). Chat pane and AI slash commands both use it; the GUI only sends actions (send, stop, accept, reject) and draws events (chunk, done, proposal, error). **Changed 2026-10-28 (user):** AI is a start option, not an install: `paper-pile` runs without AI, `paper-pile --ai` with it (env `PAPER_PILE_AI`, inherited by the window's process); a separate install without `ollama` comes later, so `ollama` stays a normal dependency. Only `make_provider` imports it, on first use (`core/ai/install.py` `ai_unavailable()` gives the reason; `PAPER_PILE_NO_AI=1` forces off, `PAPER_PILE_FAKE_AI=1` counts as on): without `--ai` the AI switch is disabled with "AI is off — start the app with: paper-pile --ai" (with `--ai` but no `ollama`: "AI is not installed — run: uv sync") and every AI entry point stays hidden, as with AI off.
-- **Implemented (P22.2):** `core/ai/engine.py` `AiEngine` (created once by `layout.py`): the open chat (`turns`, `new_chat` / `open_chat` / `delete_chat` / `forget` / `save` / `prune`), attachments (`selection`, `block`, `add_message`), chat context and messages (`chat_context`, `chat_messages`, `answer`), AI command prompts (`command_messages`) and `stream` (model + options). `ChatPane` and `EditorPane` take the engine; *Write with AI* uses `stream`.
-- **Approved edits (permission gate).** The AI never writes into a note. A change is an `EditProposal` (note, range, original text's hash, new text). It is shown inline in the editor as a line diff, like a code editor: removed lines light red with a − gutter mark, added lines light green with +; Accept / Reject per change and Accept all / Reject all in a small bar. If the note changed under the proposal, it is marked out of date and cannot be applied. Accepting is one undo step and keeps the "before AI" version. Fix grammar, Rewrite and the selection *Edit* flow go through it; a chat answer to a message with an attached selection offers *Apply to note* (→ the same diff). Setting `ai.edits` (Settings → AI → Context, "AI changes to notes"): *Ask first* (default: the diff) / *Apply at once* (applied as one undo step, a notice says Ctrl+Z undoes it) / *Read-only* (the diff with *Copy* / *Close* only; AI commands that would write into the note are refused with a notice; the chat's *Insert into note* is hidden). Insert-at-caret commands (Continue writing, Summarize, Explain) keep streaming in with the other two.
-- **Implemented (P22.7):** `core/ai/proposals.py` (`propose`: line hunks by `difflib`; `locate`: the region where it was or found once elsewhere, else out of date; `accept` (some or all hunks → changes + what is left), `reject`). Editor: `tools/editor_src/proposal.js` (state field mapped through typing; removed lines `.pp-aidiff-del` with a − in the content's left padding, added lines a block widget `.pp-aidiff-add` with +, Accept / Reject under each change, a top panel "AI suggests N changes · Accept all · Reject all"; clicks are reported as `proposal` events, Python applies through `_apply_edit` = one undo step and re-sends what is left). `EditorPane.propose_edit` / `propose_in_note`; Fix grammar shows a proposal instead of replacing. Chat: a reply to a message with exactly one attached selection from a note has *Apply to note* (`file-diff`): opens the note, finds the text once, shows the diff (a reply that is one code block gives its content for a text selection). Class names `pp-aidiff-*` (the version history dialog owns `pp-diff-*`).
-- **Access scope** (one checker in core: every AI read — context, mentions, linked notes, vault search — goes through it). Default: the whole vault, notes with the file types in `ai.file_types` (default `.md`; the user adds e.g. `.txt`, `.py`). Never: `.trash`, `.paper-pile`, the memories folder, notes with `ai: false` in their properties, paths in `ai.exclude`. Outside the vault: only folders / notes the user grants by path, plus files uploaded in the chat. **Granted from the chat (user, 2026-10-29), not in Settings:** a message that names a full path (`/…`, `~/…`) of an existing folder or file outside the vault, not granted yet, gets an inline card in the chat ("Allow the AI to read this folder?" path · Allow / Not now) before it is sent; Allow records it for this vault and its files (allowed types; a folder's files under it) go with that message and every later one that names it; Not now sends the message without them. Settings → AI → Access only lists them, each with ×. The composer's + menu shows a one-line "AI can read: …". Settings → AI → *Access*, rows in the existing style.
-- **Access is granted per vault and recorded** (user, 2026-10-28) in `ai_access.json` in the app's config folder (`~/.config/paper-pile/`, never inside a vault, so a copied vault cannot grant itself access), keyed by the vault's resolved absolute path: `{"vaults": {"/abs/A": {"granted": "2026-10-28T14:05", "file_types": [".md"], "allow_paths": [], "exclude": []}}}`. The first AI use in a vault with no record asks "Allow the AI to read this vault?" (Allow / Not now); nothing is sent before Allow. Grants match the exact vault path only, never inherited: a grant for vault B (or for folder B inside a vault) gives nothing when A is opened as a vault — A asks for its own, whether A is B's parent, its child or unrelated. A moved or renamed vault asks again. Settings → AI → Access shows this vault's grant and lets the user revoke it or edit its paths. Read tolerantly, written atomically.
-- **Implemented (P22.6):** `core/ai/access.py` (`Grant`, `load_grant` / `save_grant` / `grant_now` / `revoke`, `AccessPolicy`: `may_read` (type, `.trash` / `.paper-pile` / memories folder, exclusions as paths or `fnmatch` patterns), `may_send` (+ `ai: false`), outside paths (`may_read_outside`, `outside_files` ≤ 2000, `read_outside` ≤ 200 KB text)). The engine checks it for every read: the open note and the open tabs (dropped when not allowed — also the editor's live selection in such a note), mentions, attached and linked notes; without a grant `answer` / `command_messages` raise `AccessDeniedError`, an AI command on a note it may not read shows a notice. Attached chips (selections, blocks, uploaded files) are sent as given: the user picked them. `gui/components/ai_access.py`: `confirm_access` (asked before the first chat message or AI command; *Not now* keeps the message in the box) and `AccessPanel` (Settings → AI → Access, after Model, also in minimal settings: Read this vault [Allow / Revoke], File types, Outside folders and notes, Never read). The chat's + menu starts with "AI can read: …" and lists *Outside files* (attached like uploaded files) when outside paths are granted.
-- **Selections.** Setting `ai.selection_to_chat` (Settings → AI → Context, "Selected text to chat"): *Automatically* (default, today's behaviour: a selection becomes a chip whose text can be read in the chat) / *With Ask*. Either way, while AI is on, a small bar above a settled selection offers *Ask* (attach it, open the chat, caret in the box) and *Edit* (the bar turns into a one-line prompt; Enter asks the AI to change the selection as typed, the answer comes back as a diff; Esc closes). Chips stay as now; the same text attached twice is one chip. **Implemented (P22.9):** `tools/editor_src/selectbar.js` (tooltip from a state field set when `selectionsync.js` reports a settled selection; only with the `aiBar` editor option = `features.ai`), `selection_action` events → `EditorPane._on_selection_action` (Edit runs `commands_builtin.edit_selection` through `_run_stream` → proposal); folder grants: `access.paths_in`, `AiEngine.paths_to_ask` / `allow_path` / `outside_text`, `ChatPane._ask_path`.
-- **Implemented (P22.10–P22.12):** `core/ai/prompts.py` (`selection_kind`: prose / code / math / table / diagram; `suggestions` ≤ 6, own prompts last; `load_prompts` reads `- ` / `* ` items of `ai.prompts_file`, "Your prompts" in Settings → AI → Context); chips in the chat box under the attachments while the box is empty. Chat extras: `SavedTurn.sources` (paths of the notes in the context, clickable under the answer: opens the note), `SavedTurn.reasoning` (a thinking model's `message.thinking`, streamed as `provider.Reasoning`, shown in a folded *Reasoning* above the answer), *Answer again* (↻ on the last answer: `AiEngine.regenerate`), *Edit and send again* (✎ on the last message: `take_back` puts it and its chips back in the box). `@vault`: `Index.search(..., any_words=True)` (`fts_any_query`: any word of 3+ letters, common words left out) → the 3 best notes the AI may read go in as mentions.
-- **Suggested prompts** (no model call): when a selection, block or note is attached, 3–4 chips above the input fit its kind — prose: Rewrite clearer, Shorten, Fix grammar, Explain; code: Explain, Find bugs, Add comments; math: Explain step by step, Check it; table: Summarize, Find patterns; a note: Summarize, Outline, Key points, Open questions. A click fills the input (does not send). The user's own prompts can be added from a markdown file (`ai.prompts_file`, one `- ` item per prompt).
-- **Context window.** The window is `ai.num_ctx`, or automatic (0): the model's own limit (Ollama `show`, asked once per model) capped at 8k — and it is **always sent** as `num_ctx`, because Ollama's server default is smaller and silently cuts the start of a longer prompt. A quarter of it (≥ 512) stays free for the answer; notes get at most 60 % of the rest (and at most `ai.context_budget`); history fills what is left, newest first (`ai.history_turns` stays as a cap). Tokens stay estimated as chars ÷ 4. Each reply's context line shows the count: "Context: note · 1.5k / 8k tokens" (k = 1024).
-- **Caching.** Prompt order keeps the start stable so Ollama can reuse its cache: a fixed system prompt (who, language, instruction — no notes) → earlier messages exactly as sent before (a message's attached text stays with it) → the newest message with its notes in front (`The user's notes, for context:` … `---` … message). Only the last message differs from one request to the next (test). Notes attached to (or `@`-mentioned in) earlier messages are kept on the turn (`SavedTurn.notes`) and sent again with later ones, after the new message's own. AI commands use the same layout (the selection is sent once, with the task). Note paths and texts come from `core/ai/notecache.py` (paths kept 5 s or until a note is created / renamed / deleted, also outside the app; texts until mtime or size change): no vault walk per message or per `@` keystroke.
-- **Basic compaction.** Before a reply, when the earlier messages (since the last summary) pass 60 % of the prompt's room, all but the last 4 messages are summarized by one model call (≤ 200 words of bullets, the earlier summary included) into "Summary so far": saved in the chat file (`summary`, `summarized` = how many turns it covers), sent at the end of the system prompt in their place. The turns stay visible; a small muted "Earlier messages summarized" line marks where the summary ends, and the reply's context line says so. `/compact` sent in the chat does it now (a notice says whether there was anything to fold). A failed summary call falls back to trimming.
-- **Chat extras:** Regenerate the last answer; edit the last message and resend; notes used for an answer listed as clickable `[[links]]` under it; reasoning of thinking models shown folded instead of dropped; `@vault` in a message searches the vault index (FTS, scope-checked) and attaches the best few hits.
-- **Not now:** autonomous multi-step agents, embeddings / vector search, web access, long-term memory across chats.
-- **Saved chat format:** new fields (`summary`, per-turn `context`) are optional; older chat files load unchanged.
+### 4.26 AI: one engine, approved edits, access scope — user request 2026-10-28 (P22), hardened 2026-10-29 (P23)
+User: pack the whole AI part so it ports with the app with little effort; edits must show added / deleted lines; a permission gate before the AI changes a note; settings for where the AI may read; selections in the chat can get messy; suggested prompts when something is attached; no context overflow; caching; basic compaction. Useful features only, nothing that makes the app heavy. Answers (2026-10-28): AI is a separate install (*superseded the same day: AI is a start option, see below*); the diff looks like a code editor's (− lines light red, + lines light green); the AI may read the whole vault (file types the user allows) plus outside folders / notes the user grants by path; the current selection-to-chat stays and the new button flow is offered as a choice; new settings look like the existing ones (no drastic visual change).
+- **Goals and limits.** Local only (the model runs in Ollama; nothing else is contacted — no telemetry, no remote images, §P23.1); opt-in (`--ai`); the AI never changes the user's own text without a diff unless the user chose *Apply at once*; every read goes through one access check; the app stays usable when the AI fails. **Not now:** autonomous multi-step agents, embeddings / vector search (decided 2026-10-29: full-text `@vault` is the retrieval; RAG is in §7), web access, memory across chats (saved chats are sent only when reopened).
+- **One engine, a start option.** All AI logic lives in `paper_pile/core/ai/` behind one `AiEngine` (created once by `layout.py`): the open chat, attachments, context and messages, AI command prompts, compaction, access, edit decisions (`edits.py`), and `stream`. The chat pane, the AI commands and *Write with AI* only send actions and draw what comes back. AI is a start option, not an install (2026-10-28): `paper-pile` runs without AI, `paper-pile --ai` with it. **Which switch wins:** `PAPER_PILE_NO_AI=1` → off; else `--ai`, `PAPER_PILE_AI=1` or `PAPER_PILE_FAKE_AI=1` → AI can run, and then the `features.ai` switch (default on) turns it on / off live; without them the switch is disabled with "AI is off — start the app with: paper-pile --ai" (with `--ai` but no `ollama`: "AI is not installed — run: uv sync") and every AI entry point is hidden. Only `make_provider` imports `ollama`. A separate install without `ollama` comes later (§7).
+- **How an AI answer may change a note** (`core/ai/edits.py`, P23.4). Two kinds of change:
+
+| Entry point | Kind | *Ask first* (default) | *Apply at once* | *Read-only* |
+|---|---|---|---|---|
+| Continue writing, Summarize, Explain, Ask… (slash commands) | insert | streams in at the caret | streams in | refused (notice) |
+| Chat *Insert into note* | insert | inserted at the caret | inserted | hidden |
+| Fix grammar, selection bar *Edit*, ⋯ *Rewrite* (whole body, front matter kept) | replace | diff to accept | applied (one undo step, notice) | diff with Copy / Close |
+| Chat *Apply to note* (an answer to a message with exactly one selection from a note) | replace | diff | applied | diff, read-only |
+
+  Inserts are one undo step and keep a "before AI" version first; opening another note in that editor, Stop or an error ends the stream and what arrived stays (Ctrl+Z removes it). A replacement is made only from an answer that **finished** (`Finish("stop")`): an answer cut at the length limit, stopped or failed never becomes a diff ("The AI's answer was cut off; nothing was changed."). It is checked before the model is asked: the selection, the prompt and room for a rewrite (1.25 × the selection + 64 tokens) must fit the window, else "The text is too long for this model … Select less.". An answer under half the original's length is shown as a diff even in *Apply at once*. The answer is cleaned first (`clean_reply`): `<think>…</think>`, one leading "Here is the corrected text:" line, one closing "Let me know…" paragraph and one code fence around everything are removed (a fence stays when the original was a fenced block). Every applied change (auto, or the first Accept of a proposal) keeps one "before AI" version.
+- **Proposals** (`core/ai/proposals.py`, P22.7): a `Proposal` (id, note path, start, the region's old text, line hunks by `difflib`). Shown inline like a code editor: removed lines light red with −, added lines light green with +, Accept / Reject under each change, a top bar "AI suggests N changes · Accept all · Reject all" (`tools/editor_src/proposal.js`, classes `pp-aidiff-*`). Before applying, the region is looked for where it was or once elsewhere (the user typed above it); gone or found twice → out of date, nothing applied, a notice says so. Proposals live in memory per tab: a new one replaces the one shown; closing the tab, reloading or restarting drops it.
+- **Access scope** (`core/ai/access.py`; one checker for every AI read: open note, tabs, mentions, attached and linked notes, `@vault` hits, earlier quotes). Asked once per vault: "Allow the AI to read this vault?" (Allow / Not now; the card names the host when `ai.host` is another computer, P23.2); nothing is sent before Allow. **Once granted:** the vault's notes of the allowed file types (default `.md`; the vault itself only holds `.md` / `.txt`, other types apply to outside paths). **Never:** `.trash`, `.paper-pile`, the memories folder, notes with `ai: false` in their properties, the vault's "Never read" paths (paths or `fnmatch` patterns), hidden files and folders outside the vault. **Outside the vault:** only folders / files granted from the chat — a message naming a full path (`/…`, `~/…`) of an existing folder or file not granted yet gets an inline card (Allow / Not now) before it is sent; `/` and the home folder itself are refused; a granted folder's files (allowed types, sub-folders included, hidden ones skipped, at most 2000 files and 20 000 entries looked at, each ≤ 200 KB of text) go with that message and later ones that name it, within the notes budget. Plus files uploaded in the chat. Settings → AI → Access: Read this vault [Allow / Revoke], File types, Outside folders and notes (listed with ×), Never read. The composer's + menu starts with "AI can read: …".
+- **Grants are recorded per vault** in `ai_access.json` in the app's config folder (never inside a vault, so a copied vault cannot grant itself access), keyed by the vault's resolved absolute path (format in §5). Exact path only, never inherited (a parent, child or moved vault asks again). **Revoke** keeps the file types and "Never read" paths (the record stays with `granted: null`), so allowing again never makes excluded notes readable; outside paths go and are asked for again.
+- **What the user attaches.** Chips the user picks (a selection via Ask or *Select from screen*, a block, an uploaded file) are sent with their message even from an `ai: false` / excluded note — the user chose them. A whole note attached from the + menu is read through the access check like a mention (a private one is not sent). An **automatic** chip (`ai.selection_to_chat` = *Automatically*) is never made from a note the AI may not read (also before the first grant: what a first grant would allow). A quote from such a note goes with its own message only: later requests send `[left out]` in its place (P23.5).
+- **Selections.** `ai.selection_to_chat`: *Automatically* (default: a settled selection becomes a chip) / *With Ask*. While AI is on, a bar above a settled selection offers *Ask* (attach it, open the chat) and *Edit* (one-line prompt; Enter → a replacement as above; Esc closes) (`selectbar.js`, `EditorPane._on_selection_action`). The same text attached twice is one chip.
+- **Prompt assembly** (one definition; `AiEngine.chat_context` / `chat_messages`): (1) a fixed **system prompt**: who the assistant is, the user's name, the answer language (Settings → General → language), the system instruction, then "Summary of the conversation so far" when there is one; (2) **earlier messages**, newest first while they fit, at most `ai.history_turns`: each user message carries what was attached to it — its quotes and the notes it attached or `@`-mentioned (re-read, each ≤ ¼ of the notes budget) — in front of its text, so the start of the prompt stays the same while those notes do not change (P23.8); failed and empty turns are left out; (3) the **newest message** with its notes in front (`The user's notes, for context:` … `---` … message), in this order until the notes budget is used: its attachments (chips, uploaded files, granted outside files it names), the **open note** (sent with every message unless the AI may not read it; from the editor's live text), notes it `@`-mentions or attaches, `@vault` hits, open tabs (only with "Include open tabs"), linked notes (outgoing + backlinks, one hop, ≤ 8). A part that does not fit is cut at a line and marked `…[truncated]`; parts with no room left are dropped. AI commands use the same system prompt plus "reply with only the text" rules and one user message (the task, then the selection or the 4000 characters before the caret, with the open note's context).
+- **Context window and tokens.** The window is `ai.num_ctx`, or automatic (0): the model's own limit (Ollama `show`, asked once per model; asked again after 60 s while unknown) capped at **8k** — and always sent as `num_ctx`, because Ollama's default is smaller and silently cuts the start of a longer prompt. The cap keeps memory use predictable on local hardware (a bigger window needs more RAM / VRAM); set `ai.num_ctx` to go higher. A quarter of the window (≥ 512) stays free for the answer; the notes get at most 60 % of the rest (and at most `ai.context_budget`); history fills what is left. Every request sends `num_predict` = what the prompt leaves of the window (≥ 256), so an answer cannot overflow it. Tokens are estimated: four ASCII characters = one token, every other character (Bengali, CJK, accents, emoji) = one token (P23.9). Each answer's context line says what went and what was cut: "Context: note (first 40 %), 2 mentioned (1 cut) · 3.6k / 8k tokens" (k = 1024).
+- **Caching.** Because of the order above, from one request to the next only the newest message changes — until the system instruction file is edited, a summary is made, or an earlier message's note changes (then the start changes once). The same `num_ctx` and `keep_alive` go with every call for a model (chat, commands, summaries, *Write with AI*), so Ollama never reloads it between them. Note paths and texts come from `core/ai/notecache.py` (paths kept 5 s or until a note is created / renamed / deleted; texts while mtime and size stay, the 500 read last): no vault walk per message or per `@` keystroke.
+- **Compaction** (P22.5, P23.12). Before an answer, when the earlier messages since the last summary (their own text and quotes; not their notes) pass 60 % of the prompt's room (the window minus the answer's quarter), all but the last 4 messages (two exchanges) are summarized by one model call ("≤ 200 words of bullets", the earlier summary included) into "Summary so far", sent at the end of the system prompt in their place and saved in the chat file. When they do not all fit that call, the oldest go first — never the earlier summary. The chat shows "Summarizing earlier messages…" next to the waiting dots (Stop stops it); the turns stay visible with a muted "Earlier messages summarized" line where the summary ends, and the answer's context line says so. A failed summary: the earlier messages are trimmed instead and no new try is made for 4 messages. `/compact` does it now and says "Earlier messages summarized", "Nothing to summarize yet" or "Could not summarize: …"; it asks for vault access like any message.
+- **`@vault`** in a message: `Index.search(…, any_words=True)` (words of 3+ letters, common words left out) → the 3 best notes the AI may read (checked with their text, so `ai: false` notes take no slot), each as the `#`/`##` section holding most of the question's words (the whole note when none does), each ≤ ⅓ of what the open note may take, titled "Found in the vault: path § Heading" (P23.10).
+- **Failures** (P23.13; the app stays usable in every case):
+
+| Event | What the user sees | What is kept |
+|---|---|---|
+| Ollama not reachable | banner (host-aware text, §4.11), red dot, *Retry*; the message fails with the same text | the message; the answer turn says why |
+| Model not installed | banner "The model “X” is not installed — run `ollama pull X`, or pick another one above." before sending | — |
+| Error or Stop in the middle of a chat answer | what arrived, then "*(stopped: …)*" / "*(stopped)*" | the partial answer, marked `cut` (never *Apply to note*) |
+| Answer reaches its length limit | "*(cut off: the answer reached its length limit)*" | as above |
+| Error in the middle of an insert into a note | notice: "… What the AI wrote so far stays (Ctrl+Z removes it)." | the inserted text (one undo step) and the "before AI" version |
+| Cut-off / stopped replacement | "The AI's answer was cut off; nothing was changed." | the note unchanged |
+| A second AI answer while one runs | "The AI is still answering — wait for it or press Stop." | — |
+| No vault access | the Allow card; *Not now* keeps the message in the box | — |
+| Summary call fails | nothing (trimmed instead); `/compact` names the error | — |
+
+- **Chat extras** (P22.10–P22.12): suggested prompts (no model call) while the box is empty and something is attached — up to 6 chips fitting the kind (prose: Rewrite clearer, Shorten, Fix grammar, Explain; code: Explain, Find bugs, Add comments; math: Explain step by step, Check it; table: Summarize, Find patterns; diagram: Explain, Suggest improvements; a note: Summarize, Outline, Key points, Open questions), then the user's own from `ai.prompts_file` (`- ` / `* ` items); a click fills the box, never sends. *Answer again* (↻ on the last answer: replaces it), *Edit and send again* (✎ on the last message: it and its chips go back in the box), sources under each answer (the notes in its context; click opens), a thinking model's reasoning folded above the answer (not part of the answer's text).
+- **Images.** Notes' images are never sent to the model (text only). Chat answers, quotes and memories render through `render_chat_html`: an image whose address is not the app's own (`/…`) or inline data is shown as its markdown text and never fetched, and every page carries `Content-Security-Policy: img-src 'self' data: blob:` — so text the model was steered to write cannot send note contents to a server by drawing an image (P23.1). Links in answers open in the system browser only when clicked.
+- **Several windows.** Each page (`--serve` tab) has its own engine and open chat; two pages writing the same saved chat: the last write wins (accepted, single user).
 
 ### 4.25 Note header, pins, small UI fixes — user request 2026-10-24 (P21)
 User list of 12 items (numbering theirs, merged); questions answered: top row as tall as the Backlinks bar; pins both as tabs and in the tree; double-click on a pane's edge; header sections are `#` / `##`; icon colour only Default / Accent (no rounded-square style); creation date not shown (version history has it); kanban only as Mermaid's diagram.
@@ -558,7 +607,7 @@ User list of 12 items (numbering theirs, merged); questions answered: top row as
 - **Note picker** (split's *Open on the right* / *Show here*, *Merge into…*): the palette's look and place (top, borderless search with the title as placeholder, ×, same rows).
 - **`/kanban`:** inserts a Mermaid `kanban` diagram (columns with cards), drawn like the other diagrams.
 
-### 4.24 Memory — user request 2026-10-24 (P20)
+### 4.24 Memory use (RAM) — user request 2026-10-24 (P20)
 User: the app feels heavy; wants it lighter, platform-independent work first ("go for 1"), engine changes (system WebKitGTK, browser app mode) later. Measured on the user's machine after ~2 h: page renderer 1.3 GB RSS, Qt window process 514 MB, Python server 105 MB; `.venv` 722 MB (PyQt6 520 MB). Goal: find what grows over a session and stop it, with no visible change; disk size is left to the later engine options.
 - **Measured, not guessed:** `tools/mem_soak.py` (dev tool) drives a long session (open / switch / close tabs, popups, notes with math, diagrams, tables, images) on a throwaway vault and prints JS heap, DOM nodes, listeners and process RSS per round.
 - **Dialogs leave nothing behind:** every dialog is a `paper_pile.gui.dialog.Dialog` (never `ui.dialog`): NiceGUI's hidden "canary" element (whose finalizer holds the dialog) is deleted with it, so a closed dialog is freed in the page and on the server. Dialogs made anew each time and only closed (note picker, Ask AI) are deleted when hidden; the crash-recovery dialog (once per crash) stays as it is.
@@ -610,6 +659,27 @@ meta(key TEXT PK, value TEXT)   -- schema_version
 
 **session.json** (`core/session.py`): `{ "tabs": [...paths], "active": path|null, "pane_widths": {"left": 260, "right": 340}, "panes_open": {"left": true, "right": true}, "mode": "live"|"source" }`. Read tolerantly (bad/missing fields fall back to defaults individually); written atomically; a write failure is logged, never fatal.
 
+**Saved chat** (`<chats folder>/<id>.json`, default `<vault>/.memory/`; `core/ai/chats.py`). Plain JSON, written atomically after every message; read tolerantly (unknown or bad fields fall back to defaults; files from before P22 load unchanged):
+```json
+{"id": "20261029-101500-a1b2c3", "title": "first question", "created": 1761732900.0, "updated": 1761733000.0,
+ "summary": "", "summarized": 0,
+ "turns": [{"role": "user", "text": "…", "attachment": "From [[a]]: [Selected text]",
+            "quotes": [{"label": "From [[a]]", "kind": "Selected text", "size": "3 lines", "text": "…", "note": "a"}],
+            "notes": ["b"], "summary": "", "error": false, "sources": [], "reasoning": "", "cut": false},
+           {"role": "assistant", "text": "…", "summary": "Context: note · 1.5k / 8k tokens",
+            "sources": ["a.md"], "reasoning": "…", "error": false, "cut": false}]}
+```
+`summary` / `summarized`: "Summary so far" and how many turns it replaces. `quotes`: attached selections and blocks (their text is stored — a copy of note text); `notes`: attached notes as link names (only the names: their text is read again when sent); `attachment`: one display line per attached thing; uploaded files are not stored, only their names in `attachment`. `cut`: the answer did not finish. Saved chats hold copies of note text: they live in the memories folder, which the AI never reads, and go to `.trash/` when deleted.
+
+**ai_access.json** (`~/.config/paper-pile/`, `core/ai/access.py`): the AI's grants, one record per vault keyed by its resolved absolute path; read tolerantly (a damaged record = no grant), written atomically:
+```json
+{"vaults": {"/home/u/notes": {"granted": "2026-10-28T14:05", "file_types": [".md"],
+                               "allow_paths": ["/home/u/code/project"], "exclude": ["private", "*.draft.md"]}}}
+```
+`granted: null` = revoked (file types and exclusions kept for the next Allow). This file — not the settings — decides what the AI may read.
+
+**history.db** (`.paper-pile/history.db`, `core/history.py`): versions of notes (§4.18), including "before AI" ones; a cache-like store the app can lose without losing notes.
+
 ---
 
 ## 6. Phases & tasks
@@ -631,6 +701,8 @@ on Sonnet. Only mark a task 🧠 when it is genuinely this specialized.
 | P2.4 🧠 | Full Live Preview: cursor-aware syntax hiding, replace/line/widget decorations, tables, clickable tasks; hardest code in the project |
 | P3.5 🧠 | Rename-safe rewrite across the vault: must not corrupt notes (code fences, aliases, anchors, relative paths) |
 | P4.2 🧠 | Slash popup inside CM6: caret-positioned tooltip, trigger rules (not in code/URLs), key handling coexisting with live-preview decorations |
+| P22.2 🧠 | One AI engine in core replacing prompt / history logic spread over the chat and the editor pane: every AI feature depends on it |
+| P22.7 🧠 | AI diffs inside CM6: hunks mapped through typing, block widgets, one undo step — a wrong offset changes the user's text |
 
 ### P0 — Foundation
 | ID | Task | Acceptance |
@@ -697,9 +769,12 @@ on Sonnet. Only mark a task 🧠 when it is genuinely this specialized.
 | ID | Task | Acceptance |
 |---|---|---|
 | P7.1 | Provider protocol + OllamaProvider + health check + status dot | unit tests with mocked client; banner when Ollama down |
-| P7.2 | Chat pane: model picker, streaming, stop, markdown render, copy, insert into note | manual QA |
-| P7.3 | Context builder + token budget + `@note` picker + "include open tabs" toggle | unit tests for ordering/truncation |
-| P7.4 | AI slash commands with `StreamInsert` | `/summarize`, `/continue`, `/explain`, `/fix`, `/ask` work, Stop cancels |
+| P7.2 | Chat pane: model picker, streaming, stop, markdown render, copy, insert into note | real app: the picker lists `models()`; an answer streams and renders math; Stop leaves "*(stopped)*"; Copy copies; Insert puts the answer at the caret |
+| P7.3 | Context builder + token budget + `@note` picker + "include open tabs" toggle (*budget and order superseded by P22.3 / P23.8, §4.26*) | unit tests for ordering / truncation |
+| P7.4 | AI slash commands with `StreamInsert` (*Fix grammar became a diff in P22.7*) | `/summarize`, `/continue`, `/explain`, `/ask` stream in; `/fix` shows a diff; Stop cancels |
+| P7.5 | Chat ⋮ menu: saved chats ("Memories", 5 + More chats) + AI settings (user request 2026-10-21) | chats saved / listed / opened / deleted to `.trash/` (tests); menu items per §4.11 (real app) |
+| P7.6 | Memories in Settings + AI advanced settings (user request 2026-10-21) | browse, read as markdown, filter by words / dates, delete shown / all (tests + real app); options reach Ollama (test) |
+| P7.7 | AI settings rework (user request 2026-10-21): Memories before a folded Advanced, memories folder (+ move) | page order per §4.11; moving chats never overwrites (tests + real app) |
 
 ### P8 — Settings, theme, profile
 | ID | Task | Acceptance |
@@ -790,7 +865,7 @@ P9.1–P9.3 and P9.5–P9.6 are built in this phase (order: P14.1, P9.1, P9.2, P
 | P19.9 | Backlink snippets cached by indexed mtime | `Backlink.mtime` is the file's (test); snippets unchanged |
 | P19.10 | Tabs before the startup sync | backlinks / link styles right after the background sync, incl. notes and links added while closed (real app) |
 
-### P20 — Memory (user request 2026-10-24, §4.24)
+### P20 — Memory use (RAM) (user request 2026-10-24, §4.24)
 | ID | Task | Acceptance |
 |---|---|---|
 | P20.1 | `tools/mem_soak.py` soak harness | per-round JS heap / nodes / listeners / RSS (renderer, window, server) on a throwaway vault |
@@ -802,18 +877,18 @@ P9.1–P9.3 and P9.5–P9.6 are built in this phase (order: P14.1, P9.1, P9.2, P
 ### P22 — AI redesign (user request 2026-10-28, §4.26)
 | ID | Task | Acceptance |
 |---|---|---|
-| P22.1 | AI only with `--ai` | `paper-pile` → AI off with the hint and no AI entry point, `ollama` never imported; `paper-pile --ai` → all AI (tests + real app) |
+| P22.1 | AI only with `--ai` | `paper-pile` → AI off, the switch disabled with "AI is off — start the app with: paper-pile --ai", no AI entry point, `ollama` never imported; `paper-pile --ai` → all AI; `PAPER_PILE_NO_AI=1` wins over `--ai`, `PAPER_PILE_FAKE_AI=1` counts as on (tests + real app) |
 | P22.2 🧠 | `AiEngine` in core; chat + AI commands use it | chat.py / editor_pane.py hold no prompt or history logic; engine unit tests with `FakeProvider`; all tests green; chat and commands work as before (real app) |
 | P22.3 | Context budget from the model; token-based history; token count | long chat never exceeds the window (test with a small fake window); `num_ctx` always sent; reply line shows used / window (real app) |
 | P22.4 | Cache-friendly prompt order; per-turn notes; note cache | system prompt identical across turns and only the last message differs (test); attached note and quote still sent next turn (test); no vault walk per message (test) |
 | P22.5 | Basic compaction + `/compact` | at 60 % the old turns become "Summary so far" in the saved chat and are not sent again (test); reopened chat keeps it (test); old chat files still load (test); `/compact` + marker (real app) |
-| P22.6 | Access scope + per-vault grants (`ai_access.json`) + Settings → AI → Access | excluded / not-allowed / outside paths never reach the model (tests); no record → asks, nothing sent before Allow; a grant for B gives nothing for its parent / child / another vault (tests); revoke works; rows look like the existing ones (real app) |
+| P22.6 | Access scope + per-vault grants (`ai_access.json`) + Settings → AI → Access | excluded / not-allowed / not-granted outside paths never reach the model, except chips the user picked (tests); `ai: false` and `fnmatch` exclusions (tests); no record → asks, nothing sent before Allow; a grant for B gives nothing for its parent / child / another vault, a moved vault asks again (tests); revoke works; rows use the same row component as the other Settings groups (real app) |
 | P22.7 🧠 | Edit proposals + inline diff | −/+ lines light red / green; accept / reject per change and all; out-of-date proposal not applied; one undo step (tests + `qa_editor.py` + real app) |
-| P22.8 | Edit permission setting | Ask / Auto-accept in open note / Read-only each behave (tests + real app) |
+| P22.8 | Edit permission setting | *Ask first*: diff with Accept; *Apply at once*: applied as one undo step with the Ctrl+Z notice; *Read-only*: diff with Copy / Close, inserts refused with a notice, *Insert into note* hidden (tests via P23.4 + real app) |
 | P22.9 | Selection bar (Ask / Edit) + selection-to-chat setting + folder permission asked in the chat | Automatically keeps today's chips; With Ask attaches only on Ask; Edit returns a diff; a path in a message is asked about in the chat once, its files go along (tests + real app) |
 | P22.10 | Suggested prompts + own prompts file | chips fit the attached kind; click fills, does not send (tests + real app) |
-| P22.11 | Chat extras: regenerate, edit last, sources, folded reasoning | each works (tests + real app) |
-| P22.12 | `@vault` search | attaches top hits from the index, scope-checked (test) |
+| P22.11 | Chat extras: regenerate, edit last, sources, folded reasoning | ↻ replaces the last answer (the file keeps one); ✎ puts the message and its chips back in the box; sources list the notes sent and open them; reasoning is folded and not in the answer's text (tests + real app) |
+| P22.12 | `@vault` search | attaches the 3 best hits from the index, scope-checked (test); sections since P23.10 |
 
 ### P23 — AI hardening (user request 2026-10-29, from the EGM review in `egm-review/`, §4.26)
 Order: security first (P23.1–P23.7), then context (P23.8–P23.12), failures (P23.13), cleanup (P23.14–P23.16), then the spec pass (P23.17). P23.18 is the user's.
@@ -931,7 +1006,14 @@ Spec (one place; the feature sections point here):
 - [ ] Paste a math-heavy ChatGPT answer → renders correctly
 - [ ] Mermaid renders in both themes
 - [ ] 10 tabs open, restart → restored
-- [ ] Ollama stopped → app usable, clear banner
+- [ ] `paper-pile --ai`, Ollama stopped → app usable, banner "Ollama isn't running — start it with `ollama serve`."
+- [ ] `paper-pile` without `--ai` → no AI entry point anywhere, no request to Ollama
+- [ ] First AI use in a vault asks for access; *Not now* keeps the message; nothing sent before Allow; revoke → asked again, "Never read" kept
+- [ ] Fix grammar → diff → Accept all → one Ctrl+Z restores; *Read-only* refuses `/summarize`, hides *Insert into note*
+- [ ] A long chat in an 8k window compacts ("Summarizing earlier messages…", then the marker); the context line matches the window
+- [ ] `@vault` never returns an excluded or `ai: false` note
+- [ ] A path in a chat message asks Allow / Not now; `/compact` works
+- [ ] P23.18 real-model pass (§6 P23)
 - [x] Delete note → recoverable from `.trash/` (Trash popup, P14.3: restored with its images, real-app checks)
 - [ ] `--serve` reachable only on 127.0.0.1 and only with token
 - [ ] Export as PDF: native window (Save dialog → file) and `--serve` (browser print dialog → Save as PDF); the pages match page view's page lines
@@ -940,10 +1022,12 @@ Spec (one place; the feature sections point here):
 ---
 
 ## 7. Deferred (not phase 1)
-Vault RAG with `sqlite-vec` ·
-graph view · split panes · tags/front-matter queries · daily notes & templates UI ·
-git sync · TUI (Textual, reusing core) ·
-RHEL/server packaging · multi-user/teams · cloud AI providers.
+Vault RAG with embeddings / `sqlite-vec` (FTS `@vault` is the retrieval until it proves too weak, §4.26) ·
+autonomous AI agents · AI web access · AI memory across chats · images sent to vision models ·
+an install without `ollama` (AI code kept, its dependencies left out) · cloud AI providers ·
+graph view · front-matter queries · git sync · TUI (Textual, reusing core) ·
+RHEL/server packaging · multi-user/teams.
+(Built since this list was written: split panes P10.6, tags P11, daily notes & templates P13.)
 
 ---
 
@@ -956,4 +1040,14 @@ RHEL/server packaging · multi-user/teams · cloud AI providers.
 | PDF pages drift from the editor's page lines (fonts not loaded, rounding, the browser's print adding a blank sheet) | One paginator owns the pages: it fills fixed page boxes measured after `document.fonts.ready`, images decoded and Mermaid drawn; boxes a hair under one sheet with `overflow: hidden`; P12.4 compares per-page PDF text with the paginator's output |
 | Chatbot HTML changes | Fixture tests; easy to add new fixtures |
 | Rename rewriting corrupts notes | Atomic writes, tests, write to trash backup before bulk rewrite |
-| Slow local models | Streaming, Stop, small default context budget |
+| Slow local models | Streaming, Stop; the automatic window is capped at 8k; one answer at a time; the same `num_ctx` / `keep_alive` on every call so the model is not reloaded |
+| Prompt injection: note, outside-file, uploaded or `@vault` text tells the model to do something else | No tools or agents (the model can only answer); replacements are diffs by default; *Apply at once* is the user's explicit choice and falls back to a diff for a much shorter answer; remote images never fetched + image CSP (P23.1); links open only when clicked |
+| Notes leave the computer: `ai.host` points to another machine | `ai.host` global only; the Allow card and "can't be reached" text name a non-local host (P23.2) |
+| A copied / downloaded vault changes AI settings through its `vault.toml` | Security keys are global only (`config.GLOBAL_ONLY`, P23.2); grants live outside the vault |
+| A cut-off or chatty answer damages the user's text | Replacements only from finished answers, size check before the call, `clean_reply`, shorter-than-half never auto-applied, "before AI" version (P23.3, P23.7) |
+| Ollama silently cuts the start of an over-long prompt | `num_ctx` always sent; token estimate counts non-Latin characters one each (P23.9); `num_predict` = what the prompt leaves |
+| A manual `ai.num_ctx` larger than the machine's memory | Only when the user sets it; the automatic window is capped at 8k (help: "0 = automatic (up to 8k)") |
+| Outside grants read too much (`/`, home, keys) or block the UI | `/` and home refused, hidden files never read, walk capped at 20 000 entries; in `--serve` mode a token holder can grant outside paths too (accepted: the server binds 127.0.0.1 and serves its own user) |
+| Excluded notes become readable again | Revoke keeps exclusions; automatic chips and re-sent quotes check the policy (P23.5, P23.6) |
+| Ollama API changes (`show` model info keys, `thinking`, `done_reason`, options) | All Ollama calls in `core/ai/ollama.py` with mocked-HTTP tests; the real-model pass (P23.18) after Ollama updates |
+| The chars-based token estimate is off for code or a model's tokenizer | Window margin (a quarter kept for the answer, `num_predict` capped); real counts checked in P23.18 |
