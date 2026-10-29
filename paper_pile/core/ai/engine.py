@@ -45,6 +45,7 @@ from paper_pile.core.ai.context import (
     BacklinkSource,
     Context,
     EditorSnapshot,
+    best_section,
     build_context,
     cut_to_tokens,
     estimate_tokens,
@@ -66,6 +67,7 @@ from paper_pile.core.ai.provider import (
 )
 from paper_pile.core.commands import StreamInsert
 from paper_pile.core.config import Config
+from paper_pile.core.index import query_words
 from paper_pile.core.links import resolve_wikilink, wikilink_to
 from paper_pile.core.settings import language_name
 from paper_pile.core.vault import Vault
@@ -74,6 +76,7 @@ log = logging.getLogger("paper_pile.ai.engine")
 
 VAULT_TAG = re.compile(r"(?<![\w@])@vault\b", re.IGNORECASE)  # search the vault for the message
 VAULT_HITS = 3
+ASK_AGAIN_S = 60.0  # an unknown context length is asked again after this long
 MIN_ANSWER = 256  # tokens an answer may always take (``num_predict``), however full the window
 BUSY = "The AI is still answering — wait for it or press Stop."
 SUMMARIZING = "Summarizing earlier messages…"
@@ -88,6 +91,7 @@ AUTO_WINDOW = 8192
 MESSAGE_OVERHEAD = 4  # tokens a message costs besides its text (role, separators)
 CONTEXT_SHARE = 0.6  # of the prompt's room, notes may take this much; history gets the rest
 COMPACT_AT = 0.6  # earlier messages above this share of the prompt's room get summarized
+EARLIER_NOTE_SHARE = 0.25  # of the notes budget, per note attached to an earlier message
 KEEP_RECENT = 4  # messages never summarized (the last two exchanges)
 COMPACT_PROMPT = (
     "You keep the memory of a conversation between a user and an assistant in a note app. "
@@ -152,7 +156,7 @@ class AiEngine:
         self.notes = NoteCache(vault)
         self._access_dir = access_dir
         self._policy: AccessPolicy | None = None
-        self._max_context: dict[str, int | None] = {}  # model -> its context length
+        self._max_context: dict[str, tuple[int | None, float]] = {}  # model -> (length, asked)
         self.turns: list[SavedTurn] = []
         self.summary = ""  # "Summary so far": replaces the first ``summarized`` turns
         self.summarized = 0
@@ -187,9 +191,12 @@ class AiEngine:
         if chosen > 0:
             return chosen
         model = self.model()
-        if model not in self._max_context:
-            self._max_context[model] = await self.provider.context_length(model)
-        known = self._max_context[model]
+        known, asked = self._max_context.get(model, (None, -ASK_AGAIN_S))
+        if model not in self._max_context or (
+            known is None and time.monotonic() - asked >= ASK_AGAIN_S
+        ):  # unknown (Ollama was down, or loading): asked again a minute later
+            known = await self.provider.context_length(model)
+            self._max_context[model] = (known, time.monotonic())
         return min(known, AUTO_WINDOW) if known else AUTO_WINDOW
 
     @staticmethod
@@ -209,6 +216,20 @@ class AiEngine:
 
     async def health(self) -> Health:
         return await self.provider.health()
+
+    def model_problem(self, health: Health) -> str:
+        """What to tell the user when the chosen model is not among the installed ones ("" when
+        it is, or nothing is known): before a message fails on it."""
+        if not health.ok or not health.models:
+            return ""
+        model = self.model()
+        names = set(health.models)
+        if model in names or f"{model}:latest" in names:
+            return ""
+        return (
+            f"The model “{model}” is not installed — run `ollama pull {model}`, or pick another "
+            "one above."
+        )
 
     # ---- access (PLAN §4.26) ---------------------------------------------------------------
 
@@ -467,22 +488,20 @@ class AiEngine:
         include_tabs: bool = False,
         budget: int | None = None,
     ) -> Context:
-        """What goes with the newest message: its attachments, the open note, the notes it and
-        the earlier messages of the chat mention or attach (newest first), tabs, linked notes."""
+        """What goes with the newest message: its attachments, the open note, the notes it
+        mentions or attaches, ``@vault`` hits, tabs, linked notes. Notes attached to earlier
+        messages go with those messages (:meth:`past_text`), not here."""
         policy = self._require_access()
         found = self.vault_search(question)
         question = VAULT_TAG.sub(" ", question)
-        earlier: list[str] = []
-        for turn in reversed(self.turns[:-2]):
-            if turn.role == "user":
-                earlier += [*turn.notes, *extract_mentions(turn.text)]
         current = snap.path if policy.may_send(snap.path, snap.text) else None
         return build_context(
             self.vault,
             current_path=current,
             current_text=snap.text if current else "",
             selection=attached or (snap.selection if current else ""),  # chips: sent on purpose
-            mentions=list(dict.fromkeys([*extract_mentions(question), *notes, *found, *earlier])),
+            mentions=list(dict.fromkeys([*extract_mentions(question), *notes])),
+            found=found,
             open_tabs=[(p, t) for p, t in snap.tabs if policy.may_send(p, t)],
             include_tabs=include_tabs,
             index=self.index,
@@ -491,18 +510,26 @@ class AiEngine:
             read=self.read_note,
         )
 
-    def vault_search(self, question: str) -> list[str]:
-        """``@vault`` in a message: the best few notes for it from the vault's index, that the AI
-        may read (as link names)."""
+    def vault_search(self, question: str) -> list[tuple[str, str, str]]:
+        """``@vault`` in a message: ``(path, title, text)`` of the best few notes for it from the
+        vault's index that the AI may read, each as its section with most of the question's
+        words (whole notes would not fit: the notes' share holds about one)."""
         if not VAULT_TAG.search(question):
             return []
         search = getattr(self.index, "search", None)
         if not callable(search):
             return []
-        hits = search(VAULT_TAG.sub(" ", question), limit=VAULT_HITS * 4, any_words=True)
-        paths = [h.path for h in hits if self.read_note(h.path) is not None][:VAULT_HITS]
-        known = set(self.note_paths())
-        return [wikilink_to(p, "", known) for p in paths]
+        asked = VAULT_TAG.sub(" ", question)
+        out: list[tuple[str, str, str]] = []
+        for hit in search(asked, limit=VAULT_HITS * 4, any_words=True):
+            text = self.read_note(hit.path)
+            if text is None:
+                continue
+            heading, part = best_section(text, query_words(asked))
+            out.append((hit.path, f"{hit.path} § {heading}" if heading else hit.path, part))
+            if len(out) == VAULT_HITS:
+                break
+        return out
 
     def system_prompt(self) -> str:
         """The same for every message of a chat (nothing that changes per message), so the
@@ -517,17 +544,26 @@ class AiEngine:
         notes = context.notes_block()
         return notes + DIVIDER + message if notes else message
 
-    def past_text(self, turn: SavedTurn) -> str:
-        """An earlier message as the model sees it again: the text attached to it stays with it
-        (the same every time, so the prompt's start does not change). A quote from a note the AI
-        may not read (now) is left out: it went with its own message only."""
-        if turn.role != "user" or not turn.quotes:
+    def past_text(self, turn: SavedTurn, *, notes: bool = True) -> str:
+        """An earlier message as the model sees it again, with what was attached to it: its
+        quotes and (``notes``) the notes it attached or mentioned, each cut to a share of the
+        budget. They stay in their own message, so the prompt's start does not change while
+        they do not (PLAN §4.26). A quote from a note the AI may not read (now) is left out: it
+        went with its own message only."""
+        if turn.role != "user":
             return turn.text
-        quoted = "\n\n".join(
+        parts = [
             f"{q.label}:\n{q.text.strip()}" if self._quote_ok(q) else f"{q.label}: [left out]"
             for q in turn.quotes
-        )
-        return quoted + DIVIDER + turn.text
+        ]
+        if notes:
+            cap = int(self.budget() * EARLIER_NOTE_SHARE)
+            for name in dict.fromkeys([*turn.notes, *extract_mentions(turn.text)]):
+                path = resolve_wikilink(name, "", self.note_paths())
+                text = self.read_note(path) if path else None
+                if text is not None and text.strip():
+                    parts.append(f"Note {path}:\n{cut_to_tokens(text.strip(), cap)}")
+        return "\n\n".join(parts) + DIVIDER + turn.text if parts else turn.text
 
     def _quote_ok(self, quote: SavedQuote) -> bool:
         if not quote.note:
@@ -649,7 +685,9 @@ class AiEngine:
         if self._compact_failed >= 0 and len(self.turns) < self._compact_failed + KEEP_RECENT:
             return False
         past = self._past(len(self.turns) - 2)
-        tokens = sum(estimate_tokens(self.past_text(t)) + MESSAGE_OVERHEAD for t in past)
+        tokens = sum(
+            estimate_tokens(self.past_text(t, notes=False)) + MESSAGE_OVERHEAD for t in past
+        )
         if tokens <= room * COMPACT_AT:
             return False
         if on_status is not None:
@@ -681,14 +719,14 @@ class AiEngine:
             if turn.error or not turn.text.strip():
                 continue
             who = "User" if turn.role == "user" else "Assistant"
-            line = f"{who}: {self.past_text(turn)}"
+            line = f"{who}: {self.past_text(turn, notes=False)}"
             left -= estimate_tokens(line) + 1
             if left < 0:
                 break
             lines.append(line)
         transcript = "\n\n".join([head, *reversed(lines)] if head else reversed(lines))
         if not lines and not head:
-            transcript = cut_to_tokens(self.past_text(self.turns[upto - 1]), limit)
+            transcript = cut_to_tokens(self.past_text(self.turns[upto - 1], notes=False), limit)
         messages = [ChatMessage("system", COMPACT_PROMPT), ChatMessage("user", transcript)]
         summary = "".join([piece async for piece in self.stream(messages)]).strip()
         if not summary:

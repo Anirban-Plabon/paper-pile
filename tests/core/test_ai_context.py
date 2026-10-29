@@ -1,3 +1,4 @@
+import re
 from pathlib import Path
 
 import pytest
@@ -98,7 +99,7 @@ def test_long_parts_are_truncated_at_a_line_and_marked(vault: Vault) -> None:
     assert note.truncated and note.text.endswith(TRUNCATED)
     assert note.tokens <= 1000 * 0.6 + 5  # a note may take 60% of the budget
     assert "line 499" not in note.text
-    assert "(some cut)" in ctx.summary()
+    assert re.search(r"Context: note \(first \d+ %\)", ctx.summary())  # says what was cut
 
 
 def test_the_total_stays_within_the_budget(vault: Vault) -> None:

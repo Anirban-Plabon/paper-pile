@@ -16,7 +16,7 @@ from functools import partial
 from typing import Literal, Protocol
 
 from paper_pile.core.links import parse_wikilink, resolve_md_link, resolve_wikilink
-from paper_pile.core.parser import note_links
+from paper_pile.core.parser import headings, note_links
 from paper_pile.core.vault import Vault, VaultError
 
 CHARS_PER_TOKEN = 4
@@ -27,12 +27,13 @@ MAX_LINKED = 8
 DIVIDER = "\n\n---\n\n"  # between the notes sent with a message and the message itself
 TRUNCATED = "\n…[truncated]"
 
-Kind = Literal["selection", "note", "mention", "tab", "linked"]
+Kind = Literal["selection", "note", "mention", "found", "tab", "linked"]
 # share of the whole budget one part of a kind may take (the selection may take everything)
 _SHARE: dict[Kind, float] = {
     "selection": 1.0,
     "note": 0.6,
     "mention": 0.25,
+    "found": 0.2,  # an @vault hit: about a third of what the open note may take
     "tab": 0.1,
     "linked": 0.08,
 }
@@ -40,6 +41,7 @@ _HEADINGS: dict[Kind, str] = {
     "selection": "Selected text",
     "note": "Current note",
     "mention": "Mentioned note",
+    "found": "Found in the vault",
     "tab": "Open note",
     "linked": "Linked note",
 }
@@ -88,6 +90,7 @@ class ContextPart:
     path: str | None
     text: str
     truncated: bool = False
+    kept: float = 1.0  # how much of the text was sent (0.4 = its first 40 %)
 
     @property
     def tokens(self) -> int:
@@ -108,20 +111,27 @@ class Context:
         return [p for p in self.parts if p.kind == kind]
 
     def summary(self) -> str:
-        """One line for the UI: what was sent along."""
+        """One line for the UI: what was sent along, and what of it was cut ("note (first
+        40 %)", "3 linked (2 cut)"), so a summary of a long note is not taken for the whole."""
         bits: list[str] = []
         for kind, label in (
             ("selection", "selection"),
             ("note", "note"),
             ("mention", "mentioned"),
+            ("found", "found"),
             ("tab", "tabs"),
             ("linked", "linked"),
         ):
             found = self.of(kind)  # type: ignore[arg-type]
-            if found:
-                bits.append(label if kind in {"selection", "note"} else f"{len(found)} {label}")
-        cut = " (some cut)" if any(p.truncated for p in self.parts) else ""
-        return ("Context: " + ", ".join(bits) + cut) if bits else "No context"
+            if not found:
+                continue
+            cut = [p for p in found if p.truncated]
+            if kind in {"selection", "note"}:
+                share = f" (first {max(1, round(found[0].kept * 100))} %)" if cut else ""
+                bits.append(label + share)
+            else:
+                bits.append(f"{len(found)} {label}" + (f" ({len(cut)} cut)" if cut else ""))
+        return ("Context: " + ", ".join(bits)) if bits else "No context"
 
     def notes_block(self) -> str:
         """The parts as one markdown block ("" when there are none)."""
@@ -185,15 +195,45 @@ class _Builder:
         room = min(self.remaining, int(self.budget * _SHARE[kind]))
         if room < MIN_PART_TOKENS:
             return False
-        body, truncated = _cut(text.strip("\n"), room)
+        whole = text.strip("\n")
+        body, truncated = _cut(whole, room)
+        kept = (len(body) - len(TRUNCATED)) / len(whole) if truncated else 1.0
         part = ContextPart(
-            kind, f"{_HEADINGS[kind]}: {title}" if title else _HEADINGS[kind], path, body, truncated
+            kind,
+            f"{_HEADINGS[kind]}: {title}" if title else _HEADINGS[kind],
+            path,
+            body,
+            truncated,
+            kept,
         )
         self.context.parts.append(part)
         self.remaining -= part.tokens
         if path is not None:
             self.seen.add(path)
         return True
+
+
+SECTION_LEVELS = 2  # `#` and `##` start a section
+
+
+def best_section(text: str, words: Sequence[str]) -> tuple[str, str]:
+    """``(heading, text)`` of the ``#``/``##`` section of ``text`` holding most of ``words``
+    (an ``@vault`` hit sends that part, not the whole note); ``("", text)`` when the note has no
+    sections or none holds any of the words."""
+    heads = [h for h in headings(text) if h.level <= SECTION_LEVELS]
+    if not heads or not words:
+        return "", text
+    lines = text.split("\n")
+    ends = [h.line - 1 for h in heads[1:]] + [len(lines)]
+    found = [w.lower() for w in words]
+    best, score = None, 0
+    for head, end in zip(heads, ends, strict=True):
+        body = "\n".join(lines[head.line - 1 : end])
+        low = body.lower()
+        n = sum(low.count(w) for w in found)
+        if n > score:
+            best, score = (head.text, body), n
+    return best if best is not None else ("", text)
 
 
 def _read(vault: Vault, path: str) -> str | None:
@@ -223,6 +263,7 @@ def build_context(
     current_text: str = "",
     selection: str = "",
     mentions: Sequence[str] = (),
+    found: Sequence[tuple[str, str, str]] = (),
     open_tabs: Sequence[tuple[str, str]] = (),
     include_tabs: bool = False,
     index: BacklinkSource | None = None,
@@ -232,6 +273,7 @@ def build_context(
 ) -> Context:
     """Fill the context in priority order within ``budget`` tokens (see the module docstring).
 
+    ``found`` is ``(path, title, text)`` of ``@vault`` hits (the matching section of each).
     ``open_tabs`` is ``(path, text)`` of every open note; it is used only when ``include_tabs``.
     ``paths`` (every note) and ``read`` (a note's text, None if unreadable) default to walking
     and reading the vault; the engine passes its cache.
@@ -252,6 +294,9 @@ def build_context(
             b.context.missing.append(name)
         elif path != current_path:
             b.add("mention", path, path, text)
+    for path, title, text in found:
+        if path != current_path:
+            b.add("found", title, path, text)
     if include_tabs:
         for path, text in open_tabs:
             if path != current_path:

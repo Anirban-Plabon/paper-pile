@@ -165,3 +165,72 @@ def test_a_huge_outside_folder_stops_early(tmp_path: Path) -> None:
     (outside / "d2" / "late.md").write_text("x")
     policy = AccessPolicy(vault, Grant("now", [".md"], [str(outside)]))
     assert policy.outside_files() == []  # stopped before the third folder
+
+
+# ---- @vault sections and the context line --------------------------------------------------
+
+
+def test_best_section() -> None:
+    from paper_pile.core.ai.context import best_section
+
+    text = "# Garden\nintro\n## Tomatoes\nWater tomatoes daily.\n## Roses\nPrune roses.\n"
+    assert best_section(text, ["tomatoes", "water"]) == (
+        "Tomatoes",
+        "## Tomatoes\nWater tomatoes daily.",
+    )
+    assert best_section(text, ["cactus"]) == ("", text)  # no section holds a word: all of it
+    assert best_section("no headings here", ["here"]) == ("", "no headings here")
+
+
+async def test_vault_hits_send_their_matching_section(tmp_path: Path) -> None:
+    from paper_pile.core.index import Index
+
+    v = Vault(tmp_path / "v")
+    v.root.mkdir()
+    filler = "\n".join(f"line {n} about other things" for n in range(400))
+    v.create_note("garden.md", f"# Roses\n{filler}\n## Tomatoes\nWater the tomatoes daily.\n")
+    index = Index(v)
+    index.rebuild()
+    fake = FakeProvider(delay=0)
+    ai = AiEngine(v, Config(vault=v.root), index, provider_factory=lambda _c: fake,
+                  access_dir=tmp_path / "cfg")  # fmt: skip
+    ai.allow()
+    out = ai.add_message("@vault how often should I water the tomatoes?")
+    reply = ai.start_reply()
+    async for _ in ai.answer(reply, out, EditorSnapshot()):
+        pass
+    sent = fake.calls[-1][-1].content
+    assert "Found in the vault: garden.md § Tomatoes" in sent and "daily" in sent
+    assert "line 5 about" not in sent  # not the whole note
+    assert reply.sources == ["garden.md"] and "1 found" in reply.summary
+    index.close()
+
+
+# ---- failures ------------------------------------------------------------------------------
+
+
+def test_a_missing_model_is_named_before_sending(
+    setup: tuple[AiEngine, FakeProvider, Path],
+) -> None:
+    from paper_pile.core.ai.provider import Health
+
+    ai, _fake, _ = setup
+    model = ai.model()
+    assert ai.model_problem(Health(True, "", [model])) == ""
+    assert ai.model_problem(Health(True, "", [f"{model}:latest"])) == ""
+    assert f"ollama pull {model}" in ai.model_problem(Health(True, "", ["other:7b"]))
+    assert ai.model_problem(Health(False, "down")) == ""  # the banner says that already
+
+
+async def test_an_unknown_context_length_is_asked_again_later(
+    setup: tuple[AiEngine, FakeProvider, Path], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import paper_pile.core.ai.engine as engine_module
+
+    ai, fake, _ = setup
+    fake.max_context = None  # Ollama could not say (down, loading)
+    assert await ai.window() == 8192
+    fake.max_context = 4096
+    assert await ai.window() == 8192  # not asked again at once
+    monkeypatch.setattr(engine_module, "ASK_AGAIN_S", 0.0)
+    assert await ai.window() == 4096

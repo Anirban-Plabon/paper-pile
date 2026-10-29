@@ -152,13 +152,17 @@ _COMMON_WORDS = (  # left out of an any-words search
 _COMMON = frozenset(_COMMON_WORDS.split())
 
 
-def fts_any_query(user: str, most: int = 12) -> str | None:
-    """A safe FTS5 query matching notes with ANY of the question's words (3+ letters, common
-    words left out), for finding notes about a question rather than an exact phrase."""
+def query_words(user: str, most: int = 12) -> list[str]:
+    """The words of a question worth searching for: 3+ letters, common words left out, each once."""
     words = [w for w in _WORD.findall(user) if len(w) >= 3 and w.lower() not in _COMMON]
-    if not words:
-        return None
-    return " OR ".join(f'"{w}"' for w in list(dict.fromkeys(words))[:most])
+    return list(dict.fromkeys(words))[:most]
+
+
+def fts_any_query(user: str, most: int = 12) -> str | None:
+    """A safe FTS5 query matching notes with ANY of the question's words (:func:`query_words`),
+    for finding notes about a question rather than an exact phrase."""
+    words = query_words(user, most)
+    return " OR ".join(f'"{w}"' for w in words) if words else None
 
 
 class Index:

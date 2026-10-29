@@ -177,7 +177,7 @@ async def test_long_chat_never_overflows_the_window(vault: Vault, fake: FakeProv
     assert sent[-2].content.startswith("answer 29")  # the newest turns are the ones kept
     assert len(sent) < 30
     line = ai.turns[-1].summary
-    assert "/ 2k tokens" in line and "(some cut)" in line and "summarized" in line
+    assert "/ 2k tokens" in line and "note (first " in line and "summarized" in line
 
 
 def test_short_count() -> None:
@@ -213,8 +213,11 @@ async def test_attached_note_and_quote_stay_for_later_messages(
     assert ai.turns[0].notes == ["b"]
     await ask(ai, "and now?")
     sent = fake.calls[-1]
-    assert "beta body" in sent[-1].content  # the note attached earlier is still sent
+    assert "beta body" in sent[1].content  # the note attached earlier goes with its message
+    assert "beta body" not in sent[-1].content  # not in front of the newest one
     assert "chosen words" in sent[1].content and sent[1].content.endswith("about b")
+    await ask(ai, "third")
+    assert fake.calls[-1][:4] == sent[:4]  # the same start while the note does not change
 
 
 async def test_no_vault_walk_or_reread_per_message(

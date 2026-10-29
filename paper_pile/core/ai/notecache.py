@@ -3,7 +3,7 @@
 Building a message's context must not walk the vault or re-read unchanged notes (slow on WSL's
 ``/mnt/*``, and it runs on the UI's event loop). The path list is kept for a few seconds, or until
 :meth:`NoteCache.invalidate` (a note was created, renamed or deleted); a note's text is kept
-while its modification time and size stay the same.
+while its modification time and size stay the same, for the ``MAX_TEXTS`` notes read last.
 """
 
 import time
@@ -12,6 +12,7 @@ from collections.abc import Callable
 from paper_pile.core.vault import Vault, VaultError
 
 PATHS_TTL_S = 5.0
+MAX_TEXTS = 500  # texts kept (the least recently read go first)
 
 
 class NoteCache:
@@ -36,14 +37,17 @@ class NoteCache:
         except (OSError, VaultError):
             self._texts.pop(path, None)
             return None
-        kept = self._texts.get(path)
+        kept = self._texts.pop(path, None)
         if kept is not None and kept[:2] == (st.st_mtime_ns, st.st_size):
+            self._texts[path] = kept  # to the end: read last
             return kept[2]
         try:
             text = self.vault.read_text(path)
         except VaultError:
             return None
         self._texts[path] = (st.st_mtime_ns, st.st_size, text)
+        while len(self._texts) > MAX_TEXTS:
+            del self._texts[next(iter(self._texts))]
         return text
 
     def invalidate(self) -> None:

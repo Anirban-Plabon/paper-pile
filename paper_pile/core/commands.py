@@ -75,8 +75,9 @@ class StreamInsert:
 
     ``instruction`` is what the model is asked to do; ``source`` says which text goes with it
     (``selection``, the whole ``note``, the text ``before`` the caret, ``auto`` = the selection if
-    there is one, else the note). ``replace_selection``: the answer replaces the selection
-    (applied once, when complete); otherwise it is typed at the caret. ``ask``: first ask the user
+    there is one, else the note). ``replace_selection``: the answer replaces the selection, as
+    a diff (``ai/edits.py``: only a finished answer, never applied unseen unless the user chose
+    *Apply at once*); otherwise it is typed at the caret. ``ask``: first ask the user
     for a question. ``lead`` is written before the answer.
     """
 

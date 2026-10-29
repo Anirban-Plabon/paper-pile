@@ -1,6 +1,8 @@
 import os
 from pathlib import Path
 
+import pytest
+
 from paper_pile.core.ai.notecache import PATHS_TTL_S, NoteCache
 from paper_pile.core.vault import Vault
 
@@ -34,3 +36,17 @@ def test_text_is_read_again_only_when_the_file_changes(tmp_path: Path) -> None:
     assert cache.read("a.md") == "tri!"
     path.unlink()
     assert cache.read("a.md") is None and cache.read("../x.md") is None
+
+
+def test_only_the_last_read_texts_are_kept(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    import paper_pile.core.ai.notecache as notecache
+
+    monkeypatch.setattr(notecache, "MAX_TEXTS", 3)
+    v = Vault(tmp_path / "v")
+    v.root.mkdir()
+    for n in range(5):
+        v.create_note(f"{n}.md", f"text {n}")
+    cache = notecache.NoteCache(v)
+    for n in (0, 1, 2, 0, 3, 4):
+        assert cache.read(f"{n}.md") == f"text {n}"
+    assert list(cache._texts) == ["0.md", "3.md", "4.md"]  # 0 was read again, so it stayed

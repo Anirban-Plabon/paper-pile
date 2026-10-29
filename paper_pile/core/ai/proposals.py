@@ -1,4 +1,6 @@
-"""AI edits as proposals the user approves (PLAN §4.26): the AI never writes into a note itself.
+"""AI replacements as proposals the user approves (PLAN §4.26): the AI changes the user's own
+text only through a diff, unless the user chose *Apply at once* (inserts at the caret are the
+other kind of change, see ``edits.py``).
 
 A proposal replaces a region of a note (``start`` and the text it held, ``old``) with new text,
 split by lines into hunks the editor shows as a diff (removed lines red, added lines green) and

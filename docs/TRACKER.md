@@ -286,15 +286,15 @@ Legend: 🧠 = needs Opus (see PLAN §6 model guidance) · ⬜ todo · 🔄 in p
 | P23.5 | Private notes stay private | ✅ | `AiEngine.may_use`: no automatic chip from a note the AI may not read (also before the first grant); earlier quotes from such notes re-sent as `[left out]`; `@vault` hits checked with their text; 1 test |
 | P23.6 | Access fixes (revoke keeps exclusions, `/compact`, outside-grant limits) | ✅ | revoke keeps file types + exclusions in a record with `granted: null`; `compact` requires access; `/` and home refused, hidden files/folders never read, walk stops after 20 000 entries; 4 tests |
 | P23.7 | "before AI" version for every AI change | ✅ | kept on auto-apply and on the first Accept of each proposal (chat *Apply to note* included); history skips unchanged text |
-| P23.8 | Earlier notes stay in their own turn | ⬜ | |
+| P23.8 | Earlier notes stay in their own turn | ✅ | `past_text` puts a turn's attached / mentioned notes (each ≤ ¼ of the budget) in that turn; the newest message carries only its own; prefix identical across turns (test) |
 | P23.9 | Token estimate for non-Latin text | ✅ | non-ASCII = 1 token / char; `cut_to_tokens` used by `_cut`, outside files, compaction; 2 tests |
-| P23.10 | `@vault` sends the matching section | ⬜ | |
-| P23.11 | Context line names what was cut | ⬜ | |
+| P23.10 | `@vault` sends the matching section | ✅ | `best_section` (`#`/`##` section with most query words; whole note when none); kind `found` ≤ 0.2 of the budget; `index.query_words`; 2 tests |
+| P23.11 | Context line names what was cut | ✅ | "note (first 40 %)", "3 linked (2 cut)" (`ContextPart.kept`); tests updated |
 | P23.12 | Compaction fixes | ✅ | turns dropped oldest first, earlier summary kept; no retry for 4 messages after a failure; chat shows "Summarizing earlier messages…"; `/compact` names a failure; FakeProvider `fail_calls` / `fail_after`; 3 tests |
-| P23.13 | Failures | ⬜ | |
+| P23.13 | Failures | ✅ | partial chat answer kept + marked `cut` (P23.3); a note insert that fails keeps its text with a notice; one answer at a time (`BUSY`); "model not installed" line from `model_problem` before sending, re-checked on model change; unknown context length asked again after 60 s; remote host named (P23.2); 2 tests |
 | P23.14 | Retrieval decision: FTS only (`embed` removed) | ✅ | `Provider.embed`, `OllamaProvider.embed`, `ai.embed_model` setting removed |
 | P23.15 | Rewrite shows a diff | ✅ | ⋯ → Rewrite runs `rewrite_note()` on the body (front matter kept) through the replace path (size check, diff / mode) |
-| P23.16 | Small fixes (`NoteCache` bound, docstrings) | ⬜ | |
+| P23.16 | Small fixes (`NoteCache` bound, docstrings) | ✅ | `NoteCache` keeps the 500 texts read last (LRU, test); `StreamInsert`, `proposals`, `factory` docstrings |
 | P23.17 | PLAN describes reality | ⬜ | |
 | P23.18 | Real-model pass (user) | ⬜ | waits for the user |
 
@@ -743,3 +743,4 @@ Legend: 🧠 = needs Opus (see PLAN §6 model guidance) · ⬜ todo · 🔄 in p
 - 2026-10-29 · P22.8, P22.10–P22.12 edit modes, suggested prompts, chat extras, @vault · 1209 tests; qa_editor 358/358; real app
 - 2026-10-29 · P23.1–P23.2 chat images inert + image CSP; AI security keys global-only, remote host named · tests green
 - 2026-10-30 · P23.3–P23.7, P23.9, P23.12, P23.14, P23.15 safe AI edits, edit modes in core, private notes, access fixes, tokens, compaction, Rewrite diff · 1249 tests
+- 2026-10-30 · P23.8, P23.10, P23.11, P23.13, P23.16 earlier notes in their turn, @vault sections, cut named, failures, NoteCache bound · 1254 tests

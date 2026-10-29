@@ -215,8 +215,9 @@ class ChatPane:
         }
         self._model_details = dict(health.details)
         self._show_model()
-        self._banner.set_visibility(not health.ok or bool(health.message))
-        self._banner_text.set_text(health.message)
+        message = health.message or self.ai.model_problem(health)
+        self._banner.set_visibility(not health.ok or bool(message))
+        self._banner_text.set_text(message)
         self._on_health(health)
 
     def _js(self, code: str) -> None:
@@ -277,6 +278,7 @@ class ChatPane:
         self.config.set("ai.model", value, "global")
         self.config.save("global")
         self._show_model()
+        background_tasks.create(self.check_health())  # the "not installed" line may go
 
     def _set_include_tabs(self, on: bool) -> None:
         self._include_tabs = on
