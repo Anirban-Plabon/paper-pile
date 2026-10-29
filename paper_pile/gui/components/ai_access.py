@@ -29,10 +29,7 @@ async def confirm_access(ai: AiEngine, host: ui.element) -> bool:
         return True
     with host, Dialog() as dialog, ui.card().classes("pp-dialog pp-access-ask"):
         ui.label("Allow the AI to read this vault?").classes("pp-dialog-title")
-        ui.label(
-            f"To answer, the AI reads the notes of “{ai.vault.root.name}” on this computer. "
-            "Limit or take it back any time in Settings → AI → Access."
-        ).classes("pp-muted")
+        ui.label(ai.consent_text()).classes("pp-muted")
         with ui.row().classes("justify-end w-full"):
             ui.button("Not now", on_click=lambda: dialog.submit(False)).props("flat no-caps")
             ui.button("Allow", on_click=lambda: dialog.submit(True)).props("no-caps")

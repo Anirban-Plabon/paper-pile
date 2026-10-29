@@ -76,3 +76,16 @@ def test_websocket_wrong_cookie_rejected(client: TestClient) -> None:
         client.websocket_connect("/ws", headers={**LOCAL, "cookie": f"{COOKIE}=wrong"}),
     ):
         pass
+
+
+def _svg(_request: object) -> PlainTextResponse:
+    return PlainTextResponse("<svg/>", headers={"Content-Security-Policy": "sandbox"})
+
+
+def test_image_policy_on_every_response() -> None:
+    from paper_pile.gui.security import ImagePolicy
+
+    app = Starlette(routes=[Route("/", home), Route("/a.svg", _svg)])
+    client = TestClient(ImagePolicy(app))
+    assert client.get("/").headers["content-security-policy"] == "img-src 'self' data: blob:"
+    assert client.get("/a.svg").headers["content-security-policy"] == "sandbox"  # its own kept

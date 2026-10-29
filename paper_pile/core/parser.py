@@ -31,7 +31,7 @@ from typing import Any
 import yaml
 from markdown_it import MarkdownIt
 from markdown_it.common.utils import escapeHtml
-from markdown_it.renderer import RendererProtocol
+from markdown_it.renderer import RendererHTML, RendererProtocol
 from markdown_it.rules_block import StateBlock
 from markdown_it.rules_core import StateCore
 from markdown_it.rules_inline import StateInline
@@ -275,6 +275,35 @@ _PARSER = make_parser()
 def render_html(text: str) -> str:
     """Render a note's markdown to HTML (front matter is dropped, math is left as spans)."""
     return str(_PARSER.render(text))
+
+
+def local_image(src: str) -> bool:
+    """May an ``<img>`` load ``src``? Only the app's own paths and inline data (PLAN §4.26)."""
+    s = src.strip().lower()
+    return s.startswith("data:image/") or (s.startswith("/") and not s.startswith("//"))
+
+
+def _render_inert_image(
+    self: RendererProtocol, tokens: Sequence[Token], idx: int, options: OptionsDict, env: EnvType
+) -> str:
+    """An image whose ``src`` is not local is shown as its markdown, never fetched: a fetch could
+    carry note text out in its URL (text the model was asked to write, PLAN §4.26)."""
+    token = tokens[idx]
+    src = str(token.attrGet("src") or "")
+    if local_image(src):
+        return str(RendererHTML.image(self, tokens, idx, options, env))  # type: ignore[arg-type]
+    alt = "".join(c.content for c in token.children or [])
+    return f'<code class="pp-remote-image">{escapeHtml(f"![{alt}]({src})")}</code>'
+
+
+_CHAT_PARSER = make_parser()
+_CHAT_PARSER.add_render_rule("image", _render_inert_image)
+
+
+def render_chat_html(text: str) -> str:
+    """:func:`render_html` for what the AI wrote (or what is shown next to it): images that are
+    not the app's own are left as text, so showing an answer never contacts another server."""
+    return str(_CHAT_PARSER.render(text))
 
 
 @dataclass(frozen=True, slots=True)

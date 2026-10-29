@@ -815,6 +815,29 @@ P9.1–P9.3 and P9.5–P9.6 are built in this phase (order: P14.1, P9.1, P9.2, P
 | P22.11 | Chat extras: regenerate, edit last, sources, folded reasoning | each works (tests + real app) |
 | P22.12 | `@vault` search | attaches top hits from the index, scope-checked (test) |
 
+### P23 — AI hardening (user request 2026-10-29, from the EGM review in `egm-review/`, §4.26)
+Order: security first (P23.1–P23.7), then context (P23.8–P23.12), failures (P23.13), cleanup (P23.14–P23.16), then the spec pass (P23.17). P23.18 is the user's.
+| ID | Task | Acceptance |
+|---|---|---|
+| P23.1 | Chat output never loads remote images; image CSP on every page | a reply / quote / memory with `![](https://…)` renders no `<img>` with a remote `src` (test); every page response carries `Content-Security-Policy: img-src 'self' data: blob:` (test) |
+| P23.2 | AI security keys are global-only; the host is named when it is not this computer | `ai.host`, `ai.instructions_file`, `ai.prompts_file`, `ai.chats_folder`, `ai.edits` in `vault.toml` are ignored (test); Settings saves them globally even on the vault scope (test); access card names a non-loopback host (test) |
+| P23.3 | Replace edits are safe with real models | the answer is capped (`num_predict`); a reply that did not finish (length / Stop / error) never becomes an edit (tests); a selection too long for the window is refused with a notice before any call (test); a reply under half the original never auto-applies (test); `<think>`, one preamble line, one closing line and one fence are stripped (tests) |
+| P23.4 | Edit-mode decision in core | `core/ai/edits.py` `edit_action(mode, kind)` decides insert / propose / apply / show / refuse for every entry point; one test per cell; the GUI asks it instead of reading `ai.edits` |
+| P23.5 | Private notes stay private | no automatic chip from a note the AI may not read (test); earlier quotes from a note that became private are not sent again (test); `@vault` hits are checked with the note's text (test) |
+| P23.6 | Access fixes | revoke then Allow keeps the exclusions and file types (test); `/compact` asks for access first; `/` and the home folder itself cannot be granted, hidden files are skipped, the walk stops after a fixed number of entries (tests) |
+| P23.7 | "before AI" version for every AI change | an accepted or auto-applied change from a command, the selection bar or the chat leaves one "before AI" version (test) |
+| P23.8 | Earlier notes stay in their own turn | a note attached to message 1 goes with message 1 on later requests, not in front of the newest message (test); the prefix is the same across turns while the notes do not change (test) |
+| P23.9 | Token estimate for non-Latin text | each non-ASCII character counts as one token; a Bengali note is cut to fit an 8k window (test) |
+| P23.10 | `@vault` sends the matching section | each hit sends the `#`/`##` section with the most query words, each at most ⅓ of the notes' share (test) |
+| P23.11 | Context line names what was cut | "note (first 40 %)" style per cut part (test) |
+| P23.12 | Compaction fixes | whole old turns are dropped, never the earlier summary (test); after a failed summary no new try for 4 messages (test); the chat shows "Summarizing earlier messages…"; `/compact` says when it failed (test with a failing fake) |
+| P23.13 | Failures | a chat reply that fails mid-way keeps its text, marked (test); a note insert that fails keeps what arrived with a notice; a second AI answer while one runs is refused (test); "model not installed" shown before sending (test); an unknown context length is asked again later (test); "not running" text names a remote host (test) |
+| P23.14 | Retrieval decision: FTS only | `Provider.embed` and the embedding-model setting removed; RAG stays in §7 |
+| P23.15 | Rewrite shows a diff | ⋯ → Rewrite proposes a new note body (front matter kept) as a diff, size-checked like P23.3 (test + real app) |
+| P23.16 | Small fixes | `NoteCache` holds at most 500 texts (test); stale docstrings fixed |
+| P23.17 | PLAN describes reality | §4.11 rewritten (no contradiction with §4.26), §3 tree, §4.1 CLI, §5 AI formats, one `ai.*` table, §7, §8 AI risks, P7 rows, P22 acceptance, QA AI lines |
+| P23.18 | Real-model pass (user) | with a small instruct model, a thinking model and a model under 8k: chat, Fix grammar → diff → Accept → one Ctrl+Z, a long chat compacts, the context line matches the window, reasoning folds, Stop stops, a Bengali note |
+
 ### P21 — Note header, pins, small UI fixes (user request 2026-10-24, §4.25)
 | ID | Task | Acceptance |
 |---|---|---|

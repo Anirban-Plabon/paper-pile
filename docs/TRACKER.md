@@ -6,6 +6,7 @@
 Legend: 🧠 = needs Opus (see PLAN §6 model guidance) · ⬜ todo · 🔄 in progress · ✅ done · ⛔ blocked · ⏭️ skipped/deferred
 
 ## Current focus
+- **Phase:** P23 — AI hardening (user request 2026-10-29, PLAN §6 P23): 🔄 in progress
 - **Phase:** P22 — AI redesign (user request 2026-10-28, PLAN §4.26): all 12 tasks done; waiting for the user's real-model pass (`uv run paper-pile --ai` with Ollama)
 - **Phase:** P21 — Note header, pins, small UI fixes (user request 2026-10-24, PLAN §4.25): built; P20's next step (Tailwind off) waits
 - **Phase:** P20 — Memory (user request 2026-10-24, PLAN §4.24): leaks fixed (dialogs, timing entries); small heap creep left (Open issue); next: Tailwind off with a screenshot comparison, then the engine options (system WebKitGTK, browser app mode)
@@ -275,6 +276,28 @@ Legend: 🧠 = needs Opus (see PLAN §6 model guidance) · ⬜ todo · 🔄 in p
 | P22.11 | Chat extras: regenerate, edit last, sources, folded reasoning | ✅ | 2 engine tests + provider test; real app: Reasoning folded, sources a / b (b opens), ↻ keeps one answer, ✎ puts message + chip back |
 | P22.12 | `@vault` search | ✅ | 2 tests (index any-words query; best readable notes in, excluded out); real app: garden note found, private one not |
 
+### P23 — AI hardening (user request 2026-10-29, from the EGM review)
+| ID | Task | Status | Notes |
+|---|---|---|---|
+| P23.1 | Chat output never loads remote images; image CSP on every page | ✅ | `render_chat_html` (remote `![]()` shown as code) for answers, quotes, memories; `ImagePolicy` middleware (`img-src 'self' data: blob:`) in native and `--serve`; 4 tests |
+| P23.2 | AI security keys global-only; non-local host named | ✅ | `config.GLOBAL_ONLY` ignored in `vault.toml`, refused by `set(…, "vault")`, Settings saves them globally with a notice; Allow card names a non-loopback host; "can't be reached" names it; 3 tests |
+| P23.3 | Replace edits safe with real models | ⬜ | |
+| P23.4 | Edit-mode decision in core | ⬜ | |
+| P23.5 | Private notes stay private | ⬜ | |
+| P23.6 | Access fixes (revoke keeps exclusions, `/compact`, outside-grant limits) | ⬜ | |
+| P23.7 | "before AI" version for every AI change | ⬜ | |
+| P23.8 | Earlier notes stay in their own turn | ⬜ | |
+| P23.9 | Token estimate for non-Latin text | ⬜ | |
+| P23.10 | `@vault` sends the matching section | ⬜ | |
+| P23.11 | Context line names what was cut | ⬜ | |
+| P23.12 | Compaction fixes | ⬜ | |
+| P23.13 | Failures | ⬜ | |
+| P23.14 | Retrieval decision: FTS only (`embed` removed) | ⬜ | |
+| P23.15 | Rewrite shows a diff | ⬜ | |
+| P23.16 | Small fixes (`NoteCache` bound, docstrings) | ⬜ | |
+| P23.17 | PLAN describes reality | ⬜ | |
+| P23.18 | Real-model pass (user) | ⬜ | waits for the user |
+
 ## Decision log
 <!-- YYYY-MM-DD · decision · reason · (who: user / claude) -->
 | Date | Decision | Reason | By |
@@ -472,6 +495,7 @@ Legend: 🧠 = needs Opus (see PLAN §6 model guidance) · ⬜ todo · 🔄 in p
 | 2026-10-28 | P22.6: chips the user attached (selections, blocks, uploaded files) are sent even from an `ai: false` / excluded note; everything the engine reads by itself (open note, tabs, live selection, mentions, linked notes) is checked. Outside folders are used through the + menu (*Outside files*), attached like uploaded files. In the vault, file types can only pick among notes (`.md`, `.txt`); other types apply to outside paths | Attaching is a deliberate act the user sees in the chat; reading on its own is what the rules are for. Outside files needed a way in without a second note system | claude |
 | 2026-10-28 | AI is switched by a start flag: `paper-pile` = no AI, `paper-pile --ai` = AI; `ollama` back in the normal dependencies (the `ai` extra is gone); tests run as `--ai` (conftest) | User: "as installation will come later. uv run paper-pile should open no ai version and uv run paper-pile --ai should run full ai version" | user |
 | 2026-10-29 | Outside folders / files are granted from the chat: a full path in a message is asked about there (Allow / Not now), Settings only lists them with ×; P22.9 done before P22.8 | User: "user will ask folder permission in chat like will give location in chat you will ask permission there. not in setting"; asked for the selection settings first | user |
+| 2026-10-29 | P23 AI hardening planned from the EGM review (`egm-review/consolidated_review_report.md`): security first, then context, failures, cleanup, spec. Dropped as YAGNI (Stage 8): embeddings design, per-model token calibration, a model-loading state, unloading the model when AI is off, a context preview, model per chat, retry/backoff, throttled streaming render, purging chats on revoke, host stored in grants, a full PLAN restructure | user: "solve all the security holes, bugs and suggestion, plan it and do it" | user / claude |
 
 ## Issues log
 <!-- YYYY-MM-DD · task · symptom → root cause → fix · (gotcha added? y/n) -->
@@ -717,3 +741,4 @@ Legend: 🧠 = needs Opus (see PLAN §6 model guidance) · ⬜ todo · 🔄 in p
 - 2026-10-28 · P22.1 changed to the `--ai` start flag · 1196 tests; real app with / without `--ai`
 - 2026-10-29 · P22.9 selection bar + setting + folder permission in chat · 1200 tests; qa_editor 358/358; real app
 - 2026-10-29 · P22.8, P22.10–P22.12 edit modes, suggested prompts, chat extras, @vault · 1209 tests; qa_editor 358/358; real app
+- 2026-10-29 · P23.1–P23.2 chat images inert + image CSP; AI security keys global-only, remote host named · tests green

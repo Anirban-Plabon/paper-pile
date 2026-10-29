@@ -26,7 +26,7 @@ from paper_pile import __version__
 from paper_pile.core.ai.install import ai_available, ai_unavailable
 from paper_pile.core.ai.instructions import MAX_TEXT_CHARS
 from paper_pile.core.colors import parse_color
-from paper_pile.core.config import Config, Scope
+from paper_pile.core.config import Config, Scope, scope_for
 from paper_pile.core.settings import (
     ACCENTS,
     ALL,
@@ -1103,13 +1103,16 @@ class SettingsPane:
             return False
         if parsed.value == sanitized(self.config.values)[setting.key]:
             return True
-        self.config.set(setting.key, parsed.value, self.scope)
+        scope = scope_for(setting.key, self.scope)  # some AI keys are for all vaults only
+        self.config.set(setting.key, parsed.value, scope)
         try:
-            self.config.save(self.scope)
+            self.config.save(scope)
         except OSError:
             log.exception("could not save the settings")
             ui.notify("Could not save the settings.", type="negative")
             return False
+        if scope != self.scope:
+            ui.notify("Saved for all vaults: this setting is never set per vault", timeout=2500)
         self._on_applied({setting.key})
         if setting.key in _RELAYOUT and self._is_open():
             self._keep_page_shown()

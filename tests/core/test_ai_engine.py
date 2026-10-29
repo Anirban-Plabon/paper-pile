@@ -16,7 +16,7 @@ from paper_pile.core.ai.engine import (
 )
 from paper_pile.core.ai.fake import FakeProvider
 from paper_pile.core.commands import StreamInsert
-from paper_pile.core.config import Config
+from paper_pile.core.config import Config, scope_for
 from paper_pile.core.vault import Vault
 
 
@@ -37,7 +37,8 @@ def fake() -> FakeProvider:
 def engine(vault: Vault, fake: FakeProvider, **config: object) -> AiEngine:
     cfg = Config(vault=vault.root)
     for key, value in config.items():
-        cfg.set(key.replace("__", "."), value, "vault")
+        name = key.replace("__", ".")
+        cfg.set(name, value, scope_for(name, "vault"))
     ai = AiEngine(vault, cfg, user_name=lambda: "Ana", provider_factory=lambda _c: fake)
     ai.allow()  # access is tested in test_ai_access.py
     return ai
@@ -321,3 +322,11 @@ async def test_regenerate_and_take_back(vault: Vault, fake: FakeProvider) -> Non
     back = ai.take_back()
     assert back is not None and back.text == "second" and back.quotes[0].text == "picked words"
     assert [t.text.strip() for t in ai.turns] == ["first", "You said: first"]
+
+
+def test_consent_names_a_host_on_another_computer(vault: Vault, fake: FakeProvider) -> None:
+    ai = engine(vault, fake)
+    fake.host = "http://localhost:11434"
+    assert "sent to" not in ai.consent_text() and vault.root.name in ai.consent_text()
+    fake.host = "http://192.168.1.20:11434"
+    assert "sent to http://192.168.1.20:11434, another computer" in ai.consent_text()

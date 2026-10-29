@@ -79,7 +79,7 @@ async def test_not_running_is_a_friendly_error() -> None:
     p = provider(handler)
     with pytest.raises(ProviderUnavailableError) as err:
         await collect(p)
-    assert str(err.value) == NOT_RUNNING
+    assert str(err.value) == "Ollama at http://ollama.test can't be reached."
     with pytest.raises(ProviderUnavailableError):
         await p.models()
 
@@ -136,7 +136,7 @@ async def test_health_never_raises() -> None:
         raise httpx.ConnectError("refused")
 
     h = await provider(down).health()
-    assert not h.ok and h.message == NOT_RUNNING
+    assert not h.ok and h.message == "Ollama at http://ollama.test can't be reached."
 
     def empty(request: httpx.Request) -> httpx.Response:
         return httpx.Response(200, json={"models": []})
@@ -236,3 +236,15 @@ async def test_context_length_from_model_info() -> None:
     p = provider(handler)
     assert await p.context_length() == 131072
     assert await p.context_length("gone") is None
+
+
+def test_local_hosts_and_the_not_running_text() -> None:
+    from paper_pile.core.ai.ollama import not_running
+    from paper_pile.core.ai.provider import is_local_host
+
+    for host in ("http://localhost:11434", "127.0.0.1:11434", "http://[::1]:11434", ""):
+        assert is_local_host(host), host
+    for host in ("http://10.0.0.5:11434", "https://ollama.example.com", "box:11434"):
+        assert not is_local_host(host), host
+    assert not_running("http://localhost:11434") == NOT_RUNNING
+    assert not_running("http://box:11434") == "Ollama at http://box:11434 can't be reached."

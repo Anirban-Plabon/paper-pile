@@ -11,7 +11,7 @@ from paper_pile.gui.files import make_asset_router
 from paper_pile.gui.icons import icons_config_script, make_icon_router
 from paper_pile.gui.layout import MainLayout
 from paper_pile.gui.printing import make_print_router
-from paper_pile.gui.security import TokenGate
+from paper_pile.gui.security import ImagePolicy, TokenGate
 from paper_pile.gui.shortcuts import install_shortcuts
 from paper_pile.gui.static_files import STATIC_DIR, STATIC_URL, static_url
 from paper_pile.gui.vault_host import VaultHost, window_title
@@ -75,6 +75,7 @@ def _build_pages(host: VaultHost, *, native: bool) -> None:
 
 def run_native(vault: Path) -> None:
     os.environ.setdefault("PYWEBVIEW_GUI", "qt")  # skip the noisy GTK probe
+    app.add_middleware(ImagePolicy)
     _build_pages(VaultHost(vault), native=True)
     app.native.window_args["easy_drag"] = False  # we drag only from the top rows (window.js)
     app.native.start_args["func"] = native_boot.install  # compositor-driven move/resize
@@ -90,5 +91,6 @@ def run_native(vault: Path) -> None:
 
 def run_serve(vault: Path, port: int, token: str) -> None:
     app.add_middleware(TokenGate, token=token)
+    app.add_middleware(ImagePolicy)
     _build_pages(VaultHost(vault), native=False)
     ui.run(host=SERVE_HOST, port=port, reload=False, show=False, title=window_title(vault))

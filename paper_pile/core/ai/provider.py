@@ -4,13 +4,28 @@ Nothing here knows about the UI: chat, slash commands and context building only 
 protocol, so another backend (or a test double) can be dropped in.
 """
 
+import ipaddress
 from collections.abc import AsyncIterator, Sequence
 from dataclasses import dataclass, field
 from typing import Literal, Protocol
+from urllib.parse import urlsplit
 
 Role = Literal["system", "user", "assistant"]
 
 DEFAULT_HOST = "http://localhost:11434"  # Ollama's
+
+
+def is_local_host(host: str) -> bool:
+    """Does ``host`` (``http://localhost:11434``, ``10.0.0.5:11434``) run on this computer? Only
+    then do notes sent to the AI stay on it (PLAN §4.26)."""
+    raw = host.strip() or DEFAULT_HOST
+    name = urlsplit(raw if "://" in raw else "http://" + raw).hostname or ""
+    if name == "localhost":
+        return True
+    try:
+        return ipaddress.ip_address(name).is_loopback
+    except ValueError:
+        return False
 
 
 @dataclass(frozen=True, slots=True)

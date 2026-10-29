@@ -88,6 +88,33 @@ DEFAULTS: dict[str, Any] = {
 }
 
 
+# Settings a vault's own ``vault.toml`` may not change: where the AI sends notes, which files it
+# reads besides the notes, where chats are written and whether its edits apply unreviewed. A copied
+# vault could otherwise redirect the AI or widen what it reads (PLAN §4.26). Set globally only.
+GLOBAL_ONLY = frozenset(
+    {"ai.host", "ai.instructions_file", "ai.prompts_file", "ai.chats_folder", "ai.edits"}
+)
+
+
+def scope_for(key: str, scope: Scope) -> Scope:
+    """The layer ``key`` is saved in when the user chose ``scope``."""
+    return "global" if key in GLOBAL_ONLY else scope
+
+
+def _without(layer: dict[str, Any], keys: frozenset[str]) -> dict[str, Any]:
+    """``layer`` without the dotted ``keys`` (a copy)."""
+    out = copy.deepcopy(layer)
+    for key in keys:
+        *parents, leaf = key.split(".")
+        node: Any = out
+        for part in parents:
+            node = node.get(part) if isinstance(node, dict) else None
+        if isinstance(node, dict) and leaf in node:
+            log.warning("ignoring %s in the vault's settings (it is set for all vaults only)", key)
+            node.pop(leaf)
+    return out
+
+
 def global_config_path() -> Path:
     return Path(platformdirs.user_config_dir("paper-pile")) / "config.toml"
 
@@ -136,6 +163,7 @@ class Config:
         }
         self._layers: dict[Scope, dict[str, Any]] = {"global": {}, "vault": {}}
         self._corrupt: set[Scope] = set()
+        self._vault_layer: dict[str, Any] = {}
         self.reload()
 
     def reload(self) -> None:
@@ -148,12 +176,13 @@ class Config:
             self._layers[scope] = data
             if corrupt:
                 self._corrupt.add(scope)
+        self._vault_layer = _without(self._layers["vault"], GLOBAL_ONLY)
 
     @property
     def values(self) -> dict[str, Any]:
         """Fully merged configuration (defaults -> global -> vault)."""
         merged = deep_merge(DEFAULTS, self._layers["global"])
-        return deep_merge(merged, self._layers["vault"])
+        return deep_merge(merged, self._vault_layer)
 
     def get(self, key: str, default: Any = None) -> Any:
         node: Any = self.values
@@ -164,7 +193,10 @@ class Config:
         return node
 
     def set(self, key: str, value: Any, scope: Scope = "global") -> None:
-        """Set ``key`` in one layer (in memory); call :meth:`save` to persist."""
+        """Set ``key`` in one layer (in memory); call :meth:`save` to persist. A
+        :data:`GLOBAL_ONLY` key is refused for the vault layer."""
+        if scope == "vault" and key in GLOBAL_ONLY:
+            raise ValueError(f"{key} is set for all vaults only")
         if self._paths[scope] is None:
             raise ValueError(f"no {scope} config path (no vault open?)")
         *parents, leaf = key.split(".")
@@ -175,6 +207,8 @@ class Config:
                 child = node[part] = {}
             node = child
         node[leaf] = value
+        if scope == "vault":
+            self._vault_layer = _without(self._layers["vault"], GLOBAL_ONLY)
 
     def unset(self, key: str, scope: Scope = "global") -> None:
         """Remove ``key`` from one layer (it falls back to the layer below); empty tables go too."""
@@ -190,6 +224,8 @@ class Config:
             if node:
                 break
             chain[chain.index(node) - 1].pop(part, None)
+        if scope == "vault":
+            self._vault_layer = _without(self._layers["vault"], GLOBAL_ONLY)
 
     def layer(self, scope: Scope) -> dict[str, Any]:
         """What one layer holds on its own (a copy)."""

@@ -51,7 +51,14 @@ from paper_pile.core.ai.context import (
 from paper_pile.core.ai.factory import chat_model, generation_options, make_provider
 from paper_pile.core.ai.instructions import system_instruction
 from paper_pile.core.ai.notecache import NoteCache
-from paper_pile.core.ai.provider import ChatMessage, Health, Provider, ProviderError, Reasoning
+from paper_pile.core.ai.provider import (
+    ChatMessage,
+    Health,
+    Provider,
+    ProviderError,
+    Reasoning,
+    is_local_host,
+)
 from paper_pile.core.commands import StreamInsert
 from paper_pile.core.config import Config
 from paper_pile.core.links import resolve_wikilink, wikilink_to
@@ -201,6 +208,15 @@ class AiEngine:
             grant = load_grant(self.vault.root, self._access_dir)
             self._policy = AccessPolicy(self.vault.root, grant, self.chats_dir())
         return self._policy
+
+    def consent_text(self) -> str:
+        """What the Allow card says: what is read, and where it goes when that is not this
+        computer (``ai.host`` is another machine)."""
+        text = f"To answer, the AI reads the notes of “{self.vault.root.name}” on this computer."
+        host = self.provider.host
+        if host and not is_local_host(host):
+            text += f" They are sent to {host}, another computer."
+        return text + " Limit or take it back any time in Settings → AI → Access."
 
     def has_access(self) -> bool:
         return self.policy().granted

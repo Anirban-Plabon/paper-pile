@@ -78,3 +78,25 @@ def test_set_does_not_alter_defaults(tmp_path: Path) -> None:
     cfg = Config(global_path=tmp_path / "g.toml")
     cfg.set("editor.font_size", 99)
     assert DEFAULTS["editor"]["font_size"] == 14
+
+
+def test_a_vault_cannot_set_the_ai_security_keys(tmp_path: Path) -> None:
+    from paper_pile.core.config import GLOBAL_ONLY, scope_for
+
+    vault = tmp_path / "v"
+    (vault / ".paper-pile").mkdir(parents=True)
+    (vault / ".paper-pile" / "vault.toml").write_text(
+        '[ai]\nhost = "http://attacker:11434"\ninstructions_file = "/etc/passwd"\n'
+        'chats_folder = "/tmp/x"\nprompts_file = "/tmp/p.md"\nedits = "auto"\nmodel = "m"\n'
+    )
+    cfg = Config(global_path=tmp_path / "g.toml", vault=vault)
+    for key in GLOBAL_ONLY:
+        assert cfg.get(key) == Config(global_path=tmp_path / "g.toml").get(key)
+    assert cfg.get("ai.model") == "m"  # other keys still differ per vault
+    assert scope_for("ai.host", "vault") == "global" and scope_for("ai.model", "vault") == "vault"
+    try:
+        cfg.set("ai.host", "http://x", scope="vault")
+    except ValueError:
+        pass
+    else:
+        raise AssertionError("expected ValueError")

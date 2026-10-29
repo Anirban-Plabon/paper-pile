@@ -25,7 +25,7 @@ from paper_pile.core.ai.chats import (
     list_chats,
     move_chats,
 )
-from paper_pile.core.parser import render_html
+from paper_pile.core.parser import render_chat_html
 from paper_pile.core.vault import ExistsError, InvalidPathError, Vault
 from paper_pile.gui.components.vault_dialog import ask_folder
 from paper_pile.gui.dialog import Dialog
@@ -252,7 +252,7 @@ class MemoriesPanel:
                     "m",
                 )
                 close_button(dialog.close)
-            body = ui.html(render_html(text), sanitize=False).classes("pp-msg-body pp-mem-doc")
+            body = ui.html(render_chat_html(text), sanitize=False).classes("pp-msg-body pp-mem-doc")
         dialog.on("hide", lambda _e: dialog.delete())
         dialog.open()
         ui.run_javascript(

@@ -17,11 +17,19 @@ from paper_pile.core.ai.provider import (
     ProviderError,
     ProviderUnavailableError,
     Reasoning,
+    is_local_host,
 )
 
 log = logging.getLogger("paper_pile.ai")
 
 NOT_RUNNING = "Ollama isn't running — start it with `ollama serve`."
+
+
+def not_running(host: str) -> str:
+    """What to say when Ollama cannot be reached: start it here, or check the other computer."""
+    return NOT_RUNNING if is_local_host(host) else f"Ollama at {host} can't be reached."
+
+
 HEALTH_TIMEOUT_S = 3.0
 
 
@@ -146,8 +154,7 @@ class OllamaProvider:
 
     # ---- errors ----------------------------------------------------------------------------
 
-    @staticmethod
-    def _friendly(exc: Exception, model: str) -> ProviderError:
+    def _friendly(self, exc: Exception, model: str) -> ProviderError:
         if isinstance(exc, ProviderError):
             return exc
         if isinstance(exc, ollama.ResponseError):
@@ -157,6 +164,6 @@ class OllamaProvider:
                 )
             return ProviderError(f"Ollama said: {exc.error}")
         if isinstance(exc, ConnectionError | httpx.TransportError):
-            return ProviderUnavailableError(NOT_RUNNING)
+            return ProviderUnavailableError(not_running(self.host))
         log.exception("unexpected AI error")
         return ProviderError(f"Something went wrong talking to Ollama: {exc}")

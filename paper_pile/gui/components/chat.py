@@ -33,7 +33,7 @@ from paper_pile.core.ai.engine import AiEngine, Outgoing, Selection
 from paper_pile.core.ai.prompts import load_prompts, prompts_file, selection_kind, suggestions
 from paper_pile.core.ai.provider import Health, ProviderError, ProviderUnavailableError
 from paper_pile.core.links import resolve_wikilink, wikilink_to
-from paper_pile.core.parser import render_html
+from paper_pile.core.parser import render_chat_html
 from paper_pile.core.picker import search_notes
 from paper_pile.gui.components.ai_access import confirm_access
 from paper_pile.gui.icons import ico, icon_button, line_icon, set_icon
@@ -439,7 +439,7 @@ class ChatPane:
                     '<span class="pp-thinking" aria-label="Thinking"><i></i><i></i><i></i></span>'
                 )
             else:
-                content = render_html(turn.text)
+                content = render_chat_html(turn.text)
             body = ui.html(content, sanitize=False).classes("pp-msg-body")
             if turn.summary:
                 ui.label(turn.summary).classes("pp-muted pp-msg-ctx")
@@ -490,7 +490,7 @@ class ChatPane:
             def toggle() -> None:
                 if not body.default_slot.children:  # drawn on the first unfold
                     with body:
-                        text = render_html(source_view(quote.text.strip()))
+                        text = render_chat_html(source_view(quote.text.strip()))
                         html_body = ui.html(text, sanitize=False)
                         html_body.classes("pp-msg-body pp-chat-chip-body")
                         self._typeset(html_body)
@@ -818,7 +818,8 @@ class ChatPane:
                     ).props("flat dense size=xs").classes("pp-i-s")
         if self._open is not None:  # the unfolded text sits under all the chips, above the divider
             with self._preview:
-                body = ui.html(render_html(source_view(self._open.text.strip())), sanitize=False)
+                shown = render_chat_html(source_view(self._open.text.strip()))
+                body = ui.html(shown, sanitize=False)
                 body.classes("pp-msg-body pp-chat-chip-body")
                 self._typeset(body)
 
@@ -934,7 +935,7 @@ class ChatPane:
                 now = time.monotonic()
                 if body is not None and now - last >= RENDER_EVERY_S:
                     last = now
-                    body.set_content(render_html(reply.text))
+                    body.set_content(render_chat_html(reply.text))
                     self._scroll_down()
         except asyncio.CancelledError:
             self.ai.stopped(reply)
