@@ -65,7 +65,6 @@ DEFAULTS: dict[str, Any] = {
     "ai": {
         "host": "http://localhost:11434",
         "model": "gemma4:12b",
-        "embed_model": "",
         "context_budget": 6000,
         "instructions": "",
         "instructions_from": "text",  # text | file

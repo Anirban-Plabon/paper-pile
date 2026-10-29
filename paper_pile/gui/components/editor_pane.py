@@ -29,6 +29,16 @@ from nicegui import ui
 from paper_pile.core import assets
 from paper_pile.core.ai.access import AccessDeniedError
 from paper_pile.core.ai.context import EditorSnapshot
+from paper_pile.core.ai.edits import (
+    FINISHED,
+    EditAction,
+    EditMode,
+    EditTooLongError,
+    clean_reply,
+    edit_action,
+    edit_mode,
+    replacement_action,
+)
 from paper_pile.core.ai.engine import AiEngine
 from paper_pile.core.ai.proposals import Proposal, accept, propose, reject
 from paper_pile.core.ai.provider import ProviderError
@@ -50,7 +60,10 @@ from paper_pile.core.commands import (
     UnknownCommandError,
     groups_json,
 )
-from paper_pile.core.commands_builtin import edit_selection  # also registers the slash commands
+from paper_pile.core.commands_builtin import (  # also registers the slash commands
+    edit_selection,
+    rewrite_note,
+)
 from paper_pile.core.config import Config, Scope
 from paper_pile.core.events import EventBus
 from paper_pile.core.history import History, Sessions
@@ -64,7 +77,7 @@ from paper_pile.core.links import (
     wikilink_to,
 )
 from paper_pile.core.page_move import move_page_break
-from paper_pile.core.parser import Heading, find_heading
+from paper_pile.core.parser import Heading, body_start, find_heading
 from paper_pile.core.paste import smart_paste
 from paper_pile.core.picker import search_notes
 from paper_pile.core.recovery import RecoveryEntry, RecoveryStore
@@ -176,6 +189,7 @@ class EditorPane:
         self._ask_selection = ask_selection  # the selection bar's Ask: attach it to the chat
         self._proposals: dict[int, Proposal] = {}  # AI edits waiting for Accept / Reject, by tab
         self._readonly: dict[int, bool] = {}  # shown read-only (Settings → AI → AI changes)
+        self._ai_kept: set[int] = set()  # proposals whose "before AI" version is kept
         self._ai_selection: dict[str, Any] | None = None  # set by Ctrl+J in the editor
         self._streams = 0
         self._table_lock = asyncio.Lock()  # table edits apply one after the other
@@ -1228,6 +1242,22 @@ class EditorPane:
         spec = edit_selection(str(args.get("instruction", "")))
         await self._run_stream(spec, tab_id, text, end, end, (start, end))
 
+    async def rewrite(self, path: str) -> None:
+        """⋯ → Rewrite: the AI's version of the whole body of ``path`` (its front matter stays),
+        shown as a diff like Fix grammar (PLAN §4.26)."""
+        await self.open(path)
+        tab_id = self.tabs.active
+        text = await self._live_text(tab_id) if tab_id is not None else None
+        if tab_id is None or text is None or self._active_path() != path:
+            return
+        start = body_start(text)
+        if not text[start:].strip():
+            self._toast("The note is empty.")
+            return
+        await self._run_stream(
+            rewrite_note(), tab_id, text, len(text), len(text), (start, len(text))
+        )
+
     def _on_block_to_chat(self, args: dict[str, Any]) -> None:
         """The copy button of a code / math / diagram block: attach the block to the chat."""
         text = str(args.get("text", ""))
@@ -1299,7 +1329,8 @@ class EditorPane:
             return
         if not await confirm_access(ai, self._host):
             return
-        if not spec.replace_selection and self._edit_mode() == "readonly":
+        mode = self._edit_mode()
+        if edit_action(mode, "replace" if spec.replace_selection else "insert") == "refuse":
             self._toast("AI changes to notes are read-only (Settings → AI).", error=True)
             return
         question = ""
@@ -1316,7 +1347,7 @@ class EditorPane:
             messages = await ai.command_messages(
                 spec, path=path, text=body_text, caret=anchor, selected=selected, question=question
             )
-        except AccessDeniedError as exc:
+        except (AccessDeniedError, EditTooLongError) as exc:
             self._toast(str(exc), error=True)
             return
         self._streams += 1
@@ -1334,6 +1365,7 @@ class EditorPane:
             )
         collected = ""
         pending = ""
+        finish: list[str] = []
         last = time.monotonic()
         live = not spec.replace_selection
         editor = self._editor  # the answer goes where it was asked for, even if focus moves
@@ -1342,7 +1374,7 @@ class EditorPane:
                 await editor.stream_begin(stream_id, utf16_index(body_text, anchor))
                 if spec.lead and not await editor.stream_append(stream_id, spec.lead):
                     return
-            async for piece in ai.stream(messages):
+            async for piece in ai.stream(messages, on_finish=finish.append):
                 collected += piece
                 pending += piece
                 if live and time.monotonic() - last >= STREAM_FLUSH_S:
@@ -1352,11 +1384,21 @@ class EditorPane:
             if live and pending:
                 await editor.stream_append(stream_id, pending)
             elif spec.replace_selection and selection:
-                await self._propose_replacement(
-                    tab_id, selected, collected.strip("\n"), selection[0]
-                )
+                new = clean_reply(collected, selected)
+                action = replacement_action(mode, selected, new, finish[-1] if finish else None)
+                if action is None and finish[-1:] == [FINISHED]:
+                    self._toast("The AI suggests no changes.")
+                elif action is None:
+                    self._toast("The AI's answer was cut off; nothing was changed.", error=True)
+                else:
+                    await self._propose_replacement(tab_id, selected, new, selection[0], action)
         except ProviderError as exc:
-            self._toast(str(exc), error=True)
+            if live and collected:  # what arrived stays: one undo step, a version was kept
+                self._toast(
+                    f"{exc} What the AI wrote so far stays (Ctrl+Z removes it).", error=True
+                )
+            else:
+                self._toast(str(exc), error=True)
         finally:
             finished = True
             note.dismiss()
@@ -1366,9 +1408,10 @@ class EditorPane:
     # ---- AI edits as proposals (PLAN §4.26) -------------------------------------------------
 
     async def _propose_replacement(
-        self, tab_id: int, original: str, result: str, start: int
+        self, tab_id: int, original: str, result: str, start: int, action: EditAction
     ) -> None:
-        """The AI's version of ``original`` (at ``start``), shown as a diff to accept or reject."""
+        """The AI's version of ``original`` (at ``start``), as ``action`` says (a diff to accept,
+        applied at once, or a diff to read)."""
         if not result.strip():
             return
         text = await self._live_text(tab_id)
@@ -1377,22 +1420,25 @@ class EditorPane:
                 "The text changed while the AI was writing; nothing was suggested.", error=True
             )
             return
-        await self.propose_edit(tab_id, text, start, start + len(original), result)
+        await self.propose_edit(tab_id, text, start, start + len(original), result, action)
 
-    def _edit_mode(self) -> str:
+    def _edit_mode(self) -> EditMode:
         """``ai.edits``: ask (a diff to accept), auto (applied at once) or readonly."""
-        return str(self._config.get("ai.edits", "ask")) if self._config else "ask"
+        return edit_mode(self._config.get("ai.edits", "ask") if self._config else "ask")
 
-    async def propose_edit(self, tab_id: int, text: str, start: int, end: int, new: str) -> None:
-        """Replace ``text[start:end]`` of tab ``tab_id`` by ``new`` as Settings → AI says: a diff
-        to accept (default), applied at once (one undo step), or a diff to read only."""
+    async def propose_edit(
+        self, tab_id: int, text: str, start: int, end: int, new: str, action: EditAction
+    ) -> None:
+        """Replace ``text[start:end]`` of tab ``tab_id`` by ``new`` as ``action`` says
+        (:func:`replacement_action`): a diff to accept, applied at once (one undo step), or a diff
+        to read only. Whatever is applied keeps a "before AI" version first."""
         path = self._tab_path(tab_id)
         proposal = propose(path or "", text, start, end, new) if path else None
-        if proposal is None:
+        if proposal is None or path is None:
             self._toast("The AI suggests no changes.")
             return
-        mode = self._edit_mode()
-        if mode == "auto":
+        if action == "apply":
+            self.keep_version(path, text, "before AI")
             result = accept(proposal, text)
             if result is not None:
                 changes = result[0]
@@ -1403,8 +1449,8 @@ class EditorPane:
                 if await self._apply_edit(tab_id, text, edit, move_caret=False):
                     self._toast("Changed by the AI · Ctrl+Z undoes it")
             return
-        self._proposals[tab_id] = proposal
-        self._readonly[tab_id] = mode == "readonly"
+        self._proposals[tab_id] = proposal  # a new proposal replaces the one shown before
+        self._readonly[tab_id] = action == "show"
         await self._show_proposal(tab_id, text)
 
     async def propose_in_note(self, path: str, old: str, new: str) -> None:
@@ -1418,7 +1464,9 @@ class EditorPane:
         if not old.strip() or start < 0 or text.find(old, start + 1) >= 0:
             self._toast("That text is no longer in the note (or is there twice).", error=True)
             return
-        await self.propose_edit(tab.id, text, start, start + len(old), new)
+        action = replacement_action(self._edit_mode(), old, new, FINISHED)  # a finished answer
+        if action is not None:
+            await self.propose_edit(tab.id, text, start, start + len(old), new, action)
 
     async def _show_proposal(self, tab_id: int, text: str) -> None:
         proposal = self._proposals.get(tab_id)
@@ -1457,6 +1505,10 @@ class EditorPane:
                 left = None
             else:
                 changes, left = result
+                path = self._tab_path(tab_id)
+                if path is not None and proposal.id not in self._ai_kept:  # once per proposal
+                    self._ai_kept.add(proposal.id)
+                    self.keep_version(path, text, "before AI")
                 edit = TextEdit(
                     tuple(TextChange(c.start, c.end, c.insert) for c in changes),
                     changes[-1].start if changes else 0,

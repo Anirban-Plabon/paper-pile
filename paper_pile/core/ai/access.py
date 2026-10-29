@@ -35,6 +35,7 @@ ACCESS_FILE = "ai_access.json"
 DEFAULT_TYPES = (".md",)
 NEVER = (".trash", ".paper-pile")  # vault folders the AI never reads (the memories folder too)
 MAX_OUTSIDE_FILES = 2000  # listed from the granted outside folders
+MAX_OUTSIDE_SEEN = 20000  # entries looked at in them, at most (a huge folder stays quick)
 MAX_OUTSIDE_BYTES = 200 * 1024
 
 
@@ -106,16 +107,31 @@ def save_grant(vault: Path, grant: Grant, config_dir: Path | None = None) -> Non
 
 
 def grant_now(vault: Path, config_dir: Path | None = None) -> Grant:
-    """Allow the AI to read ``vault`` (default file types, nothing outside, nothing excluded)."""
+    """Allow the AI to read ``vault``: the file types and "Never read" paths it had before a
+    revoke (else the defaults), nothing outside the vault."""
+    before = _load_all(config_dir).get(vault_key(vault))
     grant = Grant(datetime.now().strftime("%Y-%m-%dT%H:%M"))
+    if isinstance(before, dict):
+        types = [t for t in (normalize_type(x) for x in _strings(before.get("file_types"))) if t]
+        grant.file_types = types or list(DEFAULT_TYPES)
+        grant.exclude = _strings(before.get("exclude"))
     save_grant(vault, grant, config_dir)
     return grant
 
 
 def revoke(vault: Path, config_dir: Path | None = None) -> None:
+    """Take the grant back. The file types and exclusions stay in the record (with no grant), so
+    allowing again does not make "Never read" notes readable; outside paths go."""
     vaults = _load_all(config_dir)
-    if vaults.pop(vault_key(vault), None) is not None:
-        _write_all(vaults, config_dir)
+    record = vaults.get(vault_key(vault))
+    if not isinstance(record, dict) or record.get("granted") is None:
+        return
+    vaults[vault_key(vault)] = {
+        "granted": None,
+        "file_types": _strings(record.get("file_types")) or list(DEFAULT_TYPES),
+        "exclude": _strings(record.get("exclude")),
+    }
+    _write_all(vaults, config_dir)
 
 
 def normalize_type(text: str) -> str:
@@ -200,12 +216,15 @@ class AccessPolicy:
             return False
         if real == self.vault or self.vault in real.parents or not self._type_ok(real.name):
             return False
+        if any(part.startswith(".") for part in real.parts[1:]):
+            return False  # in a hidden folder, or a hidden file
         return any(real == root or root in real.parents for root in self._roots())
 
     def outside_files(self) -> list[Path]:
         """The files the granted outside paths hold (allowed types, no hidden folders), at most
         ``MAX_OUTSIDE_FILES``."""
         found: list[Path] = []
+        seen = 0
         for root in self._roots():
             if root.is_file():
                 if self.may_read_outside(root):
@@ -213,12 +232,18 @@ class AccessPolicy:
                 continue
             for folder, dirs, files in os.walk(root):
                 dirs[:] = sorted(d for d in dirs if not d.startswith("."))
+                seen += len(dirs) + len(files)
                 for name in sorted(files):
+                    if name.startswith("."):
+                        continue  # hidden files (keys, tokens) are never read
                     path = Path(folder) / name
                     if self._type_ok(name) and self.may_read_outside(path):
                         found.append(path)
                     if len(found) >= MAX_OUTSIDE_FILES:
                         return found
+                if seen >= MAX_OUTSIDE_SEEN:
+                    log.info("stopped listing %s after %d entries", root, seen)
+                    break
         return found
 
     def read_outside(self, path: Path) -> str | None:
@@ -261,6 +286,10 @@ def check_outside_path(text: str, vault: Path) -> str:
     real = path.resolve()
     if not real.exists():
         return "No such file or folder."
+    if real == Path(real.anchor) or real == Path.home().resolve():
+        return "That is the whole disk or home folder: name a folder in it."
+    if any(part.startswith(".") for part in real.parts[1:]):
+        return "Hidden files and folders are never read."
     vault_real = vault.expanduser().resolve()
     if real == vault_real or vault_real in real.parents:
         return "That is inside this vault already."

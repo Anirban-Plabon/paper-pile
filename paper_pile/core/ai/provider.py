@@ -42,6 +42,14 @@ class Reasoning:
 
 
 @dataclass(frozen=True, slots=True)
+class Finish:
+    """The last piece of an answer: why it ended (``"stop"``: the model was done; ``"length"``:
+    it reached the answer limit). An answer without one was stopped or failed."""
+
+    reason: str
+
+
+@dataclass(frozen=True, slots=True)
 class Health:
     ok: bool
     message: str = ""  # what to tell the user when not ok
@@ -56,6 +64,7 @@ class GenerationOptions:
     temperature: float | None = None
     top_p: float | None = None
     num_ctx: int | None = None  # the model's context window, in tokens
+    num_predict: int | None = None  # the longest answer, in tokens
     keep_alive_min: int | None = None  # how long the model stays loaded after a reply
 
 
@@ -80,14 +89,10 @@ class Provider(Protocol):
         *,
         model: str | None = None,
         options: GenerationOptions | None = None,
-    ) -> AsyncIterator[str | Reasoning]:
+    ) -> AsyncIterator[str | Reasoning | Finish]:
         """The reply to ``messages`` as it is generated, piece by piece (a thinking model's
-        reasoning as :class:`Reasoning` pieces). Cancelling the task that iterates it stops the
-        generation."""
-        ...
-
-    async def embed(self, texts: Sequence[str], *, model: str | None = None) -> list[list[float]]:
-        """One vector per text (not used in phase 1)."""
+        reasoning as :class:`Reasoning` pieces), ending with a :class:`Finish`. Cancelling the
+        task that iterates it stops the generation."""
         ...
 
     async def models(self) -> list[str]:

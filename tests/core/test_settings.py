@@ -42,7 +42,6 @@ def test_sections_cover_the_spec() -> None:
     assert {
         "ai.host",
         "ai.model",
-        "ai.embed_model",
         "ai.context_budget",
         "paste.smart_paste",
     } <= keys
@@ -81,7 +80,6 @@ def test_sections_cover_the_spec() -> None:
         ("ai.context_budget", "8000", True, 8000),
         ("ai.model", "  gemma4:12b ", True, "gemma4:12b"),
         ("ai.model", "", False, None),
-        ("ai.embed_model", "", True, ""),
         ("vault.templates_folder", "/Templates/", True, "Templates"),
         ("vault.templates_folder", "a/b", True, "a/b"),
         ("vault.templates_folder", "", True, ""),

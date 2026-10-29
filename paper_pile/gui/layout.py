@@ -749,8 +749,8 @@ class MainLayout:
         """A selection settled: attached by itself unless Settings says "With Ask"."""
         if self.config.get("ai.selection_to_chat", "auto") == "button":
             return
-        if self.chat is not None and self.ai_on():
-            self.chat.set_selection(text, path)
+        if self.chat is not None and self.ai_on() and self.ai.may_use(path):
+            self.chat.set_selection(text, path)  # never by itself from a note the AI may not read
 
     def _chat_ask_selection(self, text: str, path: str) -> None:
         """The selection bar's Ask: attach it and put the caret in the chat box."""

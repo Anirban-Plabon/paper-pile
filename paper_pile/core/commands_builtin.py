@@ -396,6 +396,16 @@ def edit_selection(instruction: str) -> StreamInsert:
     )
 
 
+def rewrite_note() -> StreamInsert:
+    """⋯ → Rewrite: the AI's version of the note's body (front matter kept), shown as a diff."""
+    return StreamInsert(
+        "Rewrite the text below so it reads clearly and is well organised. Keep its meaning, its "
+        "facts, its language and its markdown formatting. Write only the new text.",
+        source="selection",
+        replace_selection=True,
+    )
+
+
 @command(
     "ai-ask",
     "Ask…",

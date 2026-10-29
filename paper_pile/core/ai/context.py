@@ -1,9 +1,11 @@
 """What the AI gets to see: the selection, the open note, mentioned notes, open tabs and linked
 notes, filled in that order until a token budget is used up (PLAN §4.11).
 
-Tokens are estimated as characters / 4. Every part is cut at a line boundary when it does not fit
-and marked ``[truncated]``; later parts that no longer fit are left out. Nothing here talks to a
-model or to the UI.
+Tokens are estimated: four ASCII characters make one, and every other character (Bengali, CJK,
+accented letters, emoji) one on its own — models split those scripts into many more pieces than
+English, so counting them as a quarter would overfill the window (PLAN §4.26). Every part is cut
+at a line boundary when it does not fit and marked ``[truncated]``; later parts that no longer fit
+are left out. Nothing here talks to a model or to the UI.
 """
 
 import math
@@ -59,7 +61,24 @@ class BacklinkSource(Protocol):
 
 
 def estimate_tokens(text: str) -> int:
-    return math.ceil(len(text) / CHARS_PER_TOKEN)
+    """About how many tokens ``text`` is (see the module docstring)."""
+    ascii_chars = len(text.encode("ascii", "ignore"))
+    return math.ceil(ascii_chars / CHARS_PER_TOKEN) + (len(text) - ascii_chars)
+
+
+def cut_to_tokens(text: str, max_tokens: int) -> str:
+    """The longest start of ``text`` that is at most ``max_tokens`` tokens."""
+    limit = max(0, max_tokens)
+    if estimate_tokens(text) <= limit:
+        return text
+    lo, hi = 0, min(len(text), limit * CHARS_PER_TOKEN)
+    while lo < hi:  # the estimate grows with the length: find the last length that fits
+        mid = (lo + hi + 1) // 2
+        if estimate_tokens(text[:mid]) <= limit:
+            lo = mid
+        else:
+            hi = mid - 1
+    return text[:lo]
 
 
 @dataclass(frozen=True, slots=True)
@@ -144,12 +163,11 @@ def extract_mentions(text: str) -> list[str]:
 
 
 def _cut(text: str, max_tokens: int) -> tuple[str, bool]:
-    limit = max(0, max_tokens) * CHARS_PER_TOKEN
-    if len(text) <= limit:
+    cut = cut_to_tokens(text, max_tokens)
+    if len(cut) == len(text):
         return text, False
-    cut = text[:limit]
     newline = cut.rfind("\n")
-    if newline > limit * 0.5:
+    if newline > len(cut) * 0.5:
         cut = cut[:newline]
     return cut.rstrip() + TRUNCATED, True
 

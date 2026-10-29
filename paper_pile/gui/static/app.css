@@ -1294,6 +1294,7 @@ body.pp-no-motion *, body.pp-no-motion *::before, body.pp-no-motion *::after { t
 .pp-task .pp-box { transition: background-color var(--pp-dur-fast) ease, border-color var(--pp-dur-fast) ease; }
 /* the chat is waiting for the first words of a reply */
 .pp-thinking { display: inline-flex; gap: 4px; padding: 6px 0; }
+.pp-chat-status { margin-left: 8px; font-size: 0.92em; }
 .pp-thinking i { width: 6px; height: 6px; border-radius: 50%; background: var(--pp-muted); animation: pp-dot calc(1.2s * var(--pp-motion)) ease-in-out infinite; }
 .pp-thinking i:nth-child(2) { animation-delay: calc(.15s * var(--pp-motion)); }
 .pp-thinking i:nth-child(3) { animation-delay: calc(.3s * var(--pp-motion)); }

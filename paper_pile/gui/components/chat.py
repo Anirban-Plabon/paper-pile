@@ -29,6 +29,7 @@ from paper_pile.core.ai.attachments import AttachmentError, FileRef, read_text_f
 from paper_pile.core.ai.chats import SavedChat, SavedQuote, list_chats
 from paper_pile.core.ai.chats import SavedTurn as Turn
 from paper_pile.core.ai.context import EditorSnapshot, source_view
+from paper_pile.core.ai.edits import edit_action, edit_mode
 from paper_pile.core.ai.engine import AiEngine, Outgoing, Selection
 from paper_pile.core.ai.prompts import load_prompts, prompts_file, selection_kind, suggestions
 from paper_pile.core.ai.provider import Health, ProviderError, ProviderUnavailableError
@@ -43,6 +44,7 @@ THINKING_HTML = '<span class="pp-thinking" aria-label="Thinking"><i></i><i></i><
 log = logging.getLogger("paper_pile.chat")
 
 RENDER_EVERY_S = 0.08  # how often a streaming reply is redrawn
+THINKING = '<span class="pp-thinking" aria-label="Thinking"><i></i><i></i><i></i></span>'
 HEALTH_EVERY_S = 30.0
 RECENT_CHATS = 5  # shown in the ⋮ menu; older ones under "More chats"
 _MENTION_TAIL = re.compile(r"@([^\s@\[\]]*)$")
@@ -435,9 +437,7 @@ class ChatPane:
                     ui.label(turn.reasoning.strip()).classes("pp-muted pp-msg-reasoning-text")
             waiting = not turn.text and not turn.error and self._task is not None
             if waiting and self.ai.turns and turn is self.ai.turns[-1]:  # until the first words
-                content = (
-                    '<span class="pp-thinking" aria-label="Thinking"><i></i><i></i><i></i></span>'
-                )
+                content = THINKING
             else:
                 content = render_chat_html(turn.text)
             body = ui.html(content, sanitize=False).classes("pp-msg-body")
@@ -458,7 +458,8 @@ class ChatPane:
                     ui.button(icon=ico("copy"), on_click=lambda t=turn: self._copy(t.text)).props(
                         "flat dense size=xs"
                     ).props('data-tip="Copy"')
-                    if self.ai.setting("ai.edits", "ask") != "readonly":
+                    mode = edit_mode(self.ai.setting("ai.edits", "ask"))
+                    if edit_action(mode, "insert") != "refuse":  # an insert, like the commands
                         ui.button(
                             icon=ico("file-plus"),
                             on_click=lambda t=turn: self._insert_reply(t.text),
@@ -931,7 +932,15 @@ class ChatPane:
         try:
             snap = await self._snapshot()
             last = 0.0
-            async for _piece in self.ai.answer(reply, out, snap, include_tabs=self._include_tabs):
+
+            def status(text: str) -> None:  # before the first words: say what is going on
+                if body is not None and not reply.text:
+                    label = f'<span class="pp-muted pp-chat-status">{html.escape(text)}</span>'
+                    body.set_content(THINKING + label)
+
+            async for _piece in self.ai.answer(
+                reply, out, snap, include_tabs=self._include_tabs, on_status=status
+            ):
                 now = time.monotonic()
                 if body is not None and now - last >= RENDER_EVERY_S:
                     last = now
@@ -1021,10 +1030,13 @@ class ChatPane:
     async def _compact(self) -> None:
         """``/compact``: summarize the earlier messages for the model now."""
         set_icon(self._send, "square")
+        problem = ""
         try:
             done = await self.ai.compact()
         except asyncio.CancelledError:
             done = False
+        except (ProviderError, AccessDeniedError) as exc:
+            done, problem = False, f"Could not summarize: {exc}"
         finally:
             self._task = None
             set_icon(self._send, "arrow-up")
@@ -1032,8 +1044,10 @@ class ChatPane:
             if done:
                 self.ai.save()
                 self._render_log()
-            message = "Earlier messages summarized" if done else "Nothing to summarize yet"
-            ui.notify(message, timeout=1800, position="bottom")
+            message = problem or (
+                "Earlier messages summarized" if done else "Nothing to summarize yet"
+            )
+            ui.notify(message, timeout=2500, position="bottom", type="warning" if problem else None)
 
     def _fail(self, reply: Turn, message: str, *, unavailable: bool = False) -> None:
         self.ai.failed(reply, message)

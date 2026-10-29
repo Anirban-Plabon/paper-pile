@@ -11,6 +11,7 @@ from paper_pile.core.ai.fake import FakeProvider
 from paper_pile.core.ai.ollama import NOT_RUNNING, OllamaProvider, describe_model
 from paper_pile.core.ai.provider import (
     ChatMessage,
+    Finish,
     ModelNotFoundError,
     ProviderError,
     ProviderUnavailableError,
@@ -48,7 +49,7 @@ async def test_chat_streams_the_reply_in_pieces() -> None:
 
     p = provider(handler)
     pieces = [x async for x in p.chat(MSGS)]
-    assert pieces == ["Hel", "lo"]
+    assert pieces == ["Hel", "lo", Finish("stop")]  # why it ended comes last
     assert seen["model"] == "m1" and seen["stream"] is True
     assert seen["messages"] == [
         {"role": "system", "content": "be brief"},
@@ -69,7 +70,7 @@ async def test_reasoning_text_is_not_part_of_the_answer() -> None:
 
     assert await collect(provider(handler)) == "Answer"
     pieces = [piece async for piece in provider(handler).chat(MSGS)]
-    assert pieces == [Reasoning("hmm"), "Answer"]  # kept apart, shown folded
+    assert pieces[:2] == [Reasoning("hmm"), "Answer"]  # kept apart, shown folded
 
 
 async def test_not_running_is_a_friendly_error() -> None:
@@ -159,21 +160,11 @@ async def test_stopping_the_iteration_closes_the_stream() -> None:
     await stream.aclose()  # what cancelling a chat does: no error, nothing left running
 
 
-async def test_embed() -> None:
-    def handler(request: httpx.Request) -> httpx.Response:
-        body = json.loads(request.content)
-        assert body["model"] == "emb" and body["input"] == ["a", "b"]
-        return httpx.Response(200, json={"model": "emb", "embeddings": [[1.0, 2.0], [3.0, 4.0]]})
-
-    p = provider(handler)
-    assert await p.embed(["a", "b"], model="emb") == [[1.0, 2.0], [3.0, 4.0]]
-    with pytest.raises(ProviderError):
-        await p.embed(["a"])  # no embedding model configured
-
-
 async def test_the_fake_provider_follows_the_protocol() -> None:
     fake = FakeProvider(delay=0)
-    assert "".join([x async for x in fake.chat(MSGS)]).strip() == "You said: hi"
+    pieces = [x async for x in fake.chat(MSGS)]
+    assert "".join(x for x in pieces if isinstance(x, str)).strip() == "You said: hi"
+    assert pieces[-1] == Finish("stop")
     assert fake.calls == [MSGS]
     assert (await fake.health()).ok and await fake.models() == ["fake-model", "fake-model-2"]
     fake.up = False
@@ -193,7 +184,7 @@ async def test_generation_options_are_sent_to_ollama() -> None:
 
     options = GenerationOptions(temperature=0.2, top_p=0.5, num_ctx=None, keep_alive_min=10)
     pieces = [x async for x in provider(handler).chat(MSGS, options=options)]
-    assert pieces == ["ok"]
+    assert pieces == ["ok", Finish("stop")]
     assert seen["options"] == {"temperature": 0.2, "top_p": 0.5}
     assert seen["keep_alive"] == "10m"
 
@@ -248,3 +239,28 @@ def test_local_hosts_and_the_not_running_text() -> None:
         assert not is_local_host(host), host
     assert not_running("http://localhost:11434") == NOT_RUNNING
     assert not_running("http://box:11434") == "Ollama at http://box:11434 can't be reached."
+
+
+async def test_a_cut_answer_says_why() -> None:
+    from paper_pile.core.ai.provider import GenerationOptions
+
+    seen: dict[str, object] = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.update(json.loads(request.content))
+        return httpx.Response(
+            200,
+            content=ndjson(
+                {"message": {"role": "assistant", "content": "a"}, "done": False},
+                {
+                    "message": {"role": "assistant", "content": ""},
+                    "done": True,
+                    "done_reason": "length",
+                },
+            ),
+        )
+
+    options = GenerationOptions(num_ctx=4096, num_predict=100)
+    pieces = [x async for x in provider(handler).chat(MSGS, options=options)]
+    assert pieces == ["a", Finish("length")]
+    assert seen["options"] == {"num_ctx": 4096, "num_predict": 100}

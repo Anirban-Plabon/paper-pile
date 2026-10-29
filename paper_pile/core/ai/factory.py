@@ -8,6 +8,7 @@ from paper_pile.core.ai.install import ai_available, ai_unavailable
 from paper_pile.core.ai.provider import (
     DEFAULT_HOST,
     ChatMessage,
+    Finish,
     GenerationOptions,
     Health,
     Provider,
@@ -29,12 +30,9 @@ class MissingProvider:
         *,
         model: str | None = None,
         options: GenerationOptions | None = None,
-    ) -> AsyncIterator[str | Reasoning]:
+    ) -> AsyncIterator[str | Reasoning | Finish]:
         raise ProviderUnavailableError(ai_unavailable())
         yield ""  # makes this an async generator, like the real ones
-
-    async def embed(self, texts: Sequence[str], *, model: str | None = None) -> list[list[float]]:
-        raise ProviderUnavailableError(ai_unavailable())
 
     async def models(self) -> list[str]:
         return []
@@ -47,7 +45,7 @@ class MissingProvider:
 
 
 def make_provider(config: Config | None) -> Provider:
-    """The configured provider (``ai.host``, ``ai.model``, ``ai.embed_model``). With the
+    """The configured provider (``ai.host``, ``ai.model``). With the
     environment variable ``PAPER_PILE_FAKE_AI=1`` a stand-in that needs no model is used
     (``PAPER_PILE_FAKE_AI_REPLY`` sets the text it answers with, ``…_THINKING`` its reasoning).
     ``ollama`` is imported only here, so the app also starts without it."""
@@ -63,7 +61,6 @@ def make_provider(config: Config | None) -> Provider:
     return OllamaProvider(
         host=str(get("ai.host", DEFAULT_HOST)),
         model=str(get("ai.model", "gemma4:12b")),
-        embed_model=str(get("ai.embed_model", "")),
     )
 
 
@@ -75,7 +72,7 @@ def chat_model(provider: Provider, config: Config | None) -> str:
 
 def generation_options(config: Config | None) -> GenerationOptions:
     """Temperature, top-p, context window and keep-alive from Settings → AI → Advanced. A context
-    window of 0 means the model's own default."""
+    window of 0 (automatic) is left out here: the engine sends the window it works out."""
     from paper_pile.core.settings import sanitized  # settings imports config, not the reverse
 
     if config is None:

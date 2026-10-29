@@ -281,19 +281,19 @@ Legend: 🧠 = needs Opus (see PLAN §6 model guidance) · ⬜ todo · 🔄 in p
 |---|---|---|---|
 | P23.1 | Chat output never loads remote images; image CSP on every page | ✅ | `render_chat_html` (remote `![]()` shown as code) for answers, quotes, memories; `ImagePolicy` middleware (`img-src 'self' data: blob:`) in native and `--serve`; 4 tests |
 | P23.2 | AI security keys global-only; non-local host named | ✅ | `config.GLOBAL_ONLY` ignored in `vault.toml`, refused by `set(…, "vault")`, Settings saves them globally with a notice; Allow card names a non-loopback host; "can't be reached" names it; 3 tests |
-| P23.3 | Replace edits safe with real models | ⬜ | |
-| P23.4 | Edit-mode decision in core | ⬜ | |
-| P23.5 | Private notes stay private | ⬜ | |
-| P23.6 | Access fixes (revoke keeps exclusions, `/compact`, outside-grant limits) | ⬜ | |
-| P23.7 | "before AI" version for every AI change | ⬜ | |
+| P23.3 | Replace edits safe with real models | ✅ | `Finish` piece from providers (Ollama `done_reason`); `num_predict` = what the prompt leaves of the window; replace edits only from a `stop` answer, refused before the call when selection + answer don't fit; shorter-than-half never auto-applied; `clean_reply` strips `<think>`, a preamble line, a closing paragraph, one fence; chat answers marked `cut`; 18 tests |
+| P23.4 | Edit-mode decision in core | ✅ | `core/ai/edits.py` `edit_action` / `replacement_action`; editor pane and chat use it (no `ai.edits` reads in GUI logic); 6 table tests |
+| P23.5 | Private notes stay private | ✅ | `AiEngine.may_use`: no automatic chip from a note the AI may not read (also before the first grant); earlier quotes from such notes re-sent as `[left out]`; `@vault` hits checked with their text; 1 test |
+| P23.6 | Access fixes (revoke keeps exclusions, `/compact`, outside-grant limits) | ✅ | revoke keeps file types + exclusions in a record with `granted: null`; `compact` requires access; `/` and home refused, hidden files/folders never read, walk stops after 20 000 entries; 4 tests |
+| P23.7 | "before AI" version for every AI change | ✅ | kept on auto-apply and on the first Accept of each proposal (chat *Apply to note* included); history skips unchanged text |
 | P23.8 | Earlier notes stay in their own turn | ⬜ | |
-| P23.9 | Token estimate for non-Latin text | ⬜ | |
+| P23.9 | Token estimate for non-Latin text | ✅ | non-ASCII = 1 token / char; `cut_to_tokens` used by `_cut`, outside files, compaction; 2 tests |
 | P23.10 | `@vault` sends the matching section | ⬜ | |
 | P23.11 | Context line names what was cut | ⬜ | |
-| P23.12 | Compaction fixes | ⬜ | |
+| P23.12 | Compaction fixes | ✅ | turns dropped oldest first, earlier summary kept; no retry for 4 messages after a failure; chat shows "Summarizing earlier messages…"; `/compact` names a failure; FakeProvider `fail_calls` / `fail_after`; 3 tests |
 | P23.13 | Failures | ⬜ | |
-| P23.14 | Retrieval decision: FTS only (`embed` removed) | ⬜ | |
-| P23.15 | Rewrite shows a diff | ⬜ | |
+| P23.14 | Retrieval decision: FTS only (`embed` removed) | ✅ | `Provider.embed`, `OllamaProvider.embed`, `ai.embed_model` setting removed |
+| P23.15 | Rewrite shows a diff | ✅ | ⋯ → Rewrite runs `rewrite_note()` on the body (front matter kept) through the replace path (size check, diff / mode) |
 | P23.16 | Small fixes (`NoteCache` bound, docstrings) | ⬜ | |
 | P23.17 | PLAN describes reality | ⬜ | |
 | P23.18 | Real-model pass (user) | ⬜ | waits for the user |
@@ -742,3 +742,4 @@ Legend: 🧠 = needs Opus (see PLAN §6 model guidance) · ⬜ todo · 🔄 in p
 - 2026-10-29 · P22.9 selection bar + setting + folder permission in chat · 1200 tests; qa_editor 358/358; real app
 - 2026-10-29 · P22.8, P22.10–P22.12 edit modes, suggested prompts, chat extras, @vault · 1209 tests; qa_editor 358/358; real app
 - 2026-10-29 · P23.1–P23.2 chat images inert + image CSP; AI security keys global-only, remote host named · tests green
+- 2026-10-30 · P23.3–P23.7, P23.9, P23.12, P23.14, P23.15 safe AI edits, edit modes in core, private notes, access fixes, tokens, compaction, Rewrite diff · 1249 tests

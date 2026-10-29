@@ -509,13 +509,6 @@ SECTIONS: dict[str, tuple[Setting, ...]] = {
         ),
         _CHATS_FOLDER,
         Setting(
-            "ai.embed_model",
-            "Embedding model",
-            "text",
-            help="Not used yet",
-            group="Advanced",
-        ),
-        Setting(
             "ai.temperature",
             "Temperature",
             "float",

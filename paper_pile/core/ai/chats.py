@@ -52,6 +52,7 @@ class SavedTurn:
     notes: list[str] = field(default_factory=list)  # attached notes (link names), kept in context
     sources: list[str] = field(default_factory=list)  # notes an answer was given from (paths)
     reasoning: str = ""  # a thinking model's reasoning for an answer
+    cut: bool = False  # the answer did not finish (stopped, failed or at its length limit)
 
 
 @dataclass(slots=True)
@@ -135,6 +136,7 @@ def _turn(raw: Any) -> SavedTurn | None:
         [n for n in _list(raw.get("notes")) if isinstance(n, str)],
         [n for n in _list(raw.get("sources")) if isinstance(n, str)],
         str(raw.get("reasoning", "") or ""),
+        bool(raw.get("cut", False)),
     )
 
 

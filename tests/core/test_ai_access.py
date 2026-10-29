@@ -265,3 +265,28 @@ async def test_vault_search_attaches_the_best_readable_notes(cfg_dir: Path, tmp_
         pass
     assert "tomato soup" not in fake.calls[-1][-1].content
     index.close()
+
+
+async def test_private_notes_stay_out_unless_picked(vault: Vault, cfg_dir: Path) -> None:
+    from paper_pile.core.ai.context import EditorSnapshot
+
+    vault.write_text("secret.md", "---\nai: false\n---\nthe code is 1234\n")
+    vault.create_note("open.md", "nothing hidden")
+    fake = FakeProvider(delay=0)
+    ai = AiEngine(
+        vault, Config(vault=vault.root), provider_factory=lambda _c: fake, access_dir=cfg_dir
+    )
+    assert not ai.may_use("secret.md") and ai.may_use("open.md")  # before a grant as well
+    ai.allow()
+    assert not ai.may_use("secret.md") and ai.may_use("open.md")
+    # picked by the user: sent with its message, but not again with later ones
+    picked = ai.selection("the code is 1234", "secret.md")
+    for text in ("what is it?", "and now?"):
+        out = ai.add_message(text, [picked] if text == "what is it?" else [])
+        reply = ai.start_reply()
+        async for _ in ai.answer(reply, out, EditorSnapshot()):
+            pass
+    first, second = fake.calls
+    assert "1234" in first[-1].content
+    assert not any("1234" in m.content for m in second)
+    assert "[left out]" in second[1].content

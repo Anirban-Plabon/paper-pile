@@ -11,6 +11,7 @@ import ollama
 from paper_pile.core.ai.provider import (
     DEFAULT_HOST,
     ChatMessage,
+    Finish,
     GenerationOptions,
     Health,
     ModelNotFoundError,
@@ -51,6 +52,7 @@ def ollama_options(options: GenerationOptions | None) -> dict[str, Any]:
             ("temperature", options.temperature),
             ("top_p", options.top_p),
             ("num_ctx", options.num_ctx),
+            ("num_predict", options.num_predict),
         )
         if v is not None
     }
@@ -65,14 +67,12 @@ class OllamaProvider:
         self,
         host: str = DEFAULT_HOST,
         model: str = "gemma4:12b",
-        embed_model: str = "",
         *,
         timeout: float | None = 300.0,
         transport: httpx.AsyncBaseTransport | None = None,
     ) -> None:
         self.host = host or DEFAULT_HOST
         self.model = model
-        self.embed_model = embed_model
         extra: dict[str, Any] = {"transport": transport} if transport is not None else {}
         self._client = ollama.AsyncClient(host=self.host, timeout=timeout, **extra)
         self._probe = ollama.AsyncClient(host=self.host, timeout=HEALTH_TIMEOUT_S, **extra)
@@ -85,7 +85,7 @@ class OllamaProvider:
         *,
         model: str | None = None,
         options: GenerationOptions | None = None,
-    ) -> AsyncIterator[str | Reasoning]:
+    ) -> AsyncIterator[str | Reasoning | Finish]:
         name = model or self.model
         payload = [{"role": m.role, "content": m.content} for m in messages]
         extra = ollama_options(options)
@@ -98,18 +98,10 @@ class OllamaProvider:
                 text = part.message.content if part.message else ""
                 if text:
                     yield text
+                if part.done:
+                    yield Finish(part.done_reason or "stop")
         except Exception as exc:
             raise self._friendly(exc, name) from exc
-
-    async def embed(self, texts: Sequence[str], *, model: str | None = None) -> list[list[float]]:
-        name = model or self.embed_model
-        if not name:
-            raise ProviderError("No embedding model is set.")
-        try:
-            result = await self._client.embed(model=name, input=list(texts))
-        except Exception as exc:
-            raise self._friendly(exc, name) from exc
-        return [list(v) for v in result.embeddings]
 
     # ---- state -----------------------------------------------------------------------------
 

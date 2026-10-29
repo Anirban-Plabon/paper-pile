@@ -6,6 +6,7 @@ messages, and streams the answer from the provider. The UI never builds a prompt
 history itself, so another front end (a TUI) reuses this unchanged. No UI imports here.
 """
 
+import asyncio
 import logging
 import re
 import time
@@ -16,6 +17,7 @@ from pathlib import Path
 from paper_pile.core.ai.access import (
     AccessDeniedError,
     AccessPolicy,
+    Grant,
     grant_now,
     load_grant,
     paths_in,
@@ -44,15 +46,18 @@ from paper_pile.core.ai.context import (
     Context,
     EditorSnapshot,
     build_context,
+    cut_to_tokens,
     estimate_tokens,
     extract_mentions,
     system_head,
 )
+from paper_pile.core.ai.edits import FINISHED, EditTooLongError, clean_reply, reply_room
 from paper_pile.core.ai.factory import chat_model, generation_options, make_provider
 from paper_pile.core.ai.instructions import system_instruction
 from paper_pile.core.ai.notecache import NoteCache
 from paper_pile.core.ai.provider import (
     ChatMessage,
+    Finish,
     Health,
     Provider,
     ProviderError,
@@ -69,7 +74,10 @@ log = logging.getLogger("paper_pile.ai.engine")
 
 VAULT_TAG = re.compile(r"(?<![\w@])@vault\b", re.IGNORECASE)  # search the vault for the message
 VAULT_HITS = 3
-_ONE_FENCE = re.compile(r"```[\w-]*\n(.*?)\n?```", re.DOTALL)  # a reply that is one code block
+MIN_ANSWER = 256  # tokens an answer may always take (``num_predict``), however full the window
+BUSY = "The AI is still answering — wait for it or press Stop."
+SUMMARIZING = "Summarizing earlier messages…"
+CUT_OFF = "*(cut off: the answer reached its length limit)*"
 
 HISTORY_TURNS = 12  # at most this many earlier messages go with a new one (ai.history_turns)
 DEFAULT_BUDGET = 6000
@@ -148,6 +156,8 @@ class AiEngine:
         self.turns: list[SavedTurn] = []
         self.summary = ""  # "Summary so far": replaces the first ``summarized`` turns
         self.summarized = 0
+        self._busy: asyncio.Task[object] | None = None  # the task an answer streams in
+        self._compact_failed = -1  # turns when the last summary failed (no new try for a while)
         self.chat_id = new_chat_id()
         self.created = time.time()
 
@@ -248,6 +258,18 @@ class AiEngine:
         text = self.notes.read(path)
         return text if text is not None and policy.may_send(path, text) else None
 
+    def may_use(self, path: str) -> bool:
+        """May text from note ``path`` go to the AI without the user picking it (an automatic
+        selection chip, a quote sent again)? Not from a note it may not read (PLAN §4.26)."""
+        if not path:
+            return False
+        if self.has_access():
+            return self.read_note(path) is not None
+        # not allowed yet (sending asks first): what a first grant would let it read
+        text = self.notes.read(path)
+        first = AccessPolicy(self.vault.root, Grant(""), self.chats_dir())
+        return text is not None and first.may_send(path, text)
+
     def readable_paths(self) -> list[str]:
         """The notes the AI may read (by path; their properties are checked on reading)."""
         policy = self.policy()
@@ -276,15 +298,16 @@ class AiEngine:
         if not named:
             return []
         files = policy.outside_files()
-        left = self.budget() * 4  # characters
+        left = self.budget()  # tokens
         out: list[tuple[str, str]] = []
         for root in named:
             for path in [root] if root.is_file() else [f for f in files if root in f.parents]:
                 body = policy.read_outside(path)
                 if body is None or not body.strip() or left <= 0:
                     continue
-                out.append((str(path), body[:left]))
-                left -= len(body)
+                kept = cut_to_tokens(body, left)
+                out.append((str(path), kept))
+                left -= estimate_tokens(kept)
         return out
 
     def outside_files(self) -> list[Path]:
@@ -309,6 +332,7 @@ class AiEngine:
     def new_chat(self) -> None:
         self.turns = []
         self.summary, self.summarized = "", 0
+        self._compact_failed = -1
         self.chat_id, self.created = new_chat_id(), time.time()
 
     def open_chat(self, chat_id: str) -> bool:
@@ -320,6 +344,7 @@ class AiEngine:
             return False
         self.turns = list(chat.turns)
         self.summary, self.summarized = chat.summary, chat.summarized
+        self._compact_failed = -1
         self.chat_id, self.created = chat.id, chat.created
         return True
 
@@ -475,8 +500,7 @@ class AiEngine:
         if not callable(search):
             return []
         hits = search(VAULT_TAG.sub(" ", question), limit=VAULT_HITS * 4, any_words=True)
-        policy = self.policy()
-        paths = [h.path for h in hits if policy.may_read(h.path)][:VAULT_HITS]
+        paths = [h.path for h in hits if self.read_note(h.path) is not None][:VAULT_HITS]
         known = set(self.note_paths())
         return [wikilink_to(p, "", known) for p in paths]
 
@@ -493,14 +517,23 @@ class AiEngine:
         notes = context.notes_block()
         return notes + DIVIDER + message if notes else message
 
-    @staticmethod
-    def past_text(turn: SavedTurn) -> str:
+    def past_text(self, turn: SavedTurn) -> str:
         """An earlier message as the model sees it again: the text attached to it stays with it
-        (the same every time, so the prompt's start does not change)."""
+        (the same every time, so the prompt's start does not change). A quote from a note the AI
+        may not read (now) is left out: it went with its own message only."""
         if turn.role != "user" or not turn.quotes:
             return turn.text
-        quoted = "\n\n".join(f"{q.label}:\n{q.text.strip()}" for q in turn.quotes)
+        quoted = "\n\n".join(
+            f"{q.label}:\n{q.text.strip()}" if self._quote_ok(q) else f"{q.label}: [left out]"
+            for q in turn.quotes
+        )
         return quoted + DIVIDER + turn.text
+
+    def _quote_ok(self, quote: SavedQuote) -> bool:
+        if not quote.note:
+            return True  # loose text (no note), or a file
+        path = resolve_wikilink(quote.note, "", self.note_paths())
+        return path is None or self.may_use(path)
 
     def chat_messages(
         self, context: Context, question: str, room: int | None = None
@@ -534,12 +567,14 @@ class AiEngine:
         snap: EditorSnapshot,
         *,
         include_tabs: bool = False,
+        on_status: Callable[[str], None] | None = None,
     ) -> AsyncIterator[str]:
-        """Answer ``out``: the reply's text grows as the pieces arrive (also yielded)."""
+        """Answer ``out``: the reply's text grows as the pieces arrive (also yielded).
+        ``on_status`` hears what happens before the answer starts (a summary being made)."""
         question = out.turn.text
         window = await self.window()
         room = window - self.answer_room(window)
-        compacted = await self.compact_if_needed(room)
+        compacted = await self.compact_if_needed(room, on_status)
         context = self.chat_context(
             snap,
             question,
@@ -558,9 +593,13 @@ class AiEngine:
         def reasoned(text: str) -> None:
             reply.reasoning += text
 
-        async for piece in self.stream(messages, window, reasoned):
+        finish: list[str] = []
+        async for piece in self.stream(messages, window, reasoned, finish.append):
             reply.text += piece
             yield piece
+        if finish and finish[-1] != FINISHED:
+            reply.cut = True
+            reply.text = (reply.text + "\n\n" + CUT_OFF).strip()
 
     # ---- redoing the last exchange -------------------------------------------------------
 
@@ -600,41 +639,62 @@ class AiEngine:
         """The turns from the last summary up to ``end`` that would be sent again."""
         return [t for t in self.turns[self.summarized : end] if not t.error and t.text.strip()]
 
-    async def compact_if_needed(self, room: int) -> bool:
+    async def compact_if_needed(
+        self, room: int, on_status: Callable[[str], None] | None = None
+    ) -> bool:
         """Summarize the earlier messages when they take more than ``COMPACT_AT`` of ``room``
-        (the newest exchange, still being answered, does not count). True when it did."""
+        (the newest exchange, still being answered, does not count). True when it did. After a
+        failed summary it waits ``KEEP_RECENT`` messages before trying again (the earlier
+        messages are trimmed meanwhile), so a broken model does not slow every message."""
+        if self._compact_failed >= 0 and len(self.turns) < self._compact_failed + KEEP_RECENT:
+            return False
         past = self._past(len(self.turns) - 2)
         tokens = sum(estimate_tokens(self.past_text(t)) + MESSAGE_OVERHEAD for t in past)
         if tokens <= room * COMPACT_AT:
             return False
-        return await self.compact(len(self.turns) - 2, room)
+        if on_status is not None:
+            on_status(SUMMARIZING)
+        try:
+            return await self.compact(len(self.turns) - 2, room)
+        except ProviderError:
+            log.warning("could not summarize the chat", exc_info=True)
+            self._compact_failed = len(self.turns)
+            return False
 
     async def compact(self, end: int | None = None, room: int | None = None) -> bool:
         """Fold the turns before the last ``KEEP_RECENT`` (counted back from ``end``, default all
         turns) into "Summary so far", with one model call. The turns stay in the chat; only what
-        the model is sent changes. False when there is too little to fold or the call fails."""
+        the model is sent changes. False when there is too little to fold; ProviderError when the
+        call fails. When the turns do not all fit, the oldest go first (never the earlier
+        summary)."""
+        self._require_access()  # the summary sends the chat (with its quotes) to the model
         end = len(self.turns) if end is None else end
         upto = end - KEEP_RECENT
         if upto <= self.summarized:
             return False
         room = room if room is not None else await self.prompt_room()
-        lines = [f"Earlier summary:\n{self.summary}"] if self.summary else []
-        for turn in self.turns[self.summarized : upto]:
-            if not turn.error and turn.text.strip():
-                who = "User" if turn.role == "user" else "Assistant"
-                lines.append(f"{who}: {self.past_text(turn)}")
-        transcript = "\n\n".join(lines)
         limit = max(0, room - estimate_tokens(COMPACT_PROMPT) - 2 * MESSAGE_OVERHEAD)
-        transcript = transcript[-limit * 4 :] if estimate_tokens(transcript) > limit else transcript
+        head = f"Earlier summary:\n{self.summary}" if self.summary else ""
+        left = limit - estimate_tokens(head) - 1
+        lines: list[str] = []
+        for turn in reversed(self.turns[self.summarized : upto]):  # newest first while they fit
+            if turn.error or not turn.text.strip():
+                continue
+            who = "User" if turn.role == "user" else "Assistant"
+            line = f"{who}: {self.past_text(turn)}"
+            left -= estimate_tokens(line) + 1
+            if left < 0:
+                break
+            lines.append(line)
+        transcript = "\n\n".join([head, *reversed(lines)] if head else reversed(lines))
+        if not lines and not head:
+            transcript = cut_to_tokens(self.past_text(self.turns[upto - 1]), limit)
         messages = [ChatMessage("system", COMPACT_PROMPT), ChatMessage("user", transcript)]
-        try:
-            summary = "".join([piece async for piece in self.stream(messages)]).strip()
-        except ProviderError:
-            log.warning("could not summarize the chat", exc_info=True)
-            return False
+        summary = "".join([piece async for piece in self.stream(messages)]).strip()
         if not summary:
             return False
         self.summary, self.summarized = summary, upto
+        self._compact_failed = -1
         return True
 
     # ---- answers that edit a note --------------------------------------------------------
@@ -645,25 +705,30 @@ class AiEngine:
         selection answered with one code block gets the block's content."""
         i = next((n for n, t in enumerate(self.turns) if t is reply), -1)
         asked = self.turns[i - 1] if i > 0 else None
-        if asked is None or asked.role != "user" or len(asked.quotes) != 1 or reply.error:
+        if asked is None or asked.role != "user" or len(asked.quotes) != 1:
+            return None
+        if reply.error or reply.cut:  # an answer that did not finish never edits a note
             return None
         quote = asked.quotes[0]
         path = resolve_wikilink(quote.note, "", self.note_paths()) if quote.note else None
-        if path is None or not reply.text.strip():
+        new = clean_reply(reply.text, quote.text)
+        if path is None or not new.strip():
             return None
-        new = reply.text.strip()
-        fenced = _ONE_FENCE.fullmatch(new)
-        if fenced and quote.kind == "Selected text":
-            new = fenced.group(1)
         return path, quote.text, new
 
     @staticmethod
     def stopped(reply: SavedTurn) -> None:
+        reply.cut = True
         reply.text = (reply.text + "\n\n*(stopped)*").strip()
 
     @staticmethod
     def failed(reply: SavedTurn, message: str) -> None:
-        reply.error, reply.text = True, message
+        """The answer failed: what arrived stays (marked), or the turn says why."""
+        if reply.text.strip():
+            reply.cut = True
+            reply.text = f"{reply.text.rstrip()}\n\n*(stopped: {message})*"
+        else:
+            reply.error, reply.text = True, message
 
     # ---- the provider --------------------------------------------------------------------
 
@@ -672,18 +737,34 @@ class AiEngine:
         messages: Sequence[ChatMessage],
         window: int | None = None,
         on_reasoning: Callable[[str], None] | None = None,
+        on_finish: Callable[[str], None] | None = None,
     ) -> AsyncIterator[str]:
         """The model's answer to ``messages``, with the chosen model, the options and the
-        context window (``window``, else :meth:`window`). Reasoning goes to ``on_reasoning``
-        (dropped without it), never into the answer."""
+        context window (``window``, else :meth:`window`); the answer may use what the prompt
+        leaves of it. Reasoning goes to ``on_reasoning`` (dropped without it), never into the
+        answer; why the answer ended goes to ``on_finish`` (not called when it was stopped or
+        failed). One answer at a time: while another task streams, raises ProviderError."""
+        current = asyncio.current_task()
+        other = self._busy
+        if other is not None and other is not current and not other.done():
+            raise ProviderError(BUSY)
         size = window or await self.window()
-        options = replace(generation_options(self.config), num_ctx=size)
-        async for piece in self.provider.chat(messages, model=self.model(), options=options):
-            if isinstance(piece, Reasoning):
-                if on_reasoning is not None:
-                    on_reasoning(piece.text)
-            else:
-                yield piece
+        room = max(MIN_ANSWER, size - message_tokens(messages))
+        options = replace(generation_options(self.config), num_ctx=size, num_predict=room)
+        self._busy = current
+        try:
+            async for piece in self.provider.chat(messages, model=self.model(), options=options):
+                if isinstance(piece, Reasoning):
+                    if on_reasoning is not None:
+                        on_reasoning(piece.text)
+                elif isinstance(piece, Finish):
+                    if on_finish is not None:
+                        on_finish(piece.reason)
+                else:
+                    yield piece
+        finally:
+            if self._busy is current:
+                self._busy = None
 
     # ---- AI commands (answers written into the note) -------------------------------------
 
@@ -706,23 +787,31 @@ class AiEngine:
         source = spec.source if spec.source != "auto" else ("selection" if selected else "note")
         part = {"selection": selected, "before": text[max(0, caret - BEFORE_CARET_CHARS) : caret]}
         given = part.get(source, "")
+        task = question or spec.instruction
+        rules = "" if spec.ask else NOTE_ONLY
+        system = ChatMessage("system", self.system_prompt() + rules)
+        ask = task + (f"\n\nText:\n{given}" if given else "")
+        budget = await self.context_budget()
+        if spec.replace_selection:  # the answer rewrites ``given``: both must fit the window
+            window = await self.window()
+            need = message_tokens([system, ChatMessage("user", ask)])
+            need += reply_room(estimate_tokens(given))
+            if need > window:
+                raise EditTooLongError(
+                    f"The text is too long for this model (about {short_count(need)} tokens with "
+                    f"the answer; the window holds {short_count(window)}). Select less."
+                )
+            budget = min(budget, window - need)  # notes only in the room that is left
         context = build_context(  # the selection goes with the task, not twice
             self.vault,
             current_path=path,
             current_text=text,
             index=self.index,
-            budget=await self.context_budget(),
+            budget=budget,
             paths=self.readable_paths(),
             read=self.read_note,
         )
-        task = question or spec.instruction
-        rules = "" if spec.ask else NOTE_ONLY
-        return [
-            ChatMessage("system", self.system_prompt() + rules),
-            ChatMessage(
-                "user", self.with_notes(context, task + (f"\n\nText:\n{given}" if given else ""))
-            ),
-        ]
+        return [system, ChatMessage("user", self.with_notes(context, ask))]
 
 
 def message_tokens(messages: Sequence[ChatMessage]) -> int:
