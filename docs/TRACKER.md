@@ -6,7 +6,7 @@
 Legend: 🧠 = needs Opus (see PLAN §6 model guidance) · ⬜ todo · 🔄 in progress · ✅ done · ⛔ blocked · ⏭️ skipped/deferred
 
 ## Current focus
-- **Phase:** P23 — AI hardening (user request 2026-10-29, PLAN §6 P23): 🔄 in progress
+- **Phase:** P23 — AI hardening (user request 2026-10-29, PLAN §6 P23): P23.1–P23.17 done; P23.18 = the user's real-model pass (merged with P22's)
 - **Phase:** P22 — AI redesign (user request 2026-10-28, PLAN §4.26): all 12 tasks done; waiting for the user's real-model pass (`uv run paper-pile --ai` with Ollama)
 - **Phase:** P21 — Note header, pins, small UI fixes (user request 2026-10-24, PLAN §4.25): built; P20's next step (Tailwind off) waits
 - **Phase:** P20 — Memory (user request 2026-10-24, PLAN §4.24): leaks fixed (dialogs, timing entries); small heap creep left (Open issue); next: Tailwind off with a screenshot comparison, then the engine options (system WebKitGTK, browser app mode)
@@ -279,7 +279,7 @@ Legend: 🧠 = needs Opus (see PLAN §6 model guidance) · ⬜ todo · 🔄 in p
 ### P23 — AI hardening (user request 2026-10-29, from the EGM review)
 | ID | Task | Status | Notes |
 |---|---|---|---|
-| P23.1 | Chat output never loads remote images; image CSP on every page | ✅ | `render_chat_html` (remote `![]()` shown as code) for answers, quotes, memories; `ImagePolicy` middleware (`img-src 'self' data: blob:`) in native and `--serve`; 4 tests |
+| P23.1 | Chat output never loads remote images; image CSP on every page | ✅ | `render_chat_html` (remote `![]()` shown as code) for answers, quotes, memories; `ImagePolicy` middleware (`img-src 'self' data: blob:`) in native and `--serve`; 4 tests; real app (fake AI, offscreen, CDP): page header carries the CSP, an answer with `![](https://…)` draws no `<img>` and shows the markdown as code |
 | P23.2 | AI security keys global-only; non-local host named | ✅ | `config.GLOBAL_ONLY` ignored in `vault.toml`, refused by `set(…, "vault")`, Settings saves them globally with a notice; Allow card names a non-loopback host; "can't be reached" names it; 3 tests |
 | P23.3 | Replace edits safe with real models | ✅ | `Finish` piece from providers (Ollama `done_reason`); `num_predict` = what the prompt leaves of the window; replace edits only from a `stop` answer, refused before the call when selection + answer don't fit; shorter-than-half never auto-applied; `clean_reply` strips `<think>`, a preamble line, a closing paragraph, one fence; chat answers marked `cut`; 18 tests |
 | P23.4 | Edit-mode decision in core | ✅ | `core/ai/edits.py` `edit_action` / `replacement_action`; editor pane and chat use it (no `ai.edits` reads in GUI logic); 6 table tests |
@@ -293,7 +293,7 @@ Legend: 🧠 = needs Opus (see PLAN §6 model guidance) · ⬜ todo · 🔄 in p
 | P23.12 | Compaction fixes | ✅ | turns dropped oldest first, earlier summary kept; no retry for 4 messages after a failure; chat shows "Summarizing earlier messages…"; `/compact` names a failure; FakeProvider `fail_calls` / `fail_after`; 3 tests |
 | P23.13 | Failures | ✅ | partial chat answer kept + marked `cut` (P23.3); a note insert that fails keeps its text with a notice; one answer at a time (`BUSY`); "model not installed" line from `model_problem` before sending, re-checked on model change; unknown context length asked again after 60 s; remote host named (P23.2); 2 tests |
 | P23.14 | Retrieval decision: FTS only (`embed` removed) | ✅ | `Provider.embed`, `OllamaProvider.embed`, `ai.embed_model` setting removed |
-| P23.15 | Rewrite shows a diff | ✅ | ⋯ → Rewrite runs `rewrite_note()` on the body (front matter kept) through the replace path (size check, diff / mode) |
+| P23.15 | Rewrite shows a diff | ✅ | ⋯ → Rewrite runs `rewrite_note()` on the body (front matter kept) through the replace path (size check, diff / mode); real app (fake AI answering "Sure, here is the text:\n…"): "AI suggests 1 change", preamble stripped, front matter untouched, note on disk unchanged until Accept (screenshot) |
 | P23.16 | Small fixes (`NoteCache` bound, docstrings) | ✅ | `NoteCache` keeps the 500 texts read last (LRU, test); `StreamInsert`, `proposals`, `factory` docstrings |
 | P23.17 | PLAN describes reality | ✅ | §4.11 rewritten (provider with `Finish`, health texts, settings order; P7-era rules marked superseded); §4.26 rewritten (goals / not now, switch precedence, edit table by entry point × mode, proposals life cycle, access incl. revoke and chips, one prompt-assembly definition, window / tokens / 8k reason, caching, compaction, `@vault`, failure table, images, several windows); §3 tree, §4.1 `--ai` / `--debug`, §4.12 global-only keys + `ai.*` table, §4.14 Ctrl+J / Alt+/, §5 chat JSON / `ai_access.json` / `history.db`, §7, §8 AI risks, P7.5–P7.7 rows, P22 acceptance, QA AI lines, 🧠 table, §4.24 renamed "Memory use (RAM)" |
 | P23.18 | Real-model pass (user) | ⬜ | waits for the user |
