@@ -58,13 +58,14 @@ function placeOf(view, r) {
   // a whole block the band covers (code, math, table, quote): the box goes under / over all of it
   const band = snapToBlocks(view.state, r.from, r.to);
   const grown = band.from !== r.from || band.to !== r.to;
-  const top = grown ? view.documentTop + view.lineBlockAt(band.from).top : start?.top;
-  const bottom = grown ? view.documentTop + view.lineBlockAt(Math.max(band.from, band.to - 1)).bottom : end?.bottom;
-  return {
-    left: edge ? edge.left : box.left,
-    top: top ?? box.top,
-    bottom: bottom ?? box.bottom,
-  };
+  let top = (grown ? view.documentTop + view.lineBlockAt(band.from).top : start?.top) ?? box.top;
+  let bottom = (grown ? view.documentTop + view.lineBlockAt(Math.max(band.from, band.to - 1)).bottom : end?.bottom) ?? box.bottom;
+  // taller than the window: next to where the selection ended (the caret), not at a far edge
+  if (top < box.top || bottom > box.bottom) {
+    const head = view.coordsAtPos(r.head, r.head === r.from ? 1 : -1);
+    if (head) ({ top, bottom } = head);
+  }
+  return { left: edge ? edge.left : box.left, top, bottom };
 }
 
 // The selection settled (or was cleared): tell Python where the box goes, or that it may go.
