@@ -368,6 +368,25 @@ def ai_explain(ctx: CommandContext) -> Action:
 
 
 @command(
+    "ai-rewrite",
+    "Rewrite",
+    group=AI,
+    icon="pen-line",
+    subtitle="Replaces the selection",
+    badge="AI",
+    aliases=("rephrase", "reword", "improve", "modify"),
+    when=_ai_on_selection,
+)
+def ai_rewrite(ctx: CommandContext) -> Action:
+    return StreamInsert(
+        "Rewrite the text below so it reads clearly and well. Keep its meaning, its facts, its "
+        "language and its markdown formatting. Write only the new text.",
+        source="selection",
+        replace_selection=True,
+    )
+
+
+@command(
     "ai-fix",
     "Fix grammar",
     group=AI,
@@ -387,7 +406,8 @@ def ai_fix(ctx: CommandContext) -> Action:
 
 
 def edit_selection(instruction: str) -> StreamInsert:
-    """The selection bar's Edit: change the selected text as the user asked (shown as a diff)."""
+    """A rewrite asked in the Ask box (PLAN §4.27): change the selected text as the user asked
+    (shown as a diff)."""
     return StreamInsert(
         f"Change the text below as asked: {instruction.strip()}. Keep its language and markdown "
         "formatting unless asked otherwise. Write only the new text.",

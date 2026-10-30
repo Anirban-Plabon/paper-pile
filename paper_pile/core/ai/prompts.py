@@ -10,7 +10,7 @@ from pathlib import Path
 
 log = logging.getLogger("paper_pile.ai.prompts")
 
-MAX_SHOWN = 6
+MAX_SHOWN = 3  # floating above the chat's box (P24: at most 3)
 MAX_OWN = 20
 MAX_FILE_CHARS = 20000
 
@@ -58,7 +58,7 @@ def suggestions(kinds: Sequence[str], own: Sequence[str] = ()) -> list[str]:
         for prompt in _BY_KIND.get(kind, ()):
             if prompt not in picked:
                 picked.append(prompt)
-    first = picked[: max(2, MAX_SHOWN - len(own))] if own else picked[:MAX_SHOWN]
+    first = picked[: max(1, MAX_SHOWN - len(own))] if own else picked[:MAX_SHOWN]
     return list(dict.fromkeys([*first, *own]))[:MAX_SHOWN]
 
 

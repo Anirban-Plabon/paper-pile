@@ -141,6 +141,9 @@ class ChatPane:
             with ui.column().classes("pp-chat-compose"):
                 self._mentions = ui.column().classes("pp-chat-mentions")
                 self._mentions.set_visibility(False)
+                # prompts for what is attached: stacked above the box, over the log (max 3)
+                self._suggest = ui.column().classes("pp-chat-suggest")
+                self._suggest.set_visibility(False)
                 with ui.column().classes("pp-chat-card") as card:
                     self._card = card
                     self._strip = ui.row().classes("pp-chat-strip")  # all chips, above a divider
@@ -149,8 +152,6 @@ class ChatPane:
                         self._refs = ui.row().classes("pp-chat-refs")
                         self._chips = ui.row().classes("pp-chat-chips")
                         self._preview = ui.column().classes("pp-chat-preview")
-                    self._suggest = ui.row().classes("pp-chat-suggest")  # prompts for it
-                    self._suggest.set_visibility(False)
                     # one line: + | text | model | send (the buttons stay at the bottom as it grows)
                     with ui.row().classes("pp-chat-row items-end no-wrap w-full"):
                         self._plus_button()
@@ -380,6 +381,14 @@ class ChatPane:
             return False
         self._render_log()
         return True
+
+    def can_switch(self) -> bool:
+        """Another chat may be opened (no answer is streaming in)."""
+        return self._task is None
+
+    def show_open_chat(self) -> None:
+        """The engine's open chat was replaced (the Ask box's conversation): draw it."""
+        self._render_log()
 
     @property
     def chat_id(self) -> str:

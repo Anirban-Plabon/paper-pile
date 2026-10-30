@@ -37,7 +37,6 @@ DENSITIES = ("comfortable", "compact")
 MOTIONS = ("off", "fast", "normal", "slow")
 MOTION_LABELS = {"off": "Off", "fast": "Fast", "normal": "Normal", "slow": "Slow"}
 ICON_COLORS = {"default": "Default", "accent": "Accent"}  # value -> shown
-SELECTION_TO_CHAT = {"auto": "Automatically", "button": "With Ask"}  # value -> shown
 EDIT_MODES = {"ask": "Ask first", "auto": "Apply at once", "readonly": "Read-only"}  # ai.edits
 MOTION_FACTORS = {"off": 0.0, "fast": 0.6, "normal": 1.0, "slow": 1.6}  # × every duration
 MODES = ("live", "source")
@@ -443,11 +442,10 @@ SECTIONS: dict[str, tuple[Setting, ...]] = {
             essential=True,
         ),
         Setting(
-            "ai.selection_to_chat",
-            "Selected text to chat",
-            "choice",
-            tuple(SELECTION_TO_CHAT),
-            help="Attached as you select, or only with Ask",
+            "ai.selection_popup",
+            "Ask box under a selection",
+            "bool",
+            help="Ask about or rewrite the selected text",
             group="Context",
             essential=True,
         ),

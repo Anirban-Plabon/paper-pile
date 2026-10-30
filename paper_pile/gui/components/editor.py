@@ -50,7 +50,7 @@ class Editor(
         on_wikilink: Handler | None = None,
         on_paste: Handler | None = None,
         on_proposal: Handler | None = None,
-        on_selection_action: Handler | None = None,
+        on_selection_popup: Handler | None = None,
         on_focus: Handler | None = None,
         on_tag: Handler | None = None,
         on_caret: Handler | None = None,
@@ -115,8 +115,8 @@ class Editor(
             self.on("paste", on_paste)
         if on_proposal:  # Accept / Reject on an AI edit shown as a diff
             self.on("proposal", on_proposal)
-        if on_selection_action:  # Ask / Edit on the bar over a selection
-            self.on("selection_action", on_selection_action)
+        if on_selection_popup:  # a selection settled: where the Ask box goes (PLAN §4.27)
+            self.on("selection_popup", on_selection_popup)
 
     async def get_text(self, doc_id: int) -> str | None:
         """The text of doc ``doc_id`` if it is the one on screen; ``None`` if another doc is
@@ -192,6 +192,26 @@ class Editor(
             return bool(await self.run_method("showProposal", doc_id, proposal))
         except TimeoutError:
             return False
+
+    async def caret_rect(self) -> dict[str, float] | None:
+        """Where the caret is on screen (``left`` / ``top`` / ``bottom``, client pixels)."""
+        try:
+            rect = await self.run_method("caretRect")
+        except TimeoutError:
+            return None
+        return dict(rect) if rect else None
+
+    def ask_about(self, doc_id: int, start: int, end: int, command: str) -> None:
+        """Select ``start``..``end`` (JavaScript offsets) of doc ``doc_id`` and open the Ask box
+        there with AI command ``command`` picked (an editor slash-menu pick, PLAN §4.27)."""
+        self.run_method("askAbout", doc_id, start, end, command)
+
+    def mark_target(
+        self, doc_id: int, start: int | None, end: int | None = None, *, busy: bool = False
+    ) -> None:
+        """Tint the Ask box's text (JavaScript offsets of doc ``doc_id``), pulsing while
+        ``busy``; ``start`` None clears it."""
+        self.run_method("markTarget", doc_id, start, end, busy)
 
     async def get_selection(self) -> tuple[str, int, int] | None:
         """The selected text and its JavaScript offsets ``(text, from, to)``; ``None`` if the

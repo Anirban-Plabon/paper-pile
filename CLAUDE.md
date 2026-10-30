@@ -115,3 +115,4 @@ Ask the user a **short** question instead of guessing on anything that changes t
 - Memory: find leaks with `tools/mem_soak.py` (identical rounds must level off) and CDP heap snapshots diffed by constructor; user-timing entries (`performance.mark`) are never freed by the browser — Tailwind's runtime makes them, `static/marks.js` clears them.
 - Note header (P21): each editor side has its own split / AI / ⋯ buttons. They act on "the active note", so build their actions with `EditorPane._side_actions(slot)` (focuses that side first) — a plain `note_actions(self)` would act on the other side's note.
 - GUI classes are not type-checked (mypy covers `core/` only): before adding an attribute to a big component (`EditorPane`, `Layout`), grep `self._<name>` — a clash silently overwrites one of them.
+- JS "is it shown?": never `el.offsetParent !== null` for a `position: fixed` element (always null) — use `el.getClientRects().length > 0`.

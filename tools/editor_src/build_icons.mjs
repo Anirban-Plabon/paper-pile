@@ -11,6 +11,16 @@ for (const file of readdirSync(`${src}/icons`).sort()) {
   const inner = svg.slice(svg.indexOf(">", svg.indexOf("<svg")) + 1, svg.lastIndexOf("</svg>"));
   icons[file.slice(0, -4)] = inner.replace(/\s*\n\s*/g, "").trim();
 }
+// the app's own icons, drawn like Lucide's (24 × 24, 2 px strokes) where Lucide has none
+const own = {
+  // "move to chat" (the Ask box, PLAN §4.27): Lucide's message-square with an arrow pointing right
+  "message-square-arrow-right":
+    '<path d="M22 17a2 2 0 0 1-2 2H6.828a2 2 0 0 0-1.414.586l-2.202 2.202A.71.71 0 0 1 2 21.286V5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2z" /><path d="M7 11h9" /><path d="m13 8 3 3-3 3" />',
+};
+for (const [name, inner] of Object.entries(own)) {
+  if (name in icons) throw new Error(`own icon ${name} shadows a Lucide icon`);
+  icons[name] = inner;
+}
 mkdirSync(out, { recursive: true });
 writeFileSync(`${out}/icons.json`, JSON.stringify({ version, icons }));
 copyFileSync(`${src}/LICENSE`, `${out}/LICENSE`);

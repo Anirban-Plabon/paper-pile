@@ -19,7 +19,7 @@ import logging
 import os
 import time
 import webbrowser
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Sequence
 from dataclasses import fields
 from datetime import date, datetime
 from typing import Any
@@ -42,6 +42,7 @@ from paper_pile.core.ai.edits import (
 from paper_pile.core.ai.engine import AiEngine
 from paper_pile.core.ai.proposals import Proposal, accept, propose, reject
 from paper_pile.core.ai.provider import ProviderError
+from paper_pile.core.ai.selection_ask import BOX_AI_COMMANDS, AskTurn
 from paper_pile.core.buffer import NoteBuffer, Outcome, content_hash, find_recoverable
 from paper_pile.core.command_actions import (
     TextChange,
@@ -61,7 +62,6 @@ from paper_pile.core.commands import (
     groups_json,
 )
 from paper_pile.core.commands_builtin import (  # also registers the slash commands
-    edit_selection,
     rewrite_note,
 )
 from paper_pile.core.config import Config, Scope
@@ -105,6 +105,7 @@ from paper_pile.core.watcher import FsEvent
 from paper_pile.core.when import edited_when
 from paper_pile.gui import printing
 from paper_pile.gui.components.ai_access import confirm_access
+from paper_pile.gui.components.ask_popup import AskPopup, AskTarget
 from paper_pile.gui.components.backlinks import BacklinkItem, BacklinksPane
 from paper_pile.gui.components.editor import Editor, Mode
 from paper_pile.gui.components.note_actions import note_actions, pick_split_note
@@ -147,10 +148,9 @@ class EditorPane:
         get_recents: Callable[[], list[str]] = lambda: [],
         ai: AiEngine | None = None,
         on_command_used: Callable[[str], None] = lambda command_id: None,
-        selection_changed: Callable[[str, str], None] = lambda text, path: None,
         add_note_to_chat: Callable[[str], None] = lambda path: None,
         ask_chat: Callable[[str, str, bool], None] = lambda path, prompt, send: None,
-        ask_selection: Callable[[str, str], None] = lambda text, path: None,
+        ask_selection: Callable[..., None] = lambda text, path, turns=(): None,
         open_tag: Callable[[str], None] = lambda tag: None,
         on_stats: Callable[[int | None, int, int, int], None] = (
             lambda words, line, col, shown: None
@@ -186,7 +186,7 @@ class EditorPane:
         self._config = config
         self._get_recents = get_recents
         self._engine = ai
-        self._ask_selection = ask_selection  # the selection bar's Ask: attach it to the chat
+        self._ask_selection = ask_selection  # the Ask box's Add to chat: attach it to the chat
         self._proposals: dict[int, Proposal] = {}  # AI edits waiting for Accept / Reject, by tab
         self._readonly: dict[int, bool] = {}  # shown read-only (Settings → AI → AI changes)
         self._ai_kept: set[int] = set()  # proposals whose "before AI" version is kept
@@ -196,7 +196,6 @@ class EditorPane:
         self._insert_lock = asyncio.Lock()  # inserted blocks (images, embeds) too
         self._awaiting_recovery: set[str] = set()  # notes with crash text not decided on yet
         self._on_command_used = on_command_used
-        self._selection_changed = selection_changed
         self._add_note_to_chat = add_note_to_chat
         self.ask_chat = ask_chat
         self._open_tag = open_tag
@@ -296,6 +295,8 @@ class EditorPane:
             self._backlinks = BacklinksPane(self._open_backlink)
             self._backlinks.build()
         self._host = ui.element("div").classes("pp-host")  # dialogs + toasts; takes no space
+        with self._host:
+            self.ask_popup = AskPopup(self)  # the Ask box under a selection (PLAN §4.27)
         self.bus.subscribe("tree.open", lambda path: self._spawn(self.open(path)))
         ui.on("pp_note_drop", lambda e: self._spawn(self._on_note_drop(e.args)))
         self.bus.subscribe("vault.created", lambda path: self._reindex_soon())
@@ -318,9 +319,8 @@ class EditorPane:
             on_table_op=lambda e: self._spawn(self._on_table_op(e.args)),
             on_paste=lambda e: self._on_paste(e.args),
             on_proposal=lambda e: self._spawn(self._on_proposal(e.args)),
-            on_selection_action=lambda e: self._spawn(self._on_selection_action(e.args)),
+            on_selection_popup=lambda e: self.ask_popup.on_selection(e.args),
             on_ai_selection=lambda e: self._on_ai_selection(e.args),
-            on_selection=lambda e: self._on_selection(e.args),
             on_block_to_chat=lambda e: self._on_block_to_chat(e.args),
             on_image_saved=lambda e: self._on_image_saved(e.args),
             on_image_error=lambda e: self._toast(str(e.args.get("message", "")), error=True),
@@ -957,8 +957,12 @@ class EditorPane:
         ctx = CommandContext(
             path, text, start, selection=selection, vault=self.vault, config=self._config, end=end
         )
+        command_id = str(args["id"])
+        if selection and command_id in BOX_AI_COMMANDS and self._ask_box_on():
+            await self._ask_in_box(tab_id, text, start, end, selection, command_id)
+            return
         try:
-            action = REGISTRY.run(str(args["id"]), ctx)
+            action = REGISTRY.run(command_id, ctx)
         except UnknownCommandError:
             log.warning("slash menu asked for an unknown command %r", args.get("id"))
             return
@@ -978,6 +982,22 @@ class EditorPane:
             self._open_picker(action, path)
         elif isinstance(action, StreamInsert):
             await self._run_stream(action, tab_id, text, start, end, selection)
+
+    def _ask_box_on(self) -> bool:
+        """The Ask box is on (AI on and Settings → AI → Ask box under a selection)."""
+        return bool(editor_options(self._config).get("aiPopup"))
+
+    async def _ask_in_box(
+        self, tab_id: int, text: str, start: int, end: int, selection: tuple[int, int], cmd: str
+    ) -> None:
+        """A selection AI command from the editor's slash menu: the typed ``/query`` goes and
+        the Ask box opens on the selection with the command picked, as in the box (§4.27)."""
+        if not await self._apply_edit(tab_id, text, remove_range(start, end), move_caret=False):
+            return
+        self._on_command_used(cmd)
+        after = self.buffers[tab_id].text
+        a, b = selection  # before the removed /query: unchanged
+        self._editor.ask_about(tab_id, utf16_index(after, a), utf16_index(after, b), cmd)
 
     async def _on_page_break(self, args: dict[str, Any]) -> None:
         """Ctrl+Enter: a page break at the caret (in place of a selection), as ``/page break``."""
@@ -1217,30 +1237,74 @@ class EditorPane:
 
     # ---- AI commands (slash menu, selection) ---------------------------------------------
 
-    def _on_selection(self, args: dict[str, Any]) -> None:
-        """The selection settled: the chat attaches it (an empty one removes the attachment)."""
-        if args.get("docId") == self.tabs.active:
-            self._selection_changed(str(args.get("text", "")), self._active_path() or "")
+    # ---- the Ask box under a selection (PLAN §4.27; gui/components/ask_popup.py) -----------
 
-    async def _on_selection_action(self, args: dict[str, Any]) -> None:
-        """The bar over a selection: Ask attaches it to the chat; Edit asks the AI to change it
-        as the user typed, and shows its version as a diff."""
-        tab_id = self.tabs.active
-        path = self._active_path()
-        if tab_id is None or path is None or args.get("docId") != tab_id:
+    @property
+    def ai_engine(self) -> AiEngine | None:
+        return self._engine
+
+    def ask_path(self) -> str | None:
+        """The active note's path (the box opens only for it)."""
+        return self._active_path()
+
+    def focus_note(self) -> None:
+        """The box went (Esc, a rewrite, a delete): typing goes to the note again."""
+        self._editor.focus()
+
+    def mark_ask_target(self, target: AskTarget | None, *, busy: bool = False) -> None:
+        """Tint the box's text (pulsing while ``busy``); None clears every editor's tint."""
+        if target is None:
+            for editor in self._editors:
+                editor.mark_target(0, None)
             return
-        if args.get("action") == "ask":
-            self._ask_selection(str(args.get("text", "")), path)
-            return
-        text = await self._live_text(tab_id)
+        self._editor_for(target.tab_id).mark_target(
+            target.tab_id, target.start, target.end, busy=busy
+        )
+
+    async def ask_target_text(
+        self, target: AskTarget, *, live: bool = True
+    ) -> tuple[str, int, int] | None:
+        """The note's text and where the box's text is in it now (code points), if its tab is
+        still the active one and the text is still there (or there once). ``live``: asked from
+        the editor (for an edit); else the text the server has (for a question: no round trip)."""
+        if target.tab_id != self.tabs.active or self._active_path() != target.path:
+            return None
+        buffer = self.buffers.get(target.tab_id)
+        text = await self._live_text(target.tab_id) if live else buffer and buffer.text
         if text is None:
+            return None
+        start, end = codepoint_index(text, target.start), codepoint_index(text, target.end)
+        if text[start:end] != target.text:
+            start = text.find(target.text)
+            if start < 0 or text.find(target.text, start + 1) >= 0:
+                return None
+            end = start + len(target.text)
+        return text, start, end
+
+    def add_selection_to_chat(self, target: AskTarget, turns: Sequence[AskTurn] = ()) -> None:
+        """The box's *Add to chat*: attach the text and open the chat, or, when the box holds a
+        conversation (``turns``), open that conversation as a saved chat."""
+        self._ask_selection(target.text, target.path, turns)
+
+    async def rewrite_selection(self, target: AskTarget, spec: StreamInsert) -> None:
+        """A rewrite from the box: the AI's version replaces the text as soon as it is complete
+        (one undo step, a "before AI" version kept; *Read-only*: a diff to read; PLAN §4.27).
+        The usual "AI is writing…" notice has Stop."""
+        found = await self.ask_target_text(target)
+        if found is None:
+            self._toast("The text changed; select it again.", error=True)
             return
-        start = codepoint_index(text, int(args["from"]))
-        end = codepoint_index(text, int(args["to"]))
-        if text[start:end] != args.get("text") or end <= start:
-            return  # the text moved on since the click
-        spec = edit_selection(str(args.get("instruction", "")))
-        await self._run_stream(spec, tab_id, text, end, end, (start, end))
+        text, start, end = found
+        await self._run_stream(spec, target.tab_id, text, end, end, (start, end), apply_now=True)
+
+    async def delete_selection(self, target: AskTarget) -> None:
+        """The box's ``/delete``: remove the text (one undo step)."""
+        found = await self.ask_target_text(target)
+        if found is None:
+            self._toast("The text changed; select it again.", error=True)
+            return
+        text, start, end = found
+        await self._apply_edit(target.tab_id, text, TextEdit((TextChange(start, end, ""),), start))
 
     async def rewrite(self, path: str) -> None:
         """⋯ → Rewrite: the AI's version of the whole body of ``path`` (its front matter stays),
@@ -1293,25 +1357,6 @@ class EditorPane:
         a, b = codepoint_index(text, sel["from"]), codepoint_index(text, sel["to"])
         return (a, b) if b == start and text[a:b] == sel["text"] else None
 
-    async def _ask_dialog(self) -> str | None:
-        """Ask what to ask the AI; ``None`` if cancelled."""
-        with self._host, Dialog() as dialog, ui.card().classes("pp-dialog pp-ask"):
-            ui.label("Ask the AI").classes("pp-dialog-title")
-            ui.label("It sees this note. The answer is written at the caret.").classes("pp-muted")
-            box = ui.textarea(placeholder="What should it write?").props(
-                "outlined autofocus autogrow"
-            )
-            box.classes("w-full")
-            with ui.row().classes("justify-end w-full"):
-                ui.button("Cancel", on_click=lambda: dialog.submit(None)).props("flat no-caps")
-                ask = ui.button("Ask", on_click=lambda: dialog.submit((box.value or "").strip()))
-                ask.props("no-caps")
-            box.on("keydown.ctrl.enter", lambda _e: dialog.submit((box.value or "").strip()))
-        dialog.open()
-        answer = await dialog
-        dialog.delete()
-        return str(answer) if answer else None
-
     async def _run_stream(
         self,
         spec: StreamInsert,
@@ -1320,8 +1365,11 @@ class EditorPane:
         anchor: int,
         end: int,
         selection: tuple[int, int] | None,
+        *,
+        apply_now: bool = False,
     ) -> None:
-        """Run an AI command: ask the model and write its answer into the note as it arrives."""
+        """Run an AI command: ask the model and write its answer into the note as it arrives.
+        ``apply_now``: a replacement that would be a diff to accept is applied (the Ask box)."""
         ai = self._engine
         path = self._active_path()
         if ai is None or path is None:
@@ -1335,7 +1383,8 @@ class EditorPane:
             return
         question = ""
         if spec.ask:
-            asked = await self._ask_dialog()
+            # the Ask box at the caret (PLAN §4.27): the answer is written there
+            asked = await self.ask_popup.ask_at_caret(await self._editor.caret_rect() or {})
             if not asked:
                 return
             question = asked
@@ -1386,6 +1435,8 @@ class EditorPane:
             elif spec.replace_selection and selection:
                 new = clean_reply(collected, selected)
                 action = replacement_action(mode, selected, new, finish[-1] if finish else None)
+                if apply_now and action == "propose":
+                    action = "apply"
                 if action is None and finish[-1:] == [FINISHED]:
                     self._toast("The AI suggests no changes.")
                 elif action is None:
@@ -2189,6 +2240,8 @@ class EditorPane:
     def set_ai(self, on: bool) -> None:
         """The AI feature was switched: the ⋯ menu, the AI button and the tabs' menu follow."""
         self._ai = on
+        if not on:
+            self.ask_popup.close()
         for menu in self.note_menus:
             menu.set_ai(on)
         self._update_note_buttons()

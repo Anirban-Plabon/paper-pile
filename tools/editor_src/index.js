@@ -24,7 +24,7 @@ import { closeSlash, setSlashResults, slashExtension } from "./slash.js";
 import { focusTableCell, tableKeys } from "./tablewidget.js";
 import { streamAppend, streamBegin, streamEnd, streamField } from "./stream.js";
 import { proposalExtension, showProposal } from "./proposal.js";
-import { selectBar, settleBar } from "./selectbar.js";
+import { askAbout, markTarget, selectPopup, settlePopup } from "./selectpopup.js";
 import { typeset } from "./typeset.js";
 
 const CHANGE_DEBOUNCE_MS = 300;
@@ -110,7 +110,7 @@ export function createEditor(
     EditorState.tabSize.of(o.tabSize),
     indentUnit.of(" ".repeat(o.tabSize)),
     EditorView.contentAttributes.of({ spellcheck: o.spellCheck ? "true" : "false", lang: o.lang || "en" }),
-    o.aiBar ? selectBar : [],
+    o.aiPopup ? selectPopup : [],
     o.pageView ? pageView({ style: o.pageStyle, paper: o.paper, textWidthMm: o.textWidthMm, paperHeightMm: o.paperHeightMm, marginMm: o.marginMm }) : [],
   ];
   const themeSlot = new Compartment();
@@ -302,7 +302,7 @@ export function createEditor(
           syntaxHighlighting(classHighlighter), // `tok-*` classes inside code blocks; colours live in CSS
           modeSlot.of(modeExt(currentMode)),
           slashExtension(),
-          selectionSync({ emit, getDocId: () => docId, onSettle: settleBar }),
+          selectionSync({ onSettle: settlePopup }),
           EditorView.domEventHandlers({
             paste: handlePaste,
             // dropping image files puts them where they were dropped
@@ -561,6 +561,19 @@ export function createEditor(
       if (id !== docId) return false;
       showProposal(view, proposal ? { ...proposal, docId } : null);
       return true;
+    },
+    // Where the caret is on screen (client pixels), for the Ask box of the Ask… command.
+    caretRect() {
+      const c = view.coordsAtPos(view.state.selection.main.head);
+      return c ? { left: c.left, top: c.top, bottom: c.bottom } : null;
+    },
+    // Open the Ask box on `from`..`to` of doc `id` with an AI command picked (selectpopup.js).
+    askAbout(id, from, to, command) {
+      return id === docId && askAbout(view, from, to, command);
+    },
+    // The Ask box's text (selectpopup.js): tinted, pulsing while `busy`; `from` null clears it.
+    markTarget(id, from, to, busy) {
+      if (from === null || id === docId) markTarget(view, from, to, busy);
     },
     // The selected text (for the AI): {from, to, text} in UTF-16 offsets, from == to when empty.
     getSelection() {

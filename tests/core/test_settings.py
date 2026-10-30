@@ -311,12 +311,11 @@ def test_new_settings_defaults() -> None:
     assert v["editor.word_count"] is True
 
 
-def test_selection_to_chat_setting() -> None:
-    from paper_pile.core.settings import ALL, parse_value, sanitized
+def test_selection_settings() -> None:
+    from paper_pile.core.settings import ALL, sanitized
 
-    setting = ALL["ai.selection_to_chat"]
-    assert sanitized({})["ai.selection_to_chat"] == "auto"
-    assert parse_value(setting, "button").ok and not parse_value(setting, "sometimes").ok
+    assert "ai.selection_to_chat" not in ALL  # a selection is never attached by itself (P24)
+    assert sanitized({})["ai.selection_popup"] is True  # the Ask box (PLAN §4.27)
 
 
 def test_edit_selection_spec() -> None:

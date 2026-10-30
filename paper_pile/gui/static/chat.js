@@ -1,9 +1,14 @@
-// Chat input: Enter sends, Shift+Enter makes a new line (the textarea is Quasar's, so this is
+// Chat input: Enter sends, Shift+Enter or Ctrl+Enter makes a new line (the textarea is Quasar's, so this is
 // done with one delegated listener). The chat log keeps itself scrolled to the newest text.
 document.addEventListener('keydown', function (e) {
   const area = e.target && e.target.closest && e.target.closest('.pp-chat-input textarea');
-  if (!area || e.key !== 'Enter' || e.shiftKey || e.isComposing) return;
+  if (!area || area.closest('.pp-askpop') || e.key !== 'Enter' || e.shiftKey || e.isComposing) return;
   e.preventDefault();
+  if (e.ctrlKey || e.metaKey) {  // Ctrl+Enter: a new line (askpop.js)
+    e.stopPropagation();
+    window.ppNewLine(area);
+    return;
+  }
   emitEvent('pp_chat_send', {});
 }, true);
 window.ppChatScroll = function (id) {

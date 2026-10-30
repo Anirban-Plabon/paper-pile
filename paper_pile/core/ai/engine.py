@@ -65,6 +65,7 @@ from paper_pile.core.ai.provider import (
     Reasoning,
     is_local_host,
 )
+from paper_pile.core.ai.selection_ask import AskTurn
 from paper_pile.core.commands import StreamInsert
 from paper_pile.core.config import Config
 from paper_pile.core.index import query_words
@@ -473,6 +474,25 @@ class AiEngine:
         self.turns.append(turn)
         return Outgoing(turn, attached, names)
 
+    def chat_from_box(self, selected: str, path: str, turns: Sequence[AskTurn]) -> None:
+        """The Ask box's conversation becomes the open chat (and is saved like any chat): the
+        selection goes with its first message, as a quote (PLAN §4.27)."""
+        if not turns:
+            return
+        self.new_chat()
+        quote = self.selection(selected, path)
+        first, *rest = turns
+        self.turns.append(
+            SavedTurn(
+                "user",
+                first.text,
+                f"{quote.label}: [{quote.kind}]",
+                quotes=[SavedQuote(quote.label, quote.kind, quote.size(), quote.text, quote.note)],
+            )
+        )
+        self.turns.extend(SavedTurn(t.role, t.text) for t in rest)
+        self.save()
+
     def start_reply(self) -> SavedTurn:
         reply = SavedTurn("assistant", "")
         self.turns.append(reply)
@@ -850,6 +870,49 @@ class AiEngine:
             read=self.read_note,
         )
         return [system, ChatMessage("user", self.with_notes(context, ask))]
+
+    # ---- the Ask box under a selection (PLAN §4.27) --------------------------------------
+
+    async def selection_messages(
+        self, *, path: str, text: str, selected: str, turns: Sequence[AskTurn]
+    ) -> list[ChatMessage]:
+        """The messages for the Ask box's mini chat about ``selected`` in note ``path``
+        (``text``): the selection goes with the first question, the note's context in front of
+        it; later turns follow as they are. When it does not fit the window, the oldest exchanges
+        after the first go; a selection too long even alone raises :class:`EditTooLongError`.
+        Raises :class:`AccessDeniedError` when the AI may not read that note."""
+        if not self._require_access().may_send(path, text):
+            raise AccessDeniedError(
+                "The AI may not read this note (its type, an exclusion, or ai: false)."
+            )
+        system = ChatMessage("system", self.system_prompt())
+        first, *later = turns
+        ask = f"The user selected this text in the note:\n\n{selected}{DIVIDER}{first.text}"
+        window = await self.window()
+        room = window - self.answer_room(window)
+
+        def need(rest: Sequence[AskTurn]) -> int:
+            msgs = [system, ChatMessage("user", ask), *(ChatMessage(t.role, t.text) for t in rest)]
+            return message_tokens(msgs)
+
+        while later and need(later) > room:
+            later = later[2:]  # one question and its answer, oldest first
+        if need(later) > room:
+            raise EditTooLongError(
+                f"The selected text is too long for this model (about {short_count(need(later))} "
+                f"tokens; the window holds {short_count(window)}). Select less."
+            )
+        context = build_context(
+            self.vault,
+            current_path=path,
+            current_text=text,
+            index=self.index,
+            budget=max(0, min(await self.context_budget(), room - need(later))),
+            paths=self.readable_paths(),
+            read=self.read_note,
+        )
+        rest = [ChatMessage(t.role, t.text) for t in later]
+        return [system, ChatMessage("user", self.with_notes(context, ask)), *rest]
 
 
 def message_tokens(messages: Sequence[ChatMessage]) -> int:

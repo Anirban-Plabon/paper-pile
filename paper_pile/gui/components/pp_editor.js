@@ -70,6 +70,15 @@ export default {
     async showProposal(docId, proposal) {
       return (await this.ready).showProposal(docId, proposal);
     },
+    async caretRect() {
+      return (await this.ready).caretRect();
+    },
+    async askAbout(docId, from, to, command) {
+      return (await this.ready).askAbout(docId, from, to, command);
+    },
+    async markTarget(docId, from, to, busy) {
+      (await this.ready).markTarget(docId, from ?? null, to ?? null, !!busy);
+    },
     async getSelection() {
       return (await this.ready).getSelection();
     },

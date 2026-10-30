@@ -1,30 +1,22 @@
-// Tells Python what is selected once the selection has settled (not while the mouse button is held),
-// so the chat can attach it. JS only reports; what to do with it is decided in Python.
+// Tells the Ask box (selectpopup.js, through `onSettle`) that the selection has settled: at once when
+// the mouse button is let go, else (keyboard, typing) once nothing changed for SETTLE_MS. Never while
+// the mouse button is held. JS only reports; what to do with it is decided in Python.
 import { EditorView } from "@codemirror/view";
 
 const SETTLE_MS = 350;
-const MAX_CHARS = 50000;
 
-export function selectionSync({ emit, getDocId, onSettle = () => {} }) {
+export function selectionSync({ onSettle = () => {} } = {}) {
   let timer = null;
   let down = false;
-  let last = null;
-  const report = (view) => {
+  const report = (view, wait = SETTLE_MS) => {
     clearTimeout(timer);
     timer = setTimeout(() => {
-      if (down) return;
-      onSettle(view); // the selection bar (selectbar.js)
-      const r = view.state.selection.main;
-      const text = r.empty || view.state.selection.ranges.length !== 1 ? "" : view.state.sliceDoc(r.from, r.to);
-      const key = text.length > MAX_CHARS ? text.slice(0, MAX_CHARS) : text;
-      if (key === last) return;
-      last = key;
-      emit("selection", { docId: getDocId(), text: key });
-    }, SETTLE_MS);
+      if (!down) onSettle(view);
+    }, wait);
   };
   return [
     EditorView.updateListener.of((u) => {
-      // a match the search panel selected is not the user choosing text for the chat
+      // a match the search panel selected is not the user choosing text
       if (u.transactions.some((tr) => tr.isUserEvent("select.search"))) return;
       if (u.selectionSet || u.docChanged) report(u.view);
     }),
@@ -34,7 +26,7 @@ export function selectionSync({ emit, getDocId, onSettle = () => {} }) {
         const up = () => {
           window.removeEventListener("mouseup", up, true);
           down = false;
-          report(view);
+          report(view, 0); // the release ends the selection: no need to wait
         };
         window.addEventListener("mouseup", up, true);
         return false;

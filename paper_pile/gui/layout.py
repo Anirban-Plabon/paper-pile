@@ -6,7 +6,7 @@ A pane keeps its last width while collapsed, so re-opening restores it.
 
 import asyncio
 import logging
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Sequence
 from datetime import date, datetime
 from pathlib import Path
 from typing import Any
@@ -17,6 +17,7 @@ from paper_pile.core.ai.chats import chats_folder
 from paper_pile.core.ai.engine import AiEngine
 from paper_pile.core.ai.instructions import draft_messages
 from paper_pile.core.ai.provider import Health
+from paper_pile.core.ai.selection_ask import AskTurn
 from paper_pile.core.commands import push_recent
 from paper_pile.core.config import Config
 from paper_pile.core.daily import DEFAULT_FORMAT, daily_relpath, new_daily_text, untouched_daily
@@ -718,7 +719,6 @@ class MainLayout:
             on_settings_changed=self._settings_changed_elsewhere,
             ai=self.ai,
             on_command_used=self._on_command_used,
-            selection_changed=self._chat_selection,
             add_note_to_chat=self._chat_add_note,
             ask_chat=self._chat_ask,
             ask_selection=self._chat_ask_selection,
@@ -745,18 +745,19 @@ class MainLayout:
         if self.tree is not None:
             self.tree.refresh()
 
-    def _chat_selection(self, text: str, path: str) -> None:
-        """A selection settled: attached by itself unless Settings says "With Ask"."""
-        if self.config.get("ai.selection_to_chat", "auto") == "button":
-            return
-        if self.chat is not None and self.ai_on() and self.ai.may_use(path):
-            self.chat.set_selection(text, path)  # never by itself from a note the AI may not read
-
-    def _chat_ask_selection(self, text: str, path: str) -> None:
-        """The selection bar's Ask: attach it and put the caret in the chat box."""
+    def _chat_ask_selection(self, text: str, path: str, turns: Sequence[AskTurn] = ()) -> None:
+        """The Ask box's *Add to chat*: attach the selection and put the caret in the chat box;
+        when the box already holds a conversation, it becomes the open (saved) chat instead."""
         if self.chat is None or not self.ai_on() or not text.strip():
             return
-        self.chat.set_selection(text, path)
+        if turns:
+            if not self.chat.can_switch():
+                ui.notify("The chat is still answering — wait for it or press Stop.")
+                return
+            self.ai.chat_from_box(text, path, turns)
+            self.chat.show_open_chat()
+        else:
+            self.chat.set_selection(text, path)
         self._open_chat()
         self.chat.focus_input()
 

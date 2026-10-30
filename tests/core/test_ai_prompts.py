@@ -33,7 +33,7 @@ def test_own_prompts_follow_and_always_fit() -> None:
     shown = suggestions(["prose"], own)
     assert shown[-2:] == own and len(shown) <= MAX_SHOWN
     many = suggestions(["note"], [f"mine {i}" for i in range(10)])
-    assert many[:2] == ["Summarize this note", "Outline this note"] and len(many) == MAX_SHOWN
+    assert many[:1] == ["Summarize this note"] and len(many) == MAX_SHOWN == 3
 
 
 def test_prompts_file(tmp_path: Path) -> None:

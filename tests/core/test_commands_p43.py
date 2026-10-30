@@ -290,7 +290,7 @@ def test_ai_commands_are_found_by_their_names() -> None:
 def test_ai_commands_exist_only_while_ai_is_on(tmp_path: Path) -> None:
     config = Config(vault=tmp_path)
     ctx = CommandContext("a.md", "some text", 0, selection=(0, 4), config=config)
-    ai_ids = {"ai-summarize", "ai-continue", "ai-explain", "ai-fix", "ai-ask"}
+    ai_ids = {"ai-summarize", "ai-continue", "ai-explain", "ai-fix", "ai-rewrite", "ai-ask"}
     assert ai_ids <= {c.id for c in REGISTRY.all(ctx)}
     config.set("features.ai", False)
     assert not ai_ids & {c.id for c in REGISTRY.all(ctx)}

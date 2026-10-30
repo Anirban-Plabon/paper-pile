@@ -64,7 +64,8 @@ EDITOR_OPTION_KEYS = frozenset(
         "general.language",
         "editor.page_view",
         "print.paper",
-        "features.ai",  # the selection bar
+        "features.ai",  # the Ask box (PLAN §4.27)
+        "ai.selection_popup",
     }
 )
 
@@ -86,7 +87,7 @@ def editor_options(config: Config | None) -> dict[str, Any]:
         "textWidthMm": text_width_mm(str(v["print.paper"])),
         "paperHeightMm": paper(str(v["print.paper"])).height_mm,
         "marginMm": MARGIN_MM,
-        "aiBar": v["features.ai"],  # Ask / Edit over a selection (PLAN §4.26)
+        "aiPopup": v["features.ai"] and v["ai.selection_popup"],  # the Ask box (PLAN §4.27)
     }
 
 
