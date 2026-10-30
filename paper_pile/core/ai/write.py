@@ -51,6 +51,7 @@ class WriteJob:
     kept: tuple[str, ...]  # fixed blocks masked in the part (⟦KEEP n⟧)
     old: str  # the part's text now ("" for new text)
     keep: tuple[str, ...]  # inline tokens the answer must keep
+    masked: str = ""  # ``old`` as sent: its fixed blocks as ⟦KEEP n⟧ lines
 
 
 def _span(edit: PlannedEdit, blocks: Sequence[Block]) -> list[Block]:
@@ -100,7 +101,7 @@ def write_job(
     if edit.why:
         lines.append(f"This change: {edit.why}")
     kept: list[str] = []
-    old = ""
+    old = masked = ""
     keep: list[str] = []
     if edit.action == "change":
         old = note[first.start : last.end]
@@ -134,7 +135,7 @@ def write_job(
         else ("Reply with only the new text.")
     )
     lines.append(reply)
-    return WriteJob(edit, "\n".join(lines), tuple(kept), old, tuple(keep))
+    return WriteJob(edit, "\n".join(lines), tuple(kept), old, tuple(keep), masked)
 
 
 def style_hint(edit: PlannedEdit, anchor: Block, note: str) -> str:

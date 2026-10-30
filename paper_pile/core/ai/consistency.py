@@ -27,6 +27,7 @@ _WORD = re.compile(r"[^\W_]+")
 class Suggestion:
     block: str  # the block to update
     why: str  # shown to the user, and the model's "This change:" if they click Update
+    action: str = "change"  # "add_after": the list / table grows by what it lacks
 
 
 @dataclass(frozen=True, slots=True)
@@ -104,13 +105,9 @@ def suggestions(
                 if missing:
                     seen.add(other.ids[-1])
                     names = ", ".join(f"“{k}”" for k in missing)
-                    out.append(
-                        Suggestion(
-                            other.ids[-1],
-                            f"{other.label[0].upper()}{other.label[1:]} lists the same items "
-                            f"but not {names}",
-                        )
-                    )
+                    label = f"{other.label[0].upper()}{other.label[1:]}"
+                    why = f"{label} lists the same items but not {names}"
+                    out.append(Suggestion(other.ids[-1], why, "add_after"))
         out.extend(_counts(blocks, note, grown, len(old), len(old) + len(added), touched, seen))
     return out
 

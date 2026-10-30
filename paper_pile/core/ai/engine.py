@@ -274,6 +274,13 @@ class AiEngine:
             raise AccessDeniedError("Allow the AI to read this vault first (Settings → AI).")
         return policy
 
+    def require_note(self, path: str, text: str) -> None:
+        """Raises :class:`AccessDeniedError` unless the AI may read note ``path`` (``text``)."""
+        if not self._require_access().may_send(path, text):
+            raise AccessDeniedError(
+                "The AI may not read this note (its type, an exclusion, or ai: false)."
+            )
+
     def read_note(self, path: str) -> str | None:
         """A note's text for the AI: None when it may not read it (path, type, ``ai: false``)."""
         policy = self.policy()
@@ -550,6 +557,27 @@ class AiEngine:
             heading, part = best_section(text, query_words(asked))
             out.append((hit.path, f"{hit.path} § {heading}" if heading else hit.path, part))
             if len(out) == VAULT_HITS:
+                break
+        return out
+
+    def related_sections(
+        self, words: str, skip: str = "", limit: int = 3
+    ) -> list[tuple[str, str, str]]:
+        """``(path, heading, text)`` of the best sections of other notes the AI may read for
+        ``words`` (an AI edit's "already written elsewhere?" check, PLAN §4.29)."""
+        search = getattr(self.index, "search", None)
+        if not callable(search) or not words.strip():
+            return []
+        out: list[tuple[str, str, str]] = []
+        for hit in search(words, limit=limit * 4, any_words=True):
+            if hit.path == skip:
+                continue
+            text = self.read_note(hit.path)
+            if text is None:
+                continue
+            heading, part = best_section(text, query_words(words))
+            out.append((hit.path, heading, part))
+            if len(out) == limit:
                 break
         return out
 
