@@ -315,7 +315,7 @@ Legend: 🧠 = needs Opus (see PLAN §6 model guidance) · ⬜ todo · 🔄 in p
 | ID | Task | Status | Notes |
 |---|---|---|---|
 | P26.1 | Provider: per-call format + think; token counts; scripted fake | ✅ | `GenerationOptions.schema` / `.think`, `AiEngine.stream(schema=, think=, temperature=, max_answer=)`, `ask_json`, `core/ai/structured.py`; Ollama retried without `think` when the model has none (the error comes while streaming); `FakeProvider(script=…)`; 8 tests |
-| P26.2 | Block map | ⬜ | |
+| P26.2 | Block map | ✅ | `core/blocks.py` (`top_blocks`, from `tidy._blocks`; tidy uses it, its tests green), `core/ai/blocks.py` (`Block`, `block_map`: ids, kinds incl. code / math / diagram, top-level items, heading paths incl. setext, list ids, fixed blocks, code-point offsets also with CRLF); 4 tests. `render_view` moves to P26.3 |
 | P26.3 | Edit context and budget | ⬜ | |
 | P26.4 | Planner | ⬜ | |
 | P26.5 | Writer and merge | ⬜ | |
@@ -812,3 +812,4 @@ Legend: 🧠 = needs Opus (see PLAN §6 model guidance) · ⬜ todo · 🔄 in p
 - 2026-10-30 · P24 5th revision: suggestions as wide as their text, own chat-with-arrow icon, lit Send in the box · real app 55/55
 - 2026-10-30 · P26.1 provider: per-call JSON schema + no-thinking, token counts, scripted fake, `ask_json` · 1288 tests
 - 2026-10-30 · P25.1 one AI command list (Rewrite, Change tone, Summarize, Explain, Outline, Translate), Fix grammar + Continue writing removed · 1292 tests
+- 2026-10-30 · P26.2 block map for AI edits; one block splitter shared with Tidy

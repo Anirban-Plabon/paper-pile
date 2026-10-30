@@ -18,34 +18,17 @@ does not place in a block (link definitions, footnotes) is kept as written. Pure
 """
 
 import re
-from dataclasses import dataclass, field
 
 from markdown_it.token import Token
 
+from paper_pile.core.blocks import VERBATIM, RawBlock, top_blocks
 from paper_pile.core.parser import parse
 from paper_pile.core.tables import format_table, parse_table, split_row
 
-_VERBATIM = {"fence", "code_block", "math_block", "math_block_label", "front_matter"}
-_BLOCK_OPEN = {
-    "paragraph_open": "paragraph",
-    "heading_open": "heading",
-    "bullet_list_open": "list",
-    "ordered_list_open": "list",
-    "blockquote_open": "quote",
-    "table_open": "table",
-}
 _LIST_MARK = re.compile(r"^([ \t]*)(?:[-*+]|\d{1,9}[.)])([ \t]+|$)")
 _HEADING = re.compile(r"^(\s{0,3}#{1,6})[ \t]+")
 _HR = re.compile(r"^ {0,3}([-*_])(?:[ \t]*\1){2,}[ \t]*$")
 _QUOTE = re.compile(r"^[ \t]{0,3}>")
-
-
-@dataclass
-class _Block:
-    kind: str  # paragraph heading list quote table hr verbatim raw front_matter
-    start: int  # first line (0-based)
-    end: int  # one past the last line
-    lines: list[str] = field(default_factory=list)
 
 
 def tidy(text: str) -> str:
@@ -55,7 +38,7 @@ def tidy(text: str) -> str:
     lines = src.split("\n")
     tokens = parse(src)
     protected = _protected_lines(tokens)
-    blocks = _blocks(tokens, lines)
+    blocks = top_blocks(tokens, lines)
     out: list[str] = []
     for i, block in enumerate(blocks):
         body = _clean(block, lines, protected)
@@ -76,50 +59,12 @@ def _protected_lines(tokens: list[Token]) -> set[int]:
     """Lines that are code, math or front matter at any depth: kept byte for byte."""
     keep: set[int] = set()
     for t in tokens:
-        if t.type in _VERBATIM and t.map:
+        if t.type in VERBATIM and t.map:
             keep.update(range(t.map[0], t.map[1]))
     return keep
 
 
-def _blocks(tokens: list[Token], lines: list[str]) -> list[_Block]:
-    """The note's top-level blocks in order; lines in no block (other than empty ones) become
-    "raw" blocks so nothing is ever dropped."""
-    found: list[_Block] = []
-    for t in tokens:
-        if t.level != 0 or not t.map:
-            continue
-        if t.type in _BLOCK_OPEN:
-            kind = _BLOCK_OPEN[t.type]
-        elif t.type == "hr":
-            kind = "hr"
-        elif t.type == "front_matter":
-            kind = "front_matter"
-        elif t.type in _VERBATIM:
-            kind = "verbatim"
-        else:
-            continue
-        found.append(_Block(kind, t.map[0], t.map[1]))
-    found.sort(key=lambda b: b.start)
-    blocks: list[_Block] = []
-    at = 0
-    for block in [*found, _Block("end", len(lines), len(lines))]:
-        if block.start > at:  # uncovered lines: keep each run of non-empty ones as written
-            run: list[int] = []
-            for n in range(at, block.start):
-                if lines[n].strip():
-                    run.append(n)
-                elif run:
-                    blocks.append(_Block("raw", run[0], run[-1] + 1))
-                    run = []
-            if run:
-                blocks.append(_Block("raw", run[0], run[-1] + 1))
-        if block.kind != "end":
-            blocks.append(block)
-        at = max(at, block.end)
-    return blocks
-
-
-def _clean(block: _Block, lines: list[str], protected: set[int]) -> list[str]:
+def _clean(block: RawBlock, lines: list[str], protected: set[int]) -> list[str]:
     src = lines[block.start : block.end]
     if block.kind in ("verbatim", "front_matter"):
         return _trim_blank_edges(src)
