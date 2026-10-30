@@ -141,3 +141,17 @@ def test_word_marks() -> None:
     marks = word_marks("We compare three options.", "We compare four options.")
     assert marks == ([(11, 16)], [(11, 15)])
     assert word_marks("one two three", "four five six") is None  # all changed: no marks
+
+
+def test_relocate_moves_and_drops_regions() -> None:
+    from paper_pile.core.ai.proposals import Edit, propose_many, relocate
+
+    count, cheap = MANY.index("three"), MANY.index("Cheap.")
+    p = propose_many("a.md", MANY, [Edit(count, count + 5, "four"), Edit(cheap, cheap + 6, "Low.")])
+    assert p is not None
+    moved, lost = relocate(p, "New first line.\n" + MANY)
+    assert moved is not None and lost == 0
+    assert moved.regions[0].start == p.regions[0].start + len("New first line.\n")
+    gone, lost = relocate(p, MANY.replace("Cheap.", "Costly."))
+    assert gone is not None and lost == 1 and len(gone.regions) == 1
+    assert relocate(p, "")[0] is None

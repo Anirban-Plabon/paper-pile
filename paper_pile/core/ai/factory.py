@@ -1,7 +1,9 @@
 """Which provider the app uses, from the configuration."""
 
+import json
 import os
 from collections.abc import AsyncIterator, Sequence
+from pathlib import Path
 
 from paper_pile.core.ai.fake import FakeProvider
 from paper_pile.core.ai.install import ai_available, ai_unavailable
@@ -47,10 +49,12 @@ class MissingProvider:
 def make_provider(config: Config | None) -> Provider:
     """The configured provider (``ai.host``, ``ai.model``). With the
     environment variable ``PAPER_PILE_FAKE_AI=1`` a stand-in that needs no model is used
-    (``PAPER_PILE_FAKE_AI_REPLY`` sets the text it answers with, ``…_THINKING`` its reasoning).
+    (``PAPER_PILE_FAKE_AI_REPLY`` sets the text it answers with, ``…_THINKING`` its reasoning,
+    ``…_SCRIPT`` a JSON file with a list of answers given in turn — for checking AI edits).
     ``ollama`` is imported only here, so the app also starts without it."""
     if os.environ.get("PAPER_PILE_FAKE_AI"):
-        fake = FakeProvider(reply=os.environ.get("PAPER_PILE_FAKE_AI_REPLY") or None)
+        script = _fake_script(os.environ.get("PAPER_PILE_FAKE_AI_SCRIPT", ""))
+        fake = FakeProvider(reply=os.environ.get("PAPER_PILE_FAKE_AI_REPLY") or None, script=script)
         fake.thinking = os.environ.get("PAPER_PILE_FAKE_AI_THINKING", "")
         return fake
     if not ai_available():
@@ -62,6 +66,16 @@ def make_provider(config: Config | None) -> Provider:
         host=str(get("ai.host", DEFAULT_HOST)),
         model=str(get("ai.model", "gemma4:12b")),
     )
+
+
+def _fake_script(path: str) -> list[str] | None:
+    if not path:
+        return None
+    try:
+        replies = json.loads(Path(path).read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    return [str(r) for r in replies] if isinstance(replies, list) else None
 
 
 def chat_model(provider: Provider, config: Config | None) -> str:

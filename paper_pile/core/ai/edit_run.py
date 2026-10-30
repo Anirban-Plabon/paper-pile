@@ -108,6 +108,7 @@ class EditRun:
         note: str,
         selection: tuple[int, int] | None,
         instruction: str,
+        words: str | None = None,
         command_id: str = "ai-rewrite",
         groups: Sequence[str] = (),
         planning: str = "auto",
@@ -118,7 +119,10 @@ class EditRun:
         self.path = path
         self.note = note
         self.instruction = instruction.strip()
-        self.intent: Intent = edit_intent(command_id, instruction, groups)
+        # the intent is read from the user's own words (``instruction`` may hold the command's)
+        self.intent: Intent = edit_intent(
+            command_id, instruction if words is None else words, groups
+        )
         self.planning = planning
         self.translate = translate
         self.on_progress = on_progress or (lambda _s: None)
@@ -136,6 +140,7 @@ class EditRun:
         self._vault: list[tuple[str, str, str]] = []
         self._window = 0
         self._changing: list[str] = []
+        self.suggested: list[Suggestion] = []  # the last result's "maybe also update"
 
     # ---- the run ---------------------------------------------------------------------------
 
@@ -156,6 +161,7 @@ class EditRun:
         """The proposal from what is finished (also after Stop or a failure)."""
         self.on_progress("Checking…")
         found = suggestions(self.blocks, self.note, self.changes) if self.changes else []
+        self.suggested = found
         notes = [*self.notes, *self._elsewhere()]
         notes += [Issue("maybe-update", "info", s.why, data=s.block) for s in found]
         proposal = propose_many(

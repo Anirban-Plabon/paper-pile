@@ -177,6 +177,21 @@ def locate(proposal: Proposal, text: str) -> Proposal | None:
     return replace(proposal, regions=tuple(r for r in regions if r is not None))
 
 
+def relocate(proposal: Proposal, text: str) -> tuple[Proposal | None, int]:
+    """``proposal`` with its regions where they are in ``text`` now, out-of-date ones left out
+    (None when none is left), and how many hunks were left out."""
+    live: list[Region] = []
+    lost = 0
+    for region in proposal.regions:
+        here = _locate_region(region, text)
+        if here is None:
+            lost += len(region.hunks)
+        else:
+            live.append(here)
+    live.sort(key=lambda r: r.start)
+    return (replace(proposal, regions=tuple(live)) if live else None), lost
+
+
 def stale_hunks(proposal: Proposal, text: str) -> set[int]:
     """Ids of the hunks whose region is out of date in ``text``."""
     return {h.id for r in proposal.regions if _locate_region(r, text) is None for h in r.hunks}

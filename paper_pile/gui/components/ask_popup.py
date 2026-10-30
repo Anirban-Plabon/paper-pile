@@ -25,8 +25,7 @@ from paper_pile.core.ai.commands import ai_command
 from paper_pile.core.ai.edits import FINISHED, EditTooLongError
 from paper_pile.core.ai.provider import ProviderError
 from paper_pile.core.ai.selection_ask import DELETE, AskTurn, Role, box_commands, wants_edit
-from paper_pile.core.commands import CommandContext, StreamInsert
-from paper_pile.core.commands_builtin import edit_selection
+from paper_pile.core.commands import CommandContext
 from paper_pile.core.parser import render_chat_html
 from paper_pile.gui.components.ai_access import confirm_access
 from paper_pile.gui.components.chat import RENDER_EVERY_S, THINKING
@@ -259,7 +258,7 @@ class AskPopup:
                 return
         self._input.set_value("")
         if wants_edit(text):
-            self._start(self._rewrite(edit_selection(text)))
+            self._start(self._rewrite("ai-rewrite", text))
         else:
             self._start(self._ask(text, text))
 
@@ -300,7 +299,7 @@ class AskPopup:
         if cmd is None:
             return
         if cmd.kind == "change":
-            self._start(self._rewrite(cmd.spec(extra)))
+            self._start(self._rewrite(cmd.id, extra))
         else:
             self._start(self._ask(cmd.instruction(extra), extra, title))
 
@@ -349,7 +348,9 @@ class AskPopup:
 
     # ---- a rewrite or a delete: the box dissolves at once ----------------------------------
 
-    async def _rewrite(self, spec: StreamInsert) -> None:
+    async def _rewrite(self, command_id: str, words: str) -> None:
+        """A change (PLAN §4.29): the box goes, the text pulses while the AI works, and the
+        result is shown as a diff in the note."""
         target = self._target
         if target is None:
             return
@@ -358,7 +359,7 @@ class AskPopup:
         self._pane.focus_note()
         self._pane.mark_ask_target(target, busy=True)  # the text pulses until it is replaced
         try:
-            await self._pane.rewrite_selection(target, spec)
+            await self._pane.edit_selection(target, command_id, words)
         finally:
             self._rewriting = False
             self._quiet_until = time.monotonic() + QUIET_S

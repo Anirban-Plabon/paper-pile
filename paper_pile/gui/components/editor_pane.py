@@ -20,16 +20,18 @@ import os
 import time
 import webbrowser
 from collections.abc import Awaitable, Callable, Sequence
-from dataclasses import fields
+from dataclasses import fields, replace
 from datetime import date, datetime
 from typing import Any
 
 from nicegui import ui
 
+import paper_pile.core.commands_builtin  # noqa: F401  (importing it registers the slash commands)
 from paper_pile.core import assets
 from paper_pile.core.ai.access import AccessDeniedError
 from paper_pile.core.ai.commands import ai_command, command_target
 from paper_pile.core.ai.context import EditorSnapshot
+from paper_pile.core.ai.edit_run import EditResult, EditRun
 from paper_pile.core.ai.edits import (
     FINISHED,
     EditAction,
@@ -41,7 +43,15 @@ from paper_pile.core.ai.edits import (
     replacement_action,
 )
 from paper_pile.core.ai.engine import AiEngine
-from paper_pile.core.ai.proposals import Proposal, accept, propose, reject
+from paper_pile.core.ai.proposals import Edit as ProposedEdit
+from paper_pile.core.ai.proposals import (
+    Proposal,
+    accept,
+    propose,
+    propose_many,
+    reject,
+    relocate,
+)
 from paper_pile.core.ai.provider import ProviderError
 from paper_pile.core.ai.selection_ask import BOX_AI_COMMANDS, AskTurn
 from paper_pile.core.buffer import NoteBuffer, Outcome, content_hash, find_recoverable
@@ -61,9 +71,6 @@ from paper_pile.core.commands import (
     StreamInsert,
     UnknownCommandError,
     groups_json,
-)
-from paper_pile.core.commands_builtin import (  # also registers the slash commands
-    rewrite_note,
 )
 from paper_pile.core.config import Config, Scope
 from paper_pile.core.events import EventBus
@@ -112,6 +119,7 @@ from paper_pile.gui.components.editor import Editor, Mode
 from paper_pile.gui.components.note_actions import note_actions, pick_split_note
 from paper_pile.gui.components.note_head import NoteHead
 from paper_pile.gui.components.note_menu import NoteActions, NoteMenu
+from paper_pile.gui.components.proposal_view import proposal_payload
 from paper_pile.gui.components.tabs import SplitTabs, TabBar, TabMenuItem
 from paper_pile.gui.dialog import Dialog
 from paper_pile.gui.icons import ico, icon_button, line_icon, set_icon
@@ -189,6 +197,7 @@ class EditorPane:
         self._engine = ai
         self._ask_selection = ask_selection  # the Ask box's Add to chat: attach it to the chat
         self._proposals: dict[int, Proposal] = {}  # AI edits waiting for Accept / Reject, by tab
+        self._edit_runs: dict[int, EditRun] = {}  # the run behind a tab's proposal ("Update")
         self._readonly: dict[int, bool] = {}  # shown read-only (Settings → AI → AI changes)
         self._ai_kept: set[int] = set()  # proposals whose "before AI" version is kept
         self._ai_selection: dict[str, Any] | None = None  # set by Ctrl+J in the editor
@@ -963,10 +972,16 @@ class EditorPane:
             await self._ask_in_box(tab_id, text, start, end, selection, command_id)
             return
         whole = ai_command(command_id)
+        if whole is not None and whole.kind == "change" and selection is not None:
+            if await self._apply_edit(tab_id, text, remove_range(start, end), move_caret=False):
+                self._on_command_used(command_id)
+                after = self.buffers[tab_id].text  # the selection is before the removed /query
+                await self.run_edit(tab_id, after, selection, command_id)
+            return
         if whole is not None and selection is None:  # nothing selected: the whole note
             if await self._apply_edit(tab_id, text, remove_range(start, end), move_caret=False):
                 self._on_command_used(command_id)
-                await self.run_on_note(path, whole.spec())
+                await self.run_on_note(path, command_id)
             return
         try:
             action = REGISTRY.run(command_id, ctx)
@@ -1293,17 +1308,6 @@ class EditorPane:
         conversation (``turns``), open that conversation as a saved chat."""
         self._ask_selection(target.text, target.path, turns)
 
-    async def rewrite_selection(self, target: AskTarget, spec: StreamInsert) -> None:
-        """A rewrite from the box: the AI's version replaces the text as soon as it is complete
-        (one undo step, a "before AI" version kept; *Read-only*: a diff to read; PLAN §4.27).
-        The usual "AI is writing…" notice has Stop."""
-        found = await self.ask_target_text(target)
-        if found is None:
-            self._toast("The text changed; select it again.", error=True)
-            return
-        text, start, end = found
-        await self._run_stream(spec, target.tab_id, text, end, end, (start, end), apply_now=True)
-
     async def delete_selection(self, target: AskTarget) -> None:
         """The box's ``/delete``: remove the text (one undo step)."""
         found = await self.ask_target_text(target)
@@ -1316,11 +1320,14 @@ class EditorPane:
     async def rewrite(self, path: str) -> None:
         """⋯ → Rewrite: the AI's version of the whole body of ``path`` (its front matter stays),
         shown as a diff (PLAN §4.26)."""
-        await self.run_on_note(path, rewrite_note())
+        await self.run_on_note(path, "ai-rewrite")
 
-    async def run_on_note(self, path: str, spec: StreamInsert) -> None:
+    async def run_on_note(self, path: str, command_id: str, words: str = "") -> None:
         """An AI command with the whole body of ``path`` as its target (nothing selected, PLAN
-        §4.28): a change replaces the body (as a diff), an answer goes at the end."""
+        §4.28): a change goes through the edit pipeline (a diff), an answer goes at the end."""
+        cmd = ai_command(command_id)
+        if cmd is None:
+            return
         await self.open(path)
         tab_id = self.tabs.active
         text = await self._live_text(tab_id) if tab_id is not None else None
@@ -1330,6 +1337,10 @@ class EditorPane:
         if target is None:
             self._toast("The note is empty.")
             return
+        if cmd.kind == "change":
+            await self.run_edit(tab_id, text, None, command_id, words)
+            return
+        spec = cmd.spec(words)
         await self._run_stream(spec, tab_id, text, len(text), len(text), (target.start, len(text)))
 
     def _on_block_to_chat(self, args: dict[str, Any]) -> None:
@@ -1483,6 +1494,148 @@ class EditorPane:
             return
         await self.propose_edit(tab_id, text, start, start + len(original), result, action)
 
+    # ---- AI changes through the edit pipeline (PLAN §4.29) ------------------------------------
+
+    async def edit_selection(self, target: AskTarget, command_id: str, words: str) -> None:
+        """A change asked in the Ask box (a change command, or a "rewrite …" message)."""
+        found = await self.ask_target_text(target)
+        if found is None:
+            self._toast("The text changed; select it again.", error=True)
+            return
+        text, start, end = found
+        await self.run_edit(target.tab_id, text, (start, end), command_id, words)
+
+    async def run_edit(
+        self,
+        tab_id: int,
+        text: str,
+        selection: tuple[int, int] | None,
+        command_id: str,
+        words: str = "",
+        groups: Sequence[str] = (),
+    ) -> None:
+        """A change command (Rewrite, Change tone, a free "rewrite …") on the selection, or on
+        the whole note: planned, written and checked by :class:`EditRun`, then shown as one
+        diff (applied at once only in *Apply at once* mode and when nothing needs a look)."""
+        ai, path = self._engine, self._tab_path(tab_id)
+        if ai is None or path is None:
+            self._toast("AI is not available.", error=True)
+            return
+        if not await confirm_access(ai, self._host):
+            return
+        cmd = ai_command(command_id)
+        planning = str(self._config.get("ai.edit_planning", "auto") if self._config else "auto")
+        task = asyncio.current_task()
+        stopped = False
+
+        def stop() -> None:
+            nonlocal stopped
+            stopped = True
+            if task is not None:
+                task.cancel()
+
+        with self._host:
+            note = ui.notification(
+                "AI is working…", spinner=True, timeout=None, close_button="Stop", on_dismiss=stop
+            )
+        run = EditRun(
+            ai,
+            path=path,
+            note=text,
+            selection=selection,
+            instruction=cmd.request(words) if cmd else words,
+            words=words,
+            command_id=command_id,
+            groups=groups,
+            planning=planning,
+            on_progress=lambda message: setattr(note, "message", f"AI: {message}"),
+        )
+        try:
+            result = await run.run()
+        except asyncio.CancelledError:
+            if not stopped:
+                raise
+            result = run.result()  # Stop: what was finished is shown
+        except (AccessDeniedError, EditTooLongError, ProviderError) as exc:
+            self._toast(str(exc), error=True)
+            return
+        finally:
+            stopped = True  # a late dismiss must not cancel what follows
+            note.dismiss()
+        await self._show_edit_result(tab_id, path, run, result)
+
+    async def _show_edit_result(
+        self, tab_id: int, path: str, run: EditRun, result: EditResult
+    ) -> None:
+        if result.question:
+            self._toast(f"The AI asks: {result.question}")
+            return
+        if result.already:
+            self._toast(result.already)
+            return
+        for why in result.dropped:
+            self._toast(why, error=True)
+        if result.error:
+            self._toast(f"{result.error} What was finished is shown.", error=True)
+        if result.proposal is None:
+            self._toast("The AI suggests no changes.")
+            return
+        text = await self._live_text(tab_id)
+        if text is None:
+            return
+        mode = self._edit_mode()
+        if mode == "auto" and result.clean:  # nothing outside the target, no warning
+            done = accept(result.proposal, text)
+            if done is not None and done[0]:
+                self.keep_version(path, text, "before AI")
+                changes = done[0]
+                edit = TextEdit(
+                    tuple(TextChange(c.start, c.end, c.insert) for c in changes),
+                    changes[-1].start + len(changes[-1].insert),
+                )
+                if await self._apply_edit(tab_id, text, edit, move_caret=False):
+                    self._toast("Changed by the AI · Ctrl+Z undoes it")
+                return
+        if mode == "auto":
+            self._toast("Some changes need a look.")
+        self._proposals[tab_id] = result.proposal
+        self._edit_runs[tab_id] = run
+        self._readonly[tab_id] = mode == "readonly"
+        await self._show_proposal(tab_id, text)
+
+    async def _update_from_note(self, tab_id: int, proposal: Proposal, index: int) -> None:
+        """ "Maybe also update …" → Update: one more change, added to the diff shown."""
+        run = self._edit_runs.get(tab_id)
+        notes = list(proposal.notes)
+        if run is None or not 0 <= index < len(notes):
+            return
+        block = notes[index].data
+        suggestion = next((s for s in run.suggested if s.block == block), None)
+        if suggestion is None:
+            return
+        before = len(run.changes)
+        try:
+            await run.update(suggestion)
+        except (AccessDeniedError, EditTooLongError, ProviderError) as exc:
+            self._toast(str(exc), error=True)
+            return
+        added = run.changes[before:]
+        if not added:
+            self._toast("The AI could not update that place.", error=True)
+            return
+        more = propose_many(
+            run.path,
+            run.note,
+            [ProposedEdit(c.start, c.end, c.new, c.why, c.issues, c.outside) for c in added],
+        )
+        current = self._proposals.get(tab_id)
+        if more is None or current is None or current.id != proposal.id:
+            return
+        del notes[index]
+        self._proposals[tab_id] = replace(
+            current, regions=(*current.regions, *more.regions), notes=tuple(notes)
+        )
+
     def _edit_mode(self) -> EditMode:
         """``ai.edits``: ask (a diff to accept), auto (applied at once) or readonly."""
         return edit_mode(self._config.get("ai.edits", "ask") if self._config else "ask")
@@ -1533,16 +1686,14 @@ class EditorPane:
         proposal = self._proposals.get(tab_id)
         payload = None
         if proposal is not None:
-            hunks = [
-                {
-                    "id": h.id,
-                    "from": utf16_index(text, h.start),
-                    "to": utf16_index(text, h.end),
-                    "insert": h.new,
-                }
-                for h in proposal.hunks
-            ]
-            payload = {"id": proposal.id, "hunks": hunks, "readonly": self._readonly.get(tab_id)}
+            proposal, lost = relocate(proposal, text)  # where each place is now
+            if lost:
+                self._toast(f"{lost} suggested change(s) no longer fit the note and were dropped.")
+            if proposal is None:
+                self._proposals.pop(tab_id, None)
+            else:
+                self._proposals[tab_id] = proposal
+                payload = proposal_payload(proposal, text, bool(self._readonly.get(tab_id)))
         await self._editor_for(tab_id).show_proposal(tab_id, payload)
 
     async def _on_proposal(self, args: dict[str, Any]) -> None:
@@ -1557,7 +1708,10 @@ class EditorPane:
             return
         if args.get("action") == "accept" and self._readonly.get(tab_id):
             return  # read-only: the diff only shows what the AI would change
-        if args.get("action") == "reject":
+        if args.get("action") == "update":
+            await self._update_from_note(tab_id, proposal, int(args.get("note", -1)))
+            left = self._proposals.get(tab_id)
+        elif args.get("action") == "reject":
             left = reject(proposal, int(hunk) if hunk is not None else None)
         else:
             result = accept(proposal, text, {int(hunk)} if hunk is not None else None)

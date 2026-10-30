@@ -37,6 +37,11 @@ class AiCommand:
         given = " ".join(words.split()).rstrip(".")
         return self.task.format(words=given or self.default)
 
+    def request(self, words: str = "") -> str:
+        """The task in a few words, for an edit plan ("Rewrite: make it shorter")."""
+        given = " ".join(words.split()).rstrip(".")
+        return f"{self.title}: {given or self.default}"
+
     def spec(self, words: str = "") -> StreamInsert:
         """How the editor runs it: a change replaces the target (as a diff), an answer or a
         shown answer goes with the target as its text."""

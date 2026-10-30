@@ -1431,7 +1431,20 @@ body.body--dark { --pp-aidiff-del-bg: rgba(248, 81, 73, .18); --pp-aidiff-del-fg
 .pp-aidiff-btn { font: inherit; font-size: 12px; line-height: 20px; padding: 0 10px; border-radius: var(--pp-r-ctrl); border: 1px solid var(--pp-border); background: var(--pp-bg); color: var(--pp-fg); cursor: pointer; }
 .pp-aidiff-btn:hover { background: rgba(127, 127, 127, .12); }
 .pp-aidiff-btn.pp-aidiff-accept { border-color: var(--pp-aidiff-add-fg); color: var(--pp-aidiff-add-fg); }
-.pp-aidiff-bar { display: flex; align-items: center; gap: 8px; padding: 6px 28px; font-size: 12.5px; background: var(--pp-bg-side); border-bottom: 1px solid var(--pp-border); }
+.pp-aidiff-bar { padding: 6px 28px; font-size: 12.5px; background: var(--pp-bg-side); border-bottom: 1px solid var(--pp-border); }
+.pp-aidiff-bar-row { display: flex; align-items: center; gap: 8px; }
+.pp-aidiff-notes { display: flex; flex-direction: column; gap: 4px; padding-top: 6px; color: var(--pp-muted); }
+.pp-aidiff-notes[hidden] { display: none; }
+.pp-aidiff-note { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.pp-aidiff-btn.pp-aidiff-nav { padding: 0 7px; }
+.pp-aidiff-why { padding: 2px 6px; font-size: 12px; color: var(--pp-muted); font-family: Roboto, -apple-system, "Helvetica Neue", Helvetica, Arial, sans-serif; }
+.pp-aidiff-actions { flex-wrap: wrap; align-items: center; }
+.pp-aidiff-chip { font-size: 11.5px; line-height: 18px; padding: 0 8px; border-radius: 9px; background: rgba(127, 127, 127, .12); color: var(--pp-muted); min-width: 0; overflow-wrap: anywhere; }
+.pp-aidiff-chip-warn { background: rgba(212, 167, 44, .18); color: #9a6700; }
+body.body--dark .pp-aidiff-chip-warn { color: #e3b341; }
+.pp-aidiff-chip-outside { background: rgba(var(--pp-accent-rgb), .14); color: var(--pp-accent); }
+.pp-editor .pp-aidiff-delword { background: rgba(248, 81, 73, .28); border-radius: 2px; text-decoration: line-through; text-decoration-color: var(--pp-aidiff-del-fg); }
+.pp-aidiff-addword { background: rgba(46, 160, 67, .3); border-radius: 2px; }
 .pp-aidiff-bar-text { flex: 1; color: var(--pp-muted); }
 .pp-aidiff-actions, .pp-aidiff-bar { font-family: Roboto, -apple-system, "Helvetica Neue", Helvetica, Arial, sans-serif; }  /* Quasar's UI font, not the note's */
 
