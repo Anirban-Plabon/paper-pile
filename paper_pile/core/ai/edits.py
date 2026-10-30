@@ -1,9 +1,9 @@
 """How an AI answer may change a note (PLAN §4.26): one decision for every entry point, and the
 answer turned into the text that replaces the user's.
 
-Two kinds of change exist. *Inserts* (Continue writing, Summarize, Explain, Ask…, the chat's
+Two kinds of change exist. *Inserts* (Summarize, Explain, Outline, Ask…, the chat's
 *Insert into note*) add text at the caret: they stream in and are one undo step, with a
-"before AI" version kept first. *Replacements* (Fix grammar, the selection bar's Edit, Rewrite,
+"before AI" version kept first. *Replacements* (Rewrite, Change tone, an Ask box rewrite,
 the chat's *Apply to note*) change the user's own text: they are shown as a diff, applied at once
 only in *Apply at once* mode, and never made from an answer that did not finish. *Read-only*
 refuses inserts and shows replacements without Accept. No UI imports here.

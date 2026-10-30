@@ -134,10 +134,6 @@ async def test_command_messages(vault: Vault, fake: FakeProvider) -> None:
     assert msgs[0].content.endswith(NOTE_ONLY) and "teh cat" not in msgs[0].content
     assert msgs[1].content.endswith(DIVIDER + "Fix it.\n\nText:\nteh cat")
     assert msgs[1].content.count("teh cat") == 1  # the selection is sent once
-    cont = StreamInsert("Continue.", source="before")
-    msgs = await ai.command_messages(cont, path="a.md", text=text, caret=len(text))
-    task = msgs[1].content.split(DIVIDER)[-1]
-    assert task.endswith("END") and len(task) < 4100
     ask_it = StreamInsert("", source="auto", ask=True)
     msgs = await ai.command_messages(ask_it, path="a.md", text="note", caret=0, question="Why?")
     assert msgs[1].content.endswith(DIVIDER + "Why?") and not msgs[0].content.endswith(NOTE_ONLY)

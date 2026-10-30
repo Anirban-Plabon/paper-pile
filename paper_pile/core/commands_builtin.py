@@ -4,9 +4,11 @@ Groups: Basic blocks, Code & math, Diagrams, Media (table now; image with P5), L
 The AI group arrives with P7. Icons are Material icon names.
 """
 
+from collections.abc import Callable
 from dataclasses import replace
 from datetime import datetime
 
+from paper_pile.core.ai.commands import AI_COMMANDS, AiCommand, ai_command
 from paper_pile.core.commands import (
     Action,
     CommandContext,
@@ -309,121 +311,37 @@ def _ai_on(ctx: CommandContext) -> bool:
     return ctx.config is None or feature_on(ctx.config.values, "features.ai")
 
 
-def _ai_on_selection(ctx: CommandContext) -> bool:
-    return _ai_on(ctx) and bool(ctx.selection)
+def _ai_runner(cmd: AiCommand) -> Callable[[CommandContext], Action]:
+    def run(ctx: CommandContext) -> Action:
+        return cmd.spec()
+
+    return run
 
 
-@command(
-    "ai-summarize",
-    "Summarize",
-    group=AI,
-    icon="scroll-text",
-    subtitle="The selection, or the whole note",
-    badge="AI",
-    aliases=("summary", "tldr", "shorten"),
-    when=_ai_on,
-)
-def ai_summarize(ctx: CommandContext) -> Action:
-    return StreamInsert(
-        "Summarize the text below concisely: a short paragraph, or a few bullet points if it "
-        "has several parts. Keep the language of the text.",
-        source="auto",
-    )
-
-
-@command(
-    "ai-continue",
-    "Continue writing",
-    group=AI,
-    icon="pencil-line",
-    subtitle="From where the caret is",
-    badge="AI",
-    aliases=("continue", "write more", "extend", "autocomplete"),
-    when=_ai_on,
-)
-def ai_continue(ctx: CommandContext) -> Action:
-    return StreamInsert(
-        "Continue writing from exactly where the text below ends. Match its language, tone and "
-        "markdown formatting. Write only the continuation.",
-        source="before",
-    )
-
-
-@command(
-    "ai-explain",
-    "Explain selection",
-    group=AI,
-    icon="brain",
-    subtitle="Select text, then press Ctrl+J",
-    badge="AI",
-    aliases=("explain", "what does this mean"),
-    when=_ai_on_selection,
-)
-def ai_explain(ctx: CommandContext) -> Action:
-    return StreamInsert(
-        "Explain the text below clearly and briefly, for someone who knows the subject less well.",
-        source="selection",
-        lead="\n\n",
-    )
-
-
-@command(
-    "ai-rewrite",
-    "Rewrite",
-    group=AI,
-    icon="pen-line",
-    subtitle="Replaces the selection",
-    badge="AI",
-    aliases=("rephrase", "reword", "improve", "modify"),
-    when=_ai_on_selection,
-)
-def ai_rewrite(ctx: CommandContext) -> Action:
-    return StreamInsert(
-        "Rewrite the text below so it reads clearly and well. Keep its meaning, its facts, its "
-        "language and its markdown formatting. Write only the new text.",
-        source="selection",
-        replace_selection=True,
-    )
-
-
-@command(
-    "ai-fix",
-    "Fix grammar",
-    group=AI,
-    icon="spell-check",
-    subtitle="Replaces the selection",
-    badge="AI",
-    aliases=("grammar", "proofread", "spelling", "correct"),
-    when=_ai_on_selection,
-)
-def ai_fix(ctx: CommandContext) -> Action:
-    return StreamInsert(
-        "Fix the grammar, spelling and punctuation of the text below. Keep its meaning, tone, "
-        "language and markdown formatting. Write only the corrected text.",
-        source="selection",
-        replace_selection=True,
-    )
+# one list for every AI place (PLAN §4.28); the target is the selection or the whole note
+for _cmd in AI_COMMANDS:
+    command(
+        _cmd.id,
+        _cmd.title,
+        group=AI,
+        icon=_cmd.icon,
+        subtitle=_cmd.subtitle,
+        badge="AI",
+        aliases=_cmd.aliases,
+        when=_ai_on,
+    )(_ai_runner(_cmd))
 
 
 def edit_selection(instruction: str) -> StreamInsert:
-    """A rewrite asked in the Ask box (PLAN §4.27): change the selected text as the user asked
-    (shown as a diff)."""
-    return StreamInsert(
-        f"Change the text below as asked: {instruction.strip()}. Keep its language and markdown "
-        "formatting unless asked otherwise. Write only the new text.",
-        source="selection",
-        replace_selection=True,
-    )
+    """A rewrite asked in the Ask box in the user's own words (PLAN §4.27): Rewrite with them."""
+    rewrite = ai_command("ai-rewrite")
+    assert rewrite is not None
+    return rewrite.spec(instruction)
 
 
 def rewrite_note() -> StreamInsert:
-    """⋯ → Rewrite: the AI's version of the note's body (front matter kept), shown as a diff."""
-    return StreamInsert(
-        "Rewrite the text below so it reads clearly and is well organised. Keep its meaning, its "
-        "facts, its language and its markdown formatting. Write only the new text.",
-        source="selection",
-        replace_selection=True,
-    )
+    """⋯ → Rewrite: Rewrite of the note's body (front matter kept), shown as a diff."""
+    return edit_selection("")
 
 
 @command(

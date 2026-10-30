@@ -28,6 +28,7 @@ from nicegui import ui
 
 from paper_pile.core import assets
 from paper_pile.core.ai.access import AccessDeniedError
+from paper_pile.core.ai.commands import ai_command, command_target
 from paper_pile.core.ai.context import EditorSnapshot
 from paper_pile.core.ai.edits import (
     FINISHED,
@@ -77,7 +78,7 @@ from paper_pile.core.links import (
     wikilink_to,
 )
 from paper_pile.core.page_move import move_page_break
-from paper_pile.core.parser import Heading, body_start, find_heading
+from paper_pile.core.parser import Heading, find_heading
 from paper_pile.core.paste import smart_paste
 from paper_pile.core.picker import search_notes
 from paper_pile.core.recovery import RecoveryEntry, RecoveryStore
@@ -961,6 +962,12 @@ class EditorPane:
         if selection and command_id in BOX_AI_COMMANDS and self._ask_box_on():
             await self._ask_in_box(tab_id, text, start, end, selection, command_id)
             return
+        whole = ai_command(command_id)
+        if whole is not None and selection is None:  # nothing selected: the whole note
+            if await self._apply_edit(tab_id, text, remove_range(start, end), move_caret=False):
+                self._on_command_used(command_id)
+                await self.run_on_note(path, whole.spec())
+            return
         try:
             action = REGISTRY.run(command_id, ctx)
         except UnknownCommandError:
@@ -1308,19 +1315,22 @@ class EditorPane:
 
     async def rewrite(self, path: str) -> None:
         """⋯ → Rewrite: the AI's version of the whole body of ``path`` (its front matter stays),
-        shown as a diff like Fix grammar (PLAN §4.26)."""
+        shown as a diff (PLAN §4.26)."""
+        await self.run_on_note(path, rewrite_note())
+
+    async def run_on_note(self, path: str, spec: StreamInsert) -> None:
+        """An AI command with the whole body of ``path`` as its target (nothing selected, PLAN
+        §4.28): a change replaces the body (as a diff), an answer goes at the end."""
         await self.open(path)
         tab_id = self.tabs.active
         text = await self._live_text(tab_id) if tab_id is not None else None
         if tab_id is None or text is None or self._active_path() != path:
             return
-        start = body_start(text)
-        if not text[start:].strip():
+        target = command_target(text, None)
+        if target is None:
             self._toast("The note is empty.")
             return
-        await self._run_stream(
-            rewrite_note(), tab_id, text, len(text), len(text), (start, len(text))
-        )
+        await self._run_stream(spec, tab_id, text, len(text), len(text), (target.start, len(text)))
 
     def _on_block_to_chat(self, args: dict[str, Any]) -> None:
         """The copy button of a code / math / diagram block: attach the block to the chat."""

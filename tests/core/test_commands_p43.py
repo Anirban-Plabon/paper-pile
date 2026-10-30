@@ -261,36 +261,35 @@ def test_setting_off_keeps_blocks_on_their_own_lines_only() -> None:
 # ---- AI commands --------------------------------------------------------------------------------
 
 
-def test_ai_commands_exist_and_need_a_selection_only_where_it_makes_sense() -> None:
+def test_ai_commands_are_the_one_list_with_or_without_a_selection() -> None:
+    from paper_pile.core.ai.commands import AI_COMMAND_IDS
     from paper_pile.core.commands import StreamInsert
 
     without = CommandContext("a.md", "text", 0)
     with_sel = CommandContext("a.md", "some text", 0, selection=(0, 4))
-    ids_without = {c.id for c in REGISTRY.all(without)}
-    ids_with = {c.id for c in REGISTRY.all(with_sel)}
-    assert {"ai-summarize", "ai-continue", "ai-ask"} <= ids_without
-    assert "ai-explain" not in ids_without and "ai-fix" not in ids_without
-    assert {"ai-explain", "ai-fix"} <= ids_with
-    fix = REGISTRY.run("ai-fix", with_sel)
-    assert isinstance(fix, StreamInsert) and fix.replace_selection and fix.source == "selection"
+    for ctx in (without, with_sel):  # no selection: the whole note is the target (PLAN §4.28)
+        assert {*AI_COMMAND_IDS, "ai-ask"} <= {c.id for c in REGISTRY.all(ctx)}
+    assert not {"ai-fix", "ai-continue"} & {c.id for c in REGISTRY.all(with_sel)}  # removed
+    rewrite = REGISTRY.run("ai-rewrite", with_sel)
+    assert isinstance(rewrite, StreamInsert) and rewrite.replace_selection
     ask = REGISTRY.run("ai-ask", without)
     assert isinstance(ask, StreamInsert) and ask.ask
-    cont = REGISTRY.run("ai-continue", without)
-    assert isinstance(cont, StreamInsert) and cont.source == "before" and not cont.replace_selection
-    assert resolve(cont, "x/c", 0, 1) is None  # not a text edit: the editor streams the answer
+    summary = REGISTRY.run("ai-summarize", without)
+    assert isinstance(summary, StreamInsert) and not summary.replace_selection
+    assert resolve(summary, "x/c", 0, 1) is None  # not a text edit: the editor streams the answer
 
 
 def test_ai_commands_are_found_by_their_names() -> None:
     first = lambda q: REGISTRY.search(q)[0].commands[0].id  # noqa: E731
     assert first("summar") == "ai-summarize" and first("tldr") == "ai-summarize"
-    assert first("continue") == "ai-continue"
+    assert first("tone") == "ai-tone" and first("transl") == "ai-translate"
     assert [c.badge for c in REGISTRY.search("ask")[0].commands][:1] == ["AI"]
 
 
 def test_ai_commands_exist_only_while_ai_is_on(tmp_path: Path) -> None:
     config = Config(vault=tmp_path)
     ctx = CommandContext("a.md", "some text", 0, selection=(0, 4), config=config)
-    ai_ids = {"ai-summarize", "ai-continue", "ai-explain", "ai-fix", "ai-rewrite", "ai-ask"}
+    ai_ids = {"ai-summarize", "ai-explain", "ai-rewrite", "ai-tone", "ai-translate", "ai-ask"}
     assert ai_ids <= {c.id for c in REGISTRY.all(ctx)}
     config.set("features.ai", False)
     assert not ai_ids & {c.id for c in REGISTRY.all(ctx)}

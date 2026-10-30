@@ -3,7 +3,7 @@
 A settled selection opens a box like the chat's composer (without ``+``) under it, with *Move to
 chat* beside it. A question grows it into a small floating chat about the text; a request to
 rewrite it dissolves the box at once and the AI's version replaces the text when it is complete.
-``/`` lists Rewrite, Fix grammar, Summarize, Explain and Delete. ``static/askpop.js`` places the
+``/`` lists the AI commands (PLAN §4.28) and Delete. ``static/askpop.js`` places the
 box, drags the mini chat and reports keys and clicks outside it; what a message does is decided
 in core (``core/ai/selection_ask.py``) and the editor pane applies the result.
 """
@@ -15,16 +15,17 @@ import json
 import logging
 import time
 from collections.abc import Awaitable
-from dataclasses import dataclass, replace
+from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Literal
 
 from nicegui import Client, background_tasks, ui
 
 from paper_pile.core.ai.access import AccessDeniedError
+from paper_pile.core.ai.commands import ai_command
 from paper_pile.core.ai.edits import FINISHED, EditTooLongError
 from paper_pile.core.ai.provider import ProviderError
 from paper_pile.core.ai.selection_ask import DELETE, AskTurn, Role, box_commands, wants_edit
-from paper_pile.core.commands import REGISTRY, CommandContext, StreamInsert, UnknownCommandError
+from paper_pile.core.commands import CommandContext, StreamInsert
 from paper_pile.core.commands_builtin import edit_selection
 from paper_pile.core.parser import render_chat_html
 from paper_pile.gui.components.ai_access import confirm_access
@@ -295,19 +296,13 @@ class AskPopup:
         if command_id == DELETE:
             self._start(self._delete())
             return
-        ctx = CommandContext(target.path, target.text, 0, selection=(0, len(target.text)))
-        try:
-            action = REGISTRY.run(command_id, ctx)
-        except UnknownCommandError:
+        cmd = ai_command(command_id)  # the words added after it are its instruction (§4.28)
+        if cmd is None:
             return
-        if not isinstance(action, StreamInsert):
-            return
-        if action.replace_selection:
-            more = f" Also: {extra}" if extra else ""
-            self._start(self._rewrite(replace(action, instruction=action.instruction + more)))
+        if cmd.kind == "change":
+            self._start(self._rewrite(cmd.spec(extra)))
         else:
-            task = action.instruction + (f"\n\nAlso: {extra}" if extra else "")
-            self._start(self._ask(task, extra, title))
+            self._start(self._ask(cmd.instruction(extra), extra, title))
 
     def _move_to_chat(self) -> None:
         """*Move to chat*: the selection goes to the chat box; once the box holds answers, the

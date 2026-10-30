@@ -117,8 +117,16 @@ def test_the_slash_list() -> None:
 
     ctx = CommandContext("a.md", "teh cat", 0, selection=(0, 7))
     ids = [c.id for c in box_commands("", ctx)]
-    assert ids == ["ai-rewrite", "ai-fix", "ai-summarize", "ai-explain", "delete"]
-    assert [c.id for c in box_commands("gram", ctx)] == ["ai-fix"]
+    assert ids == [
+        "ai-rewrite",
+        "ai-tone",
+        "ai-summarize",
+        "ai-explain",
+        "ai-outline",
+        "ai-translate",
+        "delete",
+    ]
+    assert [c.id for c in box_commands("gram", ctx)] == ["ai-rewrite"]  # an alias
     assert [c.id for c in box_commands("rem", ctx)] == ["delete"]
     assert [c.title for c in box_commands("expl", ctx)] == ["Explain"]
     assert box_commands("heading", ctx) == []  # only AI commands and Delete

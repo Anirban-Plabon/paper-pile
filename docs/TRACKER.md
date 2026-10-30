@@ -335,7 +335,7 @@ Legend: 🧠 = needs Opus (see PLAN §6 model guidance) · ⬜ todo · 🔄 in p
 ### P25 — One set of AI commands everywhere (user request 2026-10-30)
 | ID | Task | Status | Notes |
 |---|---|---|---|
-| P25.1 | Core: command list + target + run path | ⬜ | |
+| P25.1 | Core: command list + target + run path | ✅ | `core/ai/commands.py` (`AI_COMMANDS`: Rewrite, Change tone, Summarize, Explain, Outline, Translate; kinds change / answer / shown; words = instruction; `command_target`); registered from the list in `commands_builtin`; Fix grammar, Continue writing and the `before` source removed; the Ask box runs picks through the list; a slash pick with nothing selected acts on the whole body (`EditorPane.run_on_note`). Kind routing (diff / under the target / shown) comes with P26.9, P26.12, P26.13 |
 | P25.2 | Core: AI suggested options | ⬜ | |
 | P25.3 | Core: clean written answers while streaming | ⬜ | |
 | P25.4 | All four surfaces from the one list | ⬜ | |
@@ -811,3 +811,4 @@ Legend: 🧠 = needs Opus (see PLAN §6 model guidance) · ⬜ todo · 🔄 in p
 - 2026-10-30 · P24 4th revision: Ask… opens the box at the caret (dialog gone), arrow icon + solid hover for Move to chat, stacked box-shaped chat suggestions · real app 53/53
 - 2026-10-30 · P24 5th revision: suggestions as wide as their text, own chat-with-arrow icon, lit Send in the box · real app 55/55
 - 2026-10-30 · P26.1 provider: per-call JSON schema + no-thinking, token counts, scripted fake, `ask_json` · 1288 tests
+- 2026-10-30 · P25.1 one AI command list (Rewrite, Change tone, Summarize, Explain, Outline, Translate), Fix grammar + Continue writing removed · 1292 tests

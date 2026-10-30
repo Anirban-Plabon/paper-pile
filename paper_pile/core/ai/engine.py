@@ -102,7 +102,6 @@ COMPACT_PROMPT = (
     "goals and questions, facts and decisions, names of notes, and anything left open. Plain "
     "markdown bullet points, at most 200 words, no introduction."
 )
-BEFORE_CARET_CHARS = 4000  # "Continue writing" sees this much of the text before the caret
 NOTE_ONLY = (
     "\n\nReply with only the text to put into the note: no introduction, no comments about what "
     "you did, and no code block around the answer."
@@ -894,8 +893,7 @@ class AiEngine:
                 "The AI may not read this note (its type, an exclusion, or ai: false)."
             )
         source = spec.source if spec.source != "auto" else ("selection" if selected else "note")
-        part = {"selection": selected, "before": text[max(0, caret - BEFORE_CARET_CHARS) : caret]}
-        given = part.get(source, "")
+        given = selected if source == "selection" else ""
         task = question or spec.instruction
         rules = "" if spec.ask else NOTE_ONLY
         system = ChatMessage("system", self.system_prompt() + rules)

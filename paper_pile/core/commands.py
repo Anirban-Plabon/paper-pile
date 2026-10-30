@@ -74,15 +74,15 @@ class StreamInsert:
     """An AI command: the model's answer is written into the note as it arrives.
 
     ``instruction`` is what the model is asked to do; ``source`` says which text goes with it
-    (``selection``, the whole ``note``, the text ``before`` the caret, ``auto`` = the selection if
-    there is one, else the note). ``replace_selection``: the answer replaces the selection, as
+    (``selection``, the whole ``note``, ``auto`` = the selection if there is one, else the
+    note). ``replace_selection``: the answer replaces the selection, as
     a diff (``ai/edits.py``: only a finished answer, never applied unseen unless the user chose
     *Apply at once*); otherwise it is typed at the caret. ``ask``: first ask the user
     for a question. ``lead`` is written before the answer.
     """
 
     instruction: str
-    source: Literal["selection", "note", "before", "auto"] = "auto"
+    source: Literal["selection", "note", "auto"] = "auto"
     replace_selection: bool = False
     ask: bool = False
     lead: str = ""

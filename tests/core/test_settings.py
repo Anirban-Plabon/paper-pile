@@ -323,7 +323,7 @@ def test_edit_selection_spec() -> None:
 
     spec = edit_selection("  make it shorter ")
     assert spec.source == "selection" and spec.replace_selection
-    assert "as asked: make it shorter." in spec.instruction
+    assert spec.instruction.startswith("Rewrite the text below: make it shorter.")
 
 
 def test_ai_edits_setting() -> None:
