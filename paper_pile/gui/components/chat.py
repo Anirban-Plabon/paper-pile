@@ -20,6 +20,7 @@ import logging
 import re
 import time
 from collections.abc import Awaitable, Callable
+from dataclasses import dataclass
 from pathlib import Path
 
 from nicegui import Client, background_tasks, ui
@@ -28,15 +29,26 @@ from paper_pile.core.ai.access import AccessDeniedError
 from paper_pile.core.ai.attachments import AttachmentError, FileRef, read_text_file
 from paper_pile.core.ai.chats import SavedChat, SavedQuote, list_chats
 from paper_pile.core.ai.chats import SavedTurn as Turn
+from paper_pile.core.ai.commands import (
+    AiCommand,
+    ai_command,
+    command_name,
+    command_target,
+    parse_command,
+    search_commands,
+)
 from paper_pile.core.ai.context import EditorSnapshot, source_view
+from paper_pile.core.ai.edit_run import Again, EditEnd
 from paper_pile.core.ai.edits import edit_action, edit_mode
 from paper_pile.core.ai.engine import AiEngine, Outgoing, Selection
+from paper_pile.core.ai.options import Option, suggest_options
 from paper_pile.core.ai.prompts import load_prompts, prompts_file, selection_kind, suggestions
 from paper_pile.core.ai.provider import Health, ProviderError, ProviderUnavailableError
 from paper_pile.core.links import resolve_wikilink, wikilink_to
 from paper_pile.core.parser import render_chat_html
 from paper_pile.core.picker import search_notes
 from paper_pile.gui.components.ai_access import confirm_access
+from paper_pile.gui.components.options_box import OptionsBox
 from paper_pile.gui.icons import ico, icon_button, line_icon, set_icon
 from paper_pile.gui.tips import tip
 
@@ -48,6 +60,31 @@ THINKING = '<span class="pp-thinking" aria-label="Thinking"><i></i><i></i><i></i
 HEALTH_EVERY_S = 30.0
 RECENT_CHATS = 5  # shown in the ⋮ menu; older ones under "More chats"
 _MENTION_TAIL = re.compile(r"@([^\s@\[\]]*)$")
+
+
+# a change command run from the chat box: (path, selected text or None for the whole note,
+# command id, the user's words, may the AI answer with options, which button started it)
+EditInNote = Callable[[str, str | None, str, str, bool, Again, tuple[str, ...]], Awaitable[EditEnd]]
+ACTION_LABELS = {"again": "Try again", "anyway": "Add it anyway", "change": "Change request"}
+
+
+@dataclass(slots=True)
+class _CommandCard:
+    """An AI command from the chat box's ``/`` list (PLAN §4.28) while it needs the user: its
+    options, or how a change ended without a diff. Shown under the messages, never saved."""
+
+    command_id: str
+    words: str
+    path: str
+    selected: str | None  # the attached text it acts on; None: the whole note
+    offer: bool = True  # may a change come back as options
+    options: tuple[Option, ...] = ()
+    options_title: str = ""
+    groups: tuple[str, ...] = ()  # of the options ticked for this run (the edit intent)
+    message: str = ""
+    error: bool = False
+    actions: tuple[str, ...] = ()
+    busy: bool = False
 
 
 def _chip_text(note: str, kind: str, size: str) -> str:
@@ -72,6 +109,7 @@ class ChatPane:
         enabled: Callable[[], bool] = lambda: True,  # the AI feature switch
         apply_to_note: Callable[[str, str, str], Awaitable[None]] | None = None,
         open_note: Callable[[str], None] = lambda path: None,
+        edit_in_note: EditInNote | None = None,
     ) -> None:
         self.ai = ai
         self.vault = ai.vault
@@ -79,6 +117,9 @@ class ChatPane:
         self._enabled = enabled
         self._apply_to_note = apply_to_note  # (path, old, new): show an answer as a diff there
         self._open_note = open_note  # a source under an answer was clicked
+        self._edit_in_note = edit_in_note  # a change command from the / list (PLAN §4.28)
+        self._command_card: _CommandCard | None = None
+        self._answering: _CommandCard | None = None  # the AI asked: the next message answers
         self._snapshot = snapshot
         self._insert = insert_text
         self._on_health = on_health
@@ -368,6 +409,7 @@ class ChatPane:
         if self._task is not None:
             return
         self.ai.new_chat()
+        self._command_card = self._answering = None
         self._render_log()
 
     def open_chat(self, chat_id: str) -> bool:
@@ -379,6 +421,7 @@ class ChatPane:
         if not self.ai.open_chat(chat_id):
             ui.notify("That chat could not be read.", type="warning")
             return False
+        self._command_card = self._answering = None
         self._render_log()
         return True
 
@@ -417,12 +460,14 @@ class ChatPane:
         self._title.set_text(self.ai.title or "New chat")
         self._log.clear()
         with self._log:
-            if not self.ai.turns:
+            if not self.ai.turns and self._command_card is None:
                 ui.label("No messages yet").classes("pp-muted pp-chat-empty")
             for i, turn in enumerate(self.ai.turns):
                 self._bubble(turn)
                 if i == self.ai.summarized - 1:  # the model gets a summary of what is above
                     ui.label("Earlier messages summarized").classes("pp-muted pp-chat-compacted")
+            if self._command_card is not None:
+                self._render_card(self._command_card)
         self._scroll_down()
 
     def _bubble(self, turn: Turn) -> ui.html | None:
@@ -864,8 +909,11 @@ class ChatPane:
             self._render_suggestions()  # typing hides the prompts, an empty box shows them
 
     def _update_mentions(self, value: str) -> None:
-        m = _MENTION_TAIL.search(value)
         self._mentions.clear()
+        if re.fullmatch(r"/\S*", value):  # the AI commands (PLAN §4.28)
+            self._update_commands(value[1:])
+            return
+        m = _MENTION_TAIL.search(value)
         if not m:
             self._mentions.set_visibility(False)
             return
@@ -882,6 +930,25 @@ class ChatPane:
                         ui.label(folder).classes("pp-muted")
                 row.on("click", lambda _e, p=path, t=tail: self._pick_mention(p, t))
         self._mentions.set_visibility(bool(hits))
+
+    def _update_commands(self, query: str) -> None:
+        hits = search_commands(query)
+        with self._mentions:
+            for cmd in hits:
+                row = ui.row().classes("pp-chat-mention pp-chat-cmd items-center no-wrap")
+                with row:
+                    line_icon(cmd.icon, "s")
+                    ui.label(cmd.title)
+                    ui.label(cmd.subtitle).classes("pp-muted pp-chat-cmd-sub")
+                row.on("click", lambda _e, c=cmd: self._pick_command(c))
+        self._mentions.set_visibility(bool(hits))
+
+    def _pick_command(self, cmd: AiCommand) -> None:
+        """A command from the ``/`` list: its name in the box; Enter runs it (words after it are
+        its instruction, none: the AI suggests options)."""
+        self._input.set_value(f"/{command_name(cmd)} ")
+        self._mentions.set_visibility(False)
+        self.focus_input()
 
     def _pick_mention(self, path: str, tail: str) -> None:
         name = wikilink_to(path, "", set(self.ai.note_paths()))
@@ -924,6 +991,17 @@ class ChatPane:
                     self.ai.allow_path(path)
         finally:
             self._asking = False
+        if self._answering is not None and not text.startswith("/"):
+            card, self._answering = self._answering, None  # the answer to the AI's question
+            self._input.set_value("")
+            words = f"{card.words}\nAnswer: {text}".strip()
+            self._run_change(card.command_id, words, card.path, card.selected, offer=False)
+            return
+        found = parse_command(text)
+        if found is not None:
+            await self._send_command(*found)
+            return
+        self._command_card = self._answering = None
         self._input.set_value("")
         self._mentions.set_visibility(False)
         picked, self._selections, self._open = self._selections, [], None
@@ -935,6 +1013,201 @@ class ChatPane:
         self.ai.save()
         self._task = background_tasks.create(self._answer(out))
         set_icon(self._send, "square")
+
+    # ---- AI commands from the / list (PLAN §4.28) -------------------------------------------
+
+    def _command_target(self) -> tuple[str, str | None] | None:
+        """What a command acts on: the first attached selection (in its note), else the open
+        note (whole)."""
+        if self._selections:
+            picked = self._selections[0]
+            path = next(
+                (p for p in self.ai.note_paths() if self.ai.link_name(p) == picked.note), None
+            )
+            return (path, picked.text) if path else None
+        path = self._active_path()
+        return (path, None) if path else None
+
+    async def _send_command(self, cmd: AiCommand, words: str) -> None:
+        target = self._command_target()
+        if target is None:
+            ui.notify(f"Open a note or attach a selection for /{command_name(cmd)}.")
+            return
+        path, selected = target
+        self._input.set_value("")
+        self._mentions.set_visibility(False)
+        self._answering = None
+        if not words:  # the AI suggests options first
+            card = _CommandCard(cmd.id, "", path, selected, busy=True)
+            self._show_card(card)
+            self._task = background_tasks.create(self._offer(cmd, card))
+            set_icon(self._send, "square")
+        elif cmd.kind == "change":
+            self._run_change(cmd.id, words, path, selected)
+        else:
+            self._send_answer_command(cmd, words, path)
+
+    def _show_card(self, card: _CommandCard | None) -> None:
+        self._command_card = card
+        self._render_log()
+
+    async def _offer(self, cmd: AiCommand, card: _CommandCard) -> None:
+        try:
+            note = self.ai.notes.read(card.path) or ""
+            body = command_target(note, None)
+            text = card.selected or (body.text if body else "")
+            options = await suggest_options(self.ai, cmd, path=card.path, note=note, target=text)
+            card.options = tuple(options)
+        except AccessDeniedError as exc:
+            card.message, card.error = str(exc), True
+        except asyncio.CancelledError:
+            card = None  # type: ignore[assignment]
+        finally:
+            self._task = None
+            set_icon(self._send, "arrow-up")
+            if card is not None:
+                card.busy = False
+            self._show_card(card)
+
+    def _apply_card(self, card: _CommandCard, instruction: str, groups: tuple[str, ...]) -> None:
+        """Apply in a command's options: it runs with the ticked ones as its words."""
+        cmd = ai_command(card.command_id)
+        if cmd is None or self._task is not None:
+            return
+        if cmd.kind == "change":
+            self._run_change(
+                cmd.id, instruction, card.path, card.selected, offer=False, groups=groups
+            )
+        else:
+            self._send_answer_command(cmd, instruction, card.path)
+
+    def _send_answer_command(self, cmd: AiCommand, words: str, path: str) -> None:
+        """Summarize, Explain, Outline, Translate: answered in the chat like a message, about
+        the attached selection or the whole note."""
+        picked, self._selections, self._open = self._selections, [], None
+        notes = [] if picked else [path]
+        files, self._files = self._files, []
+        self._notes = []
+        self._command_card = self._answering = None
+        self._render_selections()
+        self._render_refs()
+        out = self.ai.add_message(cmd.instruction(words), picked, notes, files)
+        self.ai.save()
+        self._task = background_tasks.create(self._answer(out))
+        set_icon(self._send, "square")
+
+    def _run_change(
+        self,
+        command_id: str,
+        words: str,
+        path: str,
+        selected: str | None,
+        *,
+        offer: bool = True,
+        how: Again = "again",
+        groups: tuple[str, ...] = (),
+    ) -> None:
+        """Rewrite / Change tone: a diff in the note; when there is none, the card says why."""
+        if self._edit_in_note is None or self._task is not None:
+            return
+        card = _CommandCard(
+            command_id, words, path, selected, offer=offer, groups=groups, busy=True
+        )
+        self._selections, self._open = [], None
+        self._render_selections()
+        self._show_card(card)
+        self._task = background_tasks.create(self._change(card, how))
+        set_icon(self._send, "square")
+
+    async def _change(self, card: _CommandCard, how: Again) -> None:
+        shown: _CommandCard | None = card
+        try:
+            assert self._edit_in_note is not None
+            end = await self._edit_in_note(
+                card.path, card.selected, card.command_id, card.words, card.offer, how, card.groups
+            )
+            if end.kind == "proposal":
+                card.message = "The change is shown in the note as a diff."
+            elif end.kind == "options":
+                card.options = tuple(Option(o) for o in end.options)
+                card.options_title = "Which of these do you mean? Pick one or more:"
+            else:
+                card.message, card.error = end.message, end.kind == "failed"
+                if end.kind == "question":
+                    self._answering = card
+                elif end.kind == "already":
+                    card.actions = ("anyway", "change")
+                elif end.retry:
+                    card.actions = ("again", "change")
+                else:
+                    card.actions = ("change",)
+        except asyncio.CancelledError:
+            shown = None
+        finally:
+            card.busy = False
+            self._task = None
+            set_icon(self._send, "arrow-up")
+            self._show_card(shown)
+
+    def _card_action(self, card: _CommandCard, action: str) -> None:
+        if self._task is not None:
+            return
+        card.actions = ()
+        cmd = ai_command(card.command_id)
+        if action == "change" and cmd is not None:
+            self._input.set_value(f"/{command_name(cmd)} {card.words}")
+            self._render_log()
+            self.focus_input()
+        elif action == "anyway":
+            self._run_change(
+                card.command_id,
+                card.words,
+                card.path,
+                card.selected,
+                offer=False,
+                how="anyway",
+                groups=card.groups,
+            )
+        else:
+            self._run_change(
+                card.command_id,
+                card.words,
+                card.path,
+                card.selected,
+                offer=card.offer,
+                groups=card.groups,
+            )
+
+    def _render_card(self, card: _CommandCard) -> None:
+        cmd = ai_command(card.command_id)
+        classes = "pp-msg pp-msg-ai pp-chat-cmdcard" + (" pp-msg-error" if card.error else "")
+        with ui.column().classes(classes):
+            ui.label("Assistant").classes("pp-msg-who")
+            if cmd is not None:
+                ui.label(f"/{command_name(cmd)} {card.words}".strip()).classes(
+                    "pp-askpop-msg-cmd pp-chat-cmdcard-cmd"
+                )
+            if card.busy:
+                ui.html(THINKING, sanitize=False).classes("pp-msg-body")
+            elif card.options:
+                OptionsBox(
+                    card.options,
+                    lambda i, g, c=card: self._apply_card(c, i, g),
+                    title=card.options_title,
+                )
+            else:
+                body = ui.html(render_chat_html(card.message), sanitize=False)
+                body.classes("pp-msg-body")
+                if card.actions:
+                    with ui.row().classes("pp-ai-actions items-center"):
+                        for action in card.actions:
+                            button = ui.button(
+                                ACTION_LABELS[action],
+                                on_click=lambda _e, a=action, c=card: self._card_action(c, a),
+                                color=None,
+                            )
+                            main = " pp-ai-action-main" if action != "change" else ""
+                            button.props("flat no-caps dense").classes("pp-ai-action" + main)
 
     async def _answer(self, out: Outgoing) -> None:
         reply = self.ai.start_reply()

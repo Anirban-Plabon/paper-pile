@@ -78,6 +78,7 @@ DEFAULTS: dict[str, Any] = {
         "keep_chats_days": 0,  # 0 = forever
         "chats_folder": ".memory",  # vault-relative, or absolute
         "edits": "ask",  # ask: a diff to accept | auto: applied at once | readonly: shown only
+        "edit_planning": "auto",  # auto: plan across the note | selection: one call (PLAN §4.29)
         "prompts_file": "",  # your suggested prompts: a markdown list (vault-relative / absolute)
         "selection_popup": True,  # the Ask box under a settled selection (PLAN §4.27)
     },

@@ -1,0 +1,12 @@
+{
+  "command": "ai-rewrite",
+  "instruction": "make it clearer",
+  "expect": [
+    [
+      "script_kept"
+    ],
+    [
+      "changed"
+    ]
+  ]
+}

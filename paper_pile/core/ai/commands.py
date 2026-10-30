@@ -31,6 +31,8 @@ class AiCommand:
     aliases: tuple[str, ...]
     task: str  # what the model is asked; ``{words}`` is the user's instruction
     default: str  # the instruction when the user gave none and picked no option
+    suggest: str  # what kind of options the AI suggests when the command runs without words
+    fallback: tuple[tuple[str, str], ...]  # (label, group) shown when the model gives none
 
     def instruction(self, words: str = "") -> str:
         """The task with the user's ``words`` (or the default) filled in."""
@@ -60,6 +62,14 @@ AI_COMMANDS: tuple[AiCommand, ...] = (
         ("rephrase", "reword", "improve", "modify", "edit", "fix", "grammar", "shorter", "longer"),
         "Rewrite the text below: {words}. " + KEEP + " Write only the new text.",
         "make it read clearly and well",
+        'ways to improve this text, each naming what it fixes (e.g. "Fix 3 grammar errors", '
+        '"Split the long second sentence", "Make it shorter")',
+        (
+            ("Fix grammar and spelling", "fix"),
+            ("Make it shorter", "length"),
+            ("Make it clearer", "clarity"),
+            ("Make it more detailed", "length"),
+        ),
     ),
     AiCommand(
         "ai-tone",
@@ -70,6 +80,9 @@ AI_COMMANDS: tuple[AiCommand, ...] = (
         ("tone", "formal", "casual", "friendly", "style", "voice"),
         "Rewrite the text below in this tone: {words}. " + KEEP + " Write only the new text.",
         "clear and friendly",
+        'tones that would suit this text and its readers (e.g. "More formal", "Friendly", '
+        '"Confident")',
+        (("More formal", "tone"), ("Friendly", "tone"), ("Confident", "tone"), ("Casual", "tone")),
     ),
     AiCommand(
         "ai-summarize",
@@ -80,6 +93,12 @@ AI_COMMANDS: tuple[AiCommand, ...] = (
         ("summary", "tldr", "short version"),
         "Summarize the text below: {words}. Keep the language of the text.",
         "concisely, as a short paragraph, or a few bullet points if it has several parts",
+        'kinds of summary that fit this text (e.g. "One line", "Key decisions", "3 bullet points")',
+        (
+            ("One line", "length"),
+            ("A short paragraph", "length"),
+            ("Key points as bullets", "structure"),
+        ),
     ),
     AiCommand(
         "ai-explain",
@@ -90,6 +109,13 @@ AI_COMMANDS: tuple[AiCommand, ...] = (
         ("what does this mean", "meaning", "clarify"),
         "Explain the text below: {words}. Keep the language of the text.",
         "clearly and briefly, for someone who knows the subject less well",
+        'things in this text worth explaining, or ways to explain it (e.g. "Explain the term '
+        'X", "In simple words", "With an example")',
+        (
+            ("In simple words", "clarity"),
+            ("With an example", "content"),
+            ("Step by step", "structure"),
+        ),
     ),
     AiCommand(
         "ai-outline",
@@ -100,6 +126,13 @@ AI_COMMANDS: tuple[AiCommand, ...] = (
         ("outline", "structure", "key points", "bullets"),
         "Write an outline of the text below: {words}. Keep the language of the text.",
         "as a nested bullet list of its main points",
+        'kinds of outline that fit this text (e.g. "Main points only", "Nested by section", '
+        '"As questions")',
+        (
+            ("Main points only", "length"),
+            ("Nested, two levels", "structure"),
+            ("As a numbered list", "structure"),
+        ),
     ),
     AiCommand(
         "ai-translate",
@@ -112,6 +145,14 @@ AI_COMMANDS: tuple[AiCommand, ...] = (
         "tables, links, images. Do not translate code, URLs, #tags, math, or the note name "
         "inside [[ ]] (only the text after |). Reply with only the translation.",
         "English",
+        "languages the user likely wants this text in (not the language it is written in)",
+        (
+            ("English", "language"),
+            ("Spanish", "language"),
+            ("French", "language"),
+            ("German", "language"),
+            ("Bengali", "language"),
+        ),
     ),
 )
 _BY_ID = {c.id: c for c in AI_COMMANDS}
@@ -144,3 +185,38 @@ def command_target(note: str, selection: tuple[int, int] | None) -> Target | Non
     if not note[start:].strip():
         return None
     return Target(start, len(note), note[start:], whole=True)
+
+
+# ---- typed in the chat box: ``/tone more formal`` (PLAN §4.28) ------------------------------
+
+
+def command_name(cmd: AiCommand) -> str:
+    """What is typed after ``/`` in the chat box: ``rewrite``, ``tone``, ``summarize``…"""
+    return cmd.id.removeprefix("ai-")
+
+
+def search_commands(query: str) -> list[AiCommand]:
+    """The commands for ``/query`` in the chat box, in the one list's order: all of them for an
+    empty query, else those whose name, title or an alias starts with it."""
+    q = query.strip().lower()
+    if not q:
+        return list(AI_COMMANDS)
+    return [
+        c
+        for c in AI_COMMANDS
+        if any(w.startswith(q) for w in (command_name(c), *c.title.lower().split(), *c.aliases))
+    ]
+
+
+def parse_command(text: str) -> tuple[AiCommand, str] | None:
+    """``/tone more formal`` → (Change tone, "more formal"); a partial name (``/to``) is the
+    first command it matches; None when the text is not an AI command (``/compact``, words)."""
+    if not text.startswith("/"):
+        return None
+    head, _, words = text[1:].partition(" ")
+    head = head.strip().lower()
+    if not head:
+        return None
+    exact = next((c for c in AI_COMMANDS if command_name(c) == head), None)
+    found = exact or next(iter(search_commands(head)), None)
+    return (found, words.strip()) if found is not None else None

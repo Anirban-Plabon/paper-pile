@@ -250,3 +250,21 @@ export class PageBreakWidget extends WidgetType {
     return el;
   }
 }
+
+// The `[!note]` of an Obsidian/GitHub callout header, drawn as the bold `Note:` label that a
+// `> **Note:**` callout shows, so both spellings look the same.
+export class CalloutLabelWidget extends WidgetType {
+  constructor(label) {
+    super();
+    this.label = label;
+  }
+  eq(other) {
+    return other.label === this.label;
+  }
+  toDOM() {
+    const el = document.createElement("span");
+    el.className = "pp-strong";
+    el.textContent = `${this.label}:`;
+    return el;
+  }
+}

@@ -34,6 +34,12 @@ Rules:
   in the intro".
 - If the task is unclear, write one short question in "question" and leave "edits" empty.
 Answer with JSON only, matching this schema: """
+OPTIONS_RULE = """- If the task is messy, can be read in more than one way, or asks for several
+  things at once, rewrite it as 2-4 short, clear requests in "options" (each complete on its
+  own, in the user's language) and leave "edits" empty. A clear task gets no options.
+"""
+MAX_OPTIONS = 4
+OPTION_CHARS = 120
 
 
 @dataclass(frozen=True, slots=True)
@@ -52,14 +58,18 @@ class Plan:
     edits: tuple[PlannedEdit, ...]
     already: tuple[tuple[str, str], ...] = ()  # (block or vault id, "all" / "part")
     question: str = ""
+    options: tuple[str, ...] = ()  # the task rewritten as clearer requests (the user picks)
     made_by_model: bool = True
     note: str = ""  # for the proposal's bar ("Changed only the selected text; …")
 
 
-def plan_schema(ids: Sequence[str], vault_ids: Sequence[str] = ()) -> dict[str, Any]:
-    """The JSON schema of a plan; ``ids``: the blocks it may name (not the fixed ones)."""
+def plan_schema(
+    ids: Sequence[str], vault_ids: Sequence[str] = (), *, options: bool = False
+) -> dict[str, Any]:
+    """The JSON schema of a plan; ``ids``: the blocks it may name (not the fixed ones);
+    ``options``: the model may answer with clearer requests instead of edits."""
     named = list(ids) or ["B1"]
-    return {
+    schema: dict[str, Any] = {
         "type": "object",
         "properties": {
             "already_there": {
@@ -92,6 +102,14 @@ def plan_schema(ids: Sequence[str], vault_ids: Sequence[str] = ()) -> dict[str, 
         },
         "required": ["already_there", "edits", "question"],
     }
+    if options:
+        schema["properties"]["options"] = {
+            "type": "array",
+            "maxItems": MAX_OPTIONS,
+            "items": {"type": "string", "maxLength": OPTION_CHARS},
+        }
+        schema["required"].insert(2, "options")
+    return schema
 
 
 def plan_task(instruction: str, targets: Sequence[str], schema: dict[str, Any]) -> str:
@@ -103,7 +121,10 @@ def plan_task(instruction: str, targets: Sequence[str], schema: dict[str, Any]) 
     else:
         where = f"The user selected blocks {targets[0]}–{targets[-1]}."
     compact = json.dumps(schema, separators=(",", ":"))
-    return f"Task: {instruction.strip()}\n{where}\n\n{PLAN_RULES}{compact}"
+    rules = PLAN_RULES
+    if "options" in schema["properties"]:  # before the question rule: options come first
+        rules = rules.replace("- If the task is unclear", OPTIONS_RULE + "- If the task is unclear")
+    return f"Task: {instruction.strip()}\n{where}\n\n{rules}{compact}"
 
 
 def parse_plan(
@@ -114,7 +135,7 @@ def parse_plan(
 ) -> Plan | None:
     """The model's plan, checked: unknown ids, actions and fixed blocks dropped, at most
     ``MAX_EDITS``, one change per block. None when nothing usable is left (no edits, nothing
-    already there, no question)."""
+    already there, no question, no options)."""
     if not isinstance(data, dict):
         return None
     by_id = {b.id: b for b in blocks}
@@ -150,9 +171,20 @@ def parse_plan(
             if isinstance(block, str) and (block in by_id or block in vault_ids):
                 already.append((block, str(raw["amount"])))
     question = str(data.get("question") or "").strip()[:160]
-    if not edits and not already and not question:
+    options = _options(data.get("options"))
+    if not edits and not already and not question and not options:
         return None
-    return Plan(tuple(edits), tuple(already[:MAX_ALREADY]), question)
+    return Plan(tuple(edits), tuple(already[:MAX_ALREADY]), question, options)
+
+
+def _options(raw: object) -> tuple[str, ...]:
+    """The usable options: strings, trimmed, no duplicates, at most ``MAX_OPTIONS``."""
+    out: list[str] = []
+    for item in raw if isinstance(raw, list) else []:
+        text = " ".join(item.split())[:OPTION_CHARS] if isinstance(item, str) else ""
+        if text and text.lower() not in (o.lower() for o in out):
+            out.append(text)
+    return tuple(out[:MAX_OPTIONS])
 
 
 def snap(plan: Plan, blocks: Sequence[Block]) -> Plan:

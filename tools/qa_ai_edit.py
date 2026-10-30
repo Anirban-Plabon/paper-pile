@@ -64,6 +64,40 @@ SCRIPT = [
     "We compare four options for hosting.",
     "The backups run every night.",
     "The backups run every night. See [[Ops]].",
+    '{"action": "edit"}',  # 3. "put it in quote": no edit verb, so the model decides
+    "> We compare four options for hosting.",
+    json.dumps(  # 4. /tone with no words: three tones (one pick-one group)
+        {
+            "options": [
+                {"label": t, "group": "tone"} for t in ("More formal", "Friendly", "Confident")
+            ]
+        }
+    ),
+    "The backups are run every night. See [[Ops]].",
+    '{"action": "edit"}',  # 5. a messy request: routed to an edit, the planner offers options
+    json.dumps(
+        {
+            "already_there": [],
+            "edits": [],
+            "options": ["Mention Fly.io here", "Add the price"],
+            "question": "",
+        }
+    ),
+    "not a plan",  # the re-run (options off): no usable plan twice → the selection is changed
+    "not a plan",
+    "- **VM**: a whole machine (5 a month; Fly.io is cheaper)",
+    "",  # 6. an empty answer: nothing changed, Try again in the box
+    "The backups are run every night. See [[Ops]].",
+    "The backups do run every night. See [[Ops]].",  # the diff bar's Try again
+    "Our nightly job copies all data to the cloud. See [[Ops]].",  # 7. too big for a fix…
+    "Our nightly job copies all data to the cloud. See [[Ops]].",  # …also when asked again
+    "The backups run every night. See [[Ops]].",  # Smaller change
+    # 9. Summarize from the Ask box: written under the text, without the chatter around it
+    "Sure! Here is a one-line summary:\n\nDocker runs one container.\n\nLet me know if you need more.",
+    '{"options": ["More formal", "Friendly", "Confident"]}',  # 10. /tone in the chat box
+    "The backups are run each night. See [[Ops]].",
+    "Les sauvegardes tournent chaque nuit. Voir [[Ops]].",  # 11. Translate → Replace
+    "Les sauvegardes tournent la nuit. Voir [[Ops]].",  # → Insert below
 ]
 HELP = r"""
 window.qa = {
@@ -114,8 +148,34 @@ async def ask_box(cdp: Cdp, selected: str, command: str, words: str) -> None:
     )
     await cdp.type(command)
     await asyncio.sleep(0.5)
+    widths = await cdp.js(
+        "[qa.box('.pp-askpop-cmds'), qa.box('.pp-askpop-card')].map(b => b && b[1])"
+    )
+    if os.environ.get("QA_SHOTS") and command == "/tone":
+        shot = await cdp.call("Page.captureScreenshot", format="png")
+        Path(os.environ["QA_SHOTS"], "box-list.png").write_bytes(base64.b64decode(shot["data"]))
+    check(
+        f"Ask box: the / list is narrower than the box ({command})",
+        widths[0] and widths[1] and widths[0] < widths[1],
+        widths,
+    )
     await cdp.key("Enter", 13)
     await asyncio.sleep(0.4)
+    await cdp.type(words)
+    await cdp.key("Enter", 13)
+
+
+async def ask_free(cdp: Cdp, selected: str, words: str) -> None:
+    """Typed words without a ``/`` command."""
+    await asyncio.sleep(1.5)  # the box opens no sooner than QUIET_S after the last edit
+    await cdp.js(f"qa.select({json.dumps(selected)})")
+    await wait_for(
+        cdp,
+        "!!document.querySelector('.pp-askpop textarea') && qa.rect('.pp-askpop textarea') !== null",
+    )
+    await asyncio.sleep(0.6)
+    await cdp.js("document.querySelector('.pp-askpop textarea').focus()")
+    await asyncio.sleep(0.3)
     await cdp.type(words)
     await cdp.key("Enter", 13)
 
@@ -146,6 +206,12 @@ async def main_checks(port: int) -> None:
             red is not None and green is not None and red[:2] == green[:2] and red[3] == "0px",
             [red, green],
         )
+        gap = await cdp.js(
+            "(() => { const r = document.querySelector('.pp-aidiff-band').getBoundingClientRect();"
+            " const g = document.querySelector('.pp-aidiff-add').getBoundingClientRect();"
+            " return [Math.round(r.bottom), Math.round(g.top)]; })()"
+        )
+        check("red band stops above the green rows", gap is not None and gap[0] <= gap[1], gap)
         whys = await cdp.js("qa.all('.pp-aidiff-why')")
         check(
             "each change says why",
@@ -187,6 +253,325 @@ async def main_checks(port: int) -> None:
         gone = await wait_for(cdp, "!document.querySelector('.pp-aidiff-bar')", 5)
         text = await cdp.js("qa.text()")
         check("Reject all leaves the note", gone and "Teh backups runs every night." in text, text)
+        # 3. words with no edit verb: the model says "edit", so it becomes a diff, not an answer
+        await ask_free(cdp, "We compare four options for hosting.", "put it in quote")
+        bar = await wait_for(cdp, "document.querySelector('.pp-aidiff-bar-text')?.textContent", 15)
+        answers = await cdp.js("document.querySelectorAll('.pp-askpop .pp-msg-ai').length")
+        check(
+            "unclear words routed by the model to an edit",
+            bar == "AI suggests 1 change" and not answers,
+            [bar, answers],
+        )
+        pos = await cdp.js("qa.rect('.pp-aidiff-bar .pp-aidiff-accept')")
+        if pos:
+            await cdp.click(*pos)
+        text = await wait_for(cdp, "!document.querySelector('.pp-aidiff-bar') && qa.text()", 8)
+        check(
+            "the paragraph became a quote",
+            isinstance(text, str) and "\n> We compare four options for hosting.\n" in text,
+            text,
+        )
+        # 4. a command with no words: the AI's options, ticked with real clicks, then Apply
+        await asyncio.sleep(1.5)
+        await ask_box(cdp, "Teh backups runs every night. See [[Ops]].", "/tone", "")
+        shown = await wait_for(
+            cdp, "qa.all('.pp-optbox .pp-opt-text').length && qa.all('.pp-optbox .pp-opt-text')", 10
+        )
+        check(
+            "no words: the options box opens",
+            shown == ["More formal", "Friendly", "Confident"],
+            shown,
+        )
+        off = await cdp.js("document.querySelector('.pp-optbox-apply')?.disabled")
+        check("Apply is off with nothing ticked", off is True, off)
+        hit = await cdp.js("qa.hit('.pp-optbox .pp-opt', 0)")
+        check("an option is clickable (hit-test)", hit, hit)
+        pos = await cdp.js("qa.rect('.pp-optbox .pp-opt', 0)")
+        if pos:
+            await cdp.click(*pos)
+        await asyncio.sleep(0.4)
+        state = await cdp.js(
+            "[document.querySelector('.pp-optbox .pp-opt').classList.contains('pp-opt-on'), document.querySelector('.pp-optbox-apply').textContent.trim(), document.querySelector('.pp-optbox-apply').disabled]"
+        )
+        check("ticking shows Apply 1", state == [True, "Apply 1", False], state)
+        pos = await cdp.js("qa.rect('.pp-optbox .pp-opt', 1)")
+        if pos:
+            await cdp.click(*pos)  # another tone: the first one is unticked
+        await asyncio.sleep(0.4)
+        state = await cdp.js(
+            "[[...document.querySelectorAll('.pp-optbox .pp-opt')].map(r => r.classList.contains('pp-opt-on')), document.querySelector('.pp-optbox-hint').textContent]"
+        )
+        check(
+            "one tone at a time, with a hint",
+            state == [[False, True, False, False], "Only one tone"],
+            state,
+        )
+        shot = await cdp.call("Page.captureScreenshot", format="png")
+        Path(os.environ["QA_OUT"], "options.png").write_bytes(base64.b64decode(shot["data"]))
+        if os.environ.get("QA_SHOTS"):
+            Path(os.environ["QA_SHOTS"], "options.png").write_bytes(base64.b64decode(shot["data"]))
+        pos = await cdp.js("qa.rect('.pp-optbox-apply')")
+        if pos:
+            await cdp.click(*pos)
+        bar = await wait_for(cdp, "document.querySelector('.pp-aidiff-bar-text')?.textContent", 15)
+        added = await cdp.js("qa.all('.pp-aidiff-add').join('\\n')")
+        check(
+            "Apply runs the command with the ticked option",
+            bar == "AI suggests 1 change" and "are run every night" in (added or ""),
+            [bar, added],
+        )
+        pos = await cdp.js("qa.rect('.pp-aidiff-bar .pp-aidiff-reject')")
+        if pos:
+            await cdp.click(*pos)
+        await wait_for(cdp, "!document.querySelector('.pp-aidiff-bar')", 5)
+        # 5. a messy request: the AI comes back with clearer ones, the user ticks both
+        await ask_free(cdp, "- **VM**: a whole machine", "fly too and maybe cost idk")
+        shown = await wait_for(
+            cdp, "qa.all('.pp-optbox .pp-opt-text').length && qa.all('.pp-optbox .pp-opt-text')", 15
+        )
+        title = await cdp.js("qa.all('.pp-optbox-title')")
+        check(
+            "a messy request comes back as options",
+            shown == ["Mention Fly.io here", "Add the price"] and "mean" in str(title),
+            [shown, title],
+        )
+        for i in (0, 1):
+            pos = await cdp.js(f"qa.rect('.pp-optbox .pp-opt', {i})")
+            if pos:
+                await cdp.click(*pos)
+            await asyncio.sleep(0.3)
+        label = await cdp.js("document.querySelector('.pp-optbox-apply').textContent.trim()")
+        check("both ticked: Apply 2", label == "Apply 2", label)
+        if os.environ.get("QA_SHOTS"):
+            shot = await cdp.call("Page.captureScreenshot", format="png")
+            Path(os.environ["QA_SHOTS"], "plan-options.png").write_bytes(
+                base64.b64decode(shot["data"])
+            )
+        pos = await cdp.js("qa.rect('.pp-optbox-apply')")
+        if pos:
+            await cdp.click(*pos)
+        bar = await wait_for(cdp, "document.querySelector('.pp-aidiff-bar-text')?.textContent", 15)
+        added = await cdp.js("qa.all('.pp-aidiff-add').join('\\n')")
+        check(
+            "Apply runs the picked requests (no options again)",
+            bar == "AI suggests 1 change" and "Fly.io is cheaper" in (added or ""),
+            [bar, added],
+        )
+        pos = await cdp.js("qa.rect('.pp-aidiff-bar .pp-aidiff-reject')")
+        if pos:
+            await cdp.click(*pos)
+        await wait_for(cdp, "!document.querySelector('.pp-aidiff-bar')", 5)
+        # 6. the change fails: the box says why, Try again runs it again
+        backups = "Teh backups runs every night. See [[Ops]]."
+        await ask_free(cdp, backups, "rewrite it more formally")
+        said = await wait_for(
+            cdp,
+            "qa.all('.pp-askpop .pp-ai-action').length && [qa.all('.pp-askpop .pp-msg-error'), qa.all('.pp-askpop .pp-ai-action')]",
+            15,
+        )
+        check(
+            "a failed change says why, with Try again",
+            bool(said)
+            and "Nothing was changed" in str(said[0])
+            and said[1] == ["Try again", "Change request"],
+            said,
+        )
+        if os.environ.get("QA_SHOTS"):
+            shot = await cdp.call("Page.captureScreenshot", format="png")
+            Path(os.environ["QA_SHOTS"], "failed.png").write_bytes(base64.b64decode(shot["data"]))
+        hit = await cdp.js("qa.hit('.pp-askpop .pp-ai-action', 0)")
+        pos = await cdp.js("qa.rect('.pp-askpop .pp-ai-action', 0)")
+        if pos:
+            await cdp.click(*pos)
+        bar = await wait_for(cdp, "document.querySelector('.pp-aidiff-bar-text')?.textContent", 15)
+        added = await cdp.js("qa.all('.pp-aidiff-add').join('\\n')")
+        check(
+            "Try again runs it again",
+            hit and "are run every night" in (added or ""),
+            [hit, bar, added],
+        )
+        pos = await cdp.js("qa.rect('.pp-aidiff-bar .pp-aidiff-again')")
+        if pos:
+            await cdp.click(*pos)
+        added = await wait_for(
+            cdp, "(t => t.includes('do run') && t)(qa.all('.pp-aidiff-add').join('\\n'))", 15
+        )
+        check("the diff bar's Try again: a new answer", "do run every night" in str(added), added)
+        pos = await cdp.js("qa.rect('.pp-aidiff-bar .pp-aidiff-reject')")
+        if pos:
+            await cdp.click(*pos)
+        await wait_for(cdp, "!document.querySelector('.pp-aidiff-bar')", 5)
+        # 7. a fix that changed too much: Smaller change
+        await asyncio.sleep(1.5)
+        await ask_box(cdp, backups, "/rewrite", "fix grammar")
+        smaller = await wait_for(
+            cdp, "!!document.querySelector('.pp-aidiff-bar .pp-aidiff-smaller')", 15
+        )
+        check("too big a change offers Smaller change", smaller, smaller)
+        pos = await cdp.js("qa.rect('.pp-aidiff-bar .pp-aidiff-smaller')")
+        if pos:
+            await cdp.click(*pos)
+        added = await wait_for(
+            cdp, "(t => t.includes('backups run') && t)(qa.all('.pp-aidiff-add').join('\\n'))", 15
+        )
+        check(
+            "Smaller change: a smaller answer", "The backups run every night" in str(added), added
+        )
+        pos = await cdp.js("qa.rect('.pp-aidiff-bar .pp-aidiff-reject')")
+        if pos:
+            await cdp.click(*pos)
+        await wait_for(cdp, "!document.querySelector('.pp-aidiff-bar')", 5)
+        # 8. the palette with nothing selected: the Ask box at the caret, the command picked
+        await asyncio.sleep(1.5)
+        await cdp.js(
+            "(() => { const v = qa.view(); v.focus(); v.dispatch({selection: {anchor: 0}}); })()"
+        )
+        await asyncio.sleep(0.4)
+        await cdp.key("p", 80, ctrl=True)
+        await wait_for(cdp, "!!document.querySelector('.pp-picker input, .q-dialog input')", 5)
+        await asyncio.sleep(0.4)
+        await cdp.type("Change tone")
+        await asyncio.sleep(0.6)
+        await cdp.key("Enter", 13)
+        chip = await wait_for(
+            cdp,
+            "(e => e && e.getClientRects().length && e.textContent)(document.querySelector('.pp-askpop-chip'))",
+            8,
+        )
+        check("palette: the Ask box with the command picked", chip == "/Change tone", chip)
+        await cdp.key("Escape", 27)
+        await asyncio.sleep(0.5)
+        # 9. Summarize in the Ask box: written into the note under the selection
+        await asyncio.sleep(1.0)
+        await ask_box(cdp, "- **Docker**: one container", "/summarize", "one line")
+        text = await wait_for(
+            cdp, "(t => t.includes('Docker runs one container.') && t)(qa.text())", 15
+        )
+        check(
+            "Summarize goes after the whole list (not inside it)",
+            "- **Fly.io**: a hosted platform\n\nDocker runs one container.\n" in str(text)
+            and "Sure" not in str(text)
+            and "Let me know" not in str(text),
+            text,
+        )
+        await asyncio.sleep(0.8)
+        await cdp.key("z", 90, ctrl=True)  # one undo step takes it out again
+        await asyncio.sleep(0.6)
+        text = await cdp.js("qa.text()")
+        check("one undo step removes it", "Docker runs one container." not in text, text)
+        # 10. the chat box: / list, /tone with no words → options card → Apply → diff
+        await asyncio.sleep(1.5)
+        await cdp.js(f"qa.select({json.dumps(backups)})")
+        await wait_for(cdp, "qa.rect('.pp-askpop-to-chat') !== null", 5)
+        await asyncio.sleep(0.6)
+        pos = await cdp.js("qa.rect('.pp-askpop-to-chat')")
+        if pos:
+            await cdp.click(*pos)  # Move to chat: the selection becomes a chip
+        await wait_for(cdp, "!!document.querySelector('.pp-chat .pp-chat-chip')", 5)
+        await cdp.js("document.querySelector('.pp-chat .pp-chat-input textarea').focus()")
+        await cdp.type("/to")
+        listed = await wait_for(cdp, "qa.all('.pp-chat-cmd').length && qa.all('.pp-chat-cmd')", 5)
+        check(
+            "chat: the / list shows the AI commands",
+            bool(listed) and "Change tone" in str(listed),
+            listed,
+        )
+        widths = await cdp.js(
+            "[qa.box('.pp-chat-mentions'), qa.box('.pp-chat .pp-chat-card')].map(b => b && b[1])"
+        )
+        if os.environ.get("QA_SHOTS"):
+            shot = await cdp.call("Page.captureScreenshot", format="png")
+            Path(os.environ["QA_SHOTS"], "chat-list.png").write_bytes(
+                base64.b64decode(shot["data"])
+            )
+        check(
+            "chat: the / list is narrower than the box",
+            widths[0] and widths[1] and widths[0] < widths[1],
+            widths,
+        )
+        pos = await cdp.js("qa.rect('.pp-chat-cmd', 0)")
+        if pos:
+            await cdp.click(*pos)
+        await asyncio.sleep(0.4)
+        value = await cdp.js("document.querySelector('.pp-chat .pp-chat-input textarea').value")
+        check("picking puts /tone in the box", value == "/tone ", value)
+        await cdp.js("document.querySelector('.pp-chat .pp-chat-input textarea').focus()")
+        await cdp.key("Enter", 13)
+        shown = await wait_for(
+            cdp,
+            "qa.all('.pp-chat .pp-optbox .pp-opt-text').length && qa.all('.pp-chat .pp-optbox .pp-opt-text')",
+            10,
+        )
+        check(
+            "chat: /tone with no words shows options",
+            shown == ["More formal", "Friendly", "Confident"],
+            shown,
+        )
+        if os.environ.get("QA_SHOTS"):
+            shot = await cdp.call("Page.captureScreenshot", format="png")
+            Path(os.environ["QA_SHOTS"], "chat-options.png").write_bytes(
+                base64.b64decode(shot["data"])
+            )
+        pos = await cdp.js("qa.rect('.pp-chat .pp-optbox .pp-opt', 0)")
+        if pos:
+            await cdp.click(*pos)
+        await asyncio.sleep(0.3)
+        pos = await cdp.js("qa.rect('.pp-chat .pp-optbox-apply')")
+        if pos:
+            await cdp.click(*pos)
+        added = await wait_for(
+            cdp, "(t => t.includes('each night') && t)(qa.all('.pp-aidiff-add').join('\\n'))", 15
+        )
+        said = await cdp.js("qa.all('.pp-chat .pp-chat-cmdcard .pp-msg-body')")
+        check(
+            "chat: Apply changes the attached text as a diff",
+            "each night" in str(added),
+            [added, said],
+        )
+        pos = await cdp.js("qa.rect('.pp-aidiff-bar .pp-aidiff-reject')")
+        if pos:
+            await cdp.click(*pos)
+        await wait_for(cdp, "!document.querySelector('.pp-aidiff-bar')", 5)
+        # 11. Translate in the Ask box: shown, then Replace (a diff) or Insert below
+        for push in ("replace", "insert"):
+            await asyncio.sleep(1.5)
+            await ask_box(cdp, backups, "/translate", "French")
+            buttons = await wait_for(
+                cdp,
+                "qa.all('.pp-askpop .pp-ai-action').length && qa.all('.pp-askpop .pp-ai-action')",
+                15,
+            )
+            check(
+                f"Translate answer: Replace / Insert below / Copy ({push})",
+                buttons == ["Replace", "Insert below", "Copy"],
+                buttons,
+            )
+            pos = await cdp.js(f"qa.rect('.pp-askpop .pp-ai-push-{push}')")
+            if pos:
+                await cdp.click(*pos)
+            if push == "replace":
+                added = await wait_for(
+                    cdp,
+                    "(t => t.includes('chaque nuit') && t)(qa.all('.pp-aidiff-add').join('\\n'))",
+                    10,
+                )
+                again = await cdp.js("!!document.querySelector('.pp-aidiff-bar .pp-aidiff-again')")
+                check(
+                    "Replace: a diff, without Try again",
+                    "chaque nuit" in str(added) and not again,
+                    [added, again],
+                )
+                pos = await cdp.js("qa.rect('.pp-aidiff-bar .pp-aidiff-reject')")
+                if pos:
+                    await cdp.click(*pos)
+                await wait_for(cdp, "!document.querySelector('.pp-aidiff-bar')", 5)
+            else:
+                text = await wait_for(cdp, "(t => t.includes('la nuit') && t)(qa.text())", 10)
+                check(
+                    "Insert below: under the selected text",
+                    f"{backups}\n\nLes sauvegardes tournent la nuit. Voir [[Ops]]." in str(text),
+                    text,
+                )
 
 
 def main() -> int:

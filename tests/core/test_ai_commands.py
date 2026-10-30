@@ -1,6 +1,16 @@
 """P25.1: the one list of AI commands and what they act on (PLAN §4.28)."""
 
-from paper_pile.core.ai.commands import AI_COMMAND_IDS, ai_command, command_target
+import paper_pile.core.commands_builtin  # noqa: F401  (registers the slash commands)
+from paper_pile.core.ai.commands import (
+    AI_COMMAND_IDS,
+    ai_command,
+    command_name,
+    command_target,
+    parse_command,
+    search_commands,
+)
+from paper_pile.core.ai.selection_ask import box_commands
+from paper_pile.core.commands import REGISTRY, CommandContext
 
 NOTE = "---\ntitle: T\n---\n# Head\n\nbody text\n"
 
@@ -46,3 +56,31 @@ def test_the_target_is_the_selection_else_the_body() -> None:
     assert whole is not None and whole.whole and whole.text == "# Head\n\nbody text\n"
     assert command_target(NOTE, (at, at)) == whole  # an empty selection: the whole note
     assert command_target("---\na: 1\n---\n  \n", None) is None  # nothing to act on
+
+
+def test_chat_box_command_names() -> None:
+    assert [command_name(c) for c in search_commands("")] == [
+        "rewrite",
+        "tone",
+        "summarize",
+        "explain",
+        "outline",
+        "translate",
+    ]
+    assert [c.id for c in search_commands("formal")] == ["ai-tone"]
+    found = parse_command("/tone  more formal ")
+    assert found is not None and found[0].id == "ai-tone" and found[1] == "more formal"
+    found = parse_command("/sum")
+    assert found is not None and found[0].id == "ai-summarize" and found[1] == ""
+    assert parse_command("/compact") is None and parse_command("hello") is None
+    assert parse_command("/") is None
+
+
+def test_every_ai_place_lists_the_same_commands_in_the_same_order() -> None:
+    """The editor's slash menu, the Ask box's / list and the chat box's / list (the palette is
+    built from AI_COMMANDS directly) — PLAN §4.28."""
+    ctx = CommandContext("a.md", "Some text.", 0, selection=(0, 10))
+    slash = [c.id for g in REGISTRY.search("", ctx) for c in g.commands if c.id in AI_COMMAND_IDS]
+    box = [c.id for c in box_commands("", ctx) if c.id in AI_COMMAND_IDS]
+    chat = [c.id for c in search_commands("")]
+    assert slash == box == chat == list(AI_COMMAND_IDS)

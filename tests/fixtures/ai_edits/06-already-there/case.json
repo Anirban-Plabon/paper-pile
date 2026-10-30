@@ -1,0 +1,13 @@
+{
+  "command": "ai-rewrite",
+  "instruction": "add Docker as an option",
+  "expect": [
+    [
+      "unchanged"
+    ],
+    [
+      "note_kind",
+      "exists"
+    ]
+  ]
+}

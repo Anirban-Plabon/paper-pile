@@ -109,3 +109,20 @@ def test_fallbacks() -> None:
     assert add.edits[0].action == "add_after" and add.edits[0].block == ID["Update it monthly."]
     whole = fallback_plan(BLOCKS, NOTE, [], "make it formal", adds=False)
     assert whole.edits[0].block == ID["# Guide"] and whole.edits[0].last == ID["Ask us."]
+
+
+def test_options_only_when_asked_for() -> None:
+    ids = [b.id for b in BLOCKS if not b.fixed]
+    plain = plan_schema(ids)
+    assert "options" not in plain["properties"] and '"options"' not in plan_task("x", [], plain)
+    offered = plan_schema(ids, options=True)
+    assert offered["required"] == ["already_there", "edits", "options", "question"]
+    task = plan_task("x", [], offered)
+    assert task.index('in "options"') < task.index("If the task is unclear")
+
+
+def test_parse_options() -> None:
+    raw = {"edits": [], "options": ["Add a FAQ entry", "  add a faq ENTRY ", 3, "", "b", "c", "d"]}
+    found = parse_plan(raw, BLOCKS, [])
+    assert found is not None and found.options == ("Add a FAQ entry", "b", "c", "d")
+    assert parse_plan({"edits": [], "options": "nope"}, BLOCKS, []) is None

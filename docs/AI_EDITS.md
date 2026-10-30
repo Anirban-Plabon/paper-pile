@@ -92,6 +92,7 @@ Stage 0 target + intent (no model)
   - Change tone → text / large.
   - An option of group `fix`, or the words grammar, spelling, typo, punctuation, proofread → text / small.
   - The words formal, casual, shorter, longer, simpler, clearer, concise, tone, rephrase → text / large.
+  - A markdown form for the target (quote, blockquote, bold, italic, bullet, numbered, checklist, code block, callout, strikethrough) without an add word → text / large (2026-10-31: "put it in quote" needs no plan).
   - Anything else → `note` / medium.
 - A wrong guess costs little. `note` only adds one plan call, and the plan may still choose just the target.
 - **Fast path:** `scope == "text"` skips Stage 1. The target blocks become one region, and Stage 2 runs once. So Rewrite and Change tone of a selection stay **one model call**.
@@ -187,7 +188,11 @@ Rules:
 - Set "new_section" to true only when the task asks for a new section or heading.
 - "why" is a short phrase for the user, like "add the option to the table" or "update the count
   in the intro".
-- If the task is unclear, write one short question in "question" and leave "edits" empty.
+- If the task is messy, can be read in more than one way, or asks for several things at once,
+  rewrite it as 2-4 short, clear requests in "options" (each one complete on its own, in the
+  user's language) and leave "edits" empty. A clear task gets no options.
+- If the task is unclear and options would not help, write one short question in "question"
+  and leave "edits" empty.
 Answer with JSON only, matching this schema: {schema as compact JSON}
 ```
 
@@ -204,8 +209,9 @@ Answer with JSON only, matching this schema: {schema as compact JSON}
       "block":{"enum":["...IDS"]},
       "new_section":{"type":"boolean"}},
     "required":["why","action","block","new_section"]}},
+  "options":{"type":"array","maxItems":4,"items":{"type":"string","maxLength":120}},
   "question":{"type":"string","maxLength":160}},
- "required":["already_there","edits","question"]}
+ "required":["already_there","edits","options","question"]}
 ```
 
 **Validation and snapping in Python** (`core/ai/plan.py`, `parse_plan`, `snap`):
@@ -220,6 +226,7 @@ Answer with JSON only, matching this schema: {schema as compact JSON}
   - An anchor on a heading moves to after the section's last block.
   - An anchor on a fixed block moves to after it.
 - **`delete` outside the target** is allowed but gets a `warn` issue (§4.6).
+- **`options` with no edits** (only when the run may offer them: Ask box requests; a text-only request on the fast path never reaches the planner, so it gets none) (2–4 items; 1 item = that request runs at once; more than 4 = cut): the run stops and the options are shown in the **options box** (PLAN §4.28: a checkbox each, "Your own: …", Apply N) as the AI's message in the Ask box or chat. Apply runs once more with the ticked options (and own words) as the instruction and **options switched off**, so a run never asks twice. Options and edits together → the edits win. Off when the run already came from the options box.
 - **`question` with no edits:** the run stops. The question is shown as the AI's message in the Ask box or chat. The user's reply re-runs with "Answer: …" added to the task.
 - **`already_there` with `all`** and no edits: no proposal. A notice "Already in this note: …" with [Show] (§4.7).
 
@@ -294,7 +301,7 @@ Reply with the new text for [B8] only.
 | G2 | No front matter or wrappers | New text starts with `---`/YAML, an outer fence, `<<<`/`>>>`, or a label like `[B8]:` / `Block B8:` | Strip | — |
 | G3 | Protected inline tokens | Multiset from old: `[[…]]`, `![[…]]`, `![](…)`, link URLs, bare URLs, `` `code` ``, `$…$`, `#tags` (`inline_tags`), `[^n]`, `^block-id`, HTML tags and comments. Each must be in new, except tokens the instruction names (remove / unlink + the token's text). | — | Retry listing the missing ones ("You dropped [[Hosting plan]] and `npm i`. Keep them exactly."), then `warn` "Lost: …" |
 | G4 | Fixed blocks byte-identical | Every `⟦KEEP n⟧` appears exactly once | Restore | A missing placeholder → retry, then `drop` that edit |
-| G5 | Change size | `change_share(old, new)` = 1 − difflib ratio on word tokens. Limits: small 0.2, medium 0.6, large none. (No separate "much shorter" check: it always trips this one first.) | — | Small intent over the limit → retry ("Change only what is wrong; keep every other word."), then `warn` "Changed 64 % of the words (asked: small fixes)" |
+| G5 | Change size | `change_share(old, new)` = 1 − difflib ratio on word tokens. Limits: small 0.2, medium 0.6, large none; a small fix may always change up to 3 words (`SMALL_WORDS`, 2026-10-31: three typos in a short sentence are a large share of it). (No separate "much shorter" check: it always trips this one first.) | — | Small intent over the limit → retry ("Change only what is wrong; keep every other word."), then `warn` "Changed 64 % of the words (asked: small fixes)" |
 | G6 | Block kind kept | `top_blocks(new)` kinds equal old's (a list stays a list, a table keeps its column count), unless `asks_structure` | Renumber ordered lists | `warn` |
 | G7 | No echoed context | ≥ 60 % of a neighbour block's word 3-shingles, or the "do not write" lines, appear in new | Trim an echo at the start or end | `warn` |
 | G8 | No commentary | `cleanup.clean_reply` rules (§6.2) | Strip | — |
@@ -370,6 +377,7 @@ def word_marks(old: str, new: str) -> WordMarks | None   # None when > 60 % chan
 - **When:** Rewrite or Change tone on the whole note, or on a selection whose target goes over the target share (§4.3).
 - **Chunks:** `chunks(blocks, max_tokens)` splits at `#` / `##` section starts, and further at block boundaries. The size is about (window − answer) / 2.5, so ~2k tokens at 8k.
 - **Each chunk is one write call.** The shared prefix holds the note's heading outline (for consistent tone). The suffix holds the chunk and the last rewritten paragraph of the previous chunk (for flow). The fast-path rules apply: G1 keeps all headings and levels, G3 the tokens, G5 the size.
+- *As built (2026-10-31):* `edit_context.chunks` / `chunk_tokens` in the fast path; each part is a region of one proposal shown at the end (the progressive display below is not built yet). Answer commands: `core/ai/longtext.py` `condensed` (the map step), then the usual streamed answer from the parts' summaries.
 - **Progressive proposal:** each finished chunk adds a region at once ("Rewriting 2 of 5 · Stop"), and the user may Accept earlier regions while later ones are written.
 - **Summarize / Outline of a note that does not fit:** map–reduce. One call per chunk (≤ 120 words each), then one final call on the chunk results. More than 8 chunks → the first 8, with the context line "first 8 of 12 parts".
 
@@ -378,6 +386,8 @@ def word_marks(old: str, new: str) -> WordMarks | None   # None when > 60 % chan
 ## 6. Answer commands (Summarize, Explain, Outline)
 
 ### 6.1 Where the answer goes
+
+*Built 2026-10-31 (P26.12):* `core/ai/placement.py` (`answer_point`, `already_answered`); the bullet switch is `StreamCleaner(avoid_bullet=)`; the heading floor is `cleanup.heading_floor`. Answer commands and Translate run with `think=False` (their reasoning is never shown and costs minutes on thinking models).
 
 `core/ai/placement.py`, `answer_point(text, target) -> AnswerPoint(offset, lead, heading_floor)`:
 - **Selection:** the end of the **top-level block** that holds the selection's end. A paragraph ends at the paragraph, a list after the whole list, a quote or callout after the quote, a table after the table, code after the fence.
@@ -408,6 +418,8 @@ One module, `core/ai/cleanup.py`. `clean_reply` moves here and `edits.py` re-exp
 ---
 
 ## 7. Translate: shown, then pushed by the user
+
+*Built 2026-10-31 (P26.13) in the Ask box (`edit_run.replacement_result` for Replace — its diff has no Try again —, `answer_point` for Insert below). In the chat pane a Translate answer is a chat answer with the chat's own Copy / Insert into note / Apply to note.*
 
 - **Where:** with a selection, the Ask box's mini chat; in the chat box, or with the whole note as target, the chat pane. Streamed and rendered as now.
 - **Buttons under Translate answers only** (an exception to the "no buttons under answers" rule, by the user's decision):
@@ -480,6 +492,27 @@ Settings → AI → Edits, "Plan edits across the note": `auto` (default) / `sel
 | A thinking model uses its budget on reasoning | Empty content or `length` | `think=False`; else `drop` with a message |
 | Ollama down or busy mid-run | `ProviderError` | Finished regions are kept as the proposal; a notice |
 
+### When the run ends without a change: the user retries (user, 2026-10-31)
+
+A run that ends without a proposal — or with one the user does not like — never just disappears. The AI's message (in the Ask box's mini chat, or in the chat when it ran from the chat box) says **why in one line** and carries buttons:
+
+| Ending | Message | Buttons |
+|---|---|---|
+| Cut off, stopped by an error, Ollama down mid-run | "The AI's answer was cut off; nothing was changed." / the provider's text | Try again · Change request |
+| Nothing left after the guards (every edit `drop`ped) | "Nothing was changed: <the reasons>." | Try again · Change request |
+| The model declines ("I can't…", empty plan, plan with no edits, no options, no question) | "The AI made no change: <its reason, cut to one line>." | Try again · Change request |
+| `already_there: all` | "Already in this note: “…”" + [Show] | Add it anyway · Change request |
+| Proposal shown (diff) | — (the diff bar) | the bar gets **Try again** next to Reject all (rejects, then runs again) |
+| A proposal with a G5 "changed too much" warning | the warning on the hunk | + **Smaller change** (runs again with "Change only what is needed; keep every other word.") |
+
+- **Try again** runs the same instruction on the same target as a new run (a fresh plan; the automatic one-retry-per-block policy above applies again). When the target text is gone or changed, the button is disabled with "The text changed — select it again".
+- **Change request** puts the user's words back in the box (Ask box, or chat composer) with the command chip, caret at the end.
+- **Smaller change** runs again with "Change only what is needed; keep every other word" and the change-size limit one step down (large → medium → small).
+- **Add it anyway** runs again with "The user wants it added even though similar text exists." (`already_there` is then ignored; when the plan still names no edits, the text is placed by the deterministic plan).
+- A run started from these buttons is a normal run (diff in *Ask first*, the same guards); it never applies more than the first would have.
+- A **question** from the planner: shown in the box; the user's next message there answers it (the request runs again with "Answer: …", without options).
+- Where it shows: a run from the editor (slash menu, palette, Ask box) reopens the Ask box at the target as the mini chat holding that message; a run from the chat box answers in the chat. *As built (2026-10-31):* the Ask box only; ⋯ Rewrite and the slash menu with the box off still end in toasts until P25.4 sends them through the box, and the chat box gets it with its AI commands (P25.4).
+
 **The safety promise.** Whatever the model outputs, nothing with a guard warning is applied without the user seeing it, and nothing outside the target is applied silently. Guards are deterministic, so this is testable at 100 %.
 
 ---
@@ -512,7 +545,7 @@ Settings → AI → Edits, "Plan edits across the note": `auto` (default) / `sel
 | 16 | Model replies with a preamble, a closing line, a fence, `<think>`, invalid JSON, an unknown id | Cleaned / fallback used (unit) |
 
 - **Unit mode:** part of `uv run pytest -q`, with `FakeProvider(script=…)`. Checks exact pipeline results, including every bad-output path.
-- **Real mode** (opt-in): `uv run python tools/ai_eval.py --model qwen2.5:7b-instruct --runs 3 [--case 5]`. A pytest mark `ollama`, skipped unless `PAPER_PILE_EVAL_MODEL` is set. Prints a pass rate per case and check, the number of calls, time, tokens and prefix-cache hits. The JSON report goes to a scratch directory, not into the repo.
+- **Real mode** (opt-in): `uv run python tools/ai_eval/run.py --model gemma4:12b --runs 3 [--case 05]` (as built 2026-10-31: the harness is the package `tools/ai_eval/` — `cases.py`, `checks.py`, `run.py`; no pytest mark). Each run gets a scratch vault, config and access grant. Prints the pass rate per case and the failing checks, the calls and the time; the JSON report goes to a scratch folder. A case's `expect` holds the checks any model must pass, `expect_unit` the scripted replies' exact wording; `unit_only` cases (16a/b: bad model output) and case 14 (`test_single_choice_groups`) run in unit mode only; `num_ctx` gives the long-text case (11) a small window. Prefix-cache hits are not measured yet.
 - **Pass criteria:**
   - Safety checks (nothing that broke a guard is applied silently) at 100 %.
   - Quality on one 7–9B instruct model ≥ 80 % of runs for cases 1–4, 6, 9, 10, 15, and ≥ 60 % for cases 5, 7, 8.
@@ -579,6 +612,8 @@ Settings → AI → Edits, "Plan edits across the note": `auto` (default) / `sel
 | P26.14 | Eval harness, unit | All 16 cases run in `pytest -q` with scripted replies |
 | P26.15 | Eval harness, real Ollama | `tools/ai_eval.py` report; baselines for 3 model sizes in TRACKER; prefix-cache hits measured (switch writes to compact prompts if they rarely hit) |
 | P26.17 | Edit another note on request | An instruction that names another note (`[[x]]` / `@x`) and asks to change it plans blocks in that note too (access check); its changes are a proposal shown when that note opens in a tab, never applied silently (tests + real app) |
+| P26.18 | Options from the planner (user 2026-10-31) | `options` in the schema and prompt; 2–4 → stop with options, 1 → run it, options + edits → edits; the re-run from the options box has options off (tests with scripted replies) |
+| P26.19 | User retry (user 2026-10-31) | `EditRun` ends with a typed outcome (`cut` / `dropped` / `declined` / `already_there` / `proposal`) + a one-line reason; Try again / Change request / Add it anyway / Smaller change build the right next run; target gone → disabled (tests); the buttons in the mini chat, the chat and the diff bar (real app, real mouse events) |
 | P26.16 | Setting + docs | `ai.edit_planning` (Auto / Selection only) in Settings → AI; PLAN §4.26 edit table, §4.28 and §4.29 match the code; QA checklist |
 
 ---

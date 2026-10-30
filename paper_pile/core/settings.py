@@ -38,6 +38,7 @@ MOTIONS = ("off", "fast", "normal", "slow")
 MOTION_LABELS = {"off": "Off", "fast": "Fast", "normal": "Normal", "slow": "Slow"}
 ICON_COLORS = {"default": "Default", "accent": "Accent"}  # value -> shown
 EDIT_MODES = {"ask": "Ask first", "auto": "Apply at once", "readonly": "Read-only"}  # ai.edits
+EDIT_PLANNING = {"auto": "Auto", "selection": "Selection only"}  # ai.edit_planning
 MOTION_FACTORS = {"off": 0.0, "fast": 0.6, "normal": 1.0, "slow": 1.6}  # × every duration
 MODES = ("live", "source")
 PAPER_SIZES = ("A4", "Letter")  # core/printdoc.py PAPERS
@@ -440,6 +441,15 @@ SECTIONS: dict[str, tuple[Setting, ...]] = {
             help="Ask first shows a diff to accept",
             group="Context",
             essential=True,
+        ),
+        Setting(
+            "ai.edit_planning",
+            "Plan edits across the note",
+            "choice",
+            tuple(EDIT_PLANNING),
+            help="Auto lets the AI change other places that must agree (a list, a count); "
+            "Selection only is one call — faster on slow, CPU-only setups",
+            group="Context",
         ),
         Setting(
             "ai.selection_popup",

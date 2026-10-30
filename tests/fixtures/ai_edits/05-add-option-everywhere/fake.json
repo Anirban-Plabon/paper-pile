@@ -1,0 +1,6 @@
+[
+  "{\"already_there\": [], \"edits\": [{\"why\": \"add the option\", \"action\": \"add_after\", \"block\": \"B5\", \"new_section\": false}, {\"why\": \"add it to the table\", \"action\": \"add_after\", \"block\": \"B7\", \"new_section\": false}, {\"why\": \"update the count\", \"action\": \"change\", \"block\": \"B2\", \"new_section\": false}], \"question\": \"\"}",
+  "- **Fly.io**: a hosted platform",
+  "| Fly.io | 2 |",
+  "We compare four options for hosting."
+]

@@ -29,9 +29,20 @@ from nicegui import ui
 import paper_pile.core.commands_builtin  # noqa: F401  (importing it registers the slash commands)
 from paper_pile.core import assets
 from paper_pile.core.ai.access import AccessDeniedError
-from paper_pile.core.ai.commands import ai_command, command_target
-from paper_pile.core.ai.context import EditorSnapshot
-from paper_pile.core.ai.edit_run import EditResult, EditRun
+from paper_pile.core.ai.cleanup import StreamCleaner, heading_floor
+from paper_pile.core.ai.commands import AiCommand, ai_command, command_target
+from paper_pile.core.ai.context import EditorSnapshot, estimate_tokens
+from paper_pile.core.ai.edit_context import chunk_tokens
+from paper_pile.core.ai.edit_run import (
+    Again,
+    EditEnd,
+    EditResult,
+    EditRun,
+    again_words,
+    edit_end,
+    failure_end,
+    replacement_result,
+)
 from paper_pile.core.ai.edits import (
     FINISHED,
     EditAction,
@@ -43,6 +54,8 @@ from paper_pile.core.ai.edits import (
     replacement_action,
 )
 from paper_pile.core.ai.engine import AiEngine
+from paper_pile.core.ai.longtext import condensed
+from paper_pile.core.ai.placement import AnswerPoint, already_answered, answer_point
 from paper_pile.core.ai.proposals import Edit as ProposedEdit
 from paper_pile.core.ai.proposals import (
     Proposal,
@@ -198,6 +211,11 @@ class EditorPane:
         self._ask_selection = ask_selection  # the Ask box's Add to chat: attach it to the chat
         self._proposals: dict[int, Proposal] = {}  # AI edits waiting for Accept / Reject, by tab
         self._edit_runs: dict[int, EditRun] = {}  # the run behind a tab's proposal ("Update")
+        # what was asked for a tab's proposal, for the diff bar's Try again / Smaller change:
+        # (the note then, the selection, the command, the user's words, the ticked groups)
+        self._edit_asks: dict[
+            int, tuple[str, tuple[int, int] | None, str, str, tuple[str, ...]]
+        ] = {}
         self._readonly: dict[int, bool] = {}  # shown read-only (Settings → AI → AI changes)
         self._ai_kept: set[int] = set()  # proposals whose "before AI" version is kept
         self._ai_selection: dict[str, Any] | None = None  # set by Ctrl+J in the editor
@@ -981,7 +999,10 @@ class EditorPane:
         if whole is not None and selection is None:  # nothing selected: the whole note
             if await self._apply_edit(tab_id, text, remove_range(start, end), move_caret=False):
                 self._on_command_used(command_id)
-                await self.run_on_note(path, command_id)
+                if self._ask_box_on():  # the Ask box at the caret, the command picked
+                    await self._ask_whole(tab_id, path, command_id)
+                else:
+                    await self.run_on_note(path, command_id)
             return
         try:
             action = REGISTRY.run(command_id, ctx)
@@ -1008,6 +1029,170 @@ class EditorPane:
     def _ask_box_on(self) -> bool:
         """The Ask box is on (AI on and Settings → AI → Ask box under a selection)."""
         return bool(editor_options(self._config).get("aiPopup"))
+
+    async def run_ai_command(self, command_id: str) -> None:
+        """An AI command picked in the palette (PLAN §4.28): the Ask box with it picked, under
+        the selection or at the caret for the whole note; with the box off it runs at once."""
+        tab_id, path, cmd = self.tabs.active, self._active_path(), ai_command(command_id)
+        if tab_id is None or path is None or cmd is None:
+            return
+        sel = await self._editor.get_selection()
+        if sel is None or not sel[0].strip():
+            if self._ask_box_on():
+                await self._ask_whole(tab_id, path, command_id)
+            else:
+                await self.run_on_note(path, command_id)
+            return
+        if self._ask_box_on():
+            self._editor.ask_about(tab_id, sel[1], sel[2], command_id)
+            return
+        text = await self._live_text(tab_id)
+        if text is None:
+            return
+        start, end = codepoint_index(text, sel[1]), codepoint_index(text, sel[2])
+        if cmd.kind == "change":
+            await self.run_edit(tab_id, text, (start, end), command_id)
+        else:
+            await self._write_at_point(tab_id, text, (start, end), command_id)
+
+    async def _ask_whole(self, tab_id: int, path: str, command_id: str) -> None:
+        """The Ask box at the caret with ``command_id`` picked, the whole note as its target."""
+        text = await self._live_text(tab_id)
+        if text is None:
+            return
+        target = command_target(text, None)
+        if target is None:
+            self._toast("The note is empty.")
+            return
+        ask = AskTarget(
+            tab_id,
+            path,
+            target.text,
+            utf16_index(text, target.start),
+            utf16_index(text, target.end),
+            whole=True,
+        )
+        self.ask_popup.open_whole(ask, await self._editor.caret_rect() or {}, command_id)
+
+    async def write_answer(self, target: AskTarget, command_id: str, words: str) -> None:
+        """An answer command run in the Ask box (Summarize, Explain, Outline; PLAN §4.28):
+        written into the note under its text — after the selection's last line, or at the end
+        of the note for the whole note — as one undo step."""
+        cmd = ai_command(command_id)
+        found = await self.ask_target_text(target)
+        if cmd is None or found is None:
+            self._toast("The text changed; select it again.", error=True)
+            return
+        text, start, end = found
+        await self._write_at_point(target.tab_id, text, (start, end), cmd.id, words, target.whole)
+
+    async def _write_at_point(
+        self,
+        tab_id: int,
+        text: str,
+        selection: tuple[int, int],
+        command_id: str,
+        words: str = "",
+        whole: bool = False,
+    ) -> None:
+        """An answer command's text after the block that holds the selection (never inside a
+        list or table), or at the end of the note (AI_EDITS §6.1); a note when the section has
+        such an answer already (it is still written). A text too long for one call is read
+        part by part first (AI_EDITS §5)."""
+        cmd, ai, path = ai_command(command_id), self._engine, self._tab_path(tab_id)
+        if cmd is None or ai is None or path is None:
+            return
+        point = answer_point(text, *selection, whole=whole)
+        said = already_answered(text, point.offset, command_id)
+        if said:
+            self._toast(said)
+        target = text[selection[0] : selection[1]]
+        given = None
+        if estimate_tokens(target) > chunk_tokens(await ai.window()):
+            given = await self._read_long(ai, cmd, path, text, target)
+            if given is None:
+                return
+        at = point.offset
+        await self._run_stream(
+            cmd.spec(words), tab_id, text, at, at, selection, point=point, given=given
+        )
+
+    async def _read_long(
+        self, ai: AiEngine, cmd: AiCommand, path: str, text: str, target: str
+    ) -> str | None:
+        """The map step for a long text (``core/ai/longtext.py``), with "reading part 2 of 5"
+        and Stop; None when it was stopped, refused or failed (said in a toast)."""
+        if not await confirm_access(ai, self._host):
+            return None
+        task = asyncio.current_task()
+        stopped = False
+
+        def stop() -> None:
+            nonlocal stopped
+            stopped = True
+            if task is not None:
+                task.cancel()
+
+        with self._host:
+            note = ui.notification(
+                "AI is reading a long note…",
+                spinner=True,
+                timeout=None,
+                close_button="Stop",
+                on_dismiss=stop,
+            )
+        try:
+            ai.require_note(path, text)
+
+            def progress(n: int, total: int) -> None:
+                note.message = f"AI: reading part {n} of {total}…"
+
+            return await condensed(ai, cmd, target, progress)
+        except asyncio.CancelledError:
+            if not stopped:
+                raise
+            return None
+        except (AccessDeniedError, ProviderError) as exc:
+            self._toast(str(exc), error=True)
+            return None
+        finally:
+            stopped = True  # a late dismiss must not cancel what follows
+            note.dismiss()
+
+    def ai_readonly(self) -> bool:
+        """*Read-only* (Settings → AI): the AI's answers never go into a note."""
+        return self._edit_mode() == "readonly"
+
+    async def replace_with_answer(self, target: AskTarget, answer: str) -> None:
+        """Translate's *Replace* (AI_EDITS §7): the answer in place of the box's text, as a
+        checked diff (applied at once only in *Apply at once* when nothing needs a look)."""
+        found = None if target.whole else await self.ask_target_text(target)
+        if found is None:
+            self._toast("The text changed; use Insert below or Copy.", error=True)
+            return
+        text, start, end = found
+        result = replacement_result(target.path, text, start, end, answer, "translation")
+        if result.proposal is None:
+            self._toast("The translation is the same as the text.")
+            return
+        self._edit_asks.pop(target.tab_id, None)  # nothing to "try again": the answer is given
+        await self._show_edit_result(target.tab_id, target.path, None, result)
+
+    async def insert_answer_below(self, target: AskTarget, answer: str) -> None:
+        """Translate's *Insert below*: the answer under the box's text (the whole note: at its
+        end), one undo step, a "before AI" version kept."""
+        found = await self.ask_target_text(target)
+        body = clean_reply(answer, "").strip()
+        if found is None or not body:
+            self._toast("The text changed; use Copy.", error=True)
+            return
+        text, start, end = found
+        point = answer_point(text, start, end, whole=target.whole)
+        at = point.offset
+        insert = f"{point.lead}{body}"
+        self.keep_version(target.path, text, "before AI")
+        edit = TextEdit((TextChange(at, at, insert),), at + len(insert))
+        await self._apply_edit(target.tab_id, text, edit, move_caret=False)
 
     async def _ask_in_box(
         self, tab_id: int, text: str, start: int, end: int, selection: tuple[int, int], cmd: str
@@ -1295,6 +1480,9 @@ class EditorPane:
         text = await self._live_text(target.tab_id) if live else buffer and buffer.text
         if text is None:
             return None
+        if target.whole:  # the note's body as it is now
+            body = command_target(text, None)
+            return None if body is None else (text, body.start, body.end)
         start, end = codepoint_index(text, target.start), codepoint_index(text, target.end)
         if text[start:end] != target.text:
             start = text.find(target.text)
@@ -1340,8 +1528,7 @@ class EditorPane:
         if cmd.kind == "change":
             await self.run_edit(tab_id, text, None, command_id, words)
             return
-        spec = cmd.spec(words)
-        await self._run_stream(spec, tab_id, text, len(text), len(text), (target.start, len(text)))
+        await self._write_at_point(tab_id, text, (target.start, len(text)), command_id, words, True)
 
     def _on_block_to_chat(self, args: dict[str, Any]) -> None:
         """The copy button of a code / math / diagram block: attach the block to the chat."""
@@ -1388,9 +1575,14 @@ class EditorPane:
         selection: tuple[int, int] | None,
         *,
         apply_now: bool = False,
+        point: AnswerPoint | None = None,
+        given: str | None = None,
     ) -> None:
         """Run an AI command: ask the model and write its answer into the note as it arrives.
-        ``apply_now``: a replacement that would be a diff to accept is applied (the Ask box)."""
+        ``apply_now``: a replacement that would be a diff to accept is applied (the Ask box).
+        ``point``: where an answer command's text goes (``anchor`` = its offset) — its lead,
+        heading floor and the list marker to avoid (AI_EDITS §6.1). ``given``: the text the
+        command is about, when it is not the selection itself (a long note's parts, condensed)."""
         ai = self._engine
         path = self._active_path()
         if ai is None or path is None:
@@ -1411,6 +1603,8 @@ class EditorPane:
             question = asked
         # the "/query" was removed already: the note is now `text` without text[anchor:end]
         selected = text[selection[0] : selection[1]] if selection else ""
+        if given is not None:  # a long text, read part by part: its parts' summaries
+            selected = given
         body_text = text[:anchor] + text[end:]
         self.keep_version(path, body_text, "before AI")
         try:
@@ -1438,19 +1632,28 @@ class EditorPane:
         finish: list[str] = []
         last = time.monotonic()
         live = not spec.replace_selection
+        # no "Sure! Here is…", closing remark or fence around everything in the note (§4.28)
+        floor = point.heading_floor if point else heading_floor(body_text, anchor)
+        cleaner = StreamCleaner(floor, avoid_bullet=point.avoid_bullet if point else "")
+        lead = point.lead if point else spec.lead
         editor = self._editor  # the answer goes where it was asked for, even if focus moves
         try:
             if live:
                 await editor.stream_begin(stream_id, utf16_index(body_text, anchor))
-                if spec.lead and not await editor.stream_append(stream_id, spec.lead):
+                if lead and not await editor.stream_append(stream_id, lead):
                     return
-            async for piece in ai.stream(messages, on_finish=finish.append):
+            # text for the note: a thinking model's reasoning would only delay it (never shown)
+            think = None if spec.ask else False
+            async for piece in ai.stream(messages, on_finish=finish.append, think=think):
                 collected += piece
-                pending += piece
-                if live and time.monotonic() - last >= STREAM_FLUSH_S:
+                if live:
+                    pending += cleaner.feed(piece)
+                if live and pending and time.monotonic() - last >= STREAM_FLUSH_S:
                     if not await editor.stream_append(stream_id, pending):
                         return  # another note was opened: the answer stops here
                     pending, last = "", time.monotonic()
+            if live:
+                pending += cleaner.finish()
             if live and pending:
                 await editor.stream_append(stream_id, pending)
             elif spec.replace_selection and selection:
@@ -1464,7 +1667,13 @@ class EditorPane:
                     self._toast("The AI's answer was cut off; nothing was changed.", error=True)
                 else:
                     await self._propose_replacement(tab_id, selected, new, selection[0], action)
+        except asyncio.CancelledError:  # Stop: what arrived stays, the held-back part too
+            if live and (pending := pending + cleaner.finish()):
+                await editor.stream_append(stream_id, pending)
+            raise
         except ProviderError as exc:
+            if live and (pending := pending + cleaner.finish()):  # held back: written too
+                await editor.stream_append(stream_id, pending)
             if live and collected:  # what arrived stays: one undo step, a version was kept
                 self._toast(
                     f"{exc} What the AI wrote so far stays (Ctrl+Z removes it).", error=True
@@ -1496,14 +1705,75 @@ class EditorPane:
 
     # ---- AI changes through the edit pipeline (PLAN §4.29) ------------------------------------
 
-    async def edit_selection(self, target: AskTarget, command_id: str, words: str) -> None:
-        """A change asked in the Ask box (a change command, or a "rewrite …" message)."""
+    async def edit_selection(
+        self,
+        target: AskTarget,
+        command_id: str,
+        words: str,
+        *,
+        options: bool = True,
+        how: Again = "again",
+        groups: tuple[str, ...] = (),
+    ) -> EditEnd:
+        """A change asked in the Ask box (a change command, or a "rewrite …" message). Returns
+        how it ended, for the box to show (the AI's clearer requests when it found the task
+        messy — ``options``: it may —, a question, or why nothing changed). ``how``: started by
+        Try again / Smaller change / Add it anyway."""
         found = await self.ask_target_text(target)
         if found is None:
-            self._toast("The text changed; select it again.", error=True)
-            return
+            return EditEnd("failed", "The text changed; select it again.", retry=False)
         text, start, end = found
-        await self.run_edit(target.tab_id, text, (start, end), command_id, words)
+        return await self.run_edit(
+            target.tab_id,
+            text,
+            None if target.whole else (start, end),
+            command_id,
+            again_words(words, how),
+            groups,
+            options=options,
+            report=True,
+            smaller=how == "smaller",
+            anyway=how == "anyway",
+        )
+
+    async def edit_in_note(
+        self,
+        path: str,
+        selected: str | None,
+        command_id: str,
+        words: str,
+        options: bool = True,
+        how: Again = "again",
+        groups: tuple[str, ...] = (),
+    ) -> EditEnd:
+        """A change command from the chat box's ``/`` list (PLAN §4.28) on note ``path``: on the
+        attached text ``selected`` (found in the note), or on the whole note. Returns how it
+        ended, for the chat to show."""
+        await self.open(path)
+        tab_id = self.tabs.active
+        text = await self._live_text(tab_id) if tab_id is not None else None
+        if tab_id is None or text is None or self._active_path() != path:
+            return EditEnd("failed", "The note could not be opened.", retry=False)
+        selection = None
+        if selected:
+            at = text.find(selected)
+            if at < 0 or text.find(selected, at + 1) >= 0:
+                where = "is no longer in the note" if at < 0 else "is in the note twice"
+                message = f"The attached text {where}; select it again."
+                return EditEnd("failed", message, retry=False)
+            selection = (at, at + len(selected))
+        return await self.run_edit(
+            tab_id,
+            text,
+            selection,
+            command_id,
+            again_words(words, how),
+            groups,
+            options=options,
+            report=True,
+            smaller=how == "smaller",
+            anyway=how == "anyway",
+        )
 
     async def run_edit(
         self,
@@ -1513,16 +1783,25 @@ class EditorPane:
         command_id: str,
         words: str = "",
         groups: Sequence[str] = (),
-    ) -> None:
+        *,
+        options: bool = False,
+        report: bool = False,
+        smaller: bool = False,
+        anyway: bool = False,
+    ) -> EditEnd:
         """A change command (Rewrite, Change tone, a free "rewrite …") on the selection, or on
         the whole note: planned, written and checked by :class:`EditRun`, then shown as one
-        diff (applied at once only in *Apply at once* mode and when nothing needs a look)."""
+        diff (applied at once only in *Apply at once* mode and when nothing needs a look).
+        ``options``: a messy task may come back as clearer requests instead (PLAN §4.28).
+        ``report``: the caller shows every ending but the diff (the Ask box: options, a
+        question, why nothing changed — with Try again); else they are toasts here."""
         ai, path = self._engine, self._tab_path(tab_id)
         if ai is None or path is None:
             self._toast("AI is not available.", error=True)
-            return
+            return EditEnd("failed", "AI is not available.", retry=False)
         if not await confirm_access(ai, self._host):
-            return
+            return EditEnd("failed", "The AI may not read this vault yet.", retry=False)
+        self._edit_asks[tab_id] = (text, selection, command_id, words, tuple(groups))
         cmd = ai_command(command_id)
         planning = str(self._config.get("ai.edit_planning", "auto") if self._config else "auto")
         task = asyncio.current_task()
@@ -1548,6 +1827,9 @@ class EditorPane:
             command_id=command_id,
             groups=groups,
             planning=planning,
+            offer_options=options,
+            smaller=smaller,
+            anyway=anyway,
             on_progress=lambda message: setattr(note, "message", f"AI: {message}"),
         )
         try:
@@ -1557,15 +1839,20 @@ class EditorPane:
                 raise
             result = run.result()  # Stop: what was finished is shown
         except (AccessDeniedError, EditTooLongError, ProviderError) as exc:
-            self._toast(str(exc), error=True)
-            return
+            if not report:
+                self._toast(str(exc), error=True)
+            return failure_end(exc)
         finally:
             stopped = True  # a late dismiss must not cancel what follows
             note.dismiss()
+        end = edit_end(result)
+        if report and end.kind != "proposal":
+            return end
         await self._show_edit_result(tab_id, path, run, result)
+        return end
 
     async def _show_edit_result(
-        self, tab_id: int, path: str, run: EditRun, result: EditResult
+        self, tab_id: int, path: str, run: EditRun | None, result: EditResult
     ) -> None:
         if result.question:
             self._toast(f"The AI asks: {result.question}")
@@ -1599,7 +1886,10 @@ class EditorPane:
         if mode == "auto":
             self._toast("Some changes need a look.")
         self._proposals[tab_id] = result.proposal
-        self._edit_runs[tab_id] = run
+        if run is None:
+            self._edit_runs.pop(tab_id, None)
+        else:
+            self._edit_runs[tab_id] = run
         self._readonly[tab_id] = mode == "readonly"
         await self._show_proposal(tab_id, text)
 
@@ -1693,7 +1983,12 @@ class EditorPane:
                 self._proposals.pop(tab_id, None)
             else:
                 self._proposals[tab_id] = proposal
-                payload = proposal_payload(proposal, text, bool(self._readonly.get(tab_id)))
+                payload = proposal_payload(
+                    proposal,
+                    text,
+                    bool(self._readonly.get(tab_id)),
+                    again=tab_id in self._edit_asks,  # Try again: there is a request to run
+                )
         await self._editor_for(tab_id).show_proposal(tab_id, payload)
 
     async def _on_proposal(self, args: dict[str, Any]) -> None:
@@ -1708,6 +2003,9 @@ class EditorPane:
             return
         if args.get("action") == "accept" and self._readonly.get(tab_id):
             return  # read-only: the diff only shows what the AI would change
+        if args.get("action") in ("again", "smaller"):
+            await self._edit_again(tab_id, text, smaller=args.get("action") == "smaller")
+            return
         if args.get("action") == "update":
             await self._update_from_note(tab_id, proposal, int(args.get("note", -1)))
             left = self._proposals.get(tab_id)
@@ -1736,6 +2034,18 @@ class EditorPane:
         else:
             self._proposals[tab_id] = left
         await self._show_proposal(tab_id, text)
+
+    async def _edit_again(self, tab_id: int, text: str, *, smaller: bool) -> None:
+        """The diff bar's Try again / Smaller change: the diff goes and the same request runs
+        again on the same text (a new plan; Smaller change with a tighter size limit)."""
+        asked = self._edit_asks.get(tab_id)
+        self._proposals.pop(tab_id, None)
+        await self._show_proposal(tab_id, text)
+        if asked is None or asked[0] != text:
+            self._toast("The note changed; select the text and ask again.", error=True)
+            return
+        _note, selection, command_id, words, groups = asked
+        await self.run_edit(tab_id, text, selection, command_id, words, groups, smaller=smaller)
 
     async def _apply_edit(
         self, tab_id: int, before: str, edit: TextEdit, *, move_caret: bool = True

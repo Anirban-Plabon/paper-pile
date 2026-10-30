@@ -17,16 +17,24 @@ finished — :meth:`EditRun.result` builds the proposal from it. No UI imports.
 import logging
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field, replace
+from typing import Literal
 
+from paper_pile.core.ai.access import AccessDeniedError
 from paper_pile.core.ai.blocks import Block, block_map
 from paper_pile.core.ai.cleanup import clean_reply
 from paper_pile.core.ai.consistency import Suggestion, suggestions
 from paper_pile.core.ai.context import estimate_tokens
-from paper_pile.core.ai.edit_context import EditBudget, note_view, vault_view
+from paper_pile.core.ai.edit_context import (
+    EditBudget,
+    chunk_tokens,
+    chunks,
+    note_view,
+    vault_view,
+)
 from paper_pile.core.ai.edits import FINISHED, EditTooLongError, reply_room
-from paper_pile.core.ai.engine import AiEngine, message_tokens
+from paper_pile.core.ai.engine import AUTO_WINDOW, AiEngine, message_tokens
 from paper_pile.core.ai.existing import in_note, in_vault
-from paper_pile.core.ai.guards import GuardContext, check
+from paper_pile.core.ai.guards import GuardContext, Size, check
 from paper_pile.core.ai.intent import Intent, edit_intent
 from paper_pile.core.ai.issues import Issue
 from paper_pile.core.ai.plan import (
@@ -64,6 +72,7 @@ class EditResult:
     proposal: Proposal | None
     changes: list[PlannedChange]
     question: str = ""  # the model asks before planning anything
+    options: tuple[str, ...] = ()  # the task rewritten as clearer requests: the user picks
     already: str = ""  # everything asked for is already in the note
     error: str = ""  # a failure part-way (what was finished is in the proposal)
     dropped: list[str] = field(default_factory=list)  # changes left out, and why
@@ -113,6 +122,9 @@ class EditRun:
         groups: Sequence[str] = (),
         planning: str = "auto",
         translate: bool = False,
+        offer_options: bool = False,
+        smaller: bool = False,
+        anyway: bool = False,
         on_progress: Callable[[str], None] | None = None,
     ) -> None:
         self.engine = engine
@@ -125,6 +137,11 @@ class EditRun:
         )
         self.planning = planning
         self.translate = translate
+        self.offer_options = offer_options  # a messy task may come back as clearer requests
+        self.anyway = anyway  # Add it anyway: "already in the note" does not stop the run
+        if smaller:  # Smaller change: the same task, a tighter change-size limit
+            self.instruction = f"{self.instruction}. {SMALLER}"
+            self.intent = replace(self.intent, size=_SMALLER_SIZE[self.intent.size])
         self.on_progress = on_progress or (lambda _s: None)
         all_blocks = block_map(note)
         if selection is not None and note[selection[0] : selection[1]].strip():
@@ -148,10 +165,20 @@ class EditRun:
         self.engine.require_note(self.path, self.note)
         self._window = await self.engine.window()
         plan = await self._plan()
+        if plan.options and not plan.edits:
+            if len(plan.options) > 1:
+                return EditResult(None, [], options=plan.options, calls=self.calls)
+            self.instruction, self.offer_options = plan.options[0], False  # one: run it
+            plan = await self._plan()
         if plan.question and not plan.edits:
             return EditResult(None, [], question=plan.question, calls=self.calls)
         if not plan.edits and any(a == "all" for _, a in plan.already):
-            return EditResult(None, [], already=self._already_text(plan), calls=self.calls)
+            if not self.anyway:
+                return EditResult(None, [], already=self._already_text(plan), calls=self.calls)
+            plan = snap(
+                fallback_plan(self.blocks, self.note, self.targets, self.instruction, adds=True),
+                self.blocks,
+            )
         if plan.note:
             self.notes.append(Issue("plan", "info", plan.note))
         await self._write_all(plan)
@@ -198,7 +225,7 @@ class EditRun:
             prefix = self._view(budget if attempt == 0 else _halved(budget))
             ids = [b.id for b in self.blocks if not b.fixed]
             vids = [f"V{n}" for n in range(1, len(self._vault) + 1)]
-            schema = plan_schema(ids, vids)
+            schema = plan_schema(ids, vids, options=self.offer_options)
             ask = [*prefix, ChatMessage("user", plan_task(self.instruction, self.targets, schema))]
             self.calls += 1
             data = await self.engine.ask_json(ask, schema, max_answer=512)
@@ -217,13 +244,14 @@ class EditRun:
 
     def _fast_plan(self) -> Plan:
         """Only the target changes: one change over it (the whole body when nothing is
-        selected)."""
-        if self.targets:
-            return Plan((PlannedEdit("", "change", self.targets[0], last=self.targets[-1]),))
-        body = [b for b in self.blocks if b.kind != "front_matter"]
-        if not body:
+        selected) — a long one in parts, a write call each (``docs/AI_EDITS.md`` §5)."""
+        wanted = set(self.targets)
+        span = [b for b in self.blocks if (b.id in wanted if wanted else b.kind != "front_matter")]
+        if not span:
             return Plan(())
-        return Plan((PlannedEdit("", "change", body[0].id, last=body[-1].id),))
+        parts = chunks(span, self.note, chunk_tokens(self._window or AUTO_WINDOW))
+        parts = [p for p in parts if not all(b.fixed for b in p)]  # code alone: nothing to do
+        return Plan(tuple(PlannedEdit("", "change", p[0].id, last=p[-1].id) for p in parts))
 
     def _view(self, budget: EditBudget) -> list[ChatMessage]:
         """The shared start of the plan and write calls: rules, then the note as blocks (and
@@ -393,6 +421,73 @@ class EditRun:
 
 def _halved(budget: EditBudget) -> EditBudget:
     return replace(budget, outline=budget.outline // 2, related=budget.related // 2)
+
+
+# ---- how a run ended, for the place that asked (PLAN §4.28: retry) --------------------------
+
+EndKind = Literal["proposal", "options", "question", "already", "failed", "declined"]
+Again = Literal["again", "smaller", "anyway"]
+SMALLER = "Change only what is needed; keep every other word"
+ANYWAY = "Add it even though similar text is already in the note"
+_SMALLER_SIZE: dict[Size, Size] = {"large": "medium", "medium": "small", "small": "small"}
+
+
+@dataclass(frozen=True, slots=True)
+class EditEnd:
+    """How an edit run ended: a proposal (the diff shows), options or a question for the user,
+    or no change — with the one-line reason and whether trying again makes sense."""
+
+    kind: EndKind
+    message: str = ""
+    options: tuple[str, ...] = ()
+    retry: bool = True
+
+
+def edit_end(result: EditResult) -> EditEnd:
+    """The ending of a finished (or stopped) run."""
+    if result.options:
+        return EditEnd("options", options=result.options)
+    if result.question:
+        return EditEnd("question", result.question)
+    if result.already:
+        return EditEnd("already", result.already)
+    if result.proposal is not None:
+        return EditEnd("proposal")
+    if result.error:
+        return EditEnd("failed", f"{result.error.rstrip('.')}. Nothing was changed.")
+    if result.dropped:  # "add the option: left out (the answer was cut off or empty)"
+        whys = dict.fromkeys(d.rpartition(" (")[2].rstrip(")") for d in result.dropped)
+        return EditEnd("failed", f"Nothing was changed: {'; '.join(whys)}.")
+    return EditEnd("declined", "The AI suggests no change.")
+
+
+def failure_end(exc: Exception) -> EditEnd:
+    """The ending of a run that raised: a model failure may pass when tried again; a text too
+    long or a note the AI may not read will not."""
+    retry = not isinstance(exc, (AccessDeniedError, EditTooLongError))
+    return EditEnd("failed", str(exc), retry=retry)
+
+
+def again_words(words: str, how: Again) -> str:
+    """The user's words for a run started by Try again / Smaller change / Add it anyway
+    (Smaller change also tightens the size limit: ``EditRun(smaller=True)``)."""
+    if how == "anyway":
+        return f"{words.strip().rstrip('.')}. {ANYWAY}".lstrip(". ")
+    return words
+
+
+def replacement_result(
+    path: str, note: str, start: int, end: int, new: str, why: str
+) -> EditResult:
+    """``note[start:end]`` replaced by a finished answer the user pushed in (Translate's
+    Replace, AI_EDITS §7): cleaned and checked like a written change (G1–G4, G6; G9 is off for a
+    translation), as a one-place proposal."""
+    old = note[start:end]
+    ctx = GuardContext("change", why, size="large", translate=True)
+    text, issues = check(ctx, old, clean_reply(new, old), retried=True)
+    change = PlannedChange(start, end, text, why, False, tuple(issues))
+    proposal = propose_many(path, note, [Edit(start, end, text, why, tuple(issues), False)])
+    return EditResult(proposal, [change] if proposal is not None else [])
 
 
 def _dropped(edit: PlannedEdit, why: str) -> str:

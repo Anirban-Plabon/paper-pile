@@ -14,7 +14,7 @@ import { parseWikilink } from "./wikilink.js";
 import { activeLines, refreshEffect, touches } from "./reveal.js";
 import { CodeCopyWidget } from "./blockactions.js";
 import { FoldToggle, foldEffects, foldState } from "./fold.js";
-import { BulletWidget, CheckboxWidget, HrWidget, ImageWidget, MathWidget, PageBreakWidget } from "./widgets.js";
+import { BulletWidget, CalloutLabelWidget, CheckboxWidget, HrWidget, ImageWidget, MathWidget, PageBreakWidget } from "./widgets.js";
 
 const hide = Decoration.replace({});
 const mark = (cls) => Decoration.mark({ class: cls });
@@ -71,6 +71,30 @@ const calloutLine = (kind, edge) => {
   if (!calloutLines.has(key)) calloutLines.set(key, lineDeco(CALLOUT_KIND[kind] + CALLOUT_EDGE[edge]));
   return calloutLines.get(key);
 };
+const CALLOUT_HEADER = /^(\s*>\s*)(\[!([A-Za-z][\w-]*)\][-+]?)[ \t]*(.*)$/;
+
+// `> [!note]` / `> [!tip]- Title` on a quote's first line: returns [, type] like the bold-label
+// match, and draws the header (unless the caret is on it).
+function calloutHeader(cx, line) {
+  const m = CALLOUT_HEADER.exec(line.text);
+  if (!m) return null;
+  const from = line.from + m[1].length;
+  (cx.calloutHeads ??= new Set()).add(from);
+  if (!cx.active.has(line.number)) {
+    const type = m[3];
+    const title = m[4].trim();
+    const to = line.to - m[4].length;
+    if (title) {
+      cx.out.push(hide.range(from, to));
+      cx.out.push(INLINE_DECO.StrongEmphasis.range(to, line.to));
+    } else {
+      const label = type[0].toUpperCase() + type.slice(1).toLowerCase();
+      cx.out.push(Decoration.replace({ widget: new CalloutLabelWidget(label) }).range(from, line.to));
+    }
+  }
+  return [null, m[3]];
+}
+
 const QUOTE_LINE = [1, 2, 3].map((n) => lineDeco(`pp-quote pp-quote-${n}`));
 const LIST_GLYPHS = ["\u2022", "\u25E6", "\u25AA"]; // bullet, white bullet, small square, repeating with depth
 const LIST_NUM = mark("pp-list-num");
@@ -197,7 +221,9 @@ const handlers = {
   },
 
   // A quote that opens with a bold label (`> **Note:** ...`, what /callout inserts) is a callout:
-  // the box is tinted in the theme colour; the text is untouched.
+  // the box is tinted in the theme colour; the text is untouched. An Obsidian/GitHub header
+  // (`> [!note]`, `> [!tip]- Title`) makes the same callout: off the caret's line its `[!note]`
+  // shows as the bold `Note:` label (or hides before a title, which turns bold).
   // Every line of a quote gets its bars, also a "lazy" line written without `>`: markdown keeps a
   // line that follows quoted text in the quote, so it must not look like it is outside.
   Blockquote: (cx, node) => {
@@ -209,7 +235,7 @@ const handlers = {
     }
     if (level > 1) return;
     const first = cx.doc.lineAt(node.from);
-    const label = /^\s*>\s*\*\*([^*\n]+?):?\*\*/.exec(first.text);
+    const label = /^\s*>\s*\*\*([^*\n]+?):?\*\*/.exec(first.text) ?? calloutHeader(cx, first);
     if (!label) return;
     const kind = CALLOUT_TYPES[label[1].trim().toLowerCase()] ?? "";
     const last = cx.doc.lineAt(node.to).number;
@@ -246,7 +272,7 @@ const handlers = {
   Link: (cx, node) => {
     const n = node.node;
     const marks = n.getChildren("LinkMark");
-    if (marks.length < 2) return;
+    if (marks.length < 2 || cx.calloutHeads?.has(node.from)) return; // `[!note]` is not a link
     const [open, close] = marks;
     const url = n.getChild("URL");
     let href = url ? cx.doc.sliceString(url.from, url.to) : null;

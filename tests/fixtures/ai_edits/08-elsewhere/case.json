@@ -1,0 +1,19 @@
+{
+  "command": "ai-rewrite",
+  "instruction": "add a paragraph about nightly backups",
+  "expect": [
+    [
+      "note_kind",
+      "elsewhere"
+    ]
+  ],
+  "notes": {
+    "ops.md": "# Ops\n\n## Backups\n\nBackups run every night to the NAS and are kept for 30 days.\n"
+  },
+  "expect_unit": [
+    [
+      "contains",
+      "kept for 30 days"
+    ]
+  ]
+}

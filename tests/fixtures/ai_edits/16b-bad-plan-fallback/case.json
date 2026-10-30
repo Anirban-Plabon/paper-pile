@@ -1,0 +1,14 @@
+{
+  "command": "ai-rewrite",
+  "instruction": "add a note about costs",
+  "expect": [
+    [
+      "contains",
+      "Costs are low."
+    ],
+    [
+      "changed"
+    ]
+  ],
+  "unit_only": true
+}

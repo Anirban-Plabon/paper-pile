@@ -1,0 +1,27 @@
+{
+  "command": "ai-rewrite",
+  "instruction": "add option D: Fly.io",
+  "expect": [
+    [
+      "count_delta",
+      "^- \\*\\*",
+      1
+    ],
+    [
+      "count_delta",
+      "^\\| Fly",
+      1
+    ],
+    [
+      "table_columns_same"
+    ],
+    [
+      "contains",
+      "four options"
+    ],
+    [
+      "regions_min",
+      3
+    ]
+  ]
+}

@@ -1,0 +1,24 @@
+{
+  "command": "ai-rewrite",
+  "instruction": "fix grammar",
+  "expect": [
+    [
+      "not_contains",
+      "Teh "
+    ],
+    [
+      "not_contains",
+      "evry"
+    ],
+    [
+      "change_share_max",
+      0.15
+    ]
+  ],
+  "expect_unit": [
+    [
+      "contains",
+      "The backup runs every night and it was fast."
+    ]
+  ]
+}

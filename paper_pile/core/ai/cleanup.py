@@ -11,6 +11,8 @@ Headings in an answer are kept below the section it is written into. No UI impor
 
 import re
 
+from paper_pile.core.parser import headings
+
 _THINK = re.compile(r"<think>.*?</think>\s*", re.DOTALL | re.IGNORECASE)
 _PREAMBLE = re.compile(
     r"(?:sure|okay|ok|certainly|of course|absolutely|here(?:'s| is| are)|below is|this is)\b"
@@ -60,7 +62,22 @@ def clean_reply(text: str, original: str = "") -> str:
         out = fenced.group(2)
     if not original.lstrip().startswith("---"):
         out = _FRONT.sub("", out, count=1).lstrip("\n")
-    return "\n".join(line.rstrip() for line in out.split("\n")).strip("\n")
+    out = "\n".join(line.rstrip() for line in out.split("\n")).strip("\n")
+    return out if original.strip() else _space_headings(out)
+
+
+def _space_headings(text: str) -> str:
+    """New text: a blank line after each heading that runs straight into text (not in code),
+    as the note's own sections are written."""
+    lines, out, code = text.split("\n"), [], False
+    for i, line in enumerate(lines):
+        if _FENCE_OPEN.match(line.strip()):
+            code = not code
+        out.append(line)
+        nxt = lines[i + 1] if i + 1 < len(lines) else ""
+        if not code and _HEADING.match(line.strip()) and nxt.strip():
+            out.append("")
+    return "\n".join(out)
 
 
 def demote(line: str, floor: int) -> str:
@@ -75,11 +92,14 @@ class StreamCleaner:
     """Cleans a streamed answer piece by piece (see the module docstring).
 
     ``heading_floor``: the level of the section the answer is written into — its headings are
-    kept below it; ``title``: a first heading repeating it is dropped."""
+    kept below it; ``title``: a first heading repeating it is dropped; ``avoid_bullet``: the
+    list just above the answer uses this marker — the answer's own list items use another, so
+    the two stay two lists."""
 
-    def __init__(self, heading_floor: int = 0, title: str = "") -> None:
+    def __init__(self, heading_floor: int = 0, title: str = "", avoid_bullet: str = "") -> None:
         self.floor = heading_floor
         self.title = title.strip().lower()
+        self.avoid = avoid_bullet
         self._buf = ""
         self._head_done = False
         self._thinking = False
@@ -176,8 +196,18 @@ class StreamCleaner:
                 continue
             if _FENCE_OPEN.match(line.strip()):
                 self._in_code = not self._in_code
+            if not self._in_code and self.avoid and line.startswith(f"{self.avoid} "):
+                line = ("*" if self.avoid == "-" else "-") + line[1:]
             out.append(line if self._in_code else demote(line, self.floor))
         done = "\n".join(out)
         if done.strip():
             self._sent_any = True
         return done
+
+
+def heading_floor(note: str, at: int) -> int:
+    """The level of the section offset ``at`` of ``note`` is in (0 before any heading): an
+    answer written there keeps its headings below it."""
+    line = note.count("\n", 0, at) + 1
+    above = [h.level for h in headings(note) if h.line <= line]
+    return above[-1] if above else 0

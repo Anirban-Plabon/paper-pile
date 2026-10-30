@@ -1,0 +1,27 @@
+{
+  "command": "ai-rewrite",
+  "instruction": "fix grammar",
+  "expect": [
+    [
+      "contains",
+      "The backups run every night."
+    ],
+    [
+      "not_contains",
+      "Sure"
+    ],
+    [
+      "not_contains",
+      "Let me know"
+    ],
+    [
+      "not_contains",
+      "```"
+    ],
+    [
+      "not_contains",
+      "think"
+    ]
+  ],
+  "unit_only": true
+}

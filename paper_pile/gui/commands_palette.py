@@ -12,6 +12,7 @@ from typing import TYPE_CHECKING, Any
 
 from nicegui import background_tasks
 
+from paper_pile.core.ai.commands import AI_COMMANDS
 from paper_pile.core.commands import match_score
 from paper_pile.core.settings import feature_on, sanitized
 from paper_pile.gui.components.picker_popup import PickItem
@@ -247,16 +248,19 @@ def palette_commands(layout: "MainLayout") -> list[PaletteCommand]:
                 "sparkles",
                 when=ai_note,
             ),
-            C(
-                "summarize",
-                "Summarize note",
-                actions.summarize,
-                "",
-                "list-collapse",
-                "ai",
-                when=ai_note,
+            # the one AI command list (PLAN §4.28): each opens the Ask box with it picked
+            *(
+                C(
+                    c.id,
+                    c.title,
+                    lambda i=c.id: pane.run_ai_command(i),
+                    "",
+                    c.icon,
+                    " ".join(("ai", *c.aliases)),
+                    when=ai_note,
+                )
+                for c in AI_COMMANDS
             ),
-            C("rewrite", "Rewrite note", actions.rewrite, "", "wand-sparkles", "ai", when=ai_note),
             C("write", "Write with AI…", actions.write, "", "pen-line", "ai", when=ai_note),
         ),
         *g(

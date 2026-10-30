@@ -1,0 +1,4 @@
+[
+  "{\"already_there\": [], \"edits\": [{\"why\": \"add the backups section\", \"action\": \"add_after\", \"block\": \"B8\", \"new_section\": true}], \"question\": \"\"}",
+  "## Backups\n\nBack up the data folder every night."
+]

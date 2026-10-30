@@ -1,0 +1,22 @@
+{
+  "command": "ai-rewrite",
+  "instruction": "make it clearer",
+  "expect": [
+    [
+      "headings_unchanged"
+    ],
+    [
+      "changed"
+    ],
+    [
+      "not_contains",
+      "## Setup\n\n## Setup"
+    ]
+  ],
+  "expect_unit": [
+    [
+      "contains",
+      "Install the app, then run it once."
+    ]
+  ]
+}

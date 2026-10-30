@@ -1,0 +1,5 @@
+[
+  "not json",
+  "{\"already_there\": [], \"edits\": [{\"why\": \"x\", \"action\": \"change\", \"block\": \"B99\", \"new_section\": false}], \"question\": \"\"}",
+  "We use one server. Costs are low."
+]

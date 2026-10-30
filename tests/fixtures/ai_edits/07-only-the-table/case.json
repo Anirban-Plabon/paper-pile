@@ -1,0 +1,15 @@
+{
+  "command": "ai-rewrite",
+  "instruction": "add VM where it is missing",
+  "expect": [
+    [
+      "changed_lines_match",
+      "^\\|"
+    ],
+    [
+      "count_delta",
+      "^\\| VM",
+      1
+    ]
+  ]
+}

@@ -1,0 +1,22 @@
+{
+  "command": "ai-rewrite",
+  "instruction": "add a section about backups",
+  "expect": [
+    [
+      "new_headings",
+      [
+        2
+      ]
+    ],
+    [
+      "new_heading_next_to",
+      "Maintenance"
+    ]
+  ],
+  "expect_unit": [
+    [
+      "contains",
+      "Back up the data folder every night."
+    ]
+  ]
+}

@@ -258,6 +258,22 @@ async def slash_checks(cdp: Cdp, results: list[tuple[str, str, bool, str]]) -> N
         and shape[0][3] == "4px"
     )
     results.append(("callout", "card with rounded ends and a stick", ok, repr(shape)))
+    # `> [!NOTE]` (Obsidian/GitHub) must look exactly like `> **Note:**`: same card, a bold label
+    await cdp.js('qa.set("x\\n\\n> [!NOTE]\\n> one\\n\\n> **Note:** two\\n\\ny")')
+    await asyncio.sleep(0.6)
+    cards = await cdp.js("""(() => { const ls = [...document.querySelectorAll('.cm-line.pp-callout-first')];
+      const look = (l) => { const s = getComputedStyle(l), b = getComputedStyle(l, '::before');
+        return [s.backgroundColor, s.borderLeft, s.paddingLeft, b.width, b.backgroundColor]; };
+      return { looks: ls.map(look), label: ls[0]?.querySelector('.pp-strong')?.textContent ?? '',
+               link: !!ls[0]?.querySelector('.pp-link') }; })()""")
+    looks = cards["looks"]
+    ok = (
+        len(looks) == 2 and looks[0] == looks[1] and cards["label"] == "Note:" and not cards["link"]
+    )
+    results.append(("callout [!NOTE]", "same card and bold label as **Note:**", ok, repr(cards)))
+    if shots := os.environ.get("QA_SHOTS"):
+        shot = await cdp.call("Page.captureScreenshot", format="png")
+        Path(shots, "callouts.png").write_bytes(base64.b64decode(shot["data"]))
 
 
 LEAVE = {  # a block's last line -> what Enter, Enter, typing "after" must give

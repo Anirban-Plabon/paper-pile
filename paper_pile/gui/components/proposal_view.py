@@ -13,7 +13,9 @@ def _utf16(text: str, ranges: list[tuple[int, int]]) -> list[list[int]]:
     return [[utf16_index(text, a), utf16_index(text, b)] for a, b in ranges]
 
 
-def proposal_payload(proposal: Proposal, text: str, readonly: bool) -> dict[str, Any]:
+def proposal_payload(
+    proposal: Proposal, text: str, readonly: bool, *, again: bool = True
+) -> dict[str, Any]:
     hunks = []
     for h in proposal.hunks:
         marks = word_marks(h.old, h.new) if h.old and h.new else None
@@ -42,4 +44,13 @@ def proposal_payload(proposal: Proposal, text: str, readonly: bool) -> dict[str,
         for n, i in enumerate(proposal.notes)
         if i.message
     ]
-    return {"id": proposal.id, "hunks": hunks, "notes": notes, "readonly": readonly}
+    # Smaller change in the bar when a place changed more than asked (guard G5)
+    smaller = any(i.kind == "size" for h in proposal.hunks for i in h.issues)
+    return {
+        "id": proposal.id,
+        "hunks": hunks,
+        "notes": notes,
+        "readonly": readonly,
+        "smaller": smaller,
+        "again": again,  # the diff bar's Try again: a request that can run again
+    }

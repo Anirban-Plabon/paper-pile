@@ -4,7 +4,7 @@
 // the same box as the diff's green rows — and whole rendered blocks (code, images, callouts,
 // tables, math), they move with scrolling without touching the text's DOM, and corners are square.
 import { syntaxTree } from "@codemirror/language";
-import { RectangleMarker, layer } from "@codemirror/view";
+import { BlockType, RectangleMarker, layer } from "@codemirror/view";
 
 // Blocks a band covers whole when it covers any of their lines (they are drawn as one block).
 const WHOLE = new Set(["FencedCode", "BlockMath", "Table", "Blockquote", "HTMLBlock"]);
@@ -31,6 +31,15 @@ export function lineBox(view) {
   return { left: r.left - scroller.left + view.scrollDOM.scrollLeft, width: r.width };
 }
 
+// The text part of the line at `pos`: `lineBlockAt` also holds the block widgets on that line
+// (a diff's added rows, its buttons), which a band must not cover.
+function textBlockAt(view, pos) {
+  const block = view.lineBlockAt(pos);
+  if (!Array.isArray(block.type)) return block;
+  const parts = block.type.filter((p) => p.type === BlockType.Text);
+  return parts.find((p) => p.from <= pos && pos <= p.to) || parts[0] || block;
+}
+
 // One rectangle per run of whole lines `from`..`to` (a rendered block counts as its lines).
 export function bandsFor(view, ranges, className) {
   if (!ranges.length) return [];
@@ -42,8 +51,8 @@ export function bandsFor(view, ranges, className) {
   for (const { from, to, cls } of ranges) {
     const a = Math.min(from, len);
     const b = Math.min(Math.max(a, to > a ? to - 1 : a), len);
-    const top = view.lineBlockAt(a).top;
-    const bottom = view.lineBlockAt(b).bottom;
+    const top = textBlockAt(view, a).top;
+    const bottom = textBlockAt(view, b).bottom;
     if (bottom > top) out.push(new RectangleMarker(cls ? `${className} ${cls}` : className, left, base + top, width, bottom - top));
   }
   return out;

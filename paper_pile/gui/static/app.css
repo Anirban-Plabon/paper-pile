@@ -66,8 +66,11 @@ body.pp-icons-accent .cm-content .q-icon, body.pp-icons-accent .cm-content svg.p
 /* icons on an accent background (send, Restore, avatar, selected day) stay readable */
 body.pp-icons-accent :is(.pp-chat-send.pp-chat-send-ready, .pp-chat-send:hover, .bg-primary, .pp-history-restore, .pp-avatar, .pp-cal-sel) .q-icon:not(.pp-dot) { color: inherit; }
 
+/* code outside the editor (chat answers, Ask box, embeds); the editor sets its own (.pp-editor) */
+body { --pp-code-bg: #f3f4f6; }
 /* Dark theme: set on <body> by static/theme.js (Quasar's own dark mode adds body--dark) */
 body.body--dark {
+  --pp-code-bg: #2a2d33;
   --pp-desk: #141518;
   --pp-sheet-edge: rgba(0, 0, 0, .55);
   --pp-border: #3a3f47;
@@ -1486,7 +1489,7 @@ body.body--dark .pp-aidiff-chip-warn { color: #e3b341; }
 /* the / list: as wide as the card (not under Move to chat); under the box, above it in the chat */
 .pp-askpop-box .pp-askpop-bottom { order: 1; }
 .pp-askpop-box .pp-askpop-cmds { order: 2; }
-.pp-askpop-cmds { flex: none; width: calc(100% - 52px); gap: 0; padding: 4px; max-height: 240px; overflow-y: auto; border: 1px solid var(--pp-askpop-line); border-radius: var(--pp-r-popup); background: var(--pp-askpop-tint); box-shadow: 0 4px 16px rgba(0, 0, 0, .12); }
+.pp-askpop-cmds { flex: none; width: max-content; min-width: 180px; max-width: calc(100% - 68px); gap: 0; padding: 4px; max-height: 240px; overflow-y: auto; border: 1px solid var(--pp-askpop-line); border-radius: var(--pp-r-popup); background: var(--pp-askpop-tint); box-shadow: 0 4px 16px rgba(0, 0, 0, .12); }
 .pp-askpop-cmd { width: 100%; flex-wrap: nowrap; gap: 10px; padding: 6px 10px; border-radius: var(--pp-r-ctrl); cursor: pointer; font-size: 13px; }
 .pp-askpop-cmd:hover, .pp-askpop-cmd-active { background: rgba(var(--pp-accent-rgb), .12); }
 .pp-askpop-cmd-sub { margin-left: auto; min-width: 0; font-size: 11.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -1524,3 +1527,37 @@ body.body--dark .pp-aidiff-chip-warn { color: #e3b341; }
 .pp-msg-reasoning .q-item { min-height: 24px; padding: 0 4px; }
 .pp-msg-reasoning-text { white-space: pre-wrap; font-size: 12px; padding: 2px 4px 6px; }
 .pp-msg-actions-user { justify-content: flex-end; width: 100%; }
+
+/* The options box (PLAN §4.28): the AI's options for a command run without words */
+.pp-optbox { width: 100%; gap: 2px; }
+.pp-optbox-title { font-size: 12.5px; color: var(--pp-muted); margin-bottom: 4px; }
+.pp-opt { width: 100%; gap: 8px; padding: 5px 8px; border-radius: var(--pp-r-ctrl); cursor: pointer; font-size: 13px; line-height: 18px; }
+.pp-opt:hover { background: rgba(127, 127, 127, .10); }
+.pp-opt-tick { flex: none; display: inline-flex; align-items: center; justify-content: center; width: 16px; height: 16px; border: 1.5px solid var(--pp-muted); border-radius: 4px; color: transparent; transition: background-color var(--pp-dur-fast) var(--pp-ease), border-color var(--pp-dur-fast) var(--pp-ease); }
+.pp-opt-tick .q-icon { font-size: 12px; }
+.pp-opt-on .pp-opt-tick { background: var(--pp-accent); border-color: var(--pp-accent); color: #fff; }
+.pp-opt-text { min-width: 0; overflow-wrap: anywhere; }
+.pp-opt-own { cursor: text; padding-top: 0; padding-bottom: 0; }
+.pp-opt-own:hover { background: none; }
+.pp-opt-own-input { flex: 1; min-width: 0; }
+.pp-opt-own-input .q-field__control, .pp-opt-own-input .q-field__native { min-height: 28px; height: 28px; font-size: 13px; }
+.pp-opt-own-input .q-field__control-container { padding: 0; }
+.pp-optbox-foot { width: 100%; gap: 8px; margin-top: 4px; }
+.pp-optbox-hint { flex: 1; min-width: 0; font-size: 11.5px; }
+.pp-optbox-apply.q-btn { margin-left: auto; padding: 2px 14px; min-height: 28px; border-radius: 14px; font-size: 13px; font-weight: 600; color: var(--pp-muted); background: rgba(127, 127, 127, .12); }
+.pp-optbox-apply.pp-optbox-ready.q-btn { background: var(--pp-accent); color: #fff; }
+.pp-optbox-spent { opacity: .6; pointer-events: none; }
+/* the buttons under a change that ended without a diff (Try again / Change request, PLAN §4.28),
+   in the Ask box and the chat */
+.pp-ai-actions { gap: 6px; margin-top: 6px; }
+.pp-ai-action.q-btn { min-height: 26px; padding: 0 12px; border-radius: 13px; font-size: 12.5px; font-weight: 600; color: var(--pp-fg); border: 1px solid var(--pp-border); }
+.pp-ai-action.q-btn:hover { background: rgba(127, 127, 127, .12); }
+.pp-ai-action-main.q-btn { color: #fff; background: var(--pp-accent); border-color: var(--pp-accent); }
+.pp-ai-action-main.q-btn:hover { background: var(--pp-accent); filter: brightness(1.08); }
+/* the chat box's / list: the AI commands (PLAN §4.28) */
+.pp-chat-cmd { padding: 5px 10px; font-size: 12.5px; }
+.pp-chat-cmd-sub { margin-left: auto; min-width: 0; font-size: 11.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pp-chat-cmdcard-cmd { display: block; }
+/* the chat box's / and @ lists: as wide as their longest line, always narrower than the box */
+.pp-chat-compose .pp-chat-mentions { align-self: flex-start; width: max-content; min-width: 180px; max-width: calc(100% - 24px); }
+.pp-chat-cmd .q-icon, .pp-chat-cmd svg { flex: none; }

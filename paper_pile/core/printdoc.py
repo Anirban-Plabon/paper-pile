@@ -81,6 +81,8 @@ CALLOUT_TYPES = {
     **dict.fromkeys(("danger", "error", "bug", "failure"), "bad"),
 }
 _CALLOUT = re.compile(r"^\s*\*\*([^*\n]+?):?\*\*")
+# `[!note]` / `[!tip]- Title`: the Obsidian/GitHub header, drawn like the bold label
+_CALLOUT_HEADER = re.compile(r"^\[!([A-Za-z][\w-]*)\][-+]?[ \t]*")
 _EMBED_LINE = re.compile(r"^!\[\[([^\[\]\n]+)\]\]$")
 _SIZED_ALT = re.compile(r"^(.*?)\|\s*(\d+)\s*$", re.S)
 _REMOTE = re.compile(r"^(?:[a-z][a-z0-9+.-]*:|//)", re.I)
@@ -133,17 +135,33 @@ def _mark_lines(tokens: list[Token]) -> None:
 
 
 def _callouts(tokens: list[Token]) -> None:
-    """A quote whose first line opens with a bold label is drawn as a callout card."""
+    """A quote whose first line opens with a bold label (or a ``[!note]`` header) is drawn as a
+    callout card."""
     for i, tok in enumerate(tokens):
         if tok.type != "blockquote_open" or i + 2 >= len(tokens):
             continue
         inline = tokens[i + 2]
         if tokens[i + 1].type != "paragraph_open" or inline.type != "inline":
             continue
-        m = _CALLOUT.match(inline.content)
+        m = _CALLOUT.match(inline.content) or _callout_header(inline)
         if m:
             kind = CALLOUT_TYPES.get(m.group(1).strip().lower(), "")
             tok.attrJoin("class", "pp-callout" + (f" pp-callout-{kind}" if kind else ""))
+
+
+def _callout_header(inline: Token) -> re.Match[str] | None:
+    """``[!note] Title`` -> a bold ``Note:`` (or the bold title), like the editor shows it."""
+    children = inline.children or []
+    if not children or children[0].type != "text":
+        return None
+    m = _CALLOUT_HEADER.match(children[0].content)
+    if not m:
+        return None
+    title = children[0].content[m.end() :].strip()
+    label = title or m.group(1)[0].upper() + m.group(1)[1:].lower() + ":"
+    text = Token("text", "", 0, content=label)
+    children[0:1] = [Token("strong_open", "strong", 1), text, Token("strong_close", "strong", -1)]
+    return m
 
 
 def _images(tokens: list[Token], note: str) -> None:

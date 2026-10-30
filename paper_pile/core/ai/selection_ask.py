@@ -1,9 +1,7 @@
-"""The Ask box under a selection (PLAN §4.27): is a message a request to rewrite the selected
-text, or a question about it? Decided by the first words (no model call), so the box knows at
-once whether to dissolve into a rewrite or to grow into the mini chat. No UI imports here.
+"""The Ask box under a selection (PLAN §4.27): its mini chat turns and its ``/`` list. Whether
+a message changes the text or asks about it: ``ask_route``. No UI imports here.
 """
 
-import re
 from dataclasses import dataclass
 from typing import Literal
 
@@ -11,53 +9,6 @@ from paper_pile.core.ai.commands import AI_COMMAND_IDS
 from paper_pile.core.commands import REGISTRY, Command, CommandContext
 
 Role = Literal["user", "assistant"]
-
-# words in front of the request that do not change what it asks for
-_POLITE = frozenset({"please", "pls", "plz", "kindly", "can", "could", "would", "will", "you", "u"})
-# a message starting with one of these asks for the text to be changed
-_EDIT_VERBS = frozenset(
-    {
-        "rewrite",
-        "rephrase",
-        "reword",
-        "modify",
-        "change",
-        "edit",
-        "fix",
-        "correct",
-        "improve",
-        "polish",
-        "shorten",
-        "condense",
-        "lengthen",
-        "expand",
-        "simplify",
-        "translate",
-        "convert",
-        "turn",
-        "format",
-        "reformat",
-        "restructure",
-        "replace",
-        "make",
-        "proofread",
-    }
-)
-_WRITE_OBJECTS = frozenset({"it", "this", "that", "the"})  # "write it as…", not "write a poem"
-_WORD = re.compile(r"[\w']+")
-
-
-def wants_edit(message: str) -> bool:
-    """True when ``message`` asks to rewrite / change the selected text (the first word after
-    polite ones is an edit verb, or "write it / this …"); False for questions and anything else."""
-    words = [w.lower() for w in _WORD.findall(message)]
-    while words and words[0] in _POLITE:
-        words.pop(0)
-    if not words:
-        return False
-    if words[0] in _EDIT_VERBS:
-        return True
-    return words[0] == "write" and len(words) > 1 and words[1] in _WRITE_OBJECTS
 
 
 @dataclass(frozen=True, slots=True)

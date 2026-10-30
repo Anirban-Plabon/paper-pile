@@ -1,0 +1,18 @@
+{
+  "command": "ai-rewrite",
+  "instruction": "make it more formal",
+  "expect": [
+    [
+      "tokens_kept"
+    ],
+    [
+      "changed"
+    ]
+  ],
+  "expect_unit": [
+    [
+      "contains",
+      "Please consult"
+    ]
+  ]
+}

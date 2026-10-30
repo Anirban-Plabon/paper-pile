@@ -114,3 +114,10 @@ def test_empty_lines_before_the_first_block_are_all_space() -> None:
 def test_empty_lines_inside_blocks_are_left_to_the_block() -> None:
     assert "pp-blank" not in render_print_body("```\na\n\n\nb\n```\n", "n.md")
     assert "pp-blank" not in render_print_body("> a\n>\n>\n> b\n", "n.md")
+
+
+def test_obsidian_callout_headers_look_like_bold_label_callouts() -> None:
+    html = render_print_body("> [!NOTE]\n> Some text.\n\n> [!warning]- Watch out\n> body", "n.md")
+    assert 'class="pp-callout"' in html and 'class="pp-callout pp-callout-warn"' in html
+    assert "<strong>Note:</strong>" in html and "<strong>Watch out</strong>" in html
+    assert "[!" not in html

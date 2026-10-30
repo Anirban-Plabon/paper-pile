@@ -201,6 +201,9 @@ function barPanel(view) {
   if (p && p.hunks.length > 1) {
     row.append(button("‹", "pp-aidiff-nav", () => jump(-1)), button("›", "pp-aidiff-nav", () => jump(1)));
   }
+  // a new run of the same request (the diff goes): Try again, or a smaller change (PLAN §4.28)
+  if (p && p.smaller) row.append(button("Smaller change", "pp-aidiff-smaller", () => report(view, "smaller")));
+  if (!p || p.again !== false) row.append(button("Try again", "pp-aidiff-again", () => report(view, "again")));
   if (!p || !p.readonly) row.append(button("Accept all", "pp-aidiff-accept", () => report(view, "accept")));
   row.append(button(p && p.readonly ? "Close" : "Reject all", "pp-aidiff-reject", () => report(view, "reject")));
   dom.append(row, notes);

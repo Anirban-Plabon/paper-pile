@@ -71,3 +71,19 @@ def test_g6_g7_g9() -> None:
     assert main_script("Hello world") == "LATIN" and main_script("আমার সোনার বাংলা") == "BENGALI"
     _, issues = check(ctx, "আমার সোনার বাংলা", "My golden Bengal")
     assert ("language", "warn") in kinds(issues)
+
+
+def test_g6_no_warning_for_the_kind_that_was_asked_for() -> None:
+    quote = GuardContext("change", "put it in quote", size="large")
+    assert kinds(check(quote, "Some text.", "> Some text.")[1]) == []
+    bullets = GuardContext("change", "this as a bullet list", size="large")
+    assert kinds(check(bullets, "a and b", "- a\n- b")[1]) == []
+
+
+def test_g5_a_few_typos_in_a_short_sentence_are_a_small_fix() -> None:
+    small = GuardContext("change", "fix grammar", size="small")
+    typos = "Teh backup runs evry night and it were fast."
+    assert change_share(typos, "The backup runs every night and it was fast.") > 0.2
+    assert check(small, typos, "The backup runs every night and it was fast.")[1] == []
+    issues = check(small, typos, "Our nightly job copies all data quickly.")[1]
+    assert kinds(issues) == [("size", "retry")]  # a rewrite is still too much for a fix

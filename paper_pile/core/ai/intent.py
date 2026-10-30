@@ -9,7 +9,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import Literal
 
-from paper_pile.core.ai.guards import STRUCTURE_WORDS, Size, asked_for
+from paper_pile.core.ai.guards import KIND_WORDS, STRUCTURE_WORDS, Size, asked_for
 
 Scope = Literal["text", "note"]
 SMALL = ("grammar", "spelling", "typo", "punctuation", "proofread", "fix", "correct")
@@ -18,6 +18,8 @@ STYLE = (
     "tone", "rephrase", "reword", "polish", "improve", "expand", "shorten", "simplify",
     "active voice", "passive", "professional", "polite",
 )  # fmt: skip
+# a new markdown form for the selected text only (a quote, a list, bold words…)
+FORMAT = (*KIND_WORDS, "bold", "italic", "strikethrough")
 ADD = ("add", "insert", "include", "append", "mention", "new section", "another", "also")
 SMALL_GROUPS = frozenset({"fix"})
 TEXT_GROUPS = frozenset({"length", "tone", "clarity", "language"})
@@ -45,7 +47,7 @@ def edit_intent(command_id: str, instruction: str, groups: Sequence[str] = ()) -
     if not adds and not structure:
         if words and _only(words, SMALL):
             return Intent("text", "small", False, False)
-        if not words or asked_for(words, STYLE):
+        if not words or asked_for(words, STYLE) or asked_for(words, FORMAT):
             return Intent("text", "large", False, False)
     return Intent("note", "medium", adds, structure)
 

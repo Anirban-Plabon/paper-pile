@@ -1,0 +1,23 @@
+{
+  "command": "ai-tone",
+  "instruction": "more formal",
+  "num_ctx": 2048,
+  "expect": [
+    [
+      "headings_unchanged"
+    ],
+    [
+      "regions_min",
+      2
+    ],
+    [
+      "changed"
+    ]
+  ],
+  "expect_unit": [
+    [
+      "not_contains",
+      "keeps the servers"
+    ]
+  ]
+}

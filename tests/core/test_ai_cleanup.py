@@ -2,7 +2,7 @@
 
 import pytest
 
-from paper_pile.core.ai.cleanup import StreamCleaner, clean_reply, demote
+from paper_pile.core.ai.cleanup import StreamCleaner, clean_reply, demote, heading_floor
 
 
 @pytest.mark.parametrize(
@@ -57,3 +57,18 @@ def test_stream_keeps_headings_below_the_section() -> None:
     )
     assert stream(["# My Note\n\nText."], title="My note") == "Text."
     assert demote("## A", 1) == "## A" and demote("# A", 2) == "### A" and demote("x", 3) == "x"
+
+
+def test_heading_floor() -> None:
+    note = "intro\n\n# A\n\ntext\n\n## B\n\n```\n# not a heading\n```\n\nend"
+    assert heading_floor(note, 0) == 0
+    assert heading_floor(note, note.index("text")) == 1
+    assert heading_floor(note, len(note)) == 2
+
+
+def test_new_text_gets_a_blank_line_after_its_headings() -> None:
+    assert clean_reply("## Backups\nBack up nightly.") == "## Backups\n\nBack up nightly."
+    code = "```md\n## not a heading\ntext\n```"
+    assert clean_reply(code + "\n\nafter", "") == code + "\n\nafter"
+    own = "## Mine\ntext"  # a rewrite of the user's own text keeps its layout
+    assert clean_reply("## Mine\nnew text", own) == "## Mine\nnew text"

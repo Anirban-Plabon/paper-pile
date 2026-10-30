@@ -18,6 +18,9 @@ from paper_pile.core.ai.intent import edit_intent
         ("ai-rewrite", "add option D: Fly.io", (), "note", "medium", True),
         ("ai-rewrite", "", ("content",), "note", "medium", True),
         ("ai-rewrite", "say that the price went up", (), "note", "medium", False),
+        ("ai-rewrite", "put it in quote", (), "text", "large", False),
+        ("ai-rewrite", "this as a bullet list", (), "text", "large", False),
+        ("ai-rewrite", "add a quote from Ana", (), "note", "medium", True),
     ],
 )
 def test_intent(

@@ -296,3 +296,29 @@ def vault_view(hits: Sequence[tuple[str, str, str]], budget: int) -> str:
         where = f"{path} § {heading}" if heading else path
         parts.append(f"[V{n}] {where}\n{cut_to_tokens(text.strip(), each)}")
     return "\n\n".join(parts)
+
+
+def chunk_tokens(window: int) -> int:
+    """How big one part of a long rewrite may be: its text, the rewrite and the prompt must
+    fit the window (``docs/AI_EDITS.md`` §5: about (window − answer) / 2.5)."""
+    return int((window - EditBudget.for_window(window).answer) / 2.5)
+
+
+def chunks(blocks: Sequence[Block], note: str, max_tokens: int) -> list[list[Block]]:
+    """``blocks`` in parts of at most ``max_tokens`` (a single bigger block stays one part),
+    cut only between blocks and, once a part is half full, at the next ``#`` / ``##`` section
+    start, so a part is a section where it can be."""
+    out: list[list[Block]] = []
+    part: list[Block] = []
+    size = 0
+    for b in blocks:
+        tokens = estimate_tokens(b.text(note))
+        section = b.kind == "heading" and b.level <= 2
+        if part and (size + tokens > max_tokens or (section and size >= max_tokens / 2)):
+            out.append(part)
+            part, size = [], 0
+        part.append(b)
+        size += tokens
+    if part:
+        out.append(part)
+    return out

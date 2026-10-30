@@ -1,0 +1,4 @@
+[
+  "{\"already_there\": [], \"edits\": [{\"why\": \"add the backups paragraph\", \"action\": \"add_after\", \"block\": \"B4\", \"new_section\": false}], \"question\": \"\"}",
+  "Backups run every night to the NAS and are kept for 30 days."
+]

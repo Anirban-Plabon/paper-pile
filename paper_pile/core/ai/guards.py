@@ -25,10 +25,18 @@ from paper_pile.core.parser import headings
 
 Size = Literal["small", "medium", "large"]
 SIZE_LIMIT: dict[Size, float] = {"small": 0.2, "medium": 0.6, "large": 1.0}
+# a small fix may always change this many words: three typos in a short sentence are a large
+# share of it, and still a small fix
+SMALL_WORDS = 3
 ECHO_SHARE = 0.6
 _WORD = re.compile(r"[^\W_]+(?:'[^\W_]+)?|\S")
 _HEADING_LINE = re.compile(r"^#{1,6}[ \t]+\S")
 STRUCTURE_WORDS = ("heading", "title", "section", "headline", "subheading")
+# the task asks for another kind of text (a quote, a list…): no "kind changed" warning
+KIND_WORDS = (
+    "quote", "blockquote", "bullet", "numbered", "checklist", "check list", "list", "table",
+    "code block", "callout",
+)  # fmt: skip
 REMOVE_WORDS = ("remove", "delete", "drop", "unlink", "without", "strip", "get rid")
 
 
@@ -60,6 +68,15 @@ def allowed_tokens(instruction: str) -> list[str]:
     if not asked_for(instruction, REMOVE_WORDS):
         return []
     return protected_tokens(instruction) + re.findall(r"#[\w/-]+|\[\[[^\]]+\]\]", instruction)
+
+
+def changed_words(old: str, new: str) -> int:
+    """How many words changed (the longer side's words that are not kept)."""
+    a, b = _WORD.findall(old), _WORD.findall(new)
+    kept = sum(
+        m.size for m in difflib.SequenceMatcher(a=a, b=b, autojunk=False).get_matching_blocks()
+    )
+    return max(len(a), len(b)) - kept
 
 
 def change_share(old: str, new: str) -> float:
@@ -200,7 +217,8 @@ def _g3_tokens(ctx: GuardContext, old: str, new: str, issues: list[Issue]) -> No
 
 def _g5_size(ctx: GuardContext, old: str, new: str, issues: list[Issue]) -> None:
     share = change_share(old, new)
-    if share > SIZE_LIMIT[ctx.size]:
+    few = ctx.size == "small" and changed_words(old, new) <= SMALL_WORDS
+    if share > SIZE_LIMIT[ctx.size] and not few:
         issues.append(
             _retry(
                 "size",
@@ -212,7 +230,7 @@ def _g5_size(ctx: GuardContext, old: str, new: str, issues: list[Issue]) -> None
 
 
 def _g6_kinds(ctx: GuardContext, old: str, new: str, issues: list[Issue]) -> None:
-    if ctx.asks_structure:
+    if ctx.asks_structure or asked_for(ctx.instruction, KIND_WORDS):
         return
     if _kinds(old) != _kinds(new):
         issues.append(Issue("kind", "warn", "The kind of text changed (a list, table or quote)."))

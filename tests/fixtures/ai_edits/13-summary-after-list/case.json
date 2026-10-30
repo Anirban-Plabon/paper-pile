@@ -1,0 +1,20 @@
+{
+  "command": "ai-summarize",
+  "instruction": "one line",
+  "expect": [
+    [
+      "inserted_after",
+      "- c"
+    ],
+    [
+      "answer_not_contains",
+      "Sure"
+    ]
+  ],
+  "expect_unit": [
+    [
+      "contains",
+      "* Three options: a, b and c."
+    ]
+  ]
+}

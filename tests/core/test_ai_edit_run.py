@@ -7,10 +7,23 @@ import pytest
 
 from paper_pile.core.ai.access import AccessDeniedError
 from paper_pile.core.ai.blocks import block_map
-from paper_pile.core.ai.edit_run import EditResult, EditRun
+from paper_pile.core.ai.context import estimate_tokens
+from paper_pile.core.ai.edit_context import chunk_tokens, chunks
+from paper_pile.core.ai.edit_run import (
+    ANYWAY,
+    SMALLER,
+    EditResult,
+    EditRun,
+    again_words,
+    edit_end,
+    failure_end,
+    replacement_result,
+)
+from paper_pile.core.ai.edits import EditTooLongError
 from paper_pile.core.ai.engine import AiEngine
 from paper_pile.core.ai.fake import FakeProvider
 from paper_pile.core.ai.proposals import accept, apply_changes
+from paper_pile.core.ai.provider import ProviderError
 from paper_pile.core.config import Config
 from paper_pile.core.vault import Vault
 
@@ -185,3 +198,128 @@ async def test_a_private_note_is_never_sent(tmp_path: Path) -> None:
     with pytest.raises(AccessDeniedError):
         await EditRun(ai, path="h.md", note=private, selection=None, instruction="x").run()
     assert fake.calls == []
+
+
+def options_plan(*options: str) -> str:
+    return json.dumps({"already_there": [], "edits": [], "options": list(options), "question": ""})
+
+
+async def test_a_messy_task_comes_back_as_options(tmp_path: Path) -> None:
+    ai, fake = make(tmp_path, [options_plan("Add Fly.io as option D", "Add a price column")])
+    run = run_on(ai, None, "add fly and also prices maybe idk", offer_options=True)
+    result = await run.run()
+    assert result.options == ("Add Fly.io as option D", "Add a price column")
+    assert result.proposal is None and result.calls == 1
+    assert '"options"' in fake.calls[0][-1].content
+
+
+async def test_one_option_runs_at_once_and_never_asks_twice(tmp_path: Path) -> None:
+    script = [
+        options_plan("Add Fly.io as an option"),
+        plan(step("add the option", "add_after", LAST_ITEM)),
+        "- **Fly.io**: hosted",
+    ]
+    ai, fake = make(tmp_path, script)
+    result = await run_on(ai, None, "fly??", offer_options=True).run()
+    assert "- **Fly.io**: hosted" in final(result) and not result.options
+    second = fake.calls[1][-1].content
+    assert second.startswith("Task: Add Fly.io as an option") and '"options"' not in second
+
+
+async def test_options_are_off_by_default_and_edits_win(tmp_path: Path) -> None:
+    ai, fake = make(tmp_path, [plan(step("add", "add_after", LAST_ITEM)), "- **Fly.io**: x"])
+    result = await run_on(ai, None, "add option Fly.io").run()
+    assert '"options"' not in fake.calls[0][-1].content and not result.options
+    both = json.dumps(
+        {
+            "already_there": [],
+            "edits": [step("add", "add_after", LAST_ITEM)],
+            "options": ["a", "b"],
+            "question": "",
+        }
+    )
+    ai, _ = make(tmp_path / "b", [both, "- **Fly.io**: x"])
+    result = await run_on(ai, None, "add option Fly.io", offer_options=True).run()
+    assert not result.options and "- **Fly.io**: x" in final(result)
+
+
+async def test_every_ending_has_a_reason(tmp_path: Path) -> None:
+    ai, _ = make(tmp_path, [options_plan("a", "b")])
+    end = edit_end(await run_on(ai, None, "x", offer_options=True).run())
+    assert end.kind == "options" and end.options == ("a", "b")
+    ai, _ = make(tmp_path / "q", [plan(question="Which one?")])
+    assert edit_end(await run_on(ai, None, "add it").run()).message == "Which one?"
+    ai, _ = make(tmp_path / "a", [plan(already=[{"block": DOCKER, "amount": "all"}])])
+    assert edit_end(await run_on(ai, None, "add Docker").run()).kind == "already"
+    ai, _ = make(tmp_path / "e", [""])  # an empty answer: the change is dropped
+    end = edit_end(await run_on(ai, sel(BACKUPS), "fix grammar").run())
+    assert end.kind == "failed" and "cut off or empty" in end.message and end.retry
+    ai, _ = make(tmp_path / "f", [])  # the model fails at once
+    end = edit_end(await run_on(ai, sel(BACKUPS), "fix grammar").run())
+    assert end.kind == "failed" and end.message.endswith("Nothing was changed.")
+    ai, _ = make(tmp_path / "p", ["The backups run every night. See [[Ops]]."])
+    assert edit_end(await run_on(ai, sel(BACKUPS), "fix grammar").run()).kind == "proposal"
+    assert failure_end(ProviderError("Ollama is down")).retry
+    assert not failure_end(EditTooLongError("too long")).retry
+
+
+async def test_smaller_change_tightens_the_limit(tmp_path: Path) -> None:
+    ai, fake = make(tmp_path, ["The backups run every night. See [[Ops]]."])
+    run = run_on(ai, sel(BACKUPS), "make it formal", smaller=True)
+    assert run.intent.size == "medium" and run.instruction.endswith(SMALLER)
+    await run.run()
+    assert SMALLER in fake.calls[0][-1].content
+
+
+async def test_add_it_anyway_does_not_stop_at_already_there(tmp_path: Path) -> None:
+    words = again_words("add Docker", "anyway")
+    assert words == f"add Docker. {ANYWAY}" and again_words("x", "again") == "x"
+    already = plan(already=[{"block": DOCKER, "amount": "all"}])
+    ai, _ = make(tmp_path, [already, "- **Docker**: again"])
+    result = await run_on(ai, None, words, anyway=True).run()
+    assert not result.already and "- **Docker**: again" in final(result)
+
+
+def test_a_pushed_translation_is_a_checked_proposal() -> None:
+    start, end = sel(BACKUPS)
+    answer = "Translation:\nLes sauvegardes tournent. Voir [[Ops]]."
+    result = replacement_result("h.md", NOTE, start, end, answer, "translate")
+    assert "Les sauvegardes tournent. Voir [[Ops]]." in final(result)
+    assert "Translation:" not in final(result) and result.clean  # no language warning
+    lost = replacement_result("h.md", NOTE, start, end, "Les sauvegardes tournent.", "translate")
+    assert not lost.clean  # the dropped link is a warning: never applied unseen
+
+
+def long_note(sections: int = 4, words: int = 260) -> str:
+    body = " ".join(f"word{i}" for i in range(words))
+    return "# Long\n\n" + "".join(f"## Part {n}\n\n{body}.\n\n" for n in range(1, sections + 1))
+
+
+def test_chunks_split_at_sections_and_never_inside_a_block() -> None:
+    note = long_note()
+    blocks = block_map(note)
+    parts = chunks(blocks, note, chunk_tokens(2048))
+    assert len(parts) > 1 and [b for p in parts for b in p] == blocks  # all, in order
+    assert all(p[0].kind == "heading" for p in parts[1:])  # each later part starts a section
+    for part in chunks(blocks, note, 10):  # a block bigger than a part is a part of its own
+        assert len(part) == 1 or sum(estimate_tokens(b.text(note)) for b in part) <= 10
+
+
+async def test_a_long_rewrite_goes_part_by_part(tmp_path: Path) -> None:
+    note = long_note()
+    parts = chunks(block_map(note), note, chunk_tokens(2048))
+    replies = [note[p[0].start : p[-1].end].replace("word", "term") for p in parts]
+    root = tmp_path / "v"
+    root.mkdir()
+    (root / "h.md").write_text(note)
+    fake = FakeProvider(delay=0, script=list(replies))
+    config = Config(vault=root)
+    config.set("ai.num_ctx", 2048)
+    ai = AiEngine(Vault(root), config, provider_factory=lambda _c: fake)
+    ai.allow()
+    run = EditRun(ai, path="h.md", note=note, selection=None, instruction="make it formal")
+    result = await run.run()
+    assert result.calls == len(parts) == len(fake.calls) and result.proposal is not None
+    assert len(result.proposal.regions) == len(parts)
+    done = accept(result.proposal, note)
+    assert done is not None and "word" not in apply_changes(note, done[0]).split("# Long")[1]

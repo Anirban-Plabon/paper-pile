@@ -1,0 +1,27 @@
+{
+  "command": "translate-replace",
+  "instruction": "French",
+  "expect": [
+    [
+      "contains",
+      "[[Ops|"
+    ],
+    [
+      "contains",
+      "`npm start`"
+    ],
+    [
+      "contains",
+      "https://example.org"
+    ],
+    [
+      "changed"
+    ]
+  ],
+  "expect_unit": [
+    [
+      "contains",
+      "Lancez"
+    ]
+  ]
+}

@@ -1,0 +1,18 @@
+{
+  "command": "ai-rewrite",
+  "instruction": "make it clearer",
+  "expect": [
+    [
+      "headings_unchanged"
+    ],
+    [
+      "changed"
+    ]
+  ],
+  "expect_unit": [
+    [
+      "contains",
+      "Use --fast for a quicker run."
+    ]
+  ]
+}

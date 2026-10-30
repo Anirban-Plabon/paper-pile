@@ -46,20 +46,27 @@ turn AI off in Settings → General → Features.
 - **Polish:** themes (light and dark, accent colour), frameless window, per-monitor scaling on WSL
 
 ## Timeline
-| Date | Work |
-|---|---|
-| Oct 13 | Planning docs |
-| Oct 14 | P0–P3: setup, vault, 3-pane UI, file tree; editor with Live Preview; wikilinks, index, backlinks |
-| Oct 15 | P4–P5: slash menu, editable tables, image assets, embeds |
-| Oct 16 | P6–P8: Smart Paste, Ollama AI chat, themes, settings, calendar |
-| Oct 17 | Frameless window, icons, note menu, split view, tags; baseline 818 tests green |
-| Oct 20 | Light and dark rendering sweep; window kept above the Windows taskbar |
-| Oct 21 | P12–P13: page breaks, print/PDF, saved chats, memories, AI settings, app folders |
-| Oct 22 | P13–P17: switcher, palette, search, outline, trash, version history, motion |
-| Oct 23 | P18 reverted, then partly re-applied; maximize bug cause found |
-| Oct 24 | P19–P21: performance (tab switch 758 → 342 ms), memory leaks fixed, note header, pins |
-| Oct 25 | Settings polish |
-| Oct 28 | P22: optional AI (`--ai`), AiEngine, `/compact`, AI access per vault, AI edits as a diff |
-| Oct 29 | P22: selection bar, edit modes, suggested prompts, `@vault` |
+| Date | Time | Hours | Work |
+|---|---|---|---|
+| Oct 13 | — | — | Planning docs |
+| Oct 14 | 09:42–17:04 | 5.2 h | P0–P3: setup, vault, 3-pane UI, file tree; editor with Live Preview; wikilinks, index, backlinks |
+| Oct 15 | 08:30–16:57 | 2.4 h | P4–P5: slash menu, editable tables, image assets, embeds |
+| Oct 16 | 08:36–17:05 | 8.5 h | P6–P8: Smart Paste, Ollama AI chat, themes, settings, calendar |
+| Oct 17 | — | — | Frameless window, icons, note menu, split view, tags; baseline 818 tests green |
+| Oct 20 | — | — | Light and dark rendering sweep; window kept above the Windows taskbar |
+| Oct 21 | — | — | P12–P13: page breaks, print/PDF, saved chats, memories, AI settings, app folders |
+| Oct 22 | 09:55–22:53 | 13.0 h | P13–P17: switcher, palette, search, outline, trash, version history, motion |
+| Oct 23 | 00:29–01:02 | 0.6 h | P18 reverted, then partly re-applied; maximize bug cause found |
+| Oct 24 | 09:56–19:07 | 9.2 h | P19–P21: performance (tab switch 758 → 342 ms), memory leaks fixed, note header, pins |
+| Oct 25 | 00:11–00:26 | 0.3 h | Settings polish |
+| Oct 28 | 21:42–23:32 | 1.8 h | P22: optional AI (`--ai`), AiEngine, `/compact`, AI access per vault, AI edits as a diff |
+| Oct 29 | 00:17–01:14 | 1.0 h | P22: selection bar, edit modes, suggested prompts, `@vault` |
+
+**Time / Hours:** about 42 h recorded in total. For Oct 14–16 (≈ 16 h), Time is the span of the
+saved Claude Code sessions and Hours is the active working time in it (gaps over 30 min not
+counted). From Oct 22, Time is the first to the last commit of the day and Hours is that span
+(≈ 26 h), which includes breaks, so the real time may be lower.
+After-midnight spans continue the previous evening. `—` means no sessions or commits were
+recorded that day.
 
 **Status:** 1,209 tests passing, editor QA 358/358.

@@ -1,4 +1,4 @@
-"""The Ask box under a selection (PLAN §4.27): rewrite-or-ask and the box's prompt."""
+"""The Ask box under a selection (PLAN §4.27): the box's prompt and `/` list."""
 
 from pathlib import Path
 
@@ -8,46 +8,10 @@ from paper_pile.core.ai.access import AccessDeniedError
 from paper_pile.core.ai.edits import EditTooLongError
 from paper_pile.core.ai.engine import DIVIDER, AiEngine
 from paper_pile.core.ai.fake import FakeProvider
-from paper_pile.core.ai.selection_ask import AskTurn, box_commands, wants_edit
+from paper_pile.core.ai.selection_ask import AskTurn, box_commands
 from paper_pile.core.commands import CommandContext
 from paper_pile.core.config import Config
 from paper_pile.core.vault import Vault
-
-
-@pytest.mark.parametrize(
-    "message",
-    [
-        "Rewrite this more formally",
-        "rephrase",
-        "please make it shorter",
-        "Can you fix the grammar?",
-        "could you please translate this to French",
-        "Turn it into a bullet list",
-        "write it as a haiku",
-        "SHORTEN!",
-        "change 'cat' to 'dog'",
-    ],
-)
-def test_edit_requests(message: str) -> None:
-    assert wants_edit(message)
-
-
-@pytest.mark.parametrize(
-    "message",
-    [
-        "What does this mean?",
-        "Explain this",
-        "why is the sky blue",
-        "Summarize it",
-        "can you tell me who wrote this?",
-        "write a poem about cats",
-        "is the change correct?",
-        "",
-        "please",
-    ],
-)
-def test_questions(message: str) -> None:
-    assert not wants_edit(message)
 
 
 @pytest.fixture
