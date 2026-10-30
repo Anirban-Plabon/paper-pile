@@ -1,13 +1,14 @@
 """What the checks of an AI edit found (PLAN §4.29, ``docs/AI_EDITS.md`` §4.6): shown on the
 change it belongs to. ``fixed``: repaired (a grey note); ``warn``: shown, Accept still works, and
 the edit is never applied unseen; ``retry``: ask the model once more; ``drop``: that change is
-not shown and the bar says so. No UI imports.
+not shown and the bar says so; ``info``: a note for the user ("similar text in [[x]]", "maybe
+also update …") that changes nothing. No UI imports.
 """
 
 from dataclasses import dataclass
 from typing import Literal
 
-Severity = Literal["fixed", "warn", "retry", "drop"]
+Severity = Literal["fixed", "warn", "retry", "drop", "info"]
 
 
 @dataclass(frozen=True, slots=True)
@@ -20,6 +21,6 @@ class Issue:
 
 
 def worst(issues: list[Issue]) -> Severity | None:
-    order: tuple[Severity, ...] = ("drop", "retry", "warn", "fixed")
+    order: tuple[Severity, ...] = ("drop", "retry", "warn", "fixed", "info")
     found = {i.severity for i in issues}
     return next((s for s in order if s in found), None)
