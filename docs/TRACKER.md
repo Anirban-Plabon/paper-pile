@@ -6,6 +6,7 @@
 Legend: 🧠 = needs Opus (see PLAN §6 model guidance) · ⬜ todo · 🔄 in progress · ✅ done · ⛔ blocked · ⏭️ skipped/deferred
 
 ## Current focus
+- **Phase:** P25 — One set of AI commands everywhere (user request 2026-10-30, PLAN §4.28): specified, not started; P26 edit pipeline approved (`docs/AI_EDITS.md`, PLAN §4.29); order P26.1 → P25.1 → P26.2–9 → P25.2–6 + P26.10 → P26.11–17
 - **Phase:** P24 — Ask box under a selection (user request 2026-10-30, PLAN §4.27): built (P24.1–P24.7); its real-model check is in the QA checklist
 - **Phase:** P23 — AI hardening (user request 2026-10-29, PLAN §6 P23): P23.1–P23.17 done; P23.18 = the user's real-model pass (merged with P22's)
 - **Phase:** P22 — AI redesign (user request 2026-10-28, PLAN §4.26): all 12 tasks done; waiting for the user's real-model pass (`uv run paper-pile --ai` with Ollama)
@@ -310,6 +311,39 @@ Legend: 🧠 = needs Opus (see PLAN §6 model guidance) · ⬜ todo · 🔄 in p
 | P24.6 | Setting `ai.selection_popup` + answer actions | ✅ | setting + live option (test); *Add to chat*: selection → chip; with answers → `chat_from_box` opens the conversation in the chat pane and saves it (test + real app: `.memory/*.json` written) |
 | P24.7 | Docs | ✅ | PLAN §4.27, §4.26 (edit table, Selections), §4.11, §4.12 `ai.*` table, §3 tree, QA checklist line |
 
+### P26 — Reliable AI edits (user request 2026-10-30, `docs/AI_EDITS.md`)
+| ID | Task | Status | Notes |
+|---|---|---|---|
+| P26.1 | Provider: per-call format + think; token counts; scripted fake | ⬜ | |
+| P26.2 | Block map | ⬜ | |
+| P26.3 | Edit context and budget | ⬜ | |
+| P26.4 | Planner | ⬜ | |
+| P26.5 | Writer and merge | ⬜ | |
+| P26.6 | Cleanup and guards G1–G10 | ⬜ | |
+| P26.7 | Existing content + consistency sweep | ⬜ | |
+| P26.8 | Multi-region proposals | ⬜ | |
+| P26.9 | EditRun orchestration | ⬜ | |
+| P26.10 | Diff UI | ⬜ | |
+| P26.11 | Long text | ⬜ | |
+| P26.12 | Answer placement | ⬜ | |
+| P26.13 | Translate push flow | ⬜ | |
+| P26.14 | Eval harness, unit | ⬜ | |
+| P26.15 | Eval harness, real Ollama | ⬜ | |
+| P26.16 | Setting + docs | ⬜ | |
+| P26.17 | Edit another note on request | ⬜ | |
+
+### P25 — One set of AI commands everywhere (user request 2026-10-30)
+| ID | Task | Status | Notes |
+|---|---|---|---|
+| P25.1 | Core: command list + target + run path | ⬜ | |
+| P25.2 | Core: AI suggested options | ⬜ | |
+| P25.3 | Core: clean written answers while streaming | ⬜ | |
+| P25.4 | All four surfaces from the one list | ⬜ | |
+| P25.5 | Options box UI | ⬜ | |
+| P25.6 | Change → diff, answer → under the target | ⬜ | |
+| P25.7 | `/` list narrower than its box (icon stays) | ⬜ | |
+| P25.8 | Docs | ⬜ | |
+
 ## Decision log
 <!-- YYYY-MM-DD · decision · reason · (who: user / claude) -->
 | Date | Decision | Reason | By |
@@ -514,6 +548,9 @@ Legend: 🧠 = needs Opus (see PLAN §6 model guidance) · ⬜ todo · 🔄 in p
 | 2026-10-30 | Ask box, 3rd revision: the editor's own slash menu sends Rewrite / Fix grammar / Summarize / Explain for a selection to the box (command picked); no accent tint; the automatic selection → chat chip removed with `ai.selection_to_chat` (a selection reaches the chat only by *Move to chat* / *Select from screen*); chat suggestions: max 3 (`MAX_SHOWN` 6 → 3), floating above the chat's box; *Add to chat* → *Move to chat* (`message-square-share`); faster: the box opens on mouse release (no 350 ms wait; measured 25–75 ms after release offscreen), a question uses the server's copy of the note (no browser round trip; Enter → question shown ≈ 20 ms) | user feedback | user |
 | 2026-10-30 | Ask box, 4th revision: the Ask… command's "Ask the AI" dialog replaced by the same box at the caret (answer still written at the caret; *Move to chat* asks in the chat); *Move to chat* icon `arrow-right-to-line` and a solid hover (a translucent hover showed the note through it); chat suggestions stacked, each shaped like the chat's box | user feedback with screenshots | user |
 | 2026-10-30 | Chat suggestions as wide as their text; *Move to chat* icon = one icon, a chat bubble with a right arrow inside (`message-square-arrow-right`, the app's own icon added in `build_icons.mjs` and `icons.json`: Lucide has none; two icons side by side were rejected); the box's Send lights up full accent like the chat's | user feedback | user |
+| 2026-10-30 | P25 (PLAN §4.28): one AI command list for slash menu, palette, Ask box and chat box — change: Rewrite, Change tone, Translate; answer: Summarize, Explain, Outline; no words → AI-suggested options in a tick box (multi-select, Apply); changes → diff to accept (replaces P24's direct rewrite); answers → written into the note under the target; Fix grammar becomes a Rewrite option, Continue writing dropped | Consistency across AI surfaces | user |
+| 2026-10-30 | P25 2nd revision: Translate is no longer a change command — its answer is shown with Replace / Insert below / Copy and enters the note only when the user pushes it. P26 (PLAN §4.29) proposed: how edits are performed, research plan in `docs/AI_EDITS.md` (plan → write → guards → consistency → one multi-place diff); waits for the user's answers to its 4 open questions | User wants edits safe and general, not per-case | user / claude |
+| 2026-10-30 | P26 approved (`docs/AI_EDITS.md` §13): outside changes only as per-place diffs (never auto-applied), `ai.edit_planning` setting, other notes only told unless the user names them (P26.17), front matter untouched; Continue writing removed entirely; `/` list narrower than its box; Move to chat icon unchanged | User's answers | user |
 
 ## Issues log
 <!-- YYYY-MM-DD · task · symptom → root cause → fix · (gotcha added? y/n) -->
