@@ -1,15 +1,15 @@
 // Where the Ask box goes (PLAN §4.27): once a selection settles (selectionsync.js calls
 // `settlePopup`), the editor tells Python what is selected and where it is on screen; Python draws
 // the box (gui/components/ask_popup.py, placed by static/askpop.js). While the box is open its text
-// keeps a soft tint (`markTarget`), pulsing while the AI rewrites it. Only while AI and the box are
-// on (`aiPopup` option, index.js). JS only reports and draws.
+// keeps a band behind its lines (`markTarget`, aiband.js: the same box as the diff's rows),
+// pulsing while the AI works; it goes when the diff it led to is shown. Only while AI and the box
+// are on (`aiPopup` option, index.js). JS only reports and draws.
 import { StateEffect, StateField } from "@codemirror/state";
-import { Decoration, EditorView } from "@codemirror/view";
 import { rtOf } from "./context.js";
+import { bandLayer, snapToBlocks } from "./aiband.js";
+import { proposalField } from "./proposal.js";
 
 const setTarget = StateEffect.define(); // {from, to, busy} | null
-const tint = Decoration.mark({ class: "pp-ask-target" });
-const pulse = Decoration.mark({ class: "pp-ask-target pp-ask-busy" });
 
 const targetField = StateField.define({
   create: () => null,
@@ -22,13 +22,27 @@ const targetField = StateField.define({
   },
   // a parked note (another tab) keeps its field: its tint counts only while its `token` is the
   // editor's current one, so a box closed meanwhile never comes back with that note
+  // no band while the editor has the selection itself (it shows), nor once a diff is shown
   provide: (f) =>
-    EditorView.decorations.compute([f], (state) => {
-      const t = state.field(f);
-      if (!t || t.token !== (rtOf(state).askToken || 0)) return Decoration.none;
-      return Decoration.set([(t.busy ? pulse : tint).range(t.from, t.to)]);
-    }),
+    bandLayer(
+      "pp-ai-band",
+      (state, view) => {
+        if (!askBandShown(view)) return [];
+        const t = state.field(f);
+        return [{ ...snapToBlocks(state, t.from, t.to), cls: t.busy ? "pp-ai-band-busy" : "" }];
+      },
+      (u) => u.startState.field(f) !== u.state.field(f) || u.startState.field(proposalField, false) !== u.state.field(proposalField, false),
+    ),
 });
+
+// Is the Ask box's band drawn now? (Not while the editor itself shows the selection, nor once a
+// diff is shown.) The selection layer (selectionband.js) stays empty while it is.
+export function askBandShown(view) {
+  const state = view.state;
+  const t = state.field(targetField, false);
+  if (!t || t.token !== (rtOf(state).askToken || 0) || state.field(proposalField, false)) return false;
+  return t.busy || !view.hasFocus;
+}
 
 const reported = new WeakMap(); // view -> "from:to" of the selection last reported (null: none)
 
@@ -41,10 +55,15 @@ function placeOf(view, r) {
   const box = view.scrollDOM.getBoundingClientRect();
   const oneLine = start && end && Math.abs(start.top - end.top) < 2;
   const edge = oneLine ? start : view.coordsAtPos(line.from, 1);
+  // a whole block the band covers (code, math, table, quote): the box goes under / over all of it
+  const band = snapToBlocks(view.state, r.from, r.to);
+  const grown = band.from !== r.from || band.to !== r.to;
+  const top = grown ? view.documentTop + view.lineBlockAt(band.from).top : start?.top;
+  const bottom = grown ? view.documentTop + view.lineBlockAt(Math.max(band.from, band.to - 1)).bottom : end?.bottom;
   return {
     left: edge ? edge.left : box.left,
-    top: start ? start.top : box.top,
-    bottom: end ? end.bottom : box.bottom,
+    top: top ?? box.top,
+    bottom: bottom ?? box.bottom,
   };
 }
 
@@ -86,15 +105,17 @@ export function askAbout(view, from, to, command) {
   return true;
 }
 
-// Tint (busy: pulse) `from`..`to` while the box is about it; `from` null clears it (also in the
-// notes parked in this editor).
+// A band behind `from`..`to` (busy: pulsing) while the box is about it; `from` null clears it
+// (also in the notes parked in this editor).
 export function markTarget(view, from, to, busy) {
   if (view.state.field(targetField, false) === undefined) return;
   const rt = rtOf(view.state);
   if (from === null) rt.askToken = (rt.askToken || 0) + 1;
   const len = view.state.doc.length;
   const value = from === null || to <= from || to > len ? null : { from, to, busy: !!busy, token: rt.askToken || 0 };
-  view.dispatch({ effects: setTarget.of(value) });
+  // working on it: only the band shows the text, the selection goes (one highlight at a time)
+  const collapse = value && value.busy && !view.state.selection.main.empty ? { selection: { anchor: to } } : {};
+  view.dispatch({ effects: setTarget.of(value), ...collapse });
 }
 
 export const selectPopup = [targetField];

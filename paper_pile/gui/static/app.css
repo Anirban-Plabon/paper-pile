@@ -643,7 +643,10 @@ body.pp-page-dragging, body.pp-page-dragging * { cursor: row-resize !important; 
 .pp-blockcopy:hover, .pp-code-first:hover .pp-blockcopy, .pp-math-block:hover .pp-blockcopy, .pp-mermaid:hover .pp-blockcopy { opacity: 1; color: var(--pp-accent); border-color: rgba(var(--pp-accent-rgb), .5); }
 .pp-blockcopy-done { color: var(--pp-accent) !important; opacity: 1; }
 /* the text selection follows the theme colour too */
-.pp-editor .cm-selectionBackground, .pp-editor .cm-focused .cm-selectionBackground { background: rgba(var(--pp-accent-rgb), .28) !important; }
+/* the selection: selectionband.js draws it (square, inside the line box); CodeMirror's own layer reaches into the margins */
+.pp-editor .cm-selectionLayer { display: none; }
+.pp-editor .pp-sel { background: rgba(var(--pp-accent-rgb), .20); }
+.pp-editor .cm-focused .pp-sel { background: rgba(var(--pp-accent-rgb), .28); }
 /* callout types: a label such as Tip / Warning / Danger changes the box colour */
 .pp-editor .cm-line.pp-quote.pp-callout-ok { --pp-bar: #22a06b; background-color: rgba(34, 160, 107, .14); }
 .pp-editor .cm-line.pp-quote.pp-callout-warn { --pp-bar: #d9822b; background-color: rgba(217, 130, 43, .15); }
@@ -1422,7 +1425,8 @@ body.body--dark { --pp-set-box-bg: rgba(255, 255, 255, .035); }
    padding; no margins (CodeMirror measures lines and widgets). */
 :root { --pp-aidiff-del-bg: rgba(248, 81, 73, .13); --pp-aidiff-del-fg: #cf222e; --pp-aidiff-add-bg: rgba(46, 160, 67, .15); --pp-aidiff-add-fg: #1a7f37; }
 body.body--dark { --pp-aidiff-del-bg: rgba(248, 81, 73, .18); --pp-aidiff-del-fg: #ff7b72; --pp-aidiff-add-bg: rgba(46, 160, 67, .2); --pp-aidiff-add-fg: #56d364; }
-.pp-editor .cm-line.pp-aidiff-del { position: relative; background-color: var(--pp-aidiff-del-bg); }
+.pp-editor .cm-line.pp-aidiff-del { position: relative; }  /* its red band: .pp-aidiff-band (a layer, also over rendered blocks) */
+.pp-editor .pp-aidiff-band { background: var(--pp-aidiff-del-bg); }
 .pp-editor .cm-line.pp-aidiff-del::before { content: "−"; position: absolute; left: -16px; color: var(--pp-aidiff-del-fg); font-weight: 600; }
 .pp-aidiff-block { padding: 0 0 4px; }
 .pp-aidiff-add { position: relative; padding: 0 2px 0 6px; background-color: var(--pp-aidiff-add-bg); white-space: pre-wrap; overflow-wrap: anywhere; }
@@ -1443,8 +1447,8 @@ body.body--dark { --pp-aidiff-del-bg: rgba(248, 81, 73, .18); --pp-aidiff-del-fg
 .pp-aidiff-chip-warn { background: rgba(212, 167, 44, .18); color: #9a6700; }
 body.body--dark .pp-aidiff-chip-warn { color: #e3b341; }
 .pp-aidiff-chip-outside { background: rgba(var(--pp-accent-rgb), .14); color: var(--pp-accent); }
-.pp-editor .pp-aidiff-delword { background: rgba(248, 81, 73, .28); border-radius: 2px; text-decoration: line-through; text-decoration-color: var(--pp-aidiff-del-fg); }
-.pp-aidiff-addword { background: rgba(46, 160, 67, .3); border-radius: 2px; }
+.pp-editor .pp-aidiff-delword { background: rgba(248, 81, 73, .28); text-decoration: line-through; text-decoration-color: var(--pp-aidiff-del-fg); }
+.pp-aidiff-addword { background: rgba(46, 160, 67, .3); }
 .pp-aidiff-bar-text { flex: 1; color: var(--pp-muted); }
 .pp-aidiff-actions, .pp-aidiff-bar { font-family: Roboto, -apple-system, "Helvetica Neue", Helvetica, Arial, sans-serif; }  /* Quasar's UI font, not the note's */
 
@@ -1490,10 +1494,11 @@ body.body--dark .pp-aidiff-chip-warn { color: #e3b341; }
 .pp-askpop-gone { pointer-events: none; animation: pp-askpop-dissolve var(--pp-dur-fast) var(--pp-ease) forwards; }
 @keyframes pp-askpop-dissolve { to { opacity: 0; transform: scale(.96); } }
 /* the box's text in the note: tinted while the editor is not focused, pulsing while rewritten */
-.pp-editor .pp-ask-target { background: rgba(var(--pp-accent-rgb), .12); border-radius: 2px; }
-.pp-editor .cm-focused .pp-ask-target:not(.pp-ask-busy) { background: none; }
-.pp-editor .pp-ask-busy { animation: pp-ask-pulse calc(1.4s * var(--pp-motion)) ease-in-out infinite; }
-@keyframes pp-ask-pulse { 50% { background-color: rgba(var(--pp-accent-rgb), .34); } }
+/* the AI's target: a full-width band behind its lines (aiband.js), square like the diff's rows */
+.pp-editor .pp-ai-band { background: rgba(var(--pp-accent-rgb), .12); }
+.pp-editor .pp-ai-band-layer, .pp-editor .pp-aidiff-band-layer { pointer-events: none; }
+.pp-editor .pp-ai-band-busy { animation: pp-ai-band-pulse calc(1.4s * var(--pp-motion)) ease-in-out infinite; }
+@keyframes pp-ai-band-pulse { 50% { opacity: .45; } }
 
 /* Asking in the chat whether the AI may read a folder / file named in a message (P22.9). */
 .pp-chat-ask { gap: 4px; padding: 10px 12px; border: 1px solid var(--pp-border); border-radius: var(--pp-r-ctrl); background: var(--pp-bg); }

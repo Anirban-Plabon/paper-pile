@@ -9,6 +9,7 @@
 import { StateEffect, StateField } from "@codemirror/state";
 import { Decoration, EditorView, WidgetType, showPanel } from "@codemirror/view";
 import { rtOf } from "./context.js";
+import { bandLayer } from "./aiband.js";
 
 // {id, docId, readonly, notes: [{i, message, update}],
 //  hunks: [{id, from, to, insert, reason, outside, issues: [{severity, message}], marksOld, marksNew}]}
@@ -213,9 +214,22 @@ function barPanel(view) {
   };
 }
 
-// Python shows (or replaces) the proposal for doc `docId`, or clears it (null).
+// Python shows (or replaces) the proposal for doc `docId`, or clears it (null). A selection goes:
+// the diff is the only highlight.
 export function showProposal(view, proposal) {
-  view.dispatch({ effects: setProposal.of(proposal) });
+  const sel = view.state.selection.main;
+  const collapse = proposal && !sel.empty ? { selection: { anchor: sel.head } } : {};
+  view.dispatch({ effects: setProposal.of(proposal), ...collapse });
 }
 
-export const proposalExtension = [proposalField, proposalDecorations];
+// the lines a change removes: a red band behind them, also over rendered blocks (code, images…)
+const removedBands = bandLayer(
+  "pp-aidiff-band",
+  (state) => {
+    const p = state.field(proposalField);
+    return p ? p.hunks.filter((h) => h.to > h.from).map((h) => ({ from: h.from, to: h.to })) : [];
+  },
+  (u) => u.startState.field(proposalField) !== u.state.field(proposalField),
+);
+
+export const proposalExtension = [proposalField, proposalDecorations, removedBands];

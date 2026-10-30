@@ -25,6 +25,7 @@ import { focusTableCell, tableKeys } from "./tablewidget.js";
 import { streamAppend, streamBegin, streamEnd, streamField } from "./stream.js";
 import { proposalExtension, showProposal } from "./proposal.js";
 import { askAbout, markTarget, selectPopup, settlePopup } from "./selectpopup.js";
+import { selectionBand } from "./selectionband.js";
 import { typeset } from "./typeset.js";
 
 const CHANGE_DEBOUNCE_MS = 300;
@@ -237,7 +238,8 @@ export function createEditor(
       history({ joinToEvent: (tr, adjacent) => (tr.isUserEvent("input.type.ai") && !tr.annotation(isolateHistory)) || adjacent }),
       streamField,
       proposalExtension,
-      drawSelection(),
+      drawSelection(), // the caret; the selection itself is selectionBand (square, in the line box)
+      selectionBand,
       dropCursor(),
       tooltips({ tooltipSpace }),
       highlightSelectionMatches(),

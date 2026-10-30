@@ -73,6 +73,8 @@ window.qa = {
   rect(sel, i = 0) { const e = document.querySelectorAll(sel)[i]; if (!e) return null; const r = e.getBoundingClientRect(); return [r.x + r.width / 2, r.y + r.height / 2]; },
   hit(sel, i = 0) { const p = qa.rect(sel, i); if (!p) return false; const e = document.elementFromPoint(p[0], p[1]); return !!e && !!e.closest(sel); },
   all(sel) { return [...document.querySelectorAll(sel)].map(e => e.textContent); },
+  box(sel, i = 0) { const e = document.querySelectorAll(sel)[i]; if (!e) return null; const r = e.getBoundingClientRect(); return [Math.round(r.left), Math.round(r.width), Math.round(r.height), getComputedStyle(e).borderTopLeftRadius]; },
+  empty() { return qa.view().state.selection.main.empty; },
 };
 'ok'
 """
@@ -103,6 +105,13 @@ async def ask_box(cdp: Cdp, selected: str, command: str, words: str) -> None:
     )
     await asyncio.sleep(0.6)
     await cdp.js("document.querySelector('.pp-askpop textarea').focus()")
+    await asyncio.sleep(0.3)
+    band, line = await cdp.js("[qa.box('.pp-ai-band'), qa.box('.pp-split .cm-line')]")
+    check(
+        "the target band: full line width, square",
+        band is not None and line is not None and band[:2] == line[:2] and band[3] == "0px",
+        [band, line],
+    )
     await cdp.type(command)
     await asyncio.sleep(0.5)
     await cdp.key("Enter", 13)
@@ -128,6 +137,15 @@ async def main_checks(port: int) -> None:
         await ask_box(cdp, "- **Bare metal**: no layer", "/rewrite", "add option D: Fly.io")
         bar = await wait_for(cdp, "document.querySelector('.pp-aidiff-bar-text')?.textContent", 15)
         check("bar counts changes and places", bar == "AI suggests 3 changes in 3 places", bar)
+        await asyncio.sleep(0.3)
+        state = await cdp.js("[qa.empty(), document.querySelectorAll('.pp-ai-band').length]")
+        check("with the diff: no selection, no target band", state == [True, 0], state)
+        red, green = await cdp.js("[qa.box('.pp-aidiff-band'), qa.box('.pp-aidiff-add')]")
+        check(
+            "red band and green row: same box, square",
+            red is not None and green is not None and red[:2] == green[:2] and red[3] == "0px",
+            [red, green],
+        )
         whys = await cdp.js("qa.all('.pp-aidiff-why')")
         check(
             "each change says why",
