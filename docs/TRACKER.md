@@ -316,7 +316,7 @@ Legend: 🧠 = needs Opus (see PLAN §6 model guidance) · ⬜ todo · 🔄 in p
 |---|---|---|---|
 | P26.1 | Provider: per-call format + think; token counts; scripted fake | ✅ | `GenerationOptions.schema` / `.think`, `AiEngine.stream(schema=, think=, temperature=, max_answer=)`, `ask_json`, `core/ai/structured.py`; Ollama retried without `think` when the model has none (the error comes while streaming); `FakeProvider(script=…)`; 8 tests |
 | P26.2 | Block map | ✅ | `core/blocks.py` (`top_blocks`, from `tidy._blocks`; tidy uses it, its tests green), `core/ai/blocks.py` (`Block`, `block_map`: ids, kinds incl. code / math / diagram, top-level items, heading paths incl. setext, list ids, fixed blocks, code-point offsets also with CRLF); 4 tests. `render_view` moves to P26.3 |
-| P26.3 | Edit context and budget | ⬜ | |
+| P26.3 | Edit context and budget | ✅ | `core/ai/edit_context.py`: `EditBudget.for_window`, `key_terms` (stemmed), `item_key` / `structure_keys`, `related_blocks` (own list, shared terms, same items, item mentions, counts, neighbours, section heading), `note_view` (targets + related in full, the rest as outline lines, runs folded farthest first, target never dropped, `fits` False → §5), `vault_view`; 6 tests. Fetching vault hits (through the access check) is in `EditRun` (P26.9) |
 | P26.4 | Planner | ⬜ | |
 | P26.5 | Writer and merge | ⬜ | |
 | P26.6 | Cleanup and guards G1–G10 | ⬜ | |
@@ -813,3 +813,4 @@ Legend: 🧠 = needs Opus (see PLAN §6 model guidance) · ⬜ todo · 🔄 in p
 - 2026-10-30 · P26.1 provider: per-call JSON schema + no-thinking, token counts, scripted fake, `ask_json` · 1288 tests
 - 2026-10-30 · P25.1 one AI command list (Rewrite, Change tone, Summarize, Explain, Outline, Translate), Fix grammar + Continue writing removed · 1292 tests
 - 2026-10-30 · P26.2 block map for AI edits; one block splitter shared with Tidy
+- 2026-10-30 · P26.3 edit context: related blocks + outline view within a window-scaled budget
