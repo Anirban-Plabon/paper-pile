@@ -314,7 +314,7 @@ Legend: 🧠 = needs Opus (see PLAN §6 model guidance) · ⬜ todo · 🔄 in p
 ### P26 — Reliable AI edits (user request 2026-10-30, `docs/AI_EDITS.md`)
 | ID | Task | Status | Notes |
 |---|---|---|---|
-| P26.1 | Provider: per-call format + think; token counts; scripted fake | ⬜ | |
+| P26.1 | Provider: per-call format + think; token counts; scripted fake | ✅ | `GenerationOptions.schema` / `.think`, `AiEngine.stream(schema=, think=, temperature=, max_answer=)`, `ask_json`, `core/ai/structured.py`; Ollama retried without `think` when the model has none (the error comes while streaming); `FakeProvider(script=…)`; 8 tests |
 | P26.2 | Block map | ⬜ | |
 | P26.3 | Edit context and budget | ⬜ | |
 | P26.4 | Planner | ⬜ | |
@@ -551,6 +551,7 @@ Legend: 🧠 = needs Opus (see PLAN §6 model guidance) · ⬜ todo · 🔄 in p
 | 2026-10-30 | P25 (PLAN §4.28): one AI command list for slash menu, palette, Ask box and chat box — change: Rewrite, Change tone, Translate; answer: Summarize, Explain, Outline; no words → AI-suggested options in a tick box (multi-select, Apply); changes → diff to accept (replaces P24's direct rewrite); answers → written into the note under the target; Fix grammar becomes a Rewrite option, Continue writing dropped | Consistency across AI surfaces | user |
 | 2026-10-30 | P25 2nd revision: Translate is no longer a change command — its answer is shown with Replace / Insert below / Copy and enters the note only when the user pushes it. P26 (PLAN §4.29) proposed: how edits are performed, research plan in `docs/AI_EDITS.md` (plan → write → guards → consistency → one multi-place diff); waits for the user's answers to its 4 open questions | User wants edits safe and general, not per-case | user / claude |
 | 2026-10-30 | P26 approved (`docs/AI_EDITS.md` §13): outside changes only as per-place diffs (never auto-applied), `ai.edit_planning` setting, other notes only told unless the user names them (P26.17), front matter untouched; Continue writing removed entirely; `/` list narrower than its box; Move to chat icon unchanged | User's answers | user |
+| 2026-10-30 | P26.1: the JSON schema and `think` travel in `GenerationOptions` (per call via `AiEngine.stream`), not as new `Provider.chat` keywords | No protocol change for every provider / caller; the engine already builds options per call | claude |
 
 ## Issues log
 <!-- YYYY-MM-DD · task · symptom → root cause → fix · (gotcha added? y/n) -->
@@ -809,3 +810,4 @@ Legend: 🧠 = needs Opus (see PLAN §6 model guidance) · ⬜ todo · 🔄 in p
 - 2026-10-30 · P24 3rd revision: editor slash menu → Ask box, no tint, selection-to-chat removed, 3 floating chat prompts, Move to chat, faster open · real app 45/45
 - 2026-10-30 · P24 4th revision: Ask… opens the box at the caret (dialog gone), arrow icon + solid hover for Move to chat, stacked box-shaped chat suggestions · real app 53/53
 - 2026-10-30 · P24 5th revision: suggestions as wide as their text, own chat-with-arrow icon, lit Send in the box · real app 55/55
+- 2026-10-30 · P26.1 provider: per-call JSON schema + no-thinking, token counts, scripted fake, `ask_json` · 1288 tests

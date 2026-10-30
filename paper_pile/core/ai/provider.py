@@ -5,9 +5,9 @@ protocol, so another backend (or a test double) can be dropped in.
 """
 
 import ipaddress
-from collections.abc import AsyncIterator, Sequence
+from collections.abc import AsyncIterator, Mapping, Sequence
 from dataclasses import dataclass, field
-from typing import Literal, Protocol
+from typing import Any, Literal, Protocol
 from urllib.parse import urlsplit
 
 Role = Literal["system", "user", "assistant"]
@@ -44,9 +44,13 @@ class Reasoning:
 @dataclass(frozen=True, slots=True)
 class Finish:
     """The last piece of an answer: why it ended (``"stop"``: the model was done; ``"length"``:
-    it reached the answer limit). An answer without one was stopped or failed."""
+    it reached the answer limit). An answer without one was stopped or failed. The token counts
+    are what the backend reports (None when it does not): the prompt tokens it evaluated (fewer
+    than the prompt when the start was cached) and the answer's."""
 
     reason: str
+    prompt_tokens: int | None = field(default=None, compare=False)
+    eval_tokens: int | None = field(default=None, compare=False)
 
 
 @dataclass(frozen=True, slots=True)
@@ -66,6 +70,8 @@ class GenerationOptions:
     num_ctx: int | None = None  # the model's context window, in tokens
     num_predict: int | None = None  # the longest answer, in tokens
     keep_alive_min: int | None = None  # how long the model stays loaded after a reply
+    schema: Mapping[str, Any] | None = None  # a JSON schema the answer must follow (PLAN §4.29)
+    think: bool | None = None  # False: a thinking model answers without reasoning first
 
 
 class ProviderError(Exception):

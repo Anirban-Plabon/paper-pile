@@ -10,9 +10,10 @@ import asyncio
 import logging
 import re
 import time
-from collections.abc import AsyncIterator, Callable, Sequence
+from collections.abc import AsyncIterator, Callable, Mapping, Sequence
 from dataclasses import dataclass, replace
 from pathlib import Path
+from typing import Any
 
 from paper_pile.core.ai.access import (
     AccessDeniedError,
@@ -66,6 +67,7 @@ from paper_pile.core.ai.provider import (
     is_local_host,
 )
 from paper_pile.core.ai.selection_ask import AskTurn
+from paper_pile.core.ai.structured import parse_json_object
 from paper_pile.core.commands import StreamInsert
 from paper_pile.core.config import Config
 from paper_pile.core.index import query_words
@@ -162,6 +164,7 @@ class AiEngine:
         self.summary = ""  # "Summary so far": replaces the first ``summarized`` turns
         self.summarized = 0
         self._busy: asyncio.Task[object] | None = None  # the task an answer streams in
+        self.last_usage: tuple[int | None, int | None] = (None, None)  # prompt, answer tokens
         self._compact_failed = -1  # turns when the last summary failed (no new try for a while)
         self.chat_id = new_chat_id()
         self.created = time.time()
@@ -796,19 +799,37 @@ class AiEngine:
         window: int | None = None,
         on_reasoning: Callable[[str], None] | None = None,
         on_finish: Callable[[str], None] | None = None,
+        *,
+        schema: Mapping[str, Any] | None = None,
+        think: bool | None = None,
+        temperature: float | None = None,
+        max_answer: int | None = None,
     ) -> AsyncIterator[str]:
         """The model's answer to ``messages``, with the chosen model, the options and the
         context window (``window``, else :meth:`window`); the answer may use what the prompt
-        leaves of it. Reasoning goes to ``on_reasoning`` (dropped without it), never into the
-        answer; why the answer ended goes to ``on_finish`` (not called when it was stopped or
-        failed). One answer at a time: while another task streams, raises ProviderError."""
+        leaves of it (at most ``max_answer`` tokens when set). Reasoning goes to
+        ``on_reasoning`` (dropped without it), never into the answer; why the answer ended goes
+        to ``on_finish`` (not called when it was stopped or failed). ``schema`` (a JSON
+        schema), ``think`` and ``temperature`` override the settings for this call (PLAN
+        §4.29). The backend's token counts are kept in :attr:`last_usage`. One answer at a time:
+        while another task streams, raises ProviderError."""
         current = asyncio.current_task()
         other = self._busy
         if other is not None and other is not current and not other.done():
             raise ProviderError(BUSY)
         size = window or await self.window()
         room = max(MIN_ANSWER, size - message_tokens(messages))
-        options = replace(generation_options(self.config), num_ctx=size, num_predict=room)
+        if max_answer is not None:
+            room = min(room, max_answer)
+        options = replace(
+            generation_options(self.config),
+            num_ctx=size,
+            num_predict=room,
+            schema=schema,
+            think=think,
+        )
+        if temperature is not None:
+            options = replace(options, temperature=temperature)
         self._busy = current
         try:
             async for piece in self.provider.chat(messages, model=self.model(), options=options):
@@ -816,6 +837,7 @@ class AiEngine:
                     if on_reasoning is not None:
                         on_reasoning(piece.text)
                 elif isinstance(piece, Finish):
+                    self.last_usage = (piece.prompt_tokens, piece.eval_tokens)
                     if on_finish is not None:
                         on_finish(piece.reason)
                 else:
@@ -823,6 +845,35 @@ class AiEngine:
         finally:
             if self._busy is current:
                 self._busy = None
+
+    async def ask_json(
+        self,
+        messages: Sequence[ChatMessage],
+        schema: Mapping[str, Any],
+        *,
+        max_answer: int = 512,
+        window: int | None = None,
+    ) -> dict[str, Any] | None:
+        """The model's answer to ``messages`` as a JSON object following ``schema`` (sent to the
+        backend, which constrains the answer to it; no reasoning, temperature 0). None when the
+        answer was cut off or is not a JSON object — the caller decides what then. Raises
+        ProviderError like :meth:`stream`."""
+        finish: list[str] = []
+        parts = [
+            piece
+            async for piece in self.stream(
+                messages,
+                window,
+                on_finish=finish.append,
+                schema=schema,
+                think=False,
+                temperature=0.0,
+                max_answer=max_answer,
+            )
+        ]
+        if finish != [FINISHED]:
+            return None
+        return parse_json_object("".join(parts))
 
     # ---- AI commands (answers written into the note) -------------------------------------
 

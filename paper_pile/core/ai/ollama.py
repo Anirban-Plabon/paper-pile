@@ -59,7 +59,16 @@ def ollama_options(options: GenerationOptions | None) -> dict[str, Any]:
     out: dict[str, Any] = {"options": model} if model else {}
     if options.keep_alive_min is not None:
         out["keep_alive"] = f"{options.keep_alive_min}m"
+    if options.schema is not None:
+        out["format"] = dict(options.schema)
+    if options.think is not None:
+        out["think"] = options.think
     return out
+
+
+def no_thinking(exc: Exception) -> bool:
+    """Ollama refused ``think`` because the model has no thinking mode."""
+    return isinstance(exc, ollama.ResponseError) and "does not support thinking" in str(exc.error)
 
 
 class OllamaProvider:
@@ -89,19 +98,28 @@ class OllamaProvider:
         name = model or self.model
         payload = [{"role": m.role, "content": m.content} for m in messages]
         extra = ollama_options(options)
-        try:
-            stream = await self._client.chat(model=name, messages=payload, stream=True, **extra)
-            async for part in stream:
-                thinking = (part.message.thinking or "") if part.message else ""
-                if thinking:  # reasoning is not part of the answer; shown folded above it
-                    yield Reasoning(thinking)
-                text = part.message.content if part.message else ""
-                if text:
-                    yield text
-                if part.done:
-                    yield Finish(part.done_reason or "stop")
-        except Exception as exc:
-            raise self._friendly(exc, name) from exc
+        while True:
+            started = False
+            try:
+                stream = await self._client.chat(model=name, messages=payload, stream=True, **extra)
+                async for part in stream:
+                    started = True
+                    thinking = (part.message.thinking or "") if part.message else ""
+                    if thinking:  # reasoning is not part of the answer; shown folded above it
+                        yield Reasoning(thinking)
+                    text = part.message.content if part.message else ""
+                    if text:
+                        yield text
+                    if part.done:
+                        yield Finish(
+                            part.done_reason or "stop", part.prompt_eval_count, part.eval_count
+                        )
+                return
+            except Exception as exc:
+                if not started and "think" in extra and no_thinking(exc):
+                    extra.pop("think")  # asked not to think and it cannot: ask again without
+                    continue
+                raise self._friendly(exc, name) from exc
 
     # ---- state -----------------------------------------------------------------------------
 

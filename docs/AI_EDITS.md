@@ -457,8 +457,8 @@ Rough guesses for a 7–9B Q4 model; to be measured in P26.15.
 
 ### Provider changes (P26.1)
 
-- `Provider.chat(…, format: dict | None = None, think: bool | None = None)`. `ollama 0.6.3` (pinned) already has both parameters on `AsyncClient.chat` (checked 2026-10-30).
-- `Finish` gets `prompt_tokens` and `eval_tokens`.
+- `GenerationOptions.schema` (a JSON schema, sent as Ollama's `format`) and `GenerationOptions.think`, per call through `AiEngine.stream(schema=, think=, temperature=, max_answer=)` — the `Provider.chat` signature stays the same (built P26.1). `ollama 0.6.3` (pinned) has both parameters on `AsyncClient.chat`. `AiEngine.ask_json` + `core/ai/structured.py` `parse_json_object` (lenient: the first `{…}` that parses).
+- `Finish` gets `prompt_tokens` and `eval_tokens` (not part of equality); the engine keeps the last pair in `last_usage`.
 - `think=False` for every JSON and edit call. If Ollama answers that the model "does not support thinking", resend without `think`.
 - `FakeProvider` gets `script: list[str] | Callable[[list[ChatMessage]], str]` for scripted replies.
 
