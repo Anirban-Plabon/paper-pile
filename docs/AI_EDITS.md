@@ -294,7 +294,7 @@ Reply with the new text for [B8] only.
 | G2 | No front matter or wrappers | New text starts with `---`/YAML, an outer fence, `<<<`/`>>>`, or a label like `[B8]:` / `Block B8:` | Strip | — |
 | G3 | Protected inline tokens | Multiset from old: `[[…]]`, `![[…]]`, `![](…)`, link URLs, bare URLs, `` `code` ``, `$…$`, `#tags` (`inline_tags`), `[^n]`, `^block-id`, HTML tags and comments. Each must be in new, except tokens the instruction names (remove / unlink + the token's text). | — | Retry listing the missing ones ("You dropped [[Hosting plan]] and `npm i`. Keep them exactly."), then `warn` "Lost: …" |
 | G4 | Fixed blocks byte-identical | Every `⟦KEEP n⟧` appears exactly once | Restore | A missing placeholder → retry, then `drop` that edit |
-| G5 | Change size | `change_share(old, new)` = 1 − difflib ratio on word tokens. Limits: small 0.2, medium 0.6, large none. Plus the existing `SHORT_SHARE`. | — | Small intent over the limit → retry ("Change only what is wrong; keep every other word."), then `warn` "Changed 64 % of the words (asked: small fixes)" |
+| G5 | Change size | `change_share(old, new)` = 1 − difflib ratio on word tokens. Limits: small 0.2, medium 0.6, large none. (No separate "much shorter" check: it always trips this one first.) | — | Small intent over the limit → retry ("Change only what is wrong; keep every other word."), then `warn` "Changed 64 % of the words (asked: small fixes)" |
 | G6 | Block kind kept | `top_blocks(new)` kinds equal old's (a list stays a list, a table keeps its column count), unless `asks_structure` | Renumber ordered lists | `warn` |
 | G7 | No echoed context | ≥ 60 % of a neighbour block's word 3-shingles, or the "do not write" lines, appear in new | Trim an echo at the start or end | `warn` |
 | G8 | No commentary | `cleanup.clean_reply` rules (§6.2) | Strip | — |
@@ -403,7 +403,7 @@ One module, `core/ai/cleanup.py`. `clean_reply` moves here and `edits.py` re-exp
 
 **While streaming** (`StreamCleaner`; covers P25.3):
 - `feed(piece) -> str` buffers the **head** until the first newline (or 200 characters), then decides: preamble → drop; heading → demote or drop (§6.1); opening fence → drop and remember; `<think>` → suppress until `</think>`. After that, text passes through.
-- `finish() -> list[TextChange]` removes a closing paragraph and the closing fence inside the same undo step (the editor already groups the stream).
+- `finish() -> str` writes the rest. The last paragraph (and the blank line before it) is always held back until the next one starts, so a closing paragraph or the closing fence is dropped before it is ever written — nothing has to be taken out of the note again (built P26.6).
 
 ---
 

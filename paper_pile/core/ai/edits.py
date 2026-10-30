@@ -9,8 +9,9 @@ only in *Apply at once* mode, and never made from an answer that did not finish.
 refuses inserts and shows replacements without Accept. No UI imports here.
 """
 
-import re
 from typing import Literal
+
+from paper_pile.core.ai.cleanup import clean_reply as clean_reply  # moved there (P26.6)
 
 EditMode = Literal["ask", "auto", "readonly"]
 EditKind = Literal["insert", "replace"]
@@ -56,34 +57,3 @@ def replacement_action(mode: EditMode, old: str, new: str, finish: str | None) -
 def reply_room(text_tokens: int) -> int:
     """Tokens a rewrite of a text of ``text_tokens`` needs for its answer."""
     return int(text_tokens * REPLY_MARGIN) + REPLY_EXTRA
-
-
-_THINK = re.compile(r"<think>.*?</think>\s*", re.DOTALL | re.IGNORECASE)
-_PREAMBLE = re.compile(
-    r"(?:sure|okay|ok|certainly|of course|absolutely|here(?:'s| is| are)|below is|this is)\b"
-    r"[^\n]{0,120}:\s*$",
-    re.IGNORECASE,
-)
-_CLOSING = re.compile(
-    r"(?:let me know|i hope|hope this|feel free|i(?:'ve| have) (?:fixed|corrected|changed|made|"
-    r"kept|rewritten)|(?:the )?changes? (?:made|include)|note:)",
-    re.IGNORECASE,
-)
-_FENCE = re.compile(r"(`{3,}|~{3,})[\w-]*\n(.*?)\n?\1\s*", re.DOTALL)
-
-
-def clean_reply(text: str, original: str = "") -> str:
-    """The replacement text in a model's answer: its reasoning (``<think>…</think>``), one
-    leading "Here is the corrected text:" line, one closing "Let me know…" paragraph and one
-    code fence around everything removed. A fence is kept when ``original`` itself was one."""
-    out = _THINK.sub("", text).strip()
-    first, _, rest = out.partition("\n")
-    if rest.strip() and _PREAMBLE.fullmatch(first.strip()):
-        out = rest.strip()
-    head, sep, last = out.rpartition("\n\n")
-    if sep and head.strip() and _CLOSING.match(last.strip()):
-        out = head.strip()
-    fenced = _FENCE.fullmatch(out)
-    if fenced and not _FENCE.fullmatch(original.strip()):
-        out = fenced.group(2)
-    return out
