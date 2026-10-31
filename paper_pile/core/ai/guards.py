@@ -52,6 +52,7 @@ class GuardContext:
     neighbours: tuple[str, ...] = ()  # context the model was told not to write
     translate: bool = False
     keep: tuple[str, ...] = field(default=())  # protected tokens named in the prompt
+    convert: bool = False  # a code / math / diagram block the user asked for: may change whole
 
     @property
     def asks_structure(self) -> bool:
@@ -216,6 +217,8 @@ def _g3_tokens(ctx: GuardContext, old: str, new: str, issues: list[Issue]) -> No
 
 
 def _g5_size(ctx: GuardContext, old: str, new: str, issues: list[Issue]) -> None:
+    if ctx.convert:
+        return
     share = change_share(old, new)
     few = ctx.size == "small" and changed_words(old, new) <= SMALL_WORDS
     if share > SIZE_LIMIT[ctx.size] and not few:
@@ -230,7 +233,7 @@ def _g5_size(ctx: GuardContext, old: str, new: str, issues: list[Issue]) -> None
 
 
 def _g6_kinds(ctx: GuardContext, old: str, new: str, issues: list[Issue]) -> None:
-    if ctx.asks_structure or asked_for(ctx.instruction, KIND_WORDS):
+    if ctx.convert or ctx.asks_structure or asked_for(ctx.instruction, KIND_WORDS):
         return
     if _kinds(old) != _kinds(new):
         issues.append(Issue("kind", "warn", "The kind of text changed (a list, table or quote)."))

@@ -1,0 +1,15 @@
+{
+  "command": "ai-rewrite",
+  "instruction": "turn this diagram into mermaid diagram",
+  "expect": [
+    ["no_error"],
+    ["contains", "```mermaid"],
+    ["not_contains", "┌──"],
+    ["headings_unchanged"],
+    ["contains", "How the parts connect:"],
+    ["contains", "Ship the beta."]
+  ],
+  "expect_unit": [
+    ["contains", "Students --> Engine"]
+  ]
+}

@@ -34,7 +34,7 @@ from paper_pile.core.ai.edit_context import (
 from paper_pile.core.ai.edits import FINISHED, EditTooLongError, reply_room
 from paper_pile.core.ai.engine import AUTO_WINDOW, AiEngine, message_tokens
 from paper_pile.core.ai.existing import in_note, in_vault
-from paper_pile.core.ai.guards import GuardContext, Size, check
+from paper_pile.core.ai.guards import GuardContext, Size, asked_for, check
 from paper_pile.core.ai.intent import Intent, edit_intent
 from paper_pile.core.ai.issues import Issue
 from paper_pile.core.ai.plan import (
@@ -109,6 +109,31 @@ def selection_blocks(
     return out, ids
 
 
+# Words that name a fixed block's kind: a request with them is about that block (AI_EDITS §4.1)
+FIXED_KIND_WORDS = {
+    "code": ("code", "snippet", "script", "diagram", "chart", "ascii", "mermaid", "flowchart"),
+    "diagram": ("diagram", "chart", "mermaid", "flowchart", "graph"),
+    "math": ("math", "formula", "equation", "latex", "katex"),
+}
+
+
+def unlock_asked(blocks: Sequence[Block], targets: Sequence[str], instruction: str) -> list[Block]:
+    """``blocks`` with the fixed ones the request is about made editable ("never rewritten
+    unless asked"): every selected one when the selection holds nothing else (the user picked
+    that block), and those whose kind the request names (with a selection: among the selected
+    ones). Front matter stays fixed."""
+    wanted = set(targets)
+    picked = [b for b in blocks if b.id in wanted]
+    only_fixed = bool(picked) and all(b.fixed for b in picked)
+
+    def asked(b: Block) -> bool:
+        if not b.fixed or b.kind == "front_matter" or (wanted and b.id not in wanted):
+            return False
+        return only_fixed or asked_for(instruction, FIXED_KIND_WORDS.get(b.kind, ()))
+
+    return [replace(b, fixed=False) if asked(b) else b for b in blocks]
+
+
 class EditRun:
     def __init__(
         self,
@@ -149,6 +174,10 @@ class EditRun:
             self.blocks, self.targets = selection_blocks(all_blocks, *sorted(selection))
         else:
             self.blocks, self.targets = all_blocks, []
+        own = instruction if words is None else words
+        fixed = {b.id for b in self.blocks if b.fixed}
+        self.blocks = unlock_asked(self.blocks, self.targets, own)
+        self._asked_fixed = fixed - {b.id for b in self.blocks if b.fixed}  # may change whole
         self.changes: list[PlannedChange] = []
         self.dropped: list[str] = []
         self.notes: list[Issue] = []
@@ -402,6 +431,7 @@ class EditRun:
             tuple(near),
             self.translate,
             job.keep,
+            convert=any(i in self._asked_fixed for i in ids[at : last + 1]),
         )
 
     # ---- 4. already there --------------------------------------------------------------------

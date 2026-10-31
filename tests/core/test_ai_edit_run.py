@@ -19,8 +19,10 @@ from paper_pile.core.ai.edit_run import (
     edit_end,
     failure_end,
     replacement_result,
+    selection_blocks,
+    unlock_asked,
 )
-from paper_pile.core.ai.edits import EditTooLongError
+from paper_pile.core.ai.edits import EditTooLongError, reply_room
 from paper_pile.core.ai.engine import REPEAT_PENALTY, AiEngine
 from paper_pile.core.ai.fake import FakeProvider
 from paper_pile.core.ai.proposals import accept, apply_changes
@@ -190,6 +192,54 @@ async def test_a_second_loop_is_an_error_and_nothing_changes(tmp_path: Path) -> 
     fake.loop_calls = 2
     result = await run_on(ai, sel(BACKUPS), "fix grammar").run()
     assert "repeat limit" in result.error and not result.changes
+
+
+ART = (
+    "## Flow\n\nHow it works:\n\n```\n+-----+    +-----+\n|  A  |--->|  B  |\n"
+    "+-----+    +-----+\n```\n\nThe end.\n"
+)
+ART_CODE = ART[ART.index("```") : ART.rindex("```") + 3]
+
+
+@pytest.mark.parametrize(
+    ("selected", "instruction", "unlocked"),
+    [
+        (ART_CODE, "make it clearer", True),  # only the code block selected: it is the target
+        ("How it works:\n\n" + ART_CODE, "turn this diagram into mermaid", True),  # named
+        ("How it works:\n\n" + ART_CODE, "make it clearer", False),  # prose + code: kept
+        (None, "turn the diagram into mermaid", True),  # no selection, its kind named
+        (None, "make it clearer", False),
+    ],
+)
+def test_a_fixed_block_changes_only_when_asked(
+    selected: str | None, instruction: str, unlocked: bool
+) -> None:
+    blocks = block_map(ART)
+    code = next(b for b in blocks if b.kind == "code")
+    targets: list[str] = []
+    if selected is not None:
+        at = ART.index(selected)
+        blocks, targets = selection_blocks(blocks, at, at + len(selected))
+    after = {b.id: b for b in unlock_asked(blocks, targets, instruction)}
+    assert after[code.id].fixed is not unlocked
+
+
+async def test_a_selected_diagram_is_rewritten_whole(tmp_path: Path) -> None:
+    mermaid = "```mermaid\nflowchart LR\n    A --> B\n```"
+    code = next(b for b in block_map(ART) if b.kind == "code")
+    ai, fake = make(tmp_path, [plan(step("to mermaid", "change", code.id)), mermaid])
+    at = ART.index(ART_CODE)
+    run = EditRun(
+        ai, path="h.md", note=ART, selection=(at, at + len(ART_CODE)),
+        instruction="turn this diagram into mermaid diagram",
+    )  # fmt: skip
+    result = await run.run()
+    assert not result.error
+    (change,) = result.changes
+    assert ART[change.start : change.end] == ART_CODE and change.new == mermaid
+    assert fake.options_seen[1] is not None
+    assert fake.options_seen[1].num_predict == reply_room(estimate_tokens(ART_CODE))
+    assert len(fake.calls) == 2  # no size / kind retry: a conversion changes it whole
 
 
 async def test_a_failure_keeps_what_was_finished(tmp_path: Path) -> None:

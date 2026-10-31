@@ -132,6 +132,8 @@ def render_view(blocks, text, full: set[str], budget: int) -> str   # the note v
 ```
 Front matter is `B0`. It is fixed and shown only as `[B0] properties: title, tags`. AI edits to properties are out of scope (open question 4).
 
+**"Unless asked"** (`edit_run.unlock_asked`, P27.3): a fixed block (not front matter) becomes editable for the run when the selection holds only fixed blocks (the user selected that block), or when the request names its kind (`FIXED_KIND_WORDS`: code / snippet / diagram / chart / mermaid / ascii…, math / formula / equation…) — with a selection, only among the selected blocks. Such a change may be rewritten whole: G5 (size) and G6 (kind) are skipped for it (`GuardContext.convert`). A selection of prose and code with a prose request ("make it clearer") keeps the code fixed (case 10).
+
 ### 4.3 What the model sees: context and the 8k budget
 
 `core/ai/edit_context.py`, `note_view(text, blocks, target, instruction, budget) -> NoteView`.

@@ -1,0 +1,4 @@
+[
+  "{\"already_there\": [], \"edits\": [{\"why\": \"replace the ASCII art with Mermaid\", \"action\": \"change\", \"block\": \"B3\", \"new_section\": false}], \"question\": \"\"}",
+  "```mermaid\nflowchart LR\n    Students --> Engine --> Progress\n    Progress --> Students\n```"
+]

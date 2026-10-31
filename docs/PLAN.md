@@ -969,6 +969,7 @@ Order: security first (P23.1–P23.7), then context (P23.8–P23.12), failures (
 |---|---|---|
 | P27.1 | Automatic window that fits the machine | `window.py` `measure_window` (8k → 16k → 32k → 64k, stop when the GPU share drops > 5 points), `Provider.memory_use` (Ollama: load + `ps`), `WindowCache` per host + model (file, 30 days); a failed measurement is not kept; a manual `ai.num_ctx` is never measured (tests); gemma4:12b on the 8 GB laptop GPU → 32k (eval log) |
 | P27.2 | No "token repeat limit reached" on edits | text answers sent with `repeat_penalty` 1.1 (JSON answers without); Ollama's loop error is `RepeatLoopError`; an EditRun write that loops is asked once more at temperature 0.7, a second loop ends as before (tests); eval case 17 "Add more details in the description section" |
+| P27.3 | Fixed blocks change when asked | a selected code / diagram / math block, or one whose kind the request names, can be rewritten ("turn this diagram into mermaid"); prose + code with a prose request keeps the code byte-identical; no size / kind retry for such a conversion (tests; eval cases 10, 18) |
 
 ### P24 — Ask box under a selection (user request 2026-10-30, §4.27)
 | ID | Task | Acceptance |
