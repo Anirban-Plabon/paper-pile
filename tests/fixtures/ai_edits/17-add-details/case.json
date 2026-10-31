@@ -1,0 +1,13 @@
+{
+  "command": "ai-rewrite",
+  "instruction": "Add more details in the description section",
+  "expect": [
+    ["no_error"],
+    ["changed"],
+    ["headings_unchanged"],
+    ["contains", "Beta since June. About forty people use it every day."]
+  ],
+  "expect_unit": [
+    ["contains", "Changes are sent as soon as a note is saved"]
+  ]
+}

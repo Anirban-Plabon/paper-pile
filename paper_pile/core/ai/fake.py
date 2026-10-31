@@ -16,6 +16,7 @@ from paper_pile.core.ai.provider import (
     Health,
     ProviderError,
     Reasoning,
+    RepeatLoopError,
 )
 
 
@@ -36,10 +37,13 @@ class FakeProvider:
         self.options: GenerationOptions | None = None  # the last call's
         self.options_seen: list[GenerationOptions | None] = []
         self.max_context: int | None = 8192  # what context_length reports
+        self.gpu_share: dict[int, float] = {}  # num_ctx -> share in VRAM (memory_use)
+        self.measured: list[int] = []  # the windows memory_use was asked about
         self.thinking = ""  # reasoning streamed before the answer (a thinking model)
         self.finish = "stop"  # why the answer ends ("length": cut at the answer limit)
         self.fail_after: int | None = None  # raise ProviderError after this many words
         self.fail_calls = 0  # make the next this many calls fail at once
+        self.loop_calls = 0  # make the next this many calls stop after a word, looping
 
     async def chat(
         self,
@@ -59,6 +63,9 @@ class FakeProvider:
             yield Reasoning(self.thinking)
         words = text.split(" ")
         for n, word in enumerate(words):
+            if n == 1 and self.loop_calls > 0:
+                self.loop_calls -= 1
+                raise RepeatLoopError("Ollama said: prediction aborted, token repeat limit reached")
             if self.fail_after is not None and n >= self.fail_after:
                 raise ProviderError("the fake model stopped")
             await asyncio.sleep(self.delay)
@@ -83,6 +90,11 @@ class FakeProvider:
 
     async def context_length(self, model: str | None = None) -> int | None:
         return self.max_context
+
+    async def memory_use(self, model: str, num_ctx: int) -> tuple[int, int] | None:
+        self.measured.append(num_ctx)
+        share = self.gpu_share.get(num_ctx)
+        return None if share is None else (1000, int(1000 * share))
 
     async def health(self) -> Health:
         return (

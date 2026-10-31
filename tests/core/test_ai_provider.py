@@ -16,6 +16,7 @@ from paper_pile.core.ai.provider import (
     ProviderError,
     ProviderUnavailableError,
     Reasoning,
+    RepeatLoopError,
 )
 
 MSGS = [ChatMessage("system", "be brief"), ChatMessage("user", "hi")]
@@ -101,6 +102,32 @@ async def test_other_server_errors_are_reported() -> None:
     with pytest.raises(ProviderError) as err:
         await collect(provider(handler))
     assert "out of memory" in str(err.value)
+
+
+async def test_a_stopped_loop_is_its_own_error() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        error = "prediction aborted, token repeat limit reached"
+        return httpx.Response(500, json={"error": error})
+
+    with pytest.raises(RepeatLoopError, match="repeat limit"):
+        await collect(provider(handler))
+
+
+async def test_memory_use_loads_the_model_at_that_window() -> None:
+    loaded: list[dict[str, object]] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/generate":
+            loaded.append(json.loads(request.content))
+            return httpx.Response(200, json={"model": "m:1b", "response": "", "done": True})
+        assert request.url.path == "/api/ps"
+        running = [{"model": "m:1b", "name": "m:1b", "size": 1000, "size_vram": 750}]
+        return httpx.Response(200, json={"models": running})
+
+    p = provider(handler)
+    assert await p.memory_use("m:1b", 32768) == (1000, 750)
+    assert loaded[0]["options"] == {"num_ctx": 32768} and loaded[0]["prompt"] == ""
+    assert await p.memory_use("other:1b", 8192) is None  # not among the loaded ones
 
 
 async def test_models_and_health() -> None:

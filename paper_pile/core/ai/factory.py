@@ -42,6 +42,9 @@ class MissingProvider:
     async def context_length(self, model: str | None = None) -> int | None:
         return None
 
+    async def memory_use(self, model: str, num_ctx: int) -> tuple[int, int] | None:
+        return None
+
     async def health(self) -> Health:
         return Health(False, ai_unavailable())
 

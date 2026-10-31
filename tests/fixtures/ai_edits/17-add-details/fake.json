@@ -1,0 +1,4 @@
+[
+  "{\"already_there\": [], \"edits\": [{\"why\": \"more about how the sync works\", \"action\": \"change\", \"block\": \"B3\", \"new_section\": false}], \"question\": \"\"}",
+  "Atlas syncs notes between a laptop and a phone. It runs in the background. Changes are sent as soon as a note is saved, and a note edited on both devices keeps both versions."
+]

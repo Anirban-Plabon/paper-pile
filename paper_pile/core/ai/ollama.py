@@ -18,11 +18,13 @@ from paper_pile.core.ai.provider import (
     ProviderError,
     ProviderUnavailableError,
     Reasoning,
+    RepeatLoopError,
     is_local_host,
 )
 
 log = logging.getLogger("paper_pile.ai")
 
+REPEAT_LOOP = "repeat limit"  # in Ollama's error when it stopped a model repeating itself
 NOT_RUNNING = "Ollama isn't running — start it with `ollama serve`."
 
 
@@ -53,6 +55,7 @@ def ollama_options(options: GenerationOptions | None) -> dict[str, Any]:
             ("top_p", options.top_p),
             ("num_ctx", options.num_ctx),
             ("num_predict", options.num_predict),
+            ("repeat_penalty", options.repeat_penalty),
         )
         if v is not None
     }
@@ -153,6 +156,20 @@ class OllamaProvider:
                 return value
         return None
 
+    async def memory_use(self, model: str, num_ctx: int) -> tuple[int, int] | None:
+        """Loads ``model`` with a ``num_ctx`` window (an empty prompt) and reads how big it is
+        and how much of it Ollama put in VRAM. Takes a few seconds per call."""
+        try:
+            await self._client.generate(model, "", options={"num_ctx": num_ctx}, keep_alive="5m")
+            running = await self._probe.ps()
+        except Exception:
+            log.debug("could not measure %s at %d", model, num_ctx, exc_info=True)
+            return None
+        for m in running.models:
+            if model in (m.model, m.name) and m.size:
+                return m.size, m.size_vram or 0
+        return None
+
     async def health(self) -> Health:
         try:
             listing = await self._listing()
@@ -172,6 +189,8 @@ class OllamaProvider:
                 return ModelNotFoundError(
                     f"The model “{model}” is not installed — run `ollama pull {model}`."
                 )
+            if REPEAT_LOOP in str(exc.error):
+                return RepeatLoopError(f"Ollama said: {exc.error}")
             return ProviderError(f"Ollama said: {exc.error}")
         if isinstance(exc, ConnectionError | httpx.TransportError):
             return ProviderUnavailableError(not_running(self.host))

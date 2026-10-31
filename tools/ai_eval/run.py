@@ -25,6 +25,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from ai_eval.cases import Case, load_cases, run_case, write_vault
 from ai_eval.checks import run_checks
 from paper_pile.core.ai.engine import AiEngine
+from paper_pile.core.ai.window import WindowCache
 from paper_pile.core.config import Config
 from paper_pile.core.index import Index
 from paper_pile.core.vault import Vault
@@ -39,6 +40,9 @@ class Run:
     after: str
 
 
+WINDOWS = WindowCache()  # measured once for the whole eval, not per run
+
+
 async def one_run(case: Case, model: str, host: str, work: Path) -> Run:
     root = work / "vault"
     write_vault(case, root)
@@ -51,7 +55,7 @@ async def one_run(case: Case, model: str, host: str, work: Path) -> Run:
         config.set("ai.host", host)
     if case.num_ctx:
         config.set("ai.num_ctx", case.num_ctx)
-    ai = AiEngine(vault, config, index, access_dir=work / "access")
+    ai = AiEngine(vault, config, index, access_dir=work / "access", windows=WINDOWS)
     ai.allow()
     outcome = await run_case(case, ai)
     checks = run_checks(outcome)

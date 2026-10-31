@@ -47,7 +47,7 @@ from paper_pile.core.ai.plan import (
     snap,
 )
 from paper_pile.core.ai.proposals import Edit, Proposal, propose_many
-from paper_pile.core.ai.provider import ChatMessage, ProviderError
+from paper_pile.core.ai.provider import ChatMessage, ProviderError, RepeatLoopError
 from paper_pile.core.ai.write import (
     WRITE_RULES,
     PlannedChange,
@@ -63,6 +63,7 @@ log = logging.getLogger("paper_pile.ai.edit")
 ADD_ANSWER = 600  # tokens for new text
 ADD_ANSWER_MAX = 1500
 WRITE_TEMPERATURE = 0.3  # at most: low temperature keeps the model from changing too much
+LOOP_TEMPERATURE = 0.7  # the one retry after the model got stuck repeating itself
 VAULT_HITS = 3
 AGAIN = "Reply with the whole new text again, nothing else."
 
@@ -353,12 +354,21 @@ class EditRun:
         return min(ADD_ANSWER, ADD_ANSWER_MAX)
 
     async def _ask(self, messages: list[ChatMessage], job: WriteJob) -> tuple[str, bool]:
-        finish: list[str] = []
-        self.calls += 1
         chosen = self.engine.setting("ai.temperature", 0.8)
         temperature = min(
             float(chosen) if isinstance(chosen, int | float) else 0.8, WRITE_TEMPERATURE
         )
+        try:
+            return await self._write(messages, job, temperature)
+        except RepeatLoopError:  # stuck repeating itself: once more, with more variety
+            log.info("the model looped; asking again at %.1f", LOOP_TEMPERATURE)
+            return await self._write(messages, job, max(temperature, LOOP_TEMPERATURE))
+
+    async def _write(
+        self, messages: list[ChatMessage], job: WriteJob, temperature: float
+    ) -> tuple[str, bool]:
+        finish: list[str] = []
+        self.calls += 1
         parts = [
             piece
             async for piece in self.engine.stream(

@@ -11,6 +11,7 @@ from datetime import date, datetime
 from pathlib import Path
 from typing import Any
 
+import platformdirs
 from nicegui import background_tasks, run, ui
 
 from paper_pile.core.ai.chats import chats_folder
@@ -18,6 +19,7 @@ from paper_pile.core.ai.engine import AiEngine
 from paper_pile.core.ai.instructions import draft_messages
 from paper_pile.core.ai.provider import Health
 from paper_pile.core.ai.selection_ask import AskTurn
+from paper_pile.core.ai.window import WindowCache
 from paper_pile.core.commands import push_recent
 from paper_pile.core.config import Config
 from paper_pile.core.daily import DEFAULT_FORMAT, daily_relpath, new_daily_text, untouched_daily
@@ -114,6 +116,7 @@ class MainLayout:
             self.config,
             self.index,
             user_name=lambda: self.profile.name if self.profile else "",
+            windows=WindowCache(Path(platformdirs.user_cache_dir("paper-pile")) / "windows.json"),
         )
         self.state: SessionState = load_session(vault)
         if not (vault / ".paper-pile" / "session.json").exists():  # a vault opened the first time

@@ -68,6 +68,7 @@ from paper_pile.core.ai.provider import (
 )
 from paper_pile.core.ai.selection_ask import AskTurn
 from paper_pile.core.ai.structured import parse_json_object
+from paper_pile.core.ai.window import BASE_WINDOW, WindowCache, measure_window
 from paper_pile.core.commands import StreamInsert
 from paper_pile.core.config import Config
 from paper_pile.core.index import query_words
@@ -87,10 +88,14 @@ CUT_OFF = "*(cut off: the answer reached its length limit)*"
 
 HISTORY_TURNS = 12  # at most this many earlier messages go with a new one (ai.history_turns)
 DEFAULT_BUDGET = 6000
-# The model's context window: ``ai.num_ctx``, or automatic = what the model takes, at most
-# AUTO_WINDOW (a bigger window needs more memory). Always sent to Ollama, so that what is counted
-# here is what the model gets (Ollama's own default is smaller and cuts silently).
-AUTO_WINDOW = 8192
+# The model's context window: ``ai.num_ctx``, or automatic = what the model takes, at most what
+# fits this machine (``window.py``: measured once per model; AUTO_WINDOW until it is known).
+# Always sent to Ollama, so that what is counted here is what the model gets (Ollama's own
+# default is smaller and cuts silently).
+AUTO_WINDOW = BASE_WINDOW
+# Text answers only (a JSON answer repeats its keys by design): a light penalty keeps a model at
+# a low temperature out of loops ("token repeat limit reached"), without changing its wording.
+REPEAT_PENALTY = 1.1
 MESSAGE_OVERHEAD = 4  # tokens a message costs besides its text (role, separators)
 CONTEXT_SHARE = 0.6  # of the prompt's room, notes may take this much; history gets the rest
 COMPACT_AT = 0.6  # earlier messages above this share of the prompt's room get summarized
@@ -148,6 +153,7 @@ class AiEngine:
         user_name: Callable[[], str] = lambda: "",
         provider_factory: Callable[[Config | None], Provider] = make_provider,
         access_dir: Path | None = None,  # where ai_access.json is (None: the config folder)
+        windows: WindowCache | None = None,  # measured windows (None: kept in memory only)
     ) -> None:
         self.vault = vault
         self.config = config
@@ -159,6 +165,8 @@ class AiEngine:
         self._access_dir = access_dir
         self._policy: AccessPolicy | None = None
         self._max_context: dict[str, tuple[int | None, float]] = {}  # model -> (length, asked)
+        self.windows = windows if windows is not None else WindowCache()
+        self._measuring = asyncio.Lock()  # one measurement at a time (it loads the model)
         self.turns: list[SavedTurn] = []
         self.summary = ""  # "Summary so far": replaces the first ``summarized`` turns
         self.summarized = 0
@@ -189,7 +197,7 @@ class AiEngine:
 
     async def window(self) -> int:
         """The context window in tokens: ``ai.num_ctx`` when set, else the model's own limit
-        capped at ``AUTO_WINDOW`` (asked once per model)."""
+        (asked once per model) capped at what fits this machine (:meth:`fitting_window`)."""
         chosen = int(str(self.setting("ai.num_ctx", 0) or 0))
         if chosen > 0:
             return chosen
@@ -200,7 +208,23 @@ class AiEngine:
         ):  # unknown (Ollama was down, or loading): asked again a minute later
             known = await self.provider.context_length(model)
             self._max_context[model] = (known, time.monotonic())
-        return min(known, AUTO_WINDOW) if known else AUTO_WINDOW
+        if not known:
+            return AUTO_WINDOW
+        return min(known, await self.fitting_window(model, known))
+
+    async def fitting_window(self, model: str, limit: int) -> int:
+        """The largest window that keeps ``model`` as much on the GPU as 8k does: cached, else
+        measured now (the first message to a new model waits a few model loads for it)."""
+        host = self.provider.host
+        async with self._measuring:
+            found = self.windows.get(host, model)
+            if found is None:
+                found = await measure_window(self.provider.memory_use, model, limit)
+                if found is None:  # not measurable now (Ollama down): asked again next time
+                    return AUTO_WINDOW
+                log.info("automatic window for %s: %d tokens", model, found)
+                self.windows.put(host, model, found)
+        return found
 
     @staticmethod
     def answer_room(window: int) -> int:
@@ -854,6 +878,7 @@ class AiEngine:
             num_predict=room,
             schema=schema,
             think=think,
+            repeat_penalty=None if schema is not None else REPEAT_PENALTY,
         )
         if temperature is not None:
             options = replace(options, temperature=temperature)

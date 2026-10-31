@@ -543,7 +543,7 @@ SECTIONS: dict[str, tuple[Setting, ...]] = {
             minimum=0,
             maximum=262144,
             step=2048,
-            help="0 = automatic (up to 8k)",
+            help="0 = automatic (what fits this computer)",
             group="Advanced",
         ),
         Setting(

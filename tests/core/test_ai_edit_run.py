@@ -11,6 +11,7 @@ from paper_pile.core.ai.context import estimate_tokens
 from paper_pile.core.ai.edit_context import chunk_tokens, chunks
 from paper_pile.core.ai.edit_run import (
     ANYWAY,
+    LOOP_TEMPERATURE,
     SMALLER,
     EditResult,
     EditRun,
@@ -20,7 +21,7 @@ from paper_pile.core.ai.edit_run import (
     replacement_result,
 )
 from paper_pile.core.ai.edits import EditTooLongError
-from paper_pile.core.ai.engine import AiEngine
+from paper_pile.core.ai.engine import REPEAT_PENALTY, AiEngine
 from paper_pile.core.ai.fake import FakeProvider
 from paper_pile.core.ai.proposals import accept, apply_changes
 from paper_pile.core.ai.provider import ProviderError
@@ -169,6 +170,26 @@ async def test_a_dropped_link_is_asked_for_again(tmp_path: Path) -> None:
     result = await run_on(ai, sel(BACKUPS), "fix grammar").run()
     assert not result.clean  # a warning: never applied unseen
     assert any(i.kind == "tokens" and i.severity == "warn" for i in result.changes[0].issues)
+
+
+async def test_a_looping_write_is_asked_once_more_with_more_variety(tmp_path: Path) -> None:
+    fixed = "The backups run every night. See [[Ops]]."
+    ai, fake = make(tmp_path, [fixed, fixed])
+    fake.loop_calls = 1  # Ollama: "token repeat limit reached"
+    result = await run_on(ai, sel(BACKUPS), "fix grammar").run()
+    assert not result.error and fixed in final(result) and result.calls == 2
+    first, again = fake.options_seen
+    assert first is not None and again is not None
+    assert first.temperature == 0.3 and again.temperature == LOOP_TEMPERATURE
+    assert first.repeat_penalty == REPEAT_PENALTY
+
+
+async def test_a_second_loop_is_an_error_and_nothing_changes(tmp_path: Path) -> None:
+    fixed = "The backups run every night. See [[Ops]]."
+    ai, fake = make(tmp_path, [fixed, fixed])
+    fake.loop_calls = 2
+    result = await run_on(ai, sel(BACKUPS), "fix grammar").run()
+    assert "repeat limit" in result.error and not result.changes
 
 
 async def test_a_failure_keeps_what_was_finished(tmp_path: Path) -> None:

@@ -72,10 +72,16 @@ class GenerationOptions:
     keep_alive_min: int | None = None  # how long the model stays loaded after a reply
     schema: Mapping[str, Any] | None = None  # a JSON schema the answer must follow (PLAN §4.29)
     think: bool | None = None  # False: a thinking model answers without reasoning first
+    repeat_penalty: float | None = None  # > 1 makes tokens just used less likely (loops)
 
 
 class ProviderError(Exception):
     """A request to the AI backend failed; the message is fit to show to the user."""
+
+
+class RepeatLoopError(ProviderError):
+    """The model kept repeating itself and the backend stopped it (Ollama: "token repeat limit
+    reached"); asking again with more variety usually works."""
 
 
 class ProviderUnavailableError(ProviderError):
@@ -107,6 +113,11 @@ class Provider(Protocol):
 
     async def context_length(self, model: str | None = None) -> int | None:
         """The longest context ``model`` takes, in tokens; None when unknown. Never raises."""
+        ...
+
+    async def memory_use(self, model: str, num_ctx: int) -> tuple[int, int] | None:
+        """``model`` loaded with a ``num_ctx`` window: its size and the part of it in GPU memory,
+        in bytes; None when unknown. Never raises."""
         ...
 
     async def health(self) -> Health:
