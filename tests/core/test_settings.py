@@ -75,11 +75,16 @@ def test_sections_cover_the_spec() -> None:
         ("ai.host", "http://localhost:11434/", True, "http://localhost:11434"),
         ("ai.host", "localhost:11434", False, None),
         ("ai.host", "ftp://x", False, None),
-        ("ai.host", "", False, None),
+        ("ai.host", "", True, ""),  # the provider's default
         ("ai.context_budget", "100", False, None),
         ("ai.context_budget", "8000", True, 8000),
         ("ai.model", "  gemma4:12b ", True, "gemma4:12b"),
-        ("ai.model", "", False, None),
+        ("ai.model", "", True, ""),  # the first model the backend lists
+        ("ai.api_key_env", "OPENAI_API_KEY", True, "OPENAI_API_KEY"),
+        ("ai.api_key_env", "", True, ""),
+        ("ai.api_key_env", "sk-abc123", False, None),  # the key itself is refused
+        ("ai.provider", "vllm", True, "vllm"),
+        ("ai.provider", "bedrock", False, None),
         ("vault.templates_folder", "/Templates/", True, "Templates"),
         ("vault.templates_folder", "a/b", True, "a/b"),
         ("vault.templates_folder", "", True, ""),
@@ -152,10 +157,12 @@ def test_search_finds_by_name_help_and_section() -> None:
     from paper_pile.core.settings import search_settings
 
     assert [s.key for s in search_settings("font size")][0] == "editor.font_size"
-    assert "ai.host" in [s.key for s in search_settings("ollama")]
+    assert "ai.provider" in [s.key for s in search_settings("ollama")]
+    assert "ai.provider" in [s.key for s in search_settings("vllm")]
     assert {s.key for s in search_settings("paste")} >= {"paste.smart_paste"}
     assert search_settings("") == [] and search_settings("zzzz") == []
-    assert [s.key for s in search_settings("theme dark")] == []  # every word must match
+    assert [s.key for s in search_settings("theme purple")] == []  # every word must match
+    assert [s.key for s in search_settings("theme dark")] == ["appearance.theme"]  # its options
 
 
 def test_language_is_a_known_code_and_defaults_to_english() -> None:

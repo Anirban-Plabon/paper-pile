@@ -5,8 +5,6 @@ from pathlib import Path
 import httpx
 import pytest
 
-pytest.importorskip("ollama", reason="the ai extra is not installed (uv sync --extra ai)")
-
 from paper_pile.core.ai.fake import FakeProvider
 from paper_pile.core.ai.ollama import NOT_RUNNING, OllamaProvider, describe_model
 from paper_pile.core.ai.provider import (
@@ -260,9 +258,9 @@ def test_local_hosts_and_the_not_running_text() -> None:
     from paper_pile.core.ai.ollama import not_running
     from paper_pile.core.ai.provider import is_local_host
 
-    for host in ("http://localhost:11434", "127.0.0.1:11434", "http://[::1]:11434", ""):
+    for host in ("http://localhost:11434", "127.0.0.1:11434", "http://[::1]:11434"):
         assert is_local_host(host), host
-    for host in ("http://10.0.0.5:11434", "https://ollama.example.com", "box:11434"):
+    for host in ("http://10.0.0.5:11434", "https://ollama.example.com", "box:11434", ""):
         assert not is_local_host(host), host
     assert not_running("http://localhost:11434") == NOT_RUNNING
     assert not_running("http://box:11434") == "Ollama at http://box:11434 can't be reached."

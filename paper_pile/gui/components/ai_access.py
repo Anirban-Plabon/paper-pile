@@ -71,7 +71,7 @@ class AccessPanel:
     @ui.refreshable_method
     def _rows(self) -> None:
         grant = self._grant()
-        with ui.row().classes("pp-set-row items-center"):
+        with ui.row().classes("pp-set-row pp-set-row-inline items-center"):  # a short button
             with ui.column().classes("pp-set-text"):
                 ui.label("Read this vault").classes("pp-set-label")
                 help_text = (
@@ -110,7 +110,7 @@ class AccessPanel:
     ) -> None:
         """A list with × per item, and (with a ``hint``) a box to add one."""
         with ui.column().classes("pp-set-row pp-access-list"):
-            with ui.row().classes("items-center no-wrap w-full"):
+            with ui.row().classes("pp-access-head items-center w-full"):  # stacks when narrow
                 with ui.column().classes("pp-set-text"):
                     ui.label(label).classes("pp-set-label")
                     ui.label(help_text).classes("pp-set-help")

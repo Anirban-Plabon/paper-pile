@@ -1,4 +1,4 @@
-"""Status bar: Live/Source, word count + caret position, save state, Ollama dot (P9.4)."""
+"""Status bar: Live/Source, word count + caret position, save state, AI backend dot (P9.4)."""
 
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -12,7 +12,7 @@ from paper_pile.gui.tips import tip
 class StatusBar:
     save_label: ui.label
     mode_label: ui.label
-    ollama_dot: ui.label
+    ai_dot: ui.label
     stats_label: ui.label
 
     def set_stats(self, words: int | None, line: int, col: int) -> None:
@@ -33,16 +33,16 @@ class StatusBar:
         else:
             self.mode_label.classes(remove="pp-mode-plain")
 
-    def show_ollama(self, on: bool) -> None:
+    def show_ai(self, on: bool) -> None:
         """The dot is there only while the AI feature is on."""
-        self.ollama_dot.set_visibility(on)
+        self.ai_dot.set_visibility(on)
 
-    def set_ollama(self, ok: bool, text: str) -> None:
-        """Green dot when Ollama can be reached, grey otherwise; the tooltip says why."""
-        self.ollama_dot.classes(
+    def set_ai(self, ok: bool, text: str) -> None:
+        """Green dot when the AI backend can be reached, grey otherwise; the tooltip says why."""
+        self.ai_dot.classes(
             add="pp-dot-on" if ok else "pp-dot-off", remove="pp-dot-off" if ok else "pp-dot-on"
         )
-        tip(self.ollama_dot, text)
+        tip(self.ai_dot, text)
 
     def set_save_state(self, text: str, *, error: bool = False, hint: str = "") -> None:
         self.save_label.set_text(text)
@@ -64,5 +64,5 @@ def status_bar(
         mode_label.on("click", lambda _e: on_toggle_mode())
         stats = ui.label("").classes("pp-muted pp-stats")
         save = ui.label("").classes("pp-muted pp-save")
-        dot = tip(ui.label("●").classes("pp-dot pp-dot-off"), "Ollama status")
+        dot = tip(ui.label("●").classes("pp-dot pp-dot-off"), "AI status")
     return StatusBar(save, mode_label, dot, stats)

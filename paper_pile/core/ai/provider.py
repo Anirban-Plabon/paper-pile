@@ -1,7 +1,9 @@
-"""The AI provider interface. The app talks to ``Provider``; ``OllamaProvider`` is the real one.
+"""The AI provider interface. The app talks to ``Provider`` only; the backends (``ollama.py``,
+``openai_compat.py``: vLLM and any OpenAI-compatible API) and the test double implement it, and
+``factory.py`` picks one from ``ai.provider`` (PLAN §4.30).
 
-Nothing here knows about the UI: chat, slash commands and context building only ever see this
-protocol, so another backend (or a test double) can be dropped in.
+Nothing here knows about the UI or a particular backend or model: chat, slash commands and
+context building only ever see this protocol, so another backend can be dropped in.
 """
 
 import ipaddress
@@ -12,13 +14,11 @@ from urllib.parse import urlsplit
 
 Role = Literal["system", "user", "assistant"]
 
-DEFAULT_HOST = "http://localhost:11434"  # Ollama's
-
 
 def is_local_host(host: str) -> bool:
-    """Does ``host`` (``http://localhost:11434``, ``10.0.0.5:11434``) run on this computer? Only
-    then do notes sent to the AI stay on it (PLAN §4.26)."""
-    raw = host.strip() or DEFAULT_HOST
+    """Does ``host`` (``http://localhost:11434``, ``10.0.0.5:8000``) run on this computer? Only
+    then do notes sent to the AI stay on it (PLAN §4.26). An empty host is not local."""
+    raw = host.strip()
     name = urlsplit(raw if "://" in raw else "http://" + raw).hostname or ""
     if name == "localhost":
         return True
@@ -26,6 +26,14 @@ def is_local_host(host: str) -> bool:
         return ipaddress.ip_address(name).is_loopback
     except ValueError:
         return False
+
+
+# model names that are not chat models (backends list embedding, speech and image models too)
+NOT_CHAT = ("embed", "whisper", "tts", "dall-e", "moderation", "transcribe", "image")
+
+
+def is_chat_model(name: str) -> bool:
+    return not any(word in name.lower() for word in NOT_CHAT)
 
 
 @dataclass(frozen=True, slots=True)
@@ -58,12 +66,14 @@ class Health:
     ok: bool
     message: str = ""  # what to tell the user when not ok
     models: list[str] = field(default_factory=list)
-    details: dict[str, str] = field(default_factory=dict)  # model -> "9B · gemma3 · 5.4 GB"
+    details: dict[str, str] = field(default_factory=dict)  # model -> "9B · llama · 5.4 GB"
 
 
 @dataclass(frozen=True, slots=True)
 class GenerationOptions:
-    """How the model answers (Settings → AI → Advanced). ``None`` leaves the backend's default."""
+    """How the model answers (Settings → AI → Advanced). ``None`` leaves the backend's default.
+    These are requests, not promises: a backend drops what it cannot do (a hosted API has no
+    per-request window, no keep-alive, maybe no repeat penalty)."""
 
     temperature: float | None = None
     top_p: float | None = None
@@ -85,15 +95,24 @@ class RepeatLoopError(ProviderError):
 
 
 class ProviderUnavailableError(ProviderError):
-    """The backend cannot be reached (for Ollama: it is not running)."""
+    """The backend cannot be reached (not running, wrong address, offline)."""
 
 
 class ModelNotFoundError(ProviderError):
-    """The chosen model is not installed."""
+    """The chosen model is not on the backend."""
 
 
 class Provider(Protocol):
-    host: str
+    host: str  # where requests go ("" when the backend has no address)
+    label: str  # the backend's name for the user: "Ollama", "vLLM", "OpenAI-compatible API"
+    local: bool  # notes sent to it stay on this computer (the consent card says so otherwise)
+    # the app picks the context window per request and can measure what fits the GPU (window.py);
+    # else the server's window is fixed and only ``context_length`` is used
+    sizes_window: bool
+
+    def missing_model(self, model: str) -> str:
+        """What to tell the user when ``model`` is not on the backend (how to get it)."""
+        ...
 
     def chat(
         self,
@@ -117,9 +136,15 @@ class Provider(Protocol):
 
     async def memory_use(self, model: str, num_ctx: int) -> tuple[int, int] | None:
         """``model`` loaded with a ``num_ctx`` window: its size and the part of it in GPU memory,
-        in bytes; None when unknown. Never raises."""
+        in bytes; None when unknown (always, unless :attr:`sizes_window`). Never raises."""
         ...
 
     async def health(self) -> Health:
         """Can the backend be reached? Never raises."""
+        ...
+
+    async def preload(self, model: str, options: GenerationOptions) -> bool:
+        """Load ``model`` now, as a request with ``options`` would (its window, keep-alive), so
+        the first answer does not wait for it; False when this backend loads nothing itself (a
+        server keeps its model loaded). Never raises."""
         ...

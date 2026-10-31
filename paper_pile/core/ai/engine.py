@@ -64,7 +64,6 @@ from paper_pile.core.ai.provider import (
     Provider,
     ProviderError,
     Reasoning,
-    is_local_host,
 )
 from paper_pile.core.ai.selection_ask import AskTurn
 from paper_pile.core.ai.structured import parse_json_object
@@ -83,15 +82,16 @@ VAULT_HITS = 3
 ASK_AGAIN_S = 60.0  # an unknown context length is asked again after this long
 MIN_ANSWER = 256  # tokens an answer may always take (``num_predict``), however full the window
 BUSY = "The AI is still answering — wait for it or press Stop."
+NO_MODEL = "No model chosen — pick one in the chat's model menu or in Settings → AI."
 SUMMARIZING = "Summarizing earlier messages…"
 CUT_OFF = "*(cut off: the answer reached its length limit)*"
 
 HISTORY_TURNS = 12  # at most this many earlier messages go with a new one (ai.history_turns)
 DEFAULT_BUDGET = 6000
-# The model's context window: ``ai.num_ctx``, or automatic = what the model takes, at most what
-# fits this machine (``window.py``: measured once per model; AUTO_WINDOW until it is known).
-# Always sent to Ollama, so that what is counted here is what the model gets (Ollama's own
-# default is smaller and cuts silently).
+# The model's context window: ``ai.num_ctx``, or automatic = what the model takes — on a backend
+# that sizes the window per request (Ollama), at most what fits this machine (``window.py``:
+# measured once per model; AUTO_WINDOW until it is known). Always sent along, so that what is
+# counted here is what the model gets (Ollama's own default is smaller and cuts silently).
 AUTO_WINDOW = BASE_WINDOW
 # Text answers only (a JSON answer repeats its keys by design): a light penalty keeps a model at
 # a low temperature out of loops ("token repeat limit reached"), without changing its wording.
@@ -165,6 +165,9 @@ class AiEngine:
         self._access_dir = access_dir
         self._policy: AccessPolicy | None = None
         self._max_context: dict[str, tuple[int | None, float]] = {}  # model -> (length, asked)
+        self._listed: list[str] = []  # the backend's models at the last health check
+        self._preloaded = ""  # "host|model" loaded at start (Settings → AI → Load model at start)
+        self._preloading: asyncio.Task[bool] | None = None
         self.windows = windows if windows is not None else WindowCache()
         self._measuring = asyncio.Lock()  # one measurement at a time (it loads the model)
         self.turns: list[SavedTurn] = []
@@ -188,28 +191,42 @@ class AiEngine:
         return int(str(self.setting("ai.context_budget", DEFAULT_BUDGET)))
 
     def model(self) -> str:
-        return chat_model(self.provider, self.config)
+        """``ai.model``, or (automatic) the first chat model the backend listed."""
+        return chat_model(self.config, self._listed)
+
+    async def chosen_model(self) -> str:
+        """:meth:`model`, asking the backend for its list first when the model is automatic
+        and nothing is listed yet ("" when it lists none)."""
+        if not self.model() and not self._listed:
+            await self.health()
+        return self.model()
 
     def reload(self) -> None:
-        """The AI settings changed (host / model): build the provider again."""
+        """The AI settings changed (provider / host / model): build the provider again."""
         self.provider = self._factory(self.config)
         self._max_context.clear()
+        self._listed = []
 
     async def window(self) -> int:
         """The context window in tokens: ``ai.num_ctx`` when set, else the model's own limit
-        (asked once per model) capped at what fits this machine (:meth:`fitting_window`)."""
+        (asked once per model), capped at what fits this machine (:meth:`fitting_window`) when
+        the backend sizes the window per request."""
         chosen = int(str(self.setting("ai.num_ctx", 0) or 0))
         if chosen > 0:
             return chosen
-        model = self.model()
+        model = await self.chosen_model()
+        if not model:
+            return AUTO_WINDOW
         known, asked = self._max_context.get(model, (None, -ASK_AGAIN_S))
         if model not in self._max_context or (
             known is None and time.monotonic() - asked >= ASK_AGAIN_S
-        ):  # unknown (Ollama was down, or loading): asked again a minute later
+        ):  # unknown (the backend was down, or loading): asked again a minute later
             known = await self.provider.context_length(model)
             self._max_context[model] = (known, time.monotonic())
         if not known:
             return AUTO_WINDOW
+        if not self.provider.sizes_window:  # the server's window is fixed: all of it is ours
+            return known
         return min(known, await self.fitting_window(model, known))
 
     async def fitting_window(self, model: str, limit: int) -> int:
@@ -220,7 +237,7 @@ class AiEngine:
             found = self.windows.get(host, model)
             if found is None:
                 found = await measure_window(self.provider.memory_use, model, limit)
-                if found is None:  # not measurable now (Ollama down): asked again next time
+                if found is None:  # not measurable now (backend down): asked again next time
                     return AUTO_WINDOW
                 log.info("automatic window for %s: %d tokens", model, found)
                 self.windows.put(host, model, found)
@@ -242,7 +259,33 @@ class AiEngine:
         return min(self.budget(), int(await self.prompt_room() * CONTEXT_SHARE))
 
     async def health(self) -> Health:
-        return await self.provider.health()
+        health = await self.provider.health()
+        if health.ok:
+            self._listed = list(health.models)
+            self._start_preload()
+        return health
+
+    def _start_preload(self) -> None:
+        """*Load model at start*: once the backend answers, load the chosen model in the
+        background — once per backend and model, so a new pick in the model menu loads too."""
+        if not self.setting("ai.preload", True):
+            return
+        model = self.model()
+        key = f"{self.provider.host}|{model}"
+        busy = self._preloading is not None and not self._preloading.done()
+        if not model or key == self._preloaded or busy:
+            return
+        self._preloaded = key
+        self._preloading = asyncio.create_task(self.preload(model))
+
+    async def preload(self, model: str) -> bool:
+        """Load ``model`` with the window and keep-alive real requests use (another window
+        would make Ollama load it again on the first message)."""
+        options = replace(generation_options(self.config), num_ctx=await self.window())
+        loaded = await self.provider.preload(model, options)
+        if loaded:
+            log.info("loaded %s at start (%d tokens)", model, options.num_ctx or 0)
+        return loaded
 
     def model_problem(self, health: Health) -> str:
         """What to tell the user when the chosen model is not among the installed ones ("" when
@@ -254,8 +297,8 @@ class AiEngine:
         if model in names or f"{model}:latest" in names:
             return ""
         return (
-            f"The model “{model}” is not installed — run `ollama pull {model}`, or pick another "
-            "one above."
+            f"The model “{model}” is not on {self.provider.label} — "
+            f"{self.provider.missing_model(model)}, or pick another one above."
         )
 
     # ---- access (PLAN §4.26) ---------------------------------------------------------------
@@ -269,11 +312,11 @@ class AiEngine:
 
     def consent_text(self) -> str:
         """What the Allow card says: what is read, and where it goes when that is not this
-        computer (``ai.host`` is another machine)."""
+        computer (a remote ``ai.host`` or a hosted API)."""
         text = f"To answer, the AI reads the notes of “{self.vault.root.name}” on this computer."
-        host = self.provider.host
-        if host and not is_local_host(host):
-            text += f" They are sent to {host}, another computer."
+        if not self.provider.local:
+            where = self.provider.host or self.provider.label
+            text += f" They are sent to {where}, another computer."
         return text + " Limit or take it back any time in Settings → AI → Access."
 
     def has_access(self) -> bool:
@@ -868,6 +911,9 @@ class AiEngine:
         other = self._busy
         if other is not None and other is not current and not other.done():
             raise ProviderError(BUSY)
+        model = await self.chosen_model()
+        if not model:
+            raise ProviderError(NO_MODEL)
         size = window or await self.window()
         room = max(MIN_ANSWER, size - message_tokens(messages))
         if max_answer is not None:
@@ -884,7 +930,7 @@ class AiEngine:
             options = replace(options, temperature=temperature)
         self._busy = current
         try:
-            async for piece in self.provider.chat(messages, model=self.model(), options=options):
+            async for piece in self.provider.chat(messages, model=model, options=options):
                 if isinstance(piece, Reasoning):
                     if on_reasoning is not None:
                         on_reasoning(piece.text)

@@ -64,7 +64,7 @@ svg.pp-i { width: 1em; height: 1em; flex: none; }
 body.pp-icons-accent .q-icon:not(.pp-dot):not(.pp-check), body.pp-icons-accent svg.pp-i { color: var(--pp-accent); }
 body.pp-icons-accent .cm-content .q-icon, body.pp-icons-accent .cm-content svg.pp-i { color: inherit; }
 /* icons on an accent background (send, Restore, avatar, selected day) stay readable */
-body.pp-icons-accent :is(.pp-chat-send.pp-chat-send-ready, .pp-chat-send:hover, .bg-primary, .pp-history-restore, .pp-avatar, .pp-cal-sel) .q-icon:not(.pp-dot) { color: inherit; }
+body.pp-icons-accent :is(.pp-chat-send.pp-chat-send-ready, .pp-chat-send:hover, .pp-aiprog-stop:hover, .bg-primary, .pp-history-restore, .pp-avatar, .pp-cal-sel) .q-icon:not(.pp-dot) { color: inherit; }
 
 /* code outside the editor (chat answers, Ask box, embeds); the editor sets its own (.pp-editor) */
 body { --pp-code-bg: #f3f4f6; }
@@ -574,6 +574,7 @@ body.pp-page-dragging, body.pp-page-dragging * { cursor: row-resize !important; 
 .pp-chat-compacted { font-size: 11px; align-self: center; }
 .pp-chat-access { padding: 6px 12px 4px; font-size: 11.5px; white-space: normal; max-width: 300px; }
 .pp-access-list { gap: 2px; }
+.pp-access-head { flex-wrap: nowrap; gap: 8px 16px; }
 .pp-access-item { gap: 6px; }
 .pp-access-path { flex: 1; min-width: 0; overflow-wrap: anywhere; }
 .pp-msg-actions { gap: 0; opacity: .6; }
@@ -712,6 +713,8 @@ body.pp-page-dragging, body.pp-page-dragging * { cursor: row-resize !important; 
 .pp-icons-only .pp-seg-item:has(.q-icon) > :not(.q-icon) { display: none; }
 .pp-set-field { width: 200px; font-size: 13px; }
 .pp-set-field .q-field__control { border-radius: var(--pp-r-ctrl); }
+.pp-set-field .q-field__native { min-width: 0; flex-wrap: nowrap; }  /* a select's long value is cut with … instead of widening the field */
+.pp-set-field .q-field__native > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .pp-set-none { padding: 18px 0; }
 .pp-swatches { gap: 8px; }
 .pp-seg { flex: none; white-space: nowrap; gap: 2px; padding: 3px; border-radius: calc(var(--pp-r-ctrl) + 3px); background: rgba(127, 127, 127, .14); }
@@ -878,6 +881,11 @@ body.body--dark .pp-instr-box textarea { color-scheme: dark; }  /* the corner gr
 .pp-chat-send.pp-chat-send-ready.q-btn, .pp-chat-send.q-btn:hover { background: var(--pp-accent); color: var(--pp-on-accent); }
 .pp-chat-plus.q-btn .q-icon { font-size: var(--pp-icon-m); }
 .pp-chat-send.q-btn .q-icon { font-size: var(--pp-icon-m); }
+/* while the AI answers it is Stop: a mild glow inside the circle (never outside it), its
+   strength changing unevenly so it reads as random, not as a beat */
+.pp-chat-send.pp-chat-send-busy.q-btn { overflow: hidden; }
+.pp-chat-send.pp-chat-send-busy.q-btn::after { content: ""; position: absolute; inset: 0; border-radius: 50%; pointer-events: none; background: radial-gradient(circle, rgba(var(--pp-accent-rgb), .6) 0%, rgba(var(--pp-accent-rgb), .25) 55%, rgba(var(--pp-accent-rgb), 0) 75%); opacity: 0; animation: pp-glow calc(6.1s * var(--pp-motion)) ease-in-out infinite; }
+@keyframes pp-glow { 0%, 100% { opacity: .15; } 9% { opacity: .6; } 17% { opacity: .3; } 31% { opacity: .85; } 38% { opacity: .45; } 52% { opacity: .2; } 61% { opacity: .75; } 70% { opacity: .35; } 84% { opacity: .95; } 92% { opacity: .4; } }
 
 /* model picker: a pill button and a roomy menu above it (name, details, check) */
 .pp-chat-model.q-btn { flex: none; max-width: 160px; height: 34px; min-height: 0; padding: 0 12px; border-radius: 17px; font-size: 13.5px; font-weight: 400; color: var(--pp-fg); }
@@ -1298,13 +1306,11 @@ body.pp-no-motion *, body.pp-no-motion *::before, body.pp-no-motion *::after { t
 .pp-task-pop .pp-box::after { animation: pp-tick var(--pp-dur) var(--pp-ease); }
 .pp-task .pp-box { transition: background-color var(--pp-dur-fast) ease, border-color var(--pp-dur-fast) ease; }
 /* the chat is waiting for the first words of a reply */
-.pp-thinking { display: inline-flex; gap: 4px; padding: 6px 0; }
-.pp-chat-status { margin-left: 8px; font-size: 0.92em; }
-.pp-thinking i { width: 6px; height: 6px; border-radius: 50%; background: var(--pp-muted); animation: pp-dot calc(1.2s * var(--pp-motion)) ease-in-out infinite; }
-.pp-thinking i:nth-child(2) { animation-delay: calc(.15s * var(--pp-motion)); }
-.pp-thinking i:nth-child(3) { animation-delay: calc(.3s * var(--pp-motion)); }
-@keyframes pp-dot { 0%, 80%, 100% { opacity: .25; transform: none; } 40% { opacity: 1; transform: translateY(-2px); } }
-body.pp-no-motion .pp-thinking i { opacity: .6; }
+/* a small circle as tall as the letters, pulsing, then "Thinking…" (or what the AI does) */
+.pp-thinking { display: inline-flex; align-items: center; gap: 7px; padding: 4px 0; color: var(--pp-muted); }
+.pp-thinking-dot { width: .7em; height: .7em; flex: none; border-radius: 50%; background: var(--pp-accent); animation: pp-pulse calc(1.4s * var(--pp-motion)) ease-in-out infinite; }
+@keyframes pp-pulse { 0%, 100% { opacity: .35; transform: scale(.75); } 50% { opacity: 1; transform: none; } }
+body.pp-no-motion .pp-thinking-dot { opacity: .7; }
 /* editor: a jump target flashes (index.js `flashLine`); with motion off it stays until the next key or click */
 @keyframes pp-flash { from { background-color: rgba(var(--pp-accent-rgb), .28); } to { background-color: rgba(var(--pp-accent-rgb), 0); } }
 .pp-editor .cm-line.pp-jump-flash { animation: pp-flash var(--pp-dur-flash) ease-out forwards; }
@@ -1351,12 +1357,15 @@ body.body--dark { --pp-set-box-bg: rgba(255, 255, 255, .035); }
 .pp-set-box .pp-set-row { width: 100%; flex-wrap: nowrap; gap: 8px 16px; padding: 12px 0; }
 .pp-set-box .pp-set-row.pp-set-block { flex-direction: column; align-items: stretch; gap: 10px; }
 .pp-set-text { flex: 1 1 auto; min-width: 0; gap: 2px; }
-.pp-set-control { flex: 0 1 auto; min-width: 0; max-width: 72%; flex-wrap: nowrap; justify-content: safe flex-end; gap: 6px; }  /* safe: too wide, it overflows to the right, where tabs.js sees it (icons only) */
+.pp-set-control { flex: 0 0 auto; min-width: 0; max-width: 72%; flex-wrap: nowrap; justify-content: safe flex-end; gap: 6px; }  /* safe: too wide, it overflows to the right, where tabs.js sees it (icons only) */
 @container ppbox (max-width: 400px) {
   .pp-set-box .pp-set-row:not(.pp-set-row-inline):not(.pp-set-block) { flex-wrap: wrap; }
   .pp-set-row:not(.pp-set-row-inline) > .pp-set-control { flex: 1 1 100%; max-width: 100%; justify-content: flex-start; }
   .pp-set-row:not(.pp-set-row-inline) > .pp-set-control .pp-set-field, .pp-set-row:not(.pp-set-row-inline) > .pp-set-control > .q-field { flex: 1 1 auto; width: auto; min-width: 0; }
   .pp-set-row > .pp-set-control > .pp-seg { max-width: 100%; flex-wrap: wrap; }
+  .pp-access-head { flex-wrap: wrap; }  /* Access → Never read: like a setting row */
+  .pp-access-head > .pp-set-control { flex: 1 1 100%; max-width: 100%; justify-content: flex-start; }
+  .pp-access-head > .pp-set-control .pp-set-field { flex: 1 1 auto; width: auto; min-width: 0; }
 }
 .pp-set-row-inline > .pp-set-control { flex: none; max-width: none; }  /* a switch never shrinks; its text wraps */
 /* a folded group (AI → Advanced): the title is the expansion header, the box opens under it */
@@ -1460,7 +1469,7 @@ body.body--dark .pp-aidiff-chip-warn { color: #e3b341; }
    the composer's card with Move to chat beside it (box), grown into a small floating chat (chat),
    or dissolved while the AI rewrites the text (gone). askpop.js sets left / top; it lives in
    <body> (ui.teleport). */
-.pp-askpop { --pp-askpop-tint: var(--pp-bg); --pp-askpop-line: var(--pp-border); position: fixed; z-index: 3000; left: 0; top: 0; width: min(340px, calc(100vw - 12px)); display: flex; flex-direction: column; gap: 6px; font-family: Roboto, -apple-system, "Helvetica Neue", Helvetica, Arial, sans-serif; color: var(--pp-fg); }
+.pp-askpop { --pp-askpop-tint: var(--pp-bg); --pp-askpop-line: var(--pp-border); --pp-askpop-full: 480px; position: fixed; z-index: 3000; left: 0; top: 0; width: min(362px, calc(100vw - 12px)); padding: 10px; border: 1px solid transparent; display: flex; flex-direction: column; gap: 6px; font-family: Roboto, -apple-system, "Helvetica Neue", Helvetica, Arial, sans-serif; color: var(--pp-fg); }
 .pp-askpop-box { animation: pp-pop var(--pp-dur) var(--pp-ease); }
 .pp-askpop-bottom { width: 100%; flex: none; gap: 6px; }
 /* the card as the chat's composer: 6 px around a 34 px row, 24 px corners */
@@ -1477,7 +1486,7 @@ body.body--dark .pp-aidiff-chip-warn { color: #e3b341; }
 .pp-askpop-dragging, .pp-askpop-dragging * { cursor: grabbing !important; user-select: none; }
 /* the mini chat: a window with a header (drag to move, ×), the messages, the box at the bottom */
 .pp-askpop .pp-askpop-head, .pp-askpop .pp-askpop-log { display: none; }
-.pp-askpop-chat { width: min(380px, calc(100vw - 12px)); max-height: 480px; padding: 0 10px 10px; gap: 8px; background: var(--pp-askpop-tint); border: 1px solid var(--pp-askpop-line); border-radius: var(--pp-r-popup); box-shadow: 0 8px 28px rgba(0, 0, 0, .16); animation: pp-pop var(--pp-dur) var(--pp-ease); }
+.pp-askpop-chat { width: min(384px, calc(100vw - 12px)); max-height: min(var(--pp-askpop-full), var(--pp-askpop-room, 480px)); padding: 0 10px 10px; gap: 8px; background: var(--pp-askpop-tint); border: 1px solid var(--pp-askpop-line); border-radius: var(--pp-r-popup); box-shadow: 0 8px 28px rgba(0, 0, 0, .16); animation: pp-pop var(--pp-dur) var(--pp-ease); }
 .pp-askpop-chat .pp-askpop-head { display: flex; height: 40px; flex: none; gap: 8px; padding: 0 0 0 4px; margin: 0 -4px 0 0; border-bottom: 1px solid var(--pp-askpop-line); cursor: grab; }
 .pp-askpop-title { flex: 1; font-size: 12.5px; font-weight: 600; }
 .pp-askpop-head-icon { color: var(--pp-accent); }
@@ -1486,9 +1495,29 @@ body.body--dark .pp-aidiff-chip-warn { color: #e3b341; }
 .pp-askpop-chat .pp-askpop-card, .pp-askpop-chat .pp-askpop-to-chat.q-btn { box-shadow: none; }
 .pp-askpop-msg-cmd, .pp-askpop-msg-words { display: inline; }
 .pp-askpop-msg-cmd { margin-right: 6px; font-weight: 600; color: var(--pp-accent); }
-/* the / list: as wide as the card (not under Move to chat); under the box, above it in the chat */
-.pp-askpop-box .pp-askpop-bottom { order: 1; }
-.pp-askpop-box .pp-askpop-cmds { order: 2; }
+/* askpop.js picks the side once (data-pp-side = down / up; an attribute, since Python rewrites
+   the class list): the input row stays put and everything else is on the side away from the
+   selection — the / list next to the input, then the messages, then the header (down: at the
+   far end, so the input need not move when it appears) */
+.pp-askpop[data-pp-side="down"] .pp-askpop-bottom { order: 0; }
+.pp-askpop[data-pp-side="down"] .pp-askpop-cmds { order: 1; }
+.pp-askpop[data-pp-side="down"] .pp-askpop-log { order: 2; }
+.pp-askpop[data-pp-side="down"] .pp-askpop-head { order: 3; border-bottom: 0; border-top: 1px solid var(--pp-askpop-line); }
+.pp-askpop-chat[data-pp-side="down"] { padding: 10px 10px 0; }
+/* the box and the chat keep the input 11 px from the edge next to the selection (padding and a
+   border, transparent in the box), and pop in from that edge: the input never shifts */
+.pp-askpop[data-pp-side="down"] { transform-origin: top left; }
+.pp-askpop[data-pp-side="up"] { transform-origin: bottom left; }
+.pp-askpop[data-pp-side="up"] .pp-askpop-head { order: 0; }
+.pp-askpop[data-pp-side="up"] .pp-askpop-log { order: 1; }
+.pp-askpop[data-pp-side="up"] .pp-askpop-cmds { order: 2; }
+.pp-askpop[data-pp-side="up"] .pp-askpop-bottom { order: 3; }
+/* no room on the growing side: the list over the selection instead, out of the box's flow */
+.pp-askpop-cmds[data-pp-flip] { position: absolute; left: 0; }
+.pp-askpop[data-pp-side="down"] .pp-askpop-cmds[data-pp-flip] { bottom: calc(100% + 6px); }
+.pp-askpop[data-pp-side="up"] .pp-askpop-cmds[data-pp-flip] { top: calc(100% + 6px); }
+.pp-askpop-chat .pp-askpop-cmds[data-pp-flip] { left: 10px; }
+/* the / list: as wide as the card (not under Move to chat) */
 .pp-askpop-cmds { flex: none; width: max-content; min-width: 180px; max-width: calc(100% - 68px); gap: 0; padding: 4px; max-height: 240px; overflow-y: auto; border: 1px solid var(--pp-askpop-line); border-radius: var(--pp-r-popup); background: var(--pp-askpop-tint); box-shadow: 0 4px 16px rgba(0, 0, 0, .12); }
 .pp-askpop-cmd { width: 100%; flex-wrap: nowrap; gap: 10px; padding: 6px 10px; border-radius: var(--pp-r-ctrl); cursor: pointer; font-size: 13px; }
 .pp-askpop-cmd:hover, .pp-askpop-cmd-active { background: rgba(var(--pp-accent-rgb), .12); }
@@ -1502,6 +1531,22 @@ body.body--dark .pp-aidiff-chip-warn { color: #e3b341; }
 .pp-editor .pp-ai-band-layer, .pp-editor .pp-aidiff-band-layer { pointer-events: none; }
 .pp-editor .pp-ai-band-busy { animation: pp-ai-band-pulse calc(1.4s * var(--pp-motion)) ease-in-out infinite; }
 @keyframes pp-ai-band-pulse { 50% { opacity: .45; } }
+
+/* a running AI job (ai_progress.py): a chip like the chat box — the AI icon in a circle, the
+   text, and the chat's stop button, rippling while the AI works */
+.pp-aiprog { position: fixed; left: 50%; bottom: calc(var(--pp-inset-bottom, 0px) + var(--pp-foot-h) + 16px); transform: translateX(-50%); z-index: 6000; animation: pp-fade-up var(--pp-dur) ease both; }
+.pp-aiprog-chip { gap: 10px; padding: 6px; max-width: min(70vw, 520px); overflow: hidden; background: color-mix(in srgb, var(--pp-accent) 12%, var(--pp-bg)); border: 1px solid rgba(var(--pp-accent-rgb), .45); border-radius: 26px; box-shadow: 0 4px 14px rgba(0, 0, 0, .12); }  /* a soft accent tint; overflow: the ripple stays inside */
+.pp-aiprog-ai { flex: none; width: 34px; height: 34px; border-radius: 50%; display: flex; align-items: center; justify-content: center; background: rgba(127, 127, 127, .14); color: var(--pp-fg); }
+.pp-aiprog-text { padding-right: 4px; }
+.pp-aiprog-dot { position: relative; flex: none; width: 34px; height: 34px; }
+.pp-aiprog-dot::before, .pp-aiprog-dot::after { content: ""; position: absolute; inset: 0; border-radius: 50%; background: rgba(var(--pp-accent-rgb), .45); animation: pp-ripple calc(1600ms * var(--pp-motion)) cubic-bezier(.2, .6, .4, 1) infinite; opacity: 0; pointer-events: none; }
+.pp-aiprog-dot::after { animation-delay: calc(800ms * var(--pp-motion)); }
+.pp-aiprog-stopping .pp-aiprog-dot::before, .pp-aiprog-stopping .pp-aiprog-dot::after { animation: none; }
+.pp-aiprog-stop.q-btn { position: relative; z-index: 1; width: 34px; height: 34px; min-width: 34px; min-height: 0; padding: 0; font-size: var(--pp-icon-m); background: rgba(var(--pp-accent-rgb), .35); color: var(--pp-fg); transition: background var(--pp-dur-fast), color var(--pp-dur-fast); }
+.pp-aiprog-stop.q-btn:hover { background: var(--pp-accent); color: var(--pp-on-accent); }
+.pp-aiprog-stop.q-btn .q-icon { font-size: var(--pp-icon-s); }
+.pp-aiprog-text { font-size: 13.5px; color: var(--pp-fg); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+@keyframes pp-ripple { 0% { transform: scale(1); opacity: .9; } 100% { transform: scale(1.7); opacity: 0; } }
 
 /* Asking in the chat whether the AI may read a folder / file named in a message (P22.9). */
 .pp-chat-ask { gap: 4px; padding: 10px 12px; border: 1px solid var(--pp-border); border-radius: var(--pp-r-ctrl); background: var(--pp-bg); }

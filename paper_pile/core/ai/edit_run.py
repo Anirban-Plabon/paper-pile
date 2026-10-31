@@ -64,6 +64,9 @@ ADD_ANSWER = 600  # tokens for new text
 ADD_ANSWER_MAX = 1500
 WRITE_TEMPERATURE = 0.3  # at most: low temperature keeps the model from changing too much
 LOOP_TEMPERATURE = 0.7  # the one retry after the model got stuck repeating itself
+SAME_FEEDBACK = (  # the retry after an answer identical to the text it was asked to change
+    "Your text is the same as the original, but the request asks for a change. Make the change:"
+)
 VAULT_HITS = 3
 AGAIN = "Reply with the whole new text again, nothing else."
 
@@ -151,14 +154,16 @@ class EditRun:
         offer_options: bool = False,
         smaller: bool = False,
         anyway: bool = False,
+        intent: Intent | None = None,
         on_progress: Callable[[str], None] | None = None,
     ) -> None:
         self.engine = engine
         self.path = path
         self.note = note
         self.instruction = instruction.strip()
-        # the intent is read from the user's own words (``instruction`` may hold the command's)
-        self.intent: Intent = edit_intent(
+        # what the model understood the request to mean (``understand.py``), else read from
+        # the user's own words (``instruction`` may hold the command's)
+        self.intent: Intent = intent or edit_intent(
             command_id, instruction if words is None else words, groups
         )
         self.planning = planning
@@ -311,11 +316,11 @@ class EditRun:
         self._changing = [e.block for e in edits if e.action in ("change", "delete")]
         earlier: list[str] = [c.new.strip() for c in self.changes]
         try:
-            for n, edit in enumerate(edits, 1):
+            for edit in edits:
                 if edit.action == "delete":
                     self.changes.append(delete_change(edit, self.blocks, self.note))
                     continue
-                self.on_progress(f"Writing {n} of {len(edits)}…" if len(edits) > 1 else "Writing…")
+                self.on_progress("Writing…")  # one word per step (the progress chip)
                 change = await self._write_one(edit, earlier)
                 if change is not None:
                     self.changes.append(change)
@@ -342,6 +347,8 @@ class EditRun:
                 retry.append(
                     Issue("keep", "retry", "", "Keep every ⟦KEEP n⟧ line exactly, on its own line.")
                 )
+            elif self._unchanged(edit, change):
+                retry.append(Issue("same", "retry", "", f"{SAME_FEEDBACK} {self.instruction}"))
             if not retry or attempt == 1:
                 break
             feedback = " ".join(i.feedback for i in retry if i.feedback)
@@ -355,11 +362,20 @@ class EditRun:
         if change is None:
             self.dropped.append(_dropped(edit, "a code or math block would have been lost"))
             return None
+        if self._unchanged(edit, change):  # asked twice, the text came back as it was
+            self.dropped.append(_dropped(edit, "the AI returned the text unchanged"))
+            return None
         if edit.action.startswith("add"):  # already in the note? (blocks being changed aside)
             skip = [*self.targets, *self._changing]
             issues = [*issues, *in_note(text, self.blocks, self.note, skip=skip)]
         kept = tuple(i for i in (*change.issues, *issues) if i.severity != "retry")
         return replace(change, issues=kept)
+
+    def _unchanged(self, edit: PlannedEdit, change: PlannedChange) -> bool:
+        """A change whose new text is the old one (spaces aside): not a change at all."""
+        if edit.action != "change":
+            return False
+        return _words(change.new) == _words(self.note[change.start : change.end])
 
     def _messages(self, job: WriteJob) -> list[ChatMessage]:
         """The shared start + the task when it fits with the answer, else a compact prompt
@@ -528,6 +544,10 @@ def replacement_result(
     change = PlannedChange(start, end, text, why, False, tuple(issues))
     proposal = propose_many(path, note, [Edit(start, end, text, why, tuple(issues), False)])
     return EditResult(proposal, [change] if proposal is not None else [])
+
+
+def _words(text: str) -> str:
+    return " ".join(text.split())
 
 
 def _dropped(edit: PlannedEdit, why: str) -> str:

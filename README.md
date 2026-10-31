@@ -1,8 +1,9 @@
 # paper-pile
 
 A local, Obsidian-like markdown note app: a clean three-pane window (files · editor · side pane)
-over a folder of plain `.md` / `.txt` files, with optional built-in local AI through
-[Ollama](https://ollama.com). Everything runs on your machine and works offline.
+over a folder of plain `.md` / `.txt` files, with optional built-in AI through
+[Ollama](https://ollama.com), [vLLM](https://docs.vllm.ai) or any OpenAI-compatible API. With a
+local model everything runs on your machine and works offline.
 
 Your notes stay ordinary files. The app's own data (search index, session, version history) lives
 in `<vault>/.paper-pile/` and can be deleted at any time; nothing is ever deleted for good — a
@@ -37,7 +38,7 @@ deleted note goes to `<vault>/.trash/`.
 
 Settings → General → **Features**:
 
-- **AI** — off: no chat, no AI commands, and the app never contacts Ollama.
+- **AI** — off: no chat, no AI commands, and the app never contacts an AI server.
 - **Calendar** — off: no calendar tab or daily-note settings.
 - **Minimal settings** (on by default) — Settings lists only the essentials; turn it off to see
   every option. Search in Settings always finds everything.
@@ -52,15 +53,26 @@ uv sync
 ```
 
 The AI (chat, AI commands) runs only when you ask for it: `uv run paper-pile --ai`. Without
-`--ai` the app runs with AI off and never loads the AI libraries.
+`--ai` the app runs with AI off and never contacts an AI server.
 
 The native window uses Qt WebEngine (installed by `uv sync`) on Qt's default Wayland backend. If
 you force the X11 backend (`QT_QPA_PLATFORM=xcb`), install the xcb libraries Qt needs, e.g. on
 Ubuntu: `sudo apt install libxcb-cursor0 libxcb-icccm4 libxcb-keysyms1 libxcb-xkb1
 libxkbcommon-x11-0 libxcb-image0 libxcb-render-util0`.
 
-For AI answers, also install and start [Ollama](https://ollama.com) and pull a model (`ollama pull gemma4:12b`,
-or any chat model — pick it in the chat's model menu). The app works fully without it.
+For AI answers, run a model server and pick it in Settings → AI → **Provider** (the app works
+fully without one):
+
+| Provider | Server address (empty = default) | Notes |
+|---|---|---|
+| Ollama (default) | `http://localhost:11434` | `ollama pull <model>` (e.g. `gemma4:12b`) |
+| vLLM | `http://localhost:8000/v1` | `vllm serve <model>`; the window is vLLM's `--max-model-len` |
+| OpenAI-compatible API | `https://api.openai.com/v1` | OpenAI, OpenRouter, LM Studio, llama.cpp, … |
+
+An API key is never stored: set **API key variable** to the name of an environment variable
+(e.g. `OPENAI_API_KEY`) and export the key before starting the app. The chat model defaults to
+the first one the server lists; pick another in the chat's model menu. With a server on another
+computer or a hosted API, the AI's Allow card says that notes are sent there.
 
 ## Run
 

@@ -5,7 +5,7 @@ note* per reply. The composer is one rounded card: attachment chips (selections,
 files), a ``+`` menu (open tabs, other notes, the editor's selection, upload, include all open
 tabs), the input with its ``@`` picker, the model picker and Send. What the model sees is built
 by the AI engine (:mod:`paper_pile.core.ai.engine`), which also keeps the open chat; this pane
-only draws. If Ollama is not running the pane says so and everything else keeps working.
+only draws. If the AI backend can't be reached the pane says so and everything else keeps working.
 
 A header row shows the chat's title; its ⋮ button opens the chat menu: New chat, the latest
 saved chats (*Memories*, one line each; older ones under *More chats*) and *AI settings*. Chats
@@ -52,11 +52,30 @@ from paper_pile.gui.components.options_box import OptionsBox
 from paper_pile.gui.icons import ico, icon_button, line_icon, set_icon
 from paper_pile.gui.tips import tip
 
-THINKING_HTML = '<span class="pp-thinking" aria-label="Thinking"><i></i><i></i><i></i></span>'
 log = logging.getLogger("paper_pile.chat")
 
+
+def thinking_html(text: str = "Thinking…") -> str:
+    """What the AI is doing before its first words: a small pulsing circle, then the word."""
+    return (
+        '<span class="pp-thinking" role="status"><i class="pp-thinking-dot"></i>'
+        f"{html.escape(text)}</span>"
+    )
+
+
+THINKING = thinking_html()
+
+
+def show_stop(button: ui.button, busy: bool) -> None:
+    """The send button of a chat box: a square (Stop, glowing softly) while the AI answers,
+    else the arrow."""
+    set_icon(button, "square" if busy else "arrow-up")
+    button.classes(
+        add="pp-chat-send-busy" if busy else "", remove="" if busy else "pp-chat-send-busy"
+    )
+
+
 RENDER_EVERY_S = 0.08  # how often a streaming reply is redrawn
-THINKING = '<span class="pp-thinking" aria-label="Thinking"><i></i><i></i><i></i></span>'
 HEALTH_EVERY_S = 30.0
 RECENT_CHATS = 5  # shown in the ⋮ menu; older ones under "More chats"
 _MENTION_TAIL = re.compile(r"@([^\s@\[\]]*)$")
@@ -127,7 +146,7 @@ class ChatPane:
         self._open_paths = open_paths
         self._active_path = active_path
         self._open_settings = open_settings
-        self.health = Health(False, "Checking Ollama…")
+        self.health = Health(False, "Checking the AI…")
         self._task: asyncio.Task[None] | None = None
         self._asking = False  # an Allow / Not now card is waiting in the chat
         self._include_tabs = False
@@ -242,7 +261,7 @@ class ChatPane:
         background_tasks.create(self.check_health())
 
     async def check_health(self) -> None:
-        if not self._enabled():  # AI is switched off: never talk to Ollama
+        if not self._enabled():  # AI is switched off: never talk to the backend
             return
         health = await self.ai.health()
         self.health = health
@@ -305,7 +324,7 @@ class ChatPane:
                 with item.classes("pp-model-item"):
                     with ui.column().classes("pp-model-text"):
                         ui.label(name).classes("pp-model-name")
-                        # size and family from Ollama; else at least the tag the button hides
+                        # what the backend tells (size, family…); else the tag the button hides
                         tag = model.split(":", 1)[1] if ":" in model else ""
                         detail = self._model_details.get(model, "") or tag
                         if detail:
@@ -1012,7 +1031,7 @@ class ChatPane:
         out = self.ai.add_message(text, picked, notes, files)
         self.ai.save()
         self._task = background_tasks.create(self._answer(out))
-        set_icon(self._send, "square")
+        show_stop(self._send, True)
 
     # ---- AI commands from the / list (PLAN §4.28) -------------------------------------------
 
@@ -1041,7 +1060,7 @@ class ChatPane:
             card = _CommandCard(cmd.id, "", path, selected, busy=True)
             self._show_card(card)
             self._task = background_tasks.create(self._offer(cmd, card))
-            set_icon(self._send, "square")
+            show_stop(self._send, True)
         elif cmd.kind == "change":
             self._run_change(cmd.id, words, path, selected)
         else:
@@ -1064,7 +1083,7 @@ class ChatPane:
             card = None  # type: ignore[assignment]
         finally:
             self._task = None
-            set_icon(self._send, "arrow-up")
+            show_stop(self._send, False)
             if card is not None:
                 card.busy = False
             self._show_card(card)
@@ -1094,7 +1113,7 @@ class ChatPane:
         out = self.ai.add_message(cmd.instruction(words), picked, notes, files)
         self.ai.save()
         self._task = background_tasks.create(self._answer(out))
-        set_icon(self._send, "square")
+        show_stop(self._send, True)
 
     def _run_change(
         self,
@@ -1117,7 +1136,7 @@ class ChatPane:
         self._render_selections()
         self._show_card(card)
         self._task = background_tasks.create(self._change(card, how))
-        set_icon(self._send, "square")
+        show_stop(self._send, True)
 
     async def _change(self, card: _CommandCard, how: Again) -> None:
         shown: _CommandCard | None = card
@@ -1146,7 +1165,7 @@ class ChatPane:
         finally:
             card.busy = False
             self._task = None
-            set_icon(self._send, "arrow-up")
+            show_stop(self._send, False)
             self._show_card(shown)
 
     def _card_action(self, card: _CommandCard, action: str) -> None:
@@ -1219,8 +1238,7 @@ class ChatPane:
 
             def status(text: str) -> None:  # before the first words: say what is going on
                 if body is not None and not reply.text:
-                    label = f'<span class="pp-muted pp-chat-status">{html.escape(text)}</span>'
-                    body.set_content(THINKING + label)
+                    body.set_content(thinking_html(text))
 
             async for _piece in self.ai.answer(
                 reply, out, snap, include_tabs=self._include_tabs, on_status=status
@@ -1241,7 +1259,7 @@ class ChatPane:
             self._fail(reply, "Something went wrong; see the log.")
         finally:
             self._task = None
-            set_icon(self._send, "arrow-up")
+            show_stop(self._send, False)
             self._render_log()
             self.ai.save()
 
@@ -1256,7 +1274,7 @@ class ChatPane:
         if out is None:
             return
         self._task = background_tasks.create(self._answer(out))
-        set_icon(self._send, "square")
+        show_stop(self._send, True)
 
     def _edit_last(self) -> None:
         """Take the last message back into the box, with what was attached to it."""
@@ -1313,7 +1331,7 @@ class ChatPane:
 
     async def _compact(self) -> None:
         """``/compact``: summarize the earlier messages for the model now."""
-        set_icon(self._send, "square")
+        show_stop(self._send, True)
         problem = ""
         try:
             done = await self.ai.compact()
@@ -1323,7 +1341,7 @@ class ChatPane:
             done, problem = False, f"Could not summarize: {exc}"
         finally:
             self._task = None
-            set_icon(self._send, "arrow-up")
+            show_stop(self._send, False)
         with self._client:  # a background task has no UI context of its own
             if done:
                 self.ai.save()

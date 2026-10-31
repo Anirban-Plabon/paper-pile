@@ -1,7 +1,7 @@
 # CLAUDE.md — paper-pile
 
 You are building **paper-pile**: a local, Obsidian-like markdown note app with a
-Cursor-clean 3-pane UI and built-in local AI (Ollama). Read this file fully at the
+Cursor-clean 3-pane UI and built-in AI (Ollama, vLLM or any OpenAI-compatible API; PLAN §4.30). Read this file fully at the
 start of every session. It is short on purpose; details live in `docs/`.
 
 ## Source of truth
@@ -41,7 +41,8 @@ Never mark a task done without its acceptance criteria verified. Never delete Is
 4. **Never hard-delete user data.** Deletes go to `<vault>/.trash/`.
 5. **No CDN.** All JS/CSS (CodeMirror, KaTeX, Mermaid) is vendored under `paper_pile/gui/static/vendor/` and served locally. App must work fully offline.
 6. **JS is a thin layer.** JS only renders/captures (editor, popup menus, paste events). Logic, parsing, command registry, AI all live in Python.
-7. **`--serve` mode must keep working** (web mode, bind `127.0.0.1` only). Don't introduce native-only code paths without a web fallback.
+7. **The AI harness is backend- and model-independent.** Only `core/ai/<backend>.py` and `factory.make_provider` know a backend; the engine, edits, commands and UI use `Provider` (`label`, `local`, `sizes_window`, `missing_model`) and never name Ollama or a model. No backend client library: plain `httpx`.
+8. **`--serve` mode must keep working** (web mode, bind `127.0.0.1` only). Don't introduce native-only code paths without a web fallback.
 
 ## Conventions
 - Python ≥ 3.12, managed with **uv**. Run everything via `uv run ...`.
@@ -95,9 +96,11 @@ Ask the user a **short** question instead of guessing on anything that changes t
 - CodeMirror: a plugin/field that stays in a reconfigured Compartment keeps its instance (constructor not re-run); react to facet changes in `update()` (compare `u.startState.facet` / `u.state.facet`).
 - Qt WebEngine in a dev tool (not the app) as root: `QApplication(sys.argv[:1])` and `QTWEBENGINE_DISABLE_SANDBOX=1`, or Chromium refuses to start.
 - HTML5 drag & drop: a drop target's `dropEffect` must be one the drag source's `effectAllowed` permits (tree rows and tabs use `'move'`), or `drop` never fires. Test drags with CDP `Input.setInterceptDrags` + `dispatchDragEvent`; plain mouse events don't start an HTML5 drag.
+- Settings rows: the control column never shrinks (`.pp-set-control { flex: 0 0 auto }`) — Quasar selects and segmented controls cannot get narrower than their content and overflow the box; the help text wraps instead. So every hand-made row (Access, Memories…) must be a `.pp-set-row` or get its own rule in the `ppbox` container query, or its text is squeezed to one word per line when the box is narrow.
 - Settings rows stack by a CSS container query on their box (`ppbox`), not by JS — keep it that way. In general, layout state set by JS from measured positions must not change what was measured: a class that lets a field shrink can make the row fit again and flip forever. Keep sizes that decide wrapping (min-width) the same in both states, and re-measure per element with a ResizeObserver.
 - Date fields: never use a native `<input type=date>` — its calendar icon and popup ignore our theme (dark mode, rounded popups). Use `ui.date` in a `ui.menu` (`.pp-date-popup`, see `memories.py`).
 - CodeMirror keymaps: the first binding for a key wins — a key the default keymap already binds (Mod-Enter, Mod-h…) must be listed BEFORE `...defaultKeymap`.
+- JS state on a NiceGUI element: never a class added from JS — the next `.classes(...)` from Python rewrites the class list and drops it. Use a `data-*` attribute (as `askpop.js` `data-pp-side`) or an inline style.
 - Popups: Quasar places a `ui.menu` once, at open — a menu filled on `before-show` is still empty then. `static/menus.js` re-places menus on resize and keeps them above `--pp-inset-bottom`; a new popup kind that is not a `.q-menu`/`.pp-ctxmenu` must get the same (Quasar and CodeMirror only know `innerHeight`, which includes the strip under the WSL taskbar).
 - NiceGUI handlers run in the slot of the element that fired. If the handler deletes that element (redrawing a tab strip, a list), wrap any later UI work in `with <live element>:` — otherwise `RuntimeError: The parent element this slot belongs to has been deleted`.
 - Editor tooltips (slash menu, autocomplete) are clipped by the editor pane: `tooltipSpace` (index.js) keeps them inside the editor's box. A real-click check must confirm `elementFromPoint` hits the target — a covered button looks clickable in a script.
@@ -118,5 +121,6 @@ Ask the user a **short** question instead of guessing on anything that changes t
 - JS "is it shown?": never `el.offsetParent !== null` for a `position: fixed` element (always null) — use `el.getClientRects().length > 0`.
 - Side-effect imports (`commands_builtin` registers every slash command): keep them as a plain `import x  # noqa: F401`, never as `from x import <name>` — when the last name goes, ruff deletes the import and the feature silently disappears while unit tests (which import it themselves) stay green. `tests/gui/test_app_registers_commands.py` guards the slash commands.
 - CodeMirror `view.lineBlockAt(pos)` includes the block widgets on that line (its `type` is then an array): measuring a line's top/bottom for a band or overlay must take the `BlockType.Text` part (`textBlockAt`, `aiband.js`), or it covers the widgets too.
-- AI calls whose reasoning is never shown (edits, answers written into a note, Translate, JSON decisions) pass `think=False`: a thinking model otherwise spends minutes before the first word (gemma4:12b Translate: 160 s → 1.5 s). Measure AI changes with `tools/ai_eval/run.py --model <m>`, not by feel.
+- AI calls whose reasoning is never shown (edits, answers written into a note, Translate, JSON decisions) pass `think=False`: a thinking model otherwise spends minutes before the first word (gemma4:12b Translate: 160 s → 1.5 s). On OpenAI-compatible servers it must become `reasoning_effort: "none"` — otherwise the reasoning eats the whole `max_tokens` and the answer comes back empty (`finish: length`). Measure AI changes with `tools/ai_eval/run.py --model <m>`, not by feel.
+- AI intent / routing prompts (`understand.py`): a user's misread request is an example, not the bug — never add phrase or word lists. Change the rules only with `tools/ai_eval/intent.py`: add a fresh held-out set BEFORE trying a new version (a set used to judge a version is no longer unseen), keep examples out of the rules when they overlap the eval, and report the held-out score and the time per request (the model's output length decides the time).
 - AI writes at low temperature loop without a repeat penalty (Ollama's default is 1.0 = none; it aborts with "token repeat limit reached"): text answers go with `REPEAT_PENALTY` (engine.py), JSON answers without. The automatic context window is measured per machine (`core/ai/window.py`), not a constant — never re-add a fixed cap.

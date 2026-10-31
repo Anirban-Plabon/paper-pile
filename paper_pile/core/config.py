@@ -63,8 +63,10 @@ DEFAULTS: dict[str, Any] = {
         "daily_notes_template": "",
     },
     "ai": {
-        "host": "http://localhost:11434",
-        "model": "gemma4:12b",
+        "provider": "ollama",  # ollama | vllm | openai (any OpenAI-compatible API)
+        "host": "",  # "" = the provider's own default address
+        "model": "",  # "" = the first chat model the backend lists
+        "api_key_env": "",  # the NAME of the environment variable holding the key
         "context_budget": 6000,
         "instructions": "",
         "instructions_from": "text",  # text | file
@@ -73,6 +75,7 @@ DEFAULTS: dict[str, Any] = {
         "top_p": 0.9,
         "num_ctx": 0,  # 0 = automatic: the model's limit, at most 8192 (ai/engine.py)
         "keep_alive": 5,  # minutes
+        "preload": True,  # load the model when the app starts (backends that load on demand)
         "history_turns": 12,
         "save_chats": True,
         "keep_chats_days": 0,  # 0 = forever
@@ -92,7 +95,16 @@ DEFAULTS: dict[str, Any] = {
 # reads besides the notes, where chats are written and whether its edits apply unreviewed. A copied
 # vault could otherwise redirect the AI or widen what it reads (PLAN §4.26). Set globally only.
 GLOBAL_ONLY = frozenset(
-    {"ai.host", "ai.instructions_file", "ai.prompts_file", "ai.chats_folder", "ai.edits"}
+    {
+        "ai.provider",
+        "ai.host",
+        "ai.api_key_env",
+        "ai.saved",  # other backends' addresses / key variables (core/ai/backends.py)
+        "ai.instructions_file",
+        "ai.prompts_file",
+        "ai.chats_folder",
+        "ai.edits",
+    }
 )
 
 

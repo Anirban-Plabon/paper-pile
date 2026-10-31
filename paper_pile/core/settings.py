@@ -10,6 +10,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any, Literal
 
+from paper_pile.core.ai.backends import BACKENDS
 from paper_pile.core.ai.install import ai_available
 from paper_pile.core.colors import lighten, parse_color
 from paper_pile.core.vault import is_hidden_part
@@ -37,6 +38,7 @@ DENSITIES = ("comfortable", "compact")
 MOTIONS = ("off", "fast", "normal", "slow")
 MOTION_LABELS = {"off": "Off", "fast": "Fast", "normal": "Normal", "slow": "Slow"}
 ICON_COLORS = {"default": "Default", "accent": "Accent"}  # value -> shown
+AI_PROVIDERS = {k: b.label for k, b in BACKENDS.items()}  # ai.provider -> shown
 EDIT_MODES = {"ask": "Ask first", "auto": "Apply at once", "readonly": "Read-only"}  # ai.edits
 EDIT_PLANNING = {"auto": "Auto", "selection": "Selection only"}  # ai.edit_planning
 MOTION_FACTORS = {"off": 0.0, "fast": 0.6, "normal": 1.0, "slow": 1.6}  # × every duration
@@ -119,7 +121,7 @@ SECTIONS: dict[str, tuple[Setting, ...]] = {
             "features.ai",
             "AI",
             "bool",
-            help="Chat, AI commands, Ollama",
+            help="Chat and AI commands",
             group="Features",
             essential=True,
         ),
@@ -152,14 +154,13 @@ SECTIONS: dict[str, tuple[Setting, ...]] = {
             "general.restore_tabs",
             "Reopen last tabs",
             "bool",
-            help="On start, open the notes you had open",
+            help="On start",
             group="Startup and files",
         ),
         Setting(
             "general.confirm_delete",
             "Ask before deleting",
             "bool",
-            help="Confirm before a note or folder goes to the trash",
             group="Startup and files",
             essential=True,
         ),
@@ -248,7 +249,6 @@ SECTIONS: dict[str, tuple[Setting, ...]] = {
             "Icon colour",
             "choice",
             tuple(ICON_COLORS),
-            help="Accent: icons take the accent colour",
             group="Theme",
         ),
         Setting(
@@ -264,7 +264,6 @@ SECTIONS: dict[str, tuple[Setting, ...]] = {
             "Animation speed",
             "choice",
             MOTIONS,
-            help="Off turns animations off",
             group="Interface",
             essential=True,
         ),
@@ -284,7 +283,6 @@ SECTIONS: dict[str, tuple[Setting, ...]] = {
             "int",
             minimum=8,
             maximum=40,
-            help="Editor text size",
             step=1,
             group="Font",
             essential=True,
@@ -310,7 +308,6 @@ SECTIONS: dict[str, tuple[Setting, ...]] = {
             "editor.word_wrap",
             "Wrap long lines",
             "bool",
-            help="Wrap long lines",
             group="Layout",
             essential=True,
         ),
@@ -318,7 +315,7 @@ SECTIONS: dict[str, tuple[Setting, ...]] = {
             "editor.readable_width",
             "Readable line length",
             "bool",
-            help="Keep lines narrow on wide windows",
+            help="On wide windows",
             group="Layout",
             essential=True,
         ),
@@ -326,7 +323,6 @@ SECTIONS: dict[str, tuple[Setting, ...]] = {
             "editor.line_numbers",
             "Show line numbers",
             "bool",
-            help="Line numbers beside the text",
             group="Layout",
             essential=True,
         ),
@@ -334,7 +330,6 @@ SECTIONS: dict[str, tuple[Setting, ...]] = {
             "editor.highlight_line",
             "Highlight current line",
             "bool",
-            help="A soft band behind the caret's line",
             group="Layout",
         ),
         Setting(
@@ -371,14 +366,13 @@ SECTIONS: dict[str, tuple[Setting, ...]] = {
             "editor.tidy_button",
             "Tidy note button",
             "bool",
-            help="Floating tidy button",
             group="Writing",
         ),
         Setting(
             "editor.word_count",
             "Word count",
             "bool",
-            help="Words, line and column in the status bar",
+            help="In the status bar",
             group="Writing",
         ),
         Setting(
@@ -417,28 +411,49 @@ SECTIONS: dict[str, tuple[Setting, ...]] = {
     ),
     "AI": (
         Setting(
-            "ai.host",
-            "Ollama address",
-            "url",
-            placeholder="http://localhost:11434",
+            "ai.provider",
+            "Provider",
+            "choice",
+            tuple(AI_PROVIDERS),
             group="Model",
             essential=True,
+        ),
+        Setting(
+            "ai.host",
+            "Server address",
+            "url",
+            placeholder="Provider default",
+            group="Model",
+            essential=True,
+        ),
+        Setting(
+            "ai.api_key_env",
+            "API key variable",
+            "text",
+            placeholder="e.g. OPENAI_API_KEY",
+            group="Model",
         ),
         Setting(
             "ai.model",
             "Chat model",
             "text",
-            placeholder="gemma4:12b",
-            help="Chat and AI commands",
+            placeholder="First listed",
             group="Model",
             essential=True,
+        ),
+        Setting(
+            "ai.preload",
+            "Load model at start",
+            "bool",
+            help="Faster first reply; uses memory",
+            group="Model",
         ),
         Setting(
             "ai.edits",
             "AI changes to notes",
             "choice",
             tuple(EDIT_MODES),
-            help="Ask first shows a diff to accept",
+            help="Ask first shows a diff",
             group="Context",
             essential=True,
         ),
@@ -447,15 +462,13 @@ SECTIONS: dict[str, tuple[Setting, ...]] = {
             "Plan edits across the note",
             "choice",
             tuple(EDIT_PLANNING),
-            help="Auto lets the AI change other places that must agree (a list, a count); "
-            "Selection only is one call — faster on slow, CPU-only setups",
+            help="Auto may also fix related places",
             group="Context",
         ),
         Setting(
             "ai.selection_popup",
             "Ask box under a selection",
             "bool",
-            help="Ask about or rewrite the selected text",
             group="Context",
             essential=True,
         ),
@@ -464,7 +477,7 @@ SECTIONS: dict[str, tuple[Setting, ...]] = {
             "Your prompts",
             "text",
             placeholder="e.g. AI/prompts.md",
-            help="A list (- …) offered in the chat",
+            help="Offered in the chat",
             group="Context",
         ),
         Setting(
@@ -473,7 +486,7 @@ SECTIONS: dict[str, tuple[Setting, ...]] = {
             "int",
             minimum=500,
             maximum=200000,
-            help="Most note text per message",
+            help="Note text per message",
             group="Context",
         ),
         Setting(
@@ -523,7 +536,7 @@ SECTIONS: dict[str, tuple[Setting, ...]] = {
             minimum=0,
             maximum=2,
             step=0.1,
-            help="Low = focused, high = creative",
+            help="Low = focused",
             group="Advanced",
         ),
         Setting(
@@ -533,7 +546,6 @@ SECTIONS: dict[str, tuple[Setting, ...]] = {
             minimum=0.05,
             maximum=1,
             step=0.05,
-            help="Word variety",
             group="Advanced",
         ),
         Setting(
@@ -543,7 +555,7 @@ SECTIONS: dict[str, tuple[Setting, ...]] = {
             minimum=0,
             maximum=262144,
             step=2048,
-            help="0 = automatic (what fits this computer)",
+            help="0 = automatic",
             group="Advanced",
         ),
         Setting(
@@ -563,7 +575,7 @@ SECTIONS: dict[str, tuple[Setting, ...]] = {
             minimum=0,
             maximum=1440,
             step=5,
-            help="Faster replies, uses RAM",
+            help="Ollama only",
             group="Advanced",
         ),
     ),
@@ -582,6 +594,10 @@ def is_shown(
         return False
     if setting.group == "Daily notes" and not values["features.calendar"]:
         return False
+    if setting.key == "ai.api_key_env" and not BACKENDS[values["ai.provider"]].key_hint:
+        return False  # this backend takes no key (Ollama)
+    if setting.key == "ai.preload" and not BACKENDS[values["ai.provider"]].loads_models:
+        return False  # a server keeps its model loaded
     return searching or setting.essential or not values["settings.minimal"]
 
 
@@ -603,9 +619,9 @@ def search_settings(query: str, values: Mapping[str, Any] | None = None) -> list
         for setting in group:
             if values is not None and not is_shown(section, setting, values, searching=True):
                 continue
-            haystack = (
-                f"{section} {setting.group} {setting.label} {setting.help} {setting.key}".lower()
-            )
+            choices = " ".join(map(str, setting.choices))  # "vllm" finds the Provider row
+            haystack = f"{section} {setting.group} {setting.label} {setting.help} {setting.key}"
+            haystack = f"{haystack} {choices}".lower()
             if all(w in haystack for w in words):
                 found.append(setting)
     return found
@@ -683,6 +699,8 @@ def parse_value(setting: Setting, raw: Any) -> Parsed:
             else Parsed(False, error="A colour: #f97316, rgb(…), hsl(…)")
         )
     if kind == "url":
+        if not text and setting.key == "ai.host":
+            return Parsed(True, "")  # the provider's default
         if not text:
             return Parsed(False, error="An address is needed")
         if not text.lower().startswith(("http://", "https://")) or " " in text:
@@ -719,7 +737,13 @@ def parse_value(setting: Setting, raw: Any) -> Parsed:
         ):
             return Parsed(False, error="A folder inside the vault")
         return Parsed(True, folder)
-    if setting.key in {"editor.font_family", "editor.code_font_family", "ai.model"} and not text:
+    if (
+        setting.key == "ai.api_key_env"
+        and text
+        and not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", text)
+    ):
+        return Parsed(False, error="A variable name (letters, digits, _), not the key itself")
+    if setting.key in {"editor.font_family", "editor.code_font_family"} and not text:
         return Parsed(False, error="Cannot be empty")
     if len(text) > 200 or any(c in text for c in "{};\n\r<>"):
         return Parsed(False, error="Contains characters that are not allowed")

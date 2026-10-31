@@ -1,15 +1,15 @@
 [project]
 name = "paper-pile"
 version = "0.1.0"
-description = "Local markdown notes with built-in local AI (Ollama)."
+description = "Local markdown notes with built-in AI (Ollama, vLLM or any OpenAI-compatible API)."
 requires-python = ">=3.12"
 dependencies = [
     "beautifulsoup4==4.15.0",
     "markdown-it-py==4.2.0",
     "markdownify==1.2.3",
     "mdit-py-plugins==0.6.1",
+    "httpx==0.28.1",  # the AI backends' HTTP client (PLAN §4.30)
     "nicegui==3.18.0",
-    "ollama==0.6.3",  # imported only when started with --ai (PLAN §4.26)
     "pillow==12.3.0",
     "platformdirs==4.13.0",
     "pywebview[qt]==6.2.1",

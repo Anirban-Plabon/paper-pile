@@ -218,7 +218,8 @@ def test_a_missing_model_is_named_before_sending(
     model = ai.model()
     assert ai.model_problem(Health(True, "", [model])) == ""
     assert ai.model_problem(Health(True, "", [f"{model}:latest"])) == ""
-    assert f"ollama pull {model}" in ai.model_problem(Health(True, "", ["other:7b"]))
+    problem = ai.model_problem(Health(True, "", ["other:7b"]))
+    assert f"not on Fake AI — install {model}" in problem  # the backend says how to get it
     assert ai.model_problem(Health(False, "down")) == ""  # the banner says that already
 
 

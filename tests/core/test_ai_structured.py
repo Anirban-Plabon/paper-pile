@@ -24,7 +24,6 @@ def ndjson(*parts: dict[str, object]) -> bytes:
 
 
 def ollama_provider(handler: Callable[[httpx.Request], httpx.Response]):  # type: ignore[no-untyped-def]
-    pytest.importorskip("ollama")
     from paper_pile.core.ai.ollama import OllamaProvider
 
     return OllamaProvider("http://ollama.test", "m1", transport=httpx.MockTransport(handler))

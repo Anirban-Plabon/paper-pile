@@ -16,6 +16,7 @@ from nicegui import background_tasks, run, ui
 
 from paper_pile.core.ai.chats import chats_folder
 from paper_pile.core.ai.engine import AiEngine
+from paper_pile.core.ai.factory import probe_backends
 from paper_pile.core.ai.instructions import draft_messages
 from paper_pile.core.ai.provider import Health
 from paper_pile.core.ai.selection_ask import AskTurn
@@ -156,6 +157,7 @@ class MainLayout:
             on_cleared=self._folder_cleared,
             gallery=self._open_gallery,
             rebuild_index=self._rebuild_index,
+            probe=lambda: probe_backends(self.config),
         )
         for pane in (*WIDTH_LIMITS, "settings"):
             self.state.pane_widths[pane] = clamp_width(pane, self.state.pane_widths[pane])
@@ -465,14 +467,14 @@ class MainLayout:
         if self.right is not None:
             self.right.refresh()  # folds the pane if nothing is left to show (_right_emptied)
         if self._status is not None:
-            self._status.show_ollama(ai)
+            self._status.show_ai(ai)
         if self.editor_pane is not None:
             self.editor_pane.set_ai(ai)
             self.editor_pane.empty_host.clear()
             with self.editor_pane.empty_host:
                 self._start_actions()
         if self.chat is not None and ai:
-            self.chat.reload_provider()  # checks Ollama again
+            self.chat.reload_provider()  # checks the AI backend again
         if self.tree is not None:
             self.tree.refresh()
         self._sync_toggles()
@@ -684,7 +686,7 @@ class MainLayout:
             self.ai,
             snapshot=self.editor_pane.ai_snapshot,
             insert_text=self.editor_pane.insert_text,
-            on_health=self._on_ollama_health,
+            on_health=self._on_ai_health,
             user_name=lambda: self.profile.name if self.profile else "",
             open_paths=lambda: self.editor_pane.open_paths() if self.editor_pane else [],
             active_path=self._active_path,
@@ -701,10 +703,12 @@ class MainLayout:
         if self.editor_pane is not None:
             await self.editor_pane.propose_in_note(path, old, new)
 
-    def _on_ollama_health(self, health: Health) -> None:
+    def _on_ai_health(self, health: Health) -> None:
+        self.settings.models_changed(list(health.models))
         if self._status is not None:
-            tip = "Ollama is running" if health.ok and not health.message else health.message
-            self._status.set_ollama(health.ok, tip or "Ollama")
+            label = self.ai.provider.label
+            tip = f"{label} is running" if health.ok and not health.message else health.message
+            self._status.set_ai(health.ok, tip or label)
 
     def _center_pane(self) -> None:
         self.editor_pane = EditorPane(
@@ -740,7 +744,7 @@ class MainLayout:
             self._start_actions()
         with self.editor_pane.status_host:  # the footer under the editor, beside Backlinks
             self._status = status_bar(self.toggle_mode, self.state.mode)
-            self._status.show_ollama(self.ai_on())
+            self._status.show_ai(self.ai_on())
         self.editor_pane.set_ai(self.ai_on())
 
     def _pins_changed(self, paths: list[str]) -> None:

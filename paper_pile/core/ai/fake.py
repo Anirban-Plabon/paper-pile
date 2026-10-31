@@ -1,4 +1,4 @@
-"""A deterministic stand-in for Ollama, for tests and for trying the UI without a model.
+"""A deterministic stand-in for an AI backend, for tests and for trying the UI without a model.
 
 Selected by the environment variable ``PAPER_PILE_FAKE_AI=1``. It echoes the last user message
 back word by word (without the notes sent in front of it). Tests can script its answers instead:
@@ -22,6 +22,12 @@ from paper_pile.core.ai.provider import (
 
 class FakeProvider:
     host = "fake://local"
+    label = "Fake AI"
+    local = True
+    sizes_window = True  # like Ollama, so the window measuring can be tested
+
+    def missing_model(self, model: str) -> str:
+        return f"install {model}"
 
     def __init__(
         self,
@@ -44,6 +50,7 @@ class FakeProvider:
         self.fail_after: int | None = None  # raise ProviderError after this many words
         self.fail_calls = 0  # make the next this many calls fail at once
         self.loop_calls = 0  # make the next this many calls stop after a word, looping
+        self.preloaded: list[tuple[str, GenerationOptions]] = []  # (model, options) per preload
 
     async def chat(
         self,
@@ -65,7 +72,9 @@ class FakeProvider:
         for n, word in enumerate(words):
             if n == 1 and self.loop_calls > 0:
                 self.loop_calls -= 1
-                raise RepeatLoopError("Ollama said: prediction aborted, token repeat limit reached")
+                raise RepeatLoopError(
+                    "Fake AI said: prediction aborted, token repeat limit reached"
+                )
             if self.fail_after is not None and n >= self.fail_after:
                 raise ProviderError("the fake model stopped")
             await asyncio.sleep(self.delay)
@@ -95,6 +104,10 @@ class FakeProvider:
         self.measured.append(num_ctx)
         share = self.gpu_share.get(num_ctx)
         return None if share is None else (1000, int(1000 * share))
+
+    async def preload(self, model: str, options: GenerationOptions) -> bool:
+        self.preloaded.append((model, options))
+        return True
 
     async def health(self) -> Health:
         return (

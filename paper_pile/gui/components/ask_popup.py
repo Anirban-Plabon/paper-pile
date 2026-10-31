@@ -21,19 +21,21 @@ from typing import TYPE_CHECKING, Any, Literal
 from nicegui import Client, background_tasks, ui
 
 from paper_pile.core.ai.access import AccessDeniedError
-from paper_pile.core.ai.ask_route import route
+from paper_pile.core.ai.ask_route import route_by_words
 from paper_pile.core.ai.commands import AiCommand, ai_command
 from paper_pile.core.ai.edit_run import Again, EditEnd
 from paper_pile.core.ai.edits import FINISHED, EditTooLongError
+from paper_pile.core.ai.intent import Intent
 from paper_pile.core.ai.options import Option, suggest_options
 from paper_pile.core.ai.provider import ProviderError
 from paper_pile.core.ai.selection_ask import DELETE, AskTurn, Role, box_commands
+from paper_pile.core.ai.understand import understand
 from paper_pile.core.commands import CommandContext
 from paper_pile.core.parser import render_chat_html
 from paper_pile.gui.components.ai_access import confirm_access
-from paper_pile.gui.components.chat import RENDER_EVERY_S, THINKING
+from paper_pile.gui.components.chat import RENDER_EVERY_S, THINKING, show_stop
 from paper_pile.gui.components.options_box import OptionsBox
-from paper_pile.gui.icons import ico, line_icon, set_icon
+from paper_pile.gui.icons import ico, line_icon
 from paper_pile.gui.tips import tip
 
 if TYPE_CHECKING:
@@ -72,6 +74,7 @@ class _Entry:
     options: tuple[Option, ...] = ()  # the AI's options: for ``command_id`` run without words,
     command_id: str = ""  # or the user's messy request rewritten as clearer ones
     options_title: str = ""
+    intent: Intent | None = None  # of the request the options came from
     translate: bool = False  # a Translate answer: Replace / Insert below / Copy under it
     actions: tuple[Action, ...] = ()  # buttons under a change that ended without a diff
     again: _Asked | None = None  # what those buttons run again
@@ -95,6 +98,7 @@ class _Asked:
     title: str
     offer: bool
     groups: tuple[str, ...] = ()
+    intent: Intent | None = None  # what the model understood (a typed request)
 
 
 class AskPopup:
@@ -117,6 +121,7 @@ class AskPopup:
         ui.on("pp_askpop_pick", lambda e: self._pick(str(e.args.get("id", ""))))
         ui.on("pp_askpop_close", lambda e: self._outside(bool(e.args.get("key"))))
         ui.on("pp_askpop_unchip", lambda _e: self._set_command(None))
+        ui.on("pp_askpop_delete", lambda _e: self._delete_key())
 
     # ---- drawing --------------------------------------------------------------------------
 
@@ -232,7 +237,7 @@ class AskPopup:
 
     def close(self) -> None:
         """×, Esc, a click outside: the box goes (an answer still coming is stopped; a rewrite
-        running is not: the "AI is writing…" notice's Stop stops it)."""
+        running is not: the "Writing…" chip's Stop stops it)."""
         if self._rewriting:
             return
         if self._task is not None and self._task is not asyncio.current_task():
@@ -314,21 +319,29 @@ class AskPopup:
         self._start(self._route(text))
 
     async def _route(self, text: str) -> None:
-        """A typed message changes the text or asks about it (``ask_route``: clear first words
-        decide, else the model). The words stay in the box until it is decided."""
+        """A typed message, understood by the model (``understand.py``): a question gets an
+        answer here, a change that leaves a choice open gets that choice as options, any other
+        change goes through the edit pipeline with what was understood. Without the model:
+        the first-words rules (``ask_route``). The words stay in the box until it is decided."""
         target, engine = self._target, self._pane.ai_engine
         if target is None or engine is None:
             return
         if not await confirm_access(engine, self._root):
             return
-        found = await route(engine, text, target.text)
+        found = await understand(engine, text, target.text)
         if self._target is not target:  # the box was closed meanwhile
             return
         self._input.set_value("")
-        if found == "edit":
-            await self._rewrite("ai-rewrite", text)
-        else:
+        if found is None:
+            edit = (route_by_words(text) or "answer") == "edit"
+            await (self._rewrite("ai-rewrite", text) if edit else self._ask(text, text))
+        elif found.want == "answer":
             await self._ask(text, text)
+        elif not found.complete:  # ask for the choice the request left open
+            asked = _Asked("ai-rewrite", text, "", False, intent=found.intent())
+            self._show_end(target, EditEnd("options", found.question, found.options), asked)
+        else:
+            await self._rewrite("ai-rewrite", text, intent=found.intent())
 
     def _pick(self, command_id: str) -> None:
         """A command from the ``/`` list: shown in the box; Enter runs it (with any words the
@@ -410,10 +423,10 @@ class AskPopup:
                     ui.notify("Something went wrong; see the log.", type="negative")
             finally:
                 self._task = None
-                set_icon(self._send, "arrow-up")
+                show_stop(self._send, False)
 
         self._task = background_tasks.create(run())
-        set_icon(self._send, "square")
+        show_stop(self._send, True)
 
     def _spawn(self, work: Awaitable[None]) -> None:
         background_tasks.create(work)  # type: ignore[arg-type]
@@ -429,6 +442,7 @@ class AskPopup:
         offer: bool = True,
         how: Again = "again",
         groups: tuple[str, ...] = (),
+        intent: Intent | None = None,
     ) -> None:
         """A change (PLAN §4.29): the box goes, the text pulses while the AI works, and the
         result is shown as a diff in the note. When there is no diff the box comes back with
@@ -444,14 +458,14 @@ class AskPopup:
         self._pane.mark_ask_target(target, busy=True)  # the text pulses until it is replaced
         try:
             end = await self._pane.edit_selection(
-                target, command_id, words, options=offer, how=how, groups=groups
+                target, command_id, words, options=offer, how=how, groups=groups, intent=intent
             )
         finally:
             self._rewriting = False
             self._quiet_until = time.monotonic() + QUIET_S
             self.close()
         if end.kind != "proposal":
-            self._show_end(target, end, _Asked(command_id, words, title, offer, groups))
+            self._show_end(target, end, _Asked(command_id, words, title, offer, groups, intent))
 
     def _show_end(self, target: AskTarget, end: EditEnd, asked: _Asked) -> None:
         """The mini chat back at the text with how the change ended."""
@@ -462,7 +476,8 @@ class AskPopup:
                 "",
                 options=tuple(Option(o) for o in end.options),
                 command_id=asked.command_id,
-                options_title="Which of these do you mean? Pick one or more:",
+                options_title=end.message or "Which of these do you mean? Pick one or more:",
+                intent=asked.intent,
             )
         else:
             actions: tuple[Action, ...] = ("change",)
@@ -509,6 +524,7 @@ class AskPopup:
                 offer=offer,
                 how=how,
                 groups=asked.groups,
+                intent=asked.intent,
             )
         )
 
@@ -524,7 +540,7 @@ class AskPopup:
 
     async def _write(self, command_id: str, words: str) -> None:
         """An answer command: the box goes and the answer is written into the note under the
-        text (the editor's "AI is writing…" notice has Stop)."""
+        text (the editor's "Writing…" chip has Stop)."""
         target = self._target
         if target is None:
             return
@@ -532,6 +548,12 @@ class AskPopup:
         self._quiet_until = time.monotonic() + QUIET_S
         self._pane.focus_note()
         await self._pane.write_answer(target, command_id, words)
+
+    def _delete_key(self) -> None:
+        """Backspace / Delete before anything is typed: the selected text goes, as in the note
+        (the box took the caret when the text was selected)."""
+        if self._mode == "box" and self._caret is None and self._task is None:
+            self._start(self._delete())
 
     async def _delete(self) -> None:
         target = self._target
@@ -586,7 +608,10 @@ class AskPopup:
         if cmd.kind == "change":  # options picked: the AI does not offer options again
             # a typed request's options (no command chip) stay without the command's title
             title = cmd.title if any(e.command for e in self._entries[:at]) else ""
-            self._start(self._rewrite(cmd.id, instruction, title, offer=False, groups=groups))
+            intent = entry.intent  # a typed request's options: what was understood of it
+            self._start(
+                self._rewrite(cmd.id, instruction, title, offer=False, groups=groups, intent=intent)
+            )
         elif cmd.kind == "answer":
             self._start(self._write(cmd.id, instruction))
         else:

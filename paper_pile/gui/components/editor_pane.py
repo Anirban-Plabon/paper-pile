@@ -54,6 +54,7 @@ from paper_pile.core.ai.edits import (
     replacement_action,
 )
 from paper_pile.core.ai.engine import AiEngine
+from paper_pile.core.ai.intent import Intent
 from paper_pile.core.ai.longtext import condensed
 from paper_pile.core.ai.placement import AnswerPoint, already_answered, answer_point
 from paper_pile.core.ai.proposals import Edit as ProposedEdit
@@ -126,6 +127,7 @@ from paper_pile.core.watcher import FsEvent
 from paper_pile.core.when import edited_when
 from paper_pile.gui import printing
 from paper_pile.gui.components.ai_access import confirm_access
+from paper_pile.gui.components.ai_progress import AiProgress
 from paper_pile.gui.components.ask_popup import AskPopup, AskTarget
 from paper_pile.gui.components.backlinks import BacklinkItem, BacklinksPane
 from paper_pile.gui.components.editor import Editor, Mode
@@ -1120,8 +1122,8 @@ class EditorPane:
     async def _read_long(
         self, ai: AiEngine, cmd: AiCommand, path: str, text: str, target: str
     ) -> str | None:
-        """The map step for a long text (``core/ai/longtext.py``), with "reading part 2 of 5"
-        and Stop; None when it was stopped, refused or failed (said in a toast)."""
+        """The map step for a long text (``core/ai/longtext.py``), with "Reading…" and Stop;
+        None when it was stopped, refused or failed (said in a toast)."""
         if not await confirm_access(ai, self._host):
             return None
         task = asyncio.current_task()
@@ -1134,20 +1136,10 @@ class EditorPane:
                 task.cancel()
 
         with self._host:
-            note = ui.notification(
-                "AI is reading a long note…",
-                spinner=True,
-                timeout=None,
-                close_button="Stop",
-                on_dismiss=stop,
-            )
+            note = AiProgress("Reading…", stop)  # the chip shows the AI icon
         try:
             ai.require_note(path, text)
-
-            def progress(n: int, total: int) -> None:
-                note.message = f"AI: reading part {n} of {total}…"
-
-            return await condensed(ai, cmd, target, progress)
+            return await condensed(ai, cmd, target)
         except asyncio.CancelledError:
             if not stopped:
                 raise
@@ -1624,9 +1616,7 @@ class EditorPane:
                 task.cancel()
 
         with self._host:
-            note = ui.notification(
-                "AI is writing…", spinner=True, timeout=None, close_button="Stop", on_dismiss=stop
-            )
+            note = AiProgress("Writing…", stop)
         collected = ""
         pending = ""
         finish: list[str] = []
@@ -1714,6 +1704,7 @@ class EditorPane:
         options: bool = True,
         how: Again = "again",
         groups: tuple[str, ...] = (),
+        intent: Intent | None = None,
     ) -> EditEnd:
         """A change asked in the Ask box (a change command, or a "rewrite …" message). Returns
         how it ended, for the box to show (the AI's clearer requests when it found the task
@@ -1734,6 +1725,7 @@ class EditorPane:
             report=True,
             smaller=how == "smaller",
             anyway=how == "anyway",
+            intent=intent,
         )
 
     async def edit_in_note(
@@ -1788,6 +1780,7 @@ class EditorPane:
         report: bool = False,
         smaller: bool = False,
         anyway: bool = False,
+        intent: Intent | None = None,
     ) -> EditEnd:
         """A change command (Rewrite, Change tone, a free "rewrite …") on the selection, or on
         the whole note: planned, written and checked by :class:`EditRun`, then shown as one
@@ -1814,9 +1807,7 @@ class EditorPane:
                 task.cancel()
 
         with self._host:
-            note = ui.notification(
-                "AI is working…", spinner=True, timeout=None, close_button="Stop", on_dismiss=stop
-            )
+            note = AiProgress("Thinking…", stop)
         run = EditRun(
             ai,
             path=path,
@@ -1830,7 +1821,8 @@ class EditorPane:
             offer_options=options,
             smaller=smaller,
             anyway=anyway,
-            on_progress=lambda message: setattr(note, "message", f"AI: {message}"),
+            intent=intent,
+            on_progress=lambda message: setattr(note, "message", message),
         )
         try:
             result = await run.run()

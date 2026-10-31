@@ -1,5 +1,5 @@
-"""AI runs only when started with ``paper-pile --ai`` (PLAN §4.26): otherwise the app imports and
-runs without ``ollama``, with AI off and the reason shown."""
+"""AI runs only when started with ``paper-pile --ai`` (PLAN §4.26): otherwise AI is off and the
+reason shown. No backend library is needed either way (PLAN §4.30): every provider talks HTTP."""
 
 import os
 import subprocess
@@ -49,9 +49,9 @@ def test_with_the_flag_ai_is_on() -> None:
     assert result.returncode == 0, result.stderr
 
 
-def test_with_the_flag_but_no_ollama_says_how_to_install() -> None:
+def test_the_ai_needs_no_backend_library() -> None:
     hide = 'sys.modules["ollama"] = None  # as if it were not installed'
-    result = _run(CHECK.format(hide=hide, on=False, hint="uv sync"), PAPER_PILE_AI="1")
+    result = _run(CHECK.format(hide=hide, on=True, hint=""), PAPER_PILE_AI="1")
     assert result.returncode == 0, result.stderr
 
 

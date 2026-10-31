@@ -17,18 +17,22 @@ drag handle at its corner and *Write with AI*, or read from a ``.md`` file), the
 import contextlib
 import logging
 from collections.abc import AsyncIterator, Awaitable, Callable
+from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
-from nicegui import ui
+from nicegui import background_tasks, ui
 
 from paper_pile import __version__
+from paper_pile.core.ai.backends import hints, status, switch_backend
 from paper_pile.core.ai.install import ai_available, ai_unavailable
 from paper_pile.core.ai.instructions import MAX_TEXT_CHARS
+from paper_pile.core.ai.provider import Health
 from paper_pile.core.colors import parse_color
 from paper_pile.core.config import Config, Scope, scope_for
 from paper_pile.core.settings import (
     ACCENTS,
+    AI_PROVIDERS,
     ALL,
     CODE_FONTS,
     EDIT_MODES,
@@ -74,7 +78,14 @@ SECTION_ICONS = {
     "AI": "lightbulb",
     "Paste": "clipboard-paste",
 }
-_RELAYOUT = {"features.ai", "features.calendar", "settings.minimal"}  # change what is listed
+# change what is listed, or (the AI backend and its key) the hints of other rows
+_RELAYOUT = {
+    "features.ai",
+    "features.calendar",
+    "settings.minimal",
+    "ai.provider",
+    "ai.api_key_env",
+}
 THEME_ICONS = {
     "system": "monitor",
     "light": "sun",
@@ -119,8 +130,13 @@ class SettingsPane:
         on_cleared: Callable[[str], None] = lambda key: None,
         open_vault: Callable[[], Any] | None = None,
         rebuild_index: Callable[[], Awaitable[int]] | None = None,
+        probe: Callable[[], Awaitable[dict[str, Health | None]]] | None = None,
     ) -> None:
         self._rebuild_index = rebuild_index  # General → Advanced
+        self._probe = probe  # AI → Provider: which backends answer (core/ai/factory.py)
+        self._found: dict[str, Health | None] = {}  # the last probe, shown until the next
+        self._provider_select: ui.select | None = None
+        self._model_select: ui.select | None = None
         self.config = config
         self._on_applied = on_applied
         self._models = models
@@ -392,6 +408,9 @@ class SettingsPane:
         if setting.key == "ai.instructions":
             self._instruction(setting)
             return
+        hint = hints(setting.key, str(self._values()["ai.provider"]), str(current))
+        if hint is not None:  # depends on the AI backend
+            setting = replace(setting, help=hint[0], placeholder=hint[1])
         inline = " pp-set-row-inline" if setting.kind == "bool" else ""  # a switch never drops
         with ui.row().classes("pp-set-row items-center" + inline):
             missing = setting.key == "features.ai" and not ai_available()
@@ -429,6 +448,19 @@ class SettingsPane:
                 str(current),
                 commit,
             )
+        elif setting.key == "ai.provider":
+            self._provider_select = (
+                ui.select(
+                    self._provider_labels(), value=str(current), on_change=lambda e: commit(e.value)
+                )
+                .props("dense outlined options-dense popup-content-class=pp-set-popup")
+                .props(
+                    f'display-value="{AI_PROVIDERS.get(str(current), current)}"'
+                )  # status: list only
+                .classes("pp-set-field")
+            )
+            if self._probe is not None:
+                background_tasks.create(self._probe_backends())
         elif setting.key == "general.language":
             ui.select(LANGUAGES, value=str(current), on_change=lambda e: commit(e.value)).props(
                 "dense outlined options-dense popup-content-class=pp-set-popup"
@@ -470,14 +502,20 @@ class SettingsPane:
         elif setting.key == "ai.model":
             names = self._models()
             options = names if current in names or not current else [current, *names]
-            ui.select(
-                options,
-                value=current or None,
-                with_input=True,
-                new_value_mode="add-unique",
-                on_change=lambda e: commit(e.value),
-            ).props("dense outlined options-dense popup-content-class=pp-set-popup").classes(
-                "pp-set-field"
+            self._model_select = (
+                ui.select(
+                    options,
+                    value=current or None,
+                    with_input=True,
+                    new_value_mode="add-unique",
+                    clearable=True,  # empty: the first model the server lists
+                    on_change=lambda e: commit(e.value or ""),
+                )
+                .props(
+                    "dense outlined options-dense popup-content-class=pp-set-popup"
+                    f' placeholder="{setting.placeholder}"'
+                )
+                .classes("pp-set-field")
             )
         else:
             field = (
@@ -488,6 +526,31 @@ class SettingsPane:
             field.on_value_change(lambda e: self._check(setting, e.value))
             field.on("blur", lambda _e: commit(field.value))
             field.on("keydown.enter", lambda _e: commit(field.value))
+
+    def _provider_labels(self) -> dict[str, str]:
+        """Each backend's name with what the last probe found ("Ollama · 6 models")."""
+        out = {}
+        for key, label in AI_PROVIDERS.items():
+            found = status(self._found.get(key))
+            out[key] = f"{label} · {found}" if found else label
+        return out
+
+    async def _probe_backends(self) -> None:
+        assert self._probe is not None
+        self._found = await self._probe()
+        select = self._provider_select
+        if select is not None and not select.is_deleted:
+            select.set_options(self._provider_labels())
+
+    def models_changed(self, names: list[str]) -> None:
+        """The backend's model list changed (a health check): the Chat model list follows."""
+        select = self._model_select
+        if select is None or select.is_deleted:
+            return
+        current = select.value
+        options = names if current in names or not current else [current, *names]
+        if list(select.options) != options:  # every 30 s otherwise
+            select.set_options(options)
 
     def _segmented(
         self,
@@ -1104,7 +1167,11 @@ class SettingsPane:
         if parsed.value == sanitized(self.config.values)[setting.key]:
             return True
         scope = scope_for(setting.key, self.scope)  # some AI keys are for all vaults only
-        self.config.set(setting.key, parsed.value, scope)
+        changed = {setting.key}
+        if setting.key == "ai.provider":  # its address / model / key variable come along
+            changed = switch_backend(self.config, parsed.value)
+        else:
+            self.config.set(setting.key, parsed.value, scope)
         try:
             self.config.save(scope)
         except OSError:
@@ -1113,7 +1180,7 @@ class SettingsPane:
             return False
         if scope != self.scope:
             ui.notify("Saved for all vaults: this setting is never set per vault", timeout=2500)
-        self._on_applied({setting.key})
+        self._on_applied(changed)
         if setting.key in _RELAYOUT and self._is_open():
             self._keep_page_shown()
             self._render_nav()

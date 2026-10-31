@@ -138,7 +138,7 @@ async def test_adding_an_option_changes_every_place(tmp_path: Path) -> None:
     assert result.proposal is not None and len(result.proposal.regions) == 3
     reasons = [h.reason for h in result.proposal.hunks]
     assert reasons == ["update the count", "add the option", "add it to the table"]
-    assert progress[:2] == ["Planning…", "Writing 1 of 3…"] and progress[-1] == "Checking…"
+    assert progress[:2] == ["Planning…", "Writing…"] and progress[-1] == "Checking…"
     # the writes share the plan's start (the note as blocks), and each sees what came before
     assert fake.calls[1][:2] == fake.calls[0][:2]
     assert "Already written for this task" in fake.calls[2][-1].content
@@ -192,6 +192,23 @@ async def test_a_second_loop_is_an_error_and_nothing_changes(tmp_path: Path) -> 
     fake.loop_calls = 2
     result = await run_on(ai, sel(BACKUPS), "fix grammar").run()
     assert "repeat limit" in result.error and not result.changes
+
+
+async def test_an_unchanged_answer_is_asked_again_with_the_reason(tmp_path: Path) -> None:
+    more = "The backups run every night at two, and a copy goes off site. See [[Ops]]."
+    ai, fake = make(tmp_path, [BACKUPS, more])  # first the paragraph as it was
+    result = await run_on(ai, sel(BACKUPS), "expand it").run()  # the selection only: one call
+    assert result.calls == 2 and more in final(result)
+    retry = fake.calls[1][-1].content
+    assert "same as the original" in retry and "expand it" in retry
+
+
+async def test_unchanged_twice_is_nothing_changed_not_an_empty_diff(tmp_path: Path) -> None:
+    ai, _fake = make(tmp_path, [BACKUPS, "  " + BACKUPS.replace(" ", "  ")])  # spaces aside
+    result = await run_on(ai, sel(BACKUPS), "expand it").run()
+    assert result.proposal is None and not result.changes
+    end = edit_end(result)
+    assert end.kind == "failed" and "the AI returned the text unchanged" in end.message
 
 
 ART = (

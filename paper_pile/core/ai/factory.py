@@ -1,14 +1,20 @@
-"""Which provider the app uses, from the configuration."""
+"""Which provider the app uses, from the configuration (``ai.provider``, PLAN §4.30).
 
+Every backend is built here and nowhere else; the rest of the app only knows :class:`Provider`.
+A new backend is one module implementing it plus one entry in :func:`make_provider`.
+"""
+
+import asyncio
 import json
+import logging
 import os
 from collections.abc import AsyncIterator, Sequence
 from pathlib import Path
 
+from paper_pile.core.ai.backends import BACKENDS, api_key, settings_for, worth_probing
 from paper_pile.core.ai.fake import FakeProvider
 from paper_pile.core.ai.install import ai_available, ai_unavailable
 from paper_pile.core.ai.provider import (
-    DEFAULT_HOST,
     ChatMessage,
     Finish,
     GenerationOptions,
@@ -16,15 +22,27 @@ from paper_pile.core.ai.provider import (
     Provider,
     ProviderUnavailableError,
     Reasoning,
+    is_chat_model,
 )
 from paper_pile.core.config import Config
 
+log = logging.getLogger("paper_pile.ai")
+
 
 class MissingProvider:
-    """Stands in while the AI cannot run (not started with ``--ai``, or ``ollama`` missing):
-    never reached (AI is off then), but whatever asks gets the reason, not an ImportError."""
+    """Stands in while the AI cannot run (not started with ``--ai``): never reached (AI is off
+    then), but whatever asks gets the reason."""
 
     host = ""
+    label = "AI"
+    local = True  # sends nothing anywhere
+    sizes_window = False
+
+    def __init__(self, reason: str = "") -> None:
+        self.reason = reason or ai_unavailable()
+
+    def missing_model(self, model: str) -> str:
+        return self.reason
 
     async def chat(
         self,
@@ -33,7 +51,7 @@ class MissingProvider:
         model: str | None = None,
         options: GenerationOptions | None = None,
     ) -> AsyncIterator[str | Reasoning | Finish]:
-        raise ProviderUnavailableError(ai_unavailable())
+        raise ProviderUnavailableError(self.reason)
         yield ""  # makes this an async generator, like the real ones
 
     async def models(self) -> list[str]:
@@ -46,29 +64,66 @@ class MissingProvider:
         return None
 
     async def health(self) -> Health:
-        return Health(False, ai_unavailable())
+        return Health(False, self.reason)
+
+    async def preload(self, model: str, options: GenerationOptions) -> bool:
+        return False
 
 
 def make_provider(config: Config | None) -> Provider:
-    """The configured provider (``ai.host``, ``ai.model``). With the
-    environment variable ``PAPER_PILE_FAKE_AI=1`` a stand-in that needs no model is used
-    (``PAPER_PILE_FAKE_AI_REPLY`` sets the text it answers with, ``…_THINKING`` its reasoning,
-    ``…_SCRIPT`` a JSON file with a list of answers given in turn — for checking AI edits).
-    ``ollama`` is imported only here, so the app also starts without it."""
+    """The configured provider (``ai.provider``, ``ai.host``, ``ai.model``, ``ai.api_key_env``).
+    With the environment variable ``PAPER_PILE_FAKE_AI=1`` a stand-in that needs no model is
+    used (``PAPER_PILE_FAKE_AI_REPLY`` sets the text it answers with, ``…_THINKING`` its
+    reasoning, ``…_SCRIPT`` a JSON file with a list of answers given in turn — for checking AI
+    edits; ``…_DELAY`` the seconds before each word, to check what shows while it waits).
+    The backends are imported only here."""
     if os.environ.get("PAPER_PILE_FAKE_AI"):
         script = _fake_script(os.environ.get("PAPER_PILE_FAKE_AI_SCRIPT", ""))
-        fake = FakeProvider(reply=os.environ.get("PAPER_PILE_FAKE_AI_REPLY") or None, script=script)
+        fake = FakeProvider(
+            delay=float(os.environ.get("PAPER_PILE_FAKE_AI_DELAY") or 0.02),
+            reply=os.environ.get("PAPER_PILE_FAKE_AI_REPLY") or None,
+            script=script,
+        )
         fake.thinking = os.environ.get("PAPER_PILE_FAKE_AI_THINKING", "")
         return fake
     if not ai_available():
         return MissingProvider()
-    from paper_pile.core.ai.ollama import OllamaProvider
-
     get = config.get if config is not None else (lambda _key, default=None: default)
-    return OllamaProvider(
-        host=str(get("ai.host", DEFAULT_HOST)),
-        model=str(get("ai.model", "gemma4:12b")),
+    return build_provider(
+        str(get("ai.provider", "ollama") or "ollama"),
+        host=str(get("ai.host", "") or ""),
+        model=str(get("ai.model", "") or ""),
+        api_key_env=str(get("ai.api_key_env", "") or ""),
     )
+
+
+def build_provider(
+    kind: str, *, host: str = "", model: str = "", api_key_env: str = ""
+) -> Provider:
+    """Backend ``kind`` (``ai.provider``) at ``host`` ("" = its default)."""
+    if kind == "ollama":
+        from paper_pile.core.ai.ollama import OllamaProvider
+
+        return OllamaProvider(host=host, model=model)
+    if kind == "vllm" or kind == "openai":
+        from paper_pile.core.ai.openai_compat import Flavor, OpenAICompatProvider
+
+        flavor: Flavor = "vllm" if kind == "vllm" else "openai"
+        key = api_key(api_key_env)
+        return OpenAICompatProvider(host=host, model=model, flavor=flavor, api_key=key)
+    log.warning("unknown AI provider %r", kind)
+    return MissingProvider(f"Unknown AI provider “{kind}” — pick one in Settings → AI.")
+
+
+async def probe_backends(config: Config) -> dict[str, Health | None]:
+    """Each backend's health with its own settings (Settings → AI lists which are there); None
+    for one not asked (:func:`backends.worth_probing`). Never raises; a few seconds at most."""
+    if os.environ.get("PAPER_PILE_FAKE_AI") or not ai_available():
+        return dict.fromkeys(BACKENDS)
+    kinds = [k for k in BACKENDS if worth_probing(config, k)]
+    providers = [build_provider(k, **settings_for(config, k)) for k in kinds]
+    found = await asyncio.gather(*(p.health() for p in providers))
+    return {k: dict(zip(kinds, found, strict=True)).get(k) for k in BACKENDS}
 
 
 def _fake_script(path: str) -> list[str] | None:
@@ -81,10 +136,11 @@ def _fake_script(path: str) -> list[str] | None:
     return [str(r) for r in replies] if isinstance(replies, list) else None
 
 
-def chat_model(provider: Provider, config: Config | None) -> str:
-    """The model chat uses: ``ai.model`` from the configuration."""
-    value = config.get("ai.model", "gemma4:12b") if config is not None else "gemma4:12b"
-    return str(value or "gemma4:12b")
+def chat_model(config: Config | None, listed: Sequence[str] = ()) -> str:
+    """The model chat uses: ``ai.model`` from the configuration; when that is empty
+    (automatic), the first model the backend lists (``listed``); "" when none is known yet."""
+    value = str(config.get("ai.model", "") or "") if config is not None else ""
+    return value or next((m for m in listed if is_chat_model(m)), "")
 
 
 def generation_options(config: Config | None) -> GenerationOptions:

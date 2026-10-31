@@ -13,7 +13,8 @@ def test_deep_merge_recurses_and_does_not_mutate() -> None:
 def test_defaults_when_no_files(tmp_path: Path) -> None:
     cfg = Config(global_path=tmp_path / "g.toml")
     assert cfg.values == DEFAULTS
-    assert cfg.get("ai.model") == "gemma4:12b"
+    assert cfg.get("ai.model") == ""  # no model is assumed: the first one the backend lists
+    assert cfg.get("ai.provider") == "ollama"
     assert cfg.get("nope.missing", "fallback") == "fallback"
 
 
@@ -51,7 +52,7 @@ def test_vault_scope_saved_separately(tmp_path: Path) -> None:
     cfg.save("vault")
     assert not (tmp_path / "g.toml").exists()
     assert Config(global_path=tmp_path / "g.toml", vault=vault).get("ai.model") == "other"
-    assert Config(global_path=tmp_path / "g.toml").get("ai.model") == "gemma4:12b"
+    assert Config(global_path=tmp_path / "g.toml").get("ai.model") == ""
 
 
 def test_vault_scope_without_vault_raises(tmp_path: Path) -> None:
@@ -93,6 +94,8 @@ def test_a_vault_cannot_set_the_ai_security_keys(tmp_path: Path) -> None:
     for key in GLOBAL_ONLY:
         assert cfg.get(key) == Config(global_path=tmp_path / "g.toml").get(key)
     assert cfg.get("ai.model") == "m"  # other keys still differ per vault
+    for key in ("ai.provider", "ai.api_key_env"):  # a vault could send notes elsewhere
+        assert scope_for(key, "vault") == "global"
     assert scope_for("ai.host", "vault") == "global" and scope_for("ai.model", "vault") == "vault"
     try:
         cfg.set("ai.host", "http://x", scope="vault")

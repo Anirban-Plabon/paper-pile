@@ -1,8 +1,15 @@
 // The Ask box under a selection (PLAN §4.27; drawn by gui/components/ask_popup.py, loaded by
-// gui/app.py). Here only: place it under the selection (above it when there is no room), drag the
-// mini chat by its header, keep it inside the visible window as it grows (above --pp-inset-bottom),
-// follow the note's scrolling until it was moved, move through the / list, and report Enter, a
-// picked command and mouse-downs outside it. What any of that does is decided in Python.
+// gui/app.py). Here only: place it, drag the mini chat by its header, follow the note's scrolling
+// until it was moved, move through the / list, and report Enter, a picked command and mouse-downs
+// outside it. What any of that does is decided in Python.
+//
+// Placing (user, 2026-10-31): the side is chosen ONCE, when the box opens — below the selection
+// when the full mini chat (--pp-askpop-full) fits there, else above when it fits there, else the
+// bigger side (the chat's height is then capped to it). The input row never moves after that:
+// the box is held by its edge next to the selection (top when it grows down, bottom when it grows
+// up) and the box and the chat have the same padding, so plain layout keeps the input still —
+// nothing is moved after a resize. The / list opens on the growing side when the full chat fits
+// there; otherwise where it fits (the growing side, else over the selection, else the bigger).
 (function () {
   const GAP = 8;
   const MARGIN = 6;
@@ -12,6 +19,11 @@
   const shown = (el) => !!el && el.getClientRects().length > 0; // fixed: no offsetParent
   let anchor = null; // the selection's {left, top, bottom} while the box was not moved
   let moved = false;
+  let side = null; // 'down' | 'up': where the box grows, chosen when it opens
+  let full = false; // the whole mini chat fits on that side
+  const CLEAR = 6; // between the selection and the box's edge
+  const WIDEST = 384; // the mini chat's width: kept inside the window from the start
+  const EDGE = 11; // the box's padding + border: its card starts this far in
 
   function bounds() {
     return {
@@ -28,18 +40,58 @@
     el.style.left = Math.max(b.left, Math.min(x, b.right - w)) + 'px';
     el.style.top = Math.max(b.top, Math.min(y, b.bottom - h)) + 'px';
   }
+  const row = (el) => el.querySelector('.pp-askpop-bottom');
+
+  function choose(el) {
+    // the side, once: where the full mini chat fits (its height is fixed, so known in advance)
+    const b = bounds();
+    const need = inset('--pp-askpop-full') || 480;
+    const below = b.bottom - (anchor.bottom + CLEAR);
+    const above = anchor.top - CLEAR - b.top;
+    side = below >= need ? 'down' : above >= need ? 'up' : below >= above ? 'down' : 'up';
+    full = (side === 'down' ? below : above) >= need;
+    el.dataset.ppSide = side; // an attribute, not a class: Python rewrites the class list
+    el.style.setProperty('--pp-askpop-room', Math.max(120, side === 'down' ? below : above) + 'px');
+  }
+
+  function fitList(el) {
+    // the / list: on the growing side when the full chat fits there, else where it fits
+    const list = el.querySelector('.pp-askpop-cmds');
+    if (!list) return;
+    delete list.dataset.ppFlip;
+    list.style.maxHeight = '';
+    if (full || !shown(list)) return;
+    const b = bounds();
+    const r = row(el).getBoundingClientRect();
+    const h = list.offsetHeight;
+    // the room for it past the input, and over the selection (past the box's edge either way)
+    const grow = (side === 'down' ? b.bottom - r.bottom : r.top - b.top) - EDGE - GAP;
+    const back = (side === 'down' ? r.top - b.top : b.bottom - r.bottom) - EDGE - GAP;
+    if (h <= grow) return;
+    if (h <= back || back > grow) list.dataset.ppFlip = '1';
+    list.style.maxHeight = Math.max(80, Math.max(grow, back)) + 'px';
+  }
+
   function place(el) {
     if (!shown(el)) return;
     if (moved || !anchor) {
       const r = el.getBoundingClientRect();
+      el.style.bottom = '';
       put(el, r.left, r.top); // grown, or the window got smaller: stay inside
       return;
     }
+    if (!side) choose(el);
+    fitList(el);
     const b = bounds();
-    const h = el.offsetHeight;
-    let y = anchor.bottom + GAP;
-    if (y + h > b.bottom && anchor.top - GAP - h >= b.top) y = anchor.top - GAP - h;
-    put(el, anchor.left, y);
+    const x = Math.min(anchor.left - EDGE, b.right - Math.max(WIDEST, el.offsetWidth));
+    el.style.left = Math.max(b.left - EDGE, x) + 'px'; // the card in line with the selection
+    if (side === 'down') {
+      el.style.bottom = '';
+      el.style.top = anchor.bottom + CLEAR + 'px';
+    } else {
+      el.style.top = 'auto';
+      el.style.bottom = window.innerHeight - (anchor.top - CLEAR) + 'px';
+    }
   }
 
   // the caret goes into the box as soon as it is there (once Python has shown it)
@@ -56,6 +108,7 @@
   window.ppAskPlace = function (rect) {
     anchor = rect && typeof rect.bottom === 'number' ? { ...rect } : null;
     moved = false;
+    side = null; // chosen again for this selection, once the box is shown
     const el = box();
     if (el) requestAnimationFrame(() => place(el)); // the size observer places it when shown
     window.ppAskFocus();
@@ -109,6 +162,7 @@
     const r = el.getBoundingClientRect();
     const dx = e.clientX - r.left;
     const dy = e.clientY - r.top;
+    el.style.bottom = ''; // dragged: held by its top-left corner from now on
     el.classList.add('pp-askpop-dragging');
     const move = (ev) => {
       moved = true;
@@ -141,6 +195,8 @@
       window.ppNewLine(area);
     } else if (e.key === 'Backspace' && !area.value && shown(document.querySelector('.pp-askpop-chip'))) {
       emitEvent('pp_askpop_unchip', {});
+    } else if ((e.key === 'Backspace' || e.key === 'Delete') && !area.value && box().classList.contains('pp-askpop-box')) {
+      emitEvent('pp_askpop_delete', {}); // nothing typed yet: the key is for the selected text
     } else if (e.key === 'Escape') {
       emitEvent('pp_askpop_close', { key: true });
     } else if (rows.length && (e.key === 'ArrowDown' || e.key === 'ArrowUp')) {

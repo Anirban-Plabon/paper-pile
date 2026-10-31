@@ -1,7 +1,8 @@
 # ruff: noqa: E402
-"""The AI edit eval against a real Ollama model (``docs/AI_EDITS.md`` §10, P26.15). Dev tool.
+"""The AI edit eval against a real model (``docs/AI_EDITS.md`` §10, P26.15). Dev tool.
 
     uv run python tools/ai_eval/run.py --model gemma4:12b [--runs 3] [--case 05] [--host URL]
+        [--provider ollama|vllm|openai] [--api-key-env OPENAI_API_KEY]
 
 Every case (but the unit-only ones) runs ``--runs`` times on a fresh scratch vault through the
 app's own pipeline; prints the pass rate per case and per failing check, the model calls and
@@ -43,16 +44,19 @@ class Run:
 WINDOWS = WindowCache()  # measured once for the whole eval, not per run
 
 
-async def one_run(case: Case, model: str, host: str, work: Path) -> Run:
+async def one_run(case: Case, args: argparse.Namespace, work: Path) -> Run:
     root = work / "vault"
     write_vault(case, root)
     vault = Vault(root)
     index = Index(vault)
     index.rebuild()
     config = Config(global_path=work / "config.toml", vault=root)
-    config.set("ai.model", model)
-    if host:
-        config.set("ai.host", host)
+    config.set("ai.provider", args.provider)
+    config.set("ai.model", args.model)
+    if args.host:
+        config.set("ai.host", args.host)
+    if args.api_key_env:
+        config.set("ai.api_key_env", args.api_key_env)
     if case.num_ctx:
         config.set("ai.num_ctx", case.num_ctx)
     ai = AiEngine(vault, config, index, access_dir=work / "access", windows=WINDOWS)
@@ -74,7 +78,7 @@ async def main(args: argparse.Namespace) -> int:
         runs: list[Run] = []
         for n in range(args.runs):
             with tempfile.TemporaryDirectory(prefix="pp-ai-eval-") as tmp:
-                runs.append(await one_run(case, args.model, args.host, Path(tmp)))
+                runs.append(await one_run(case, args, Path(tmp)))
             mark = "pass" if runs[-1].passed else "FAIL"
             print(f"  {case.name} run {n + 1}: {mark}", flush=True)
         passed = sum(r.passed for r in runs)
@@ -100,6 +104,8 @@ if __name__ == "__main__":
     parser.add_argument("--model", required=True)
     parser.add_argument("--runs", type=int, default=3)
     parser.add_argument("--case", default="", help="only cases whose name starts with this")
-    parser.add_argument("--host", default="", help="Ollama host (default: the app's default)")
+    parser.add_argument("--provider", default="ollama", choices=("ollama", "vllm", "openai"))
+    parser.add_argument("--host", default="", help="server address (default: the provider's)")
+    parser.add_argument("--api-key-env", default="", help="variable holding the API key")
     parser.add_argument("--out", default="", help="report folder (default: a scratch folder)")
     sys.exit(asyncio.run(main(parser.parse_args())))
