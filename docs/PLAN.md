@@ -1144,6 +1144,7 @@ native AWS Bedrock (Converse API + SigV4, needs `boto3`; a Bedrock OpenAI-compat
 graph view · front-matter queries · git sync · TUI (Textual, reusing core) ·
 RHEL/server packaging · multi-user/teams.
 (Built since this list was written: split panes P10.6, tags P11, daily notes & templates P13.)
+PDFs (viewer, OCR, vectorless agentic RAG over reports / manuals / books) and images / screenshots sent to vision models are planned for **v2**: `docs/PLAN_v2.md`.
 
 ---
 
