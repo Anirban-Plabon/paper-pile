@@ -154,3 +154,113 @@ def test_untouched_daily_notes_can_take_the_template(tmp_path: Path) -> None:
     own_title = "---\ntitle: Mine\n---\n# 2026-10-22\n"
     assert not untouched_daily(own_title, vault, "tpl.md", day, now, fmt)
     assert not untouched_daily(templated_titled, vault, "", day, now, fmt)  # template not set
+
+
+# ---- the tree's date order (user, 2026-11-04) ----------------------------------------------
+
+
+def test_daily_date_reads_names_back() -> None:
+    from paper_pile.core.daily import daily_date
+
+    assert daily_date("d/2026-11-04.md", "d") == date(2026, 11, 4)
+    assert daily_date("d/2026/November/04 Wed.md", "d", "YYYY/MMMM/DD ddd") == date(2026, 11, 4)
+    assert daily_date("d/4.11.26.md", "d", "D.M.YY") == date(2026, 11, 4)
+    assert daily_date("other/2026-11-04.md", "d") is None  # outside the folder
+    assert daily_date("d/2026-13-01.md", "d") is None  # no such day
+    assert daily_date("d/plan.md", "d") is None
+    assert daily_date("d/2026-11-04 copy.md", "d") is None
+
+
+def test_daily_order_newest_first_and_today_shown_first() -> None:
+    from paper_pile.core.daily import daily_order
+    from paper_pile.core.vault import TreeEntry
+
+    names = ["2026-11-01.md", "2026-11-06.md", "2026-11-04.md", "plan.md", "2026-10-30.md"]
+    entries = [TreeEntry("sub", "d/sub", True)] + [TreeEntry(n, f"d/{n}", False) for n in names]
+    ordered, first = daily_order(entries, "d", "YYYY-MM-DD", date(2026, 11, 4))
+    assert [e.name for e in ordered] == [
+        "sub",
+        "2026-11-06.md",
+        "2026-11-04.md",
+        "2026-11-01.md",
+        "2026-10-30.md",
+        "plan.md",
+    ]
+    assert first == "d/2026-11-04.md"
+    # no note for today: the latest day before it comes first
+    _, first = daily_order(entries[:2] + entries[4:], "d", "YYYY-MM-DD", date(2026, 11, 5))
+    assert first == "d/2026-11-01.md"
+
+
+# ---- names follow the format setting (user, 2026-11-04) ------------------------------------
+
+
+def test_daily_renames_only_notes_named_by_the_old_format(tmp_path: Path) -> None:
+    from paper_pile.core.daily import daily_renames
+
+    vault = Vault(tmp_path)
+    vault.create_folder("d")
+    for name in ("2026-11-04", "2026-11-05", "plan", "04-11-2026x"):
+        vault.create_note(f"d/{name}.md", "x\n")
+    plan = daily_renames(vault, "d", ["YYYY-MM-DD"], "DD-MM-YYYY")
+    assert [(r.old, r.new) for r in plan] == [
+        ("d/2026-11-04.md", "d/04-11-2026.md"),
+        ("d/2026-11-05.md", "d/05-11-2026.md"),
+    ]
+    nested = daily_renames(vault, "d", ["YYYY-MM-DD"], "YYYY/MM/DD")
+    assert nested[0].new == "d/2026/11/04.md"
+    assert daily_renames(vault, "d", ["YYYY-MM-DD"], "YYYY-MM-DD") == []
+    assert daily_renames(vault, "d", ["YYYY-MM-DD"], "YYYY-MM") == []  # no day: refused
+
+
+def test_retitle_daily_changes_only_the_apps_title() -> None:
+    from paper_pile.core.daily import apply_edits, retitle_daily
+
+    text = "---\ntitle: 2026-11-04\n---\n# 2026-11-04\n\nMet on 2026-11-04.\n"
+    edits = retitle_daily(text, "2026-11-04", "04.11.2026")
+    assert (
+        apply_edits(text, edits)
+        == '---\ntitle: "04.11.2026"\n---\n# 04.11.2026\n\nMet on 2026-11-04.\n'
+    )
+    own = '---\ntitle: "Launch day"\n---\n# Launch\n'
+    assert retitle_daily(own, "2026-11-04", "04.11.2026") == []
+    later = "Notes first\n\n# Something\n\n# 2026-11-04\n"  # only the FIRST heading is the title
+    assert retitle_daily(later, "2026-11-04", "x") == []
+
+
+def test_daily_renames_without_a_record_reads_the_names_the_folder_has(tmp_path: Path) -> None:
+    """The bug the user hit: no record yet, notes named DD-MM-YYYY (not the default)."""
+    from paper_pile.core.daily import daily_renames
+
+    vault = Vault(tmp_path)
+    vault.create_folder("d")
+    for name in ("05-11-2026", "13-10-2026", "31-10-2026", "12-Oct-2026", "plan"):
+        vault.create_note(f"d/{name}.md", "x\n")
+    plan = {r.old: (r.new, r.old_fmt) for r in daily_renames(vault, "d", [], "DD-MMM-YYYY")}
+    assert plan == {  # 05-11 is read as day-month: that format names all three
+        "d/05-11-2026.md": ("d/05-Nov-2026.md", "DD-MM-YYYY"),
+        "d/13-10-2026.md": ("d/13-Oct-2026.md", "DD-MM-YYYY"),
+        "d/31-10-2026.md": ("d/31-Oct-2026.md", "DD-MM-YYYY"),
+    }
+    # the notes already named by the current format stay; only the odd one out moves
+    back = daily_renames(vault, "d", [], "DD-MM-YYYY")
+    assert [(r.old, r.new) for r in back] == [("d/12-Oct-2026.md", "d/12-10-2026.md")]
+    # a recorded format is trusted before a guess: 05-11 named as month-day
+    known = daily_renames(vault, "d", ["MM-DD-YYYY"], "YYYY-MM-DD")
+    assert ("d/05-11-2026.md", "d/2026-05-11.md") in [(r.old, r.new) for r in known]
+
+
+def test_synced_formats_history_round_trips(tmp_path: Path) -> None:
+    from paper_pile.core.daily import set_synced_format, synced_formats
+
+    (tmp_path / ".paper-pile").mkdir()
+    assert synced_formats(tmp_path) == []  # never recorded
+    set_synced_format(tmp_path, "DD-MM-YYYY")
+    set_synced_format(tmp_path, "DD-MMM-YYYY")
+    assert synced_formats(tmp_path) == ["DD-MMM-YYYY", "DD-MM-YYYY"]
+    set_synced_format(tmp_path, "DD-MM-YYYY")
+    assert synced_formats(tmp_path) == ["DD-MM-YYYY", "DD-MMM-YYYY"]
+    (tmp_path / ".paper-pile" / "daily.json").write_text('{"format": "YYYY.MM.DD"}')  # old record
+    assert synced_formats(tmp_path) == ["YYYY.MM.DD"]
+    (tmp_path / ".paper-pile" / "daily.json").write_text("not json")
+    assert synced_formats(tmp_path) == []

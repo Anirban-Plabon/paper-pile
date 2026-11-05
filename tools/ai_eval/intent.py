@@ -189,6 +189,8 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     parser.add_argument("--model", required=True)
     parser.add_argument("--runs", type=int, default=1)
-    parser.add_argument("--provider", default="ollama", choices=("ollama", "vllm", "openai"))
+    parser.add_argument(
+        "--provider", default="ollama", choices=("ollama", "vllm", "openai", "antigravity")
+    )
     parser.add_argument("--host", default="")
     sys.exit(asyncio.run(main(parser.parse_args())))

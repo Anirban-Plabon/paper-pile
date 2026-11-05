@@ -14,7 +14,6 @@ own note, never the one on screen.
 """
 
 import asyncio
-import inspect
 import logging
 import os
 import time
@@ -87,6 +86,17 @@ from paper_pile.core.commands import (
     groups_json,
 )
 from paper_pile.core.config import Config, Scope
+from paper_pile.core.daily import (
+    DEFAULT_FORMAT,
+    DailyRename,
+    apply_edits,
+    daily_renames,
+    daily_title,
+    format_problem,
+    retitle_daily,
+    set_synced_format,
+    synced_formats,
+)
 from paper_pile.core.events import EventBus
 from paper_pile.core.history import History, Sessions
 from paper_pile.core.index import Backlink, Index
@@ -137,9 +147,7 @@ from paper_pile.gui.components.note_menu import NoteActions, NoteMenu
 from paper_pile.gui.components.proposal_view import proposal_payload
 from paper_pile.gui.components.tabs import SplitTabs, TabBar, TabMenuItem
 from paper_pile.gui.dialog import Dialog
-from paper_pile.gui.icons import ico, icon_button, line_icon, set_icon
 from paper_pile.gui.theme import editor_options
-from paper_pile.gui.tips import tip
 
 log = logging.getLogger("paper_pile.editor_pane")
 
@@ -259,13 +267,10 @@ class EditorPane:
         self._split_box: ui.element  # gets `pp-split-on` while split (shows the divider)
         self._heads: list[NoteHead] = []  # per side: the bar on top of its editor
         self.note_menus: list[NoteMenu] = []  # per side: its ⋯ menu
-        self._split_buttons: list[ui.button] = []
-        self._ai_buttons: list[ui.button] = []
         self._tops: dict[int, tuple[int, bool]] = {}  # per tab: line at the top of view, at end
         # per tab: (text, path) the title and sections were read from, title, sections
         self._section_heads: dict[int, tuple[str, str, str, list[Heading]]] = {}
         self._heads_handle: asyncio.TimerHandle | None = None  # sections read again after typing
-        self._tidy_buttons: list[ui.button] = []  # per side: floats above its name island
         self._edited_sent: list[object] = [None, None]  # per side: what its "edited" row shows
         self._ai = True  # the AI feature switch (set_ai)
         self.note_actions: NoteActions
@@ -318,7 +323,6 @@ class EditorPane:
                         with pane:
                             self._note_head(slot)
                             self._editors.append(self._make_editor(slot).classes("pp-fill"))
-                            self._tidy_fab(slot)
                 self._side.set_visibility(False)
                 self._editor = self._editors[0]
                 self._editor.set_visibility(False)
@@ -408,7 +412,7 @@ class EditorPane:
 
     def _note_head(self, slot: int) -> None:
         """The bar on top of editor ``slot`` (``note_head.py``): sections, the note's name and
-        its own split / AI / ⋯ buttons, which act on this side's note."""
+        its own ⋯ menu (and × in split view), which act on this side's note."""
 
         def choose() -> None:
             if self._split_open:
@@ -418,12 +422,12 @@ class EditorPane:
             on_prev=lambda: self._jump_section(slot, -1),
             on_next=lambda: self._jump_section(slot, 1),
             on_title=choose,
+            on_close=lambda: self.close_side(slot),
         )
         head.build()
         head.bar.set_visibility(False)
-        actions = self._side_actions(slot)
+        actions = replace(self._side_actions(slot), toggle_split=lambda: self._split_side(slot))
         with head.tools:
-            self._note_buttons(slot, actions)
             menu = NoteMenu(actions)
             menu.build()
         self._heads.append(head)
@@ -442,28 +446,13 @@ class EditorPane:
         base = self.note_actions
         return NoteActions(**{f.name: on_side(getattr(base, f.name)) for f in fields(base)})
 
-    def _tidy_fab(self, slot: int) -> None:
-        """A floating button that tidies the note on this side (``core/tidy.py``): bottom right
-        of the editor, or just above the side's name island in split view (Settings → Editor →
-        "Tidy note button")."""
-
-        def tidy() -> None:
-            self._spawn(self.tidy_side(slot))
-
-        button = ui.button(icon=ico("brush-cleaning"), on_click=tidy, color=None)
-        button.props("round flat dense")
-        button.classes("pp-fab pp-tidy-fab")
-        tip(button, "Tidy note (Shift+Alt+F)")
-        button.set_visibility(False)
-        self._tidy_buttons.append(button)
-
-    def show_tidy_buttons(self) -> None:
-        """Each side's tidy button shows for a markdown note, when the setting is on."""
-        on = bool(self._config.get("editor.tidy_button", True))
-        for slot, button in enumerate(self._tidy_buttons):
-            tab = next((t for t in self.tabs.tabs if t.id == self._shown[slot]), None)
-            shown = slot == 0 or self._split_open
-            button.set_visibility(on and shown and tab is not None and not is_plain_text(tab.path))
+    def _split_side(self, slot: int) -> None:
+        """A side's ⋯ → Split right; in split view it closes that side (the other note stays)."""
+        if self._split_open:
+            self.close_side(slot)
+        else:
+            self._focused(slot)
+            self.toggle_split()
 
     def toggle_split(self) -> None:
         if self._split_open:
@@ -608,7 +597,6 @@ class EditorPane:
                 section = ""  # `# Name` under the title Name: said once
             can_prev = previous_start(heads, top) is not None
             head.show(title, section, can_prev, next_start(heads, top) is not None)
-        self.show_tidy_buttons()
 
     def _sections_of(
         self, tab_id: int, buf: NoteBuffer, *, fresh: bool = False
@@ -2282,11 +2270,9 @@ class EditorPane:
                 page_view=self.page_view_on(),
                 pinned=tab is not None and self.is_pinned(tab.path),
             )
-        self._update_note_buttons()
         self._show_heads()
         self.show_edited()
         plain = self._active_is_plain()
-        self.show_tidy_buttons()
         if plain != self._plain_shown:
             self._plain_shown = plain
             self._on_plain_changed(plain)
@@ -2516,6 +2502,77 @@ class EditorPane:
         await self._rewrite_links(old, new)
         await self._retitle(old, new)
 
+    async def sync_daily_names(self) -> int:
+        """Daily notes follow the date format setting (user, 2026-11-04): the notes named by the
+        format they were last synced to (``core/daily.py``) are renamed to the current one —
+        as a rename in the app, so tabs, links and images follow — and the date title the app
+        gave them changes too. Never overwrites; returns how many were renamed."""
+        if self._config is None:
+            return 0
+        folder = str(self._config.get("vault.daily_notes_folder", "")).strip("/")
+        fmt = str(self._config.get("vault.daily_notes_format", DEFAULT_FORMAT)) or DEFAULT_FORMAT
+        if format_problem(fmt):
+            return 0
+        known = synced_formats(self.vault.root)
+        plan = daily_renames(self.vault, folder, known, fmt)
+        if not plan:
+            if known[:1] != [fmt]:
+                self._record_daily_format(fmt)
+            return 0
+        await self.save_now()  # the files hold what is on screen before they move
+        done: list[DailyRename] = []
+        failed = 0
+        for item in plan:
+            parent = item.new.rpartition("/")[0]
+            try:
+                if parent and not self.vault.exists(parent):
+                    self.vault.create_folder(parent)  # a format with folders (YYYY/MM/DD)
+                self.vault.rename(item.old, item.new)
+            except VaultError:
+                log.warning("daily note not renamed: %s -> %s", item.old, item.new, exc_info=True)
+                failed += 1
+                continue
+            done.append(item)
+        self._record_daily_format(fmt)
+        for item in done:
+            self.bus.publish("vault.renamed", old=item.old, new=item.new)  # tabs, links, pins
+            await self._retitle_daily(item, item.old_fmt, fmt)
+        if failed:
+            self._toast(f"{failed} daily notes kept their names: a note with the new name exists")
+        elif done:
+            self._toast(f"Renamed {len(done)} daily notes to the new date format")
+        return len(done)
+
+    def _record_daily_format(self, fmt: str) -> None:
+        try:
+            set_synced_format(self.vault.root, fmt)
+        except OSError:
+            log.exception("could not record the daily-notes format")
+
+    async def _retitle_daily(self, item: DailyRename, old_fmt: str, new_fmt: str) -> None:
+        """A renamed day's note: the date title the app gave it follows the new format."""
+        was, now = daily_title(item.day, old_fmt), daily_title(item.day, new_fmt)
+        if was == now:
+            return
+        tab = next((t for t in self.tabs.tabs if t.path == item.new), None)
+        if tab is not None and tab.id in self.buffers:
+            if tab.id == self.tabs.active:
+                fresh = await self._live_text(tab.id)
+                if fresh is not None:
+                    self.buffers[tab.id].set_text(fresh)
+            before = self.buffers[tab.id].text.replace("\r\n", "\n")
+            edits = retitle_daily(before, was, now)
+            if edits:
+                await self._rewrite_open(tab.id, before, edits, apply_edits(before, edits))
+            return
+        try:
+            before = self.vault.read_text(item.new)
+        except VaultError:
+            return
+        edits = retitle_daily(before, was, now)
+        if edits:
+            self._rewrite_closed(item.new, before, apply_edits(before, edits))
+
     async def _retitle(self, old: str, new: str) -> None:
         """A renamed note's title follows its name, unless the user wrote another title."""
         if self._config is not None and not self._config.get("editor.auto_title", True):
@@ -2704,55 +2761,15 @@ class EditorPane:
         return self._config
 
     def set_ai(self, on: bool) -> None:
-        """The AI feature was switched: the ⋯ menu, the AI button and the tabs' menu follow."""
+        """The AI feature was switched: the ⋯ menus and the tabs' menu follow."""
         self._ai = on
         if not on:
             self.ask_popup.close()
         for menu in self.note_menus:
             menu.set_ai(on)
-        self._update_note_buttons()
         self._tabbar.render(self._unsaved(), self._split_tabs())
 
     # ---- the buttons beside ⋯ and a tab's right-click menu ---------------------------------
-
-    def _note_buttons(self, slot: int, a: NoteActions) -> None:
-        """Split (in split view: close this side), and the AI menu (while AI is on), left of
-        the ⋯ button of side ``slot``."""
-
-        def split() -> None:
-            if self._split_open:
-                self.close_side(slot)
-            else:
-                self.toggle_split()
-
-        self._split_buttons.append(icon_button("columns-2", split, "Split right", size="m"))
-        ai = icon_button("sparkles", lambda: None, "AI", size="m")
-        self._ai_buttons.append(ai)
-        with ai, ui.menu().props('anchor="bottom right" self="top right"') as menu:
-            menu.classes("pp-note-menu")
-            for icon, label, action in (
-                ("sparkles", "Ask about this note", a.add_to_chat),
-                ("list-collapse", "Summarize", a.summarize),
-                ("wand-sparkles", "Rewrite", a.rewrite),
-                ("pen-line", "Write…", a.write),
-            ):
-                with ui.menu_item(on_click=lambda _e=None, f=action: self._spawn_action(f)).classes(
-                    "pp-note-menu-item"
-                ):
-                    line_icon(icon).classes("pp-note-menu-icon")
-                    ui.label(label).classes("pp-note-menu-label")
-
-    def _spawn_action(self, action: Callable[[], Any]) -> None:
-        result = action()
-        if inspect.isawaitable(result):
-            self._spawn(result)
-
-    def _update_note_buttons(self) -> None:
-        for button in self._split_buttons:
-            set_icon(button, "x" if self._split_open else "columns-2")
-            tip(button, "Close this side" if self._split_open else "Split right")
-        for button in self._ai_buttons:
-            button.set_visibility(self._ai)
 
     def _tab_menu(self, tab_id: int, path: str) -> list[TabMenuItem]:
         """A tab's right-click menu: what can be done with that tab's note."""

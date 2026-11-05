@@ -1,7 +1,7 @@
 # CLAUDE.md — paper-pile
 
 You are building **paper-pile**: a local, Obsidian-like markdown note app with a
-Cursor-clean 3-pane UI and built-in AI (Ollama, vLLM or any OpenAI-compatible API; PLAN §4.30). Read this file fully at the
+Cursor-clean 3-pane UI and built-in AI (Ollama, vLLM, any OpenAI-compatible API or Antigravity CLI; PLAN §4.30). Read this file fully at the
 start of every session. It is short on purpose; details live in `docs/`.
 
 ## Source of truth
@@ -41,7 +41,7 @@ Never mark a task done without its acceptance criteria verified. Never delete Is
 4. **Never hard-delete user data.** Deletes go to `<vault>/.trash/`.
 5. **No CDN.** All JS/CSS (CodeMirror, KaTeX, Mermaid) is vendored under `paper_pile/gui/static/vendor/` and served locally. App must work fully offline.
 6. **JS is a thin layer.** JS only renders/captures (editor, popup menus, paste events). Logic, parsing, command registry, AI all live in Python.
-7. **The AI harness is backend- and model-independent.** Only `core/ai/<backend>.py` and `factory.make_provider` know a backend; the engine, edits, commands and UI use `Provider` (`label`, `local`, `sizes_window`, `missing_model`) and never name Ollama or a model. No backend client library: plain `httpx`.
+7. **The AI harness is backend- and model-independent.** Only `core/ai/<backend>.py` and `factory.make_provider` know a backend; the engine, edits, commands and UI use `Provider` (`label`, `local`, `sizes_window`, `missing_model`) and never name Ollama or a model. No backend client library: plain `httpx` (or the CLI program itself, for a headless-CLI backend).
 8. **`--serve` mode must keep working** (web mode, bind `127.0.0.1` only). Don't introduce native-only code paths without a web fallback.
 
 ## Conventions
@@ -116,7 +116,7 @@ Ask the user a **short** question instead of guessing on anything that changes t
 - Killing test instances: `pgrep -f` / `pkill -f` patterns match your own shell's command line — use the bracket trick (`'[p]p-perf-'`) and kill by process group (`kill -9 -- -<pgid>`); a leftover app keeps the CDP port, and the next run silently measures the old instance.
 - Dialogs: always `paper_pile.gui.dialog.Dialog`, never `ui.dialog` — NiceGUI 3.16+ leaves a hidden canary element per dialog that keeps the whole deleted dialog alive (page + server). A dialog made anew per use must also be deleted (after `await`, or on `hide`).
 - Memory: find leaks with `tools/mem_soak.py` (identical rounds must level off) and CDP heap snapshots diffed by constructor; user-timing entries (`performance.mark`) are never freed by the browser — Tailwind's runtime makes them, `static/marks.js` clears them.
-- Note header (P21): each editor side has its own split / AI / ⋯ buttons. They act on "the active note", so build their actions with `EditorPane._side_actions(slot)` (focuses that side first) — a plain `note_actions(self)` would act on the other side's note.
+- Note header (P21): each editor side has its own ⋯ menu (and × in split view). It acts on "the active note", so build their actions with `EditorPane._side_actions(slot)` (focuses that side first) — a plain `note_actions(self)` would act on the other side's note.
 - GUI classes are not type-checked (mypy covers `core/` only): before adding an attribute to a big component (`EditorPane`, `Layout`), grep `self._<name>` — a clash silently overwrites one of them.
 - JS "is it shown?": never `el.offsetParent !== null` for a `position: fixed` element (always null) — use `el.getClientRects().length > 0`.
 - Side-effect imports (`commands_builtin` registers every slash command): keep them as a plain `import x  # noqa: F401`, never as `from x import <name>` — when the last name goes, ruff deletes the import and the feature silently disappears while unit tests (which import it themselves) stay green. `tests/gui/test_app_registers_commands.py` guards the slash commands.
@@ -124,3 +124,5 @@ Ask the user a **short** question instead of guessing on anything that changes t
 - AI calls whose reasoning is never shown (edits, answers written into a note, Translate, JSON decisions) pass `think=False`: a thinking model otherwise spends minutes before the first word (gemma4:12b Translate: 160 s → 1.5 s). On OpenAI-compatible servers it must become `reasoning_effort: "none"` — otherwise the reasoning eats the whole `max_tokens` and the answer comes back empty (`finish: length`). Measure AI changes with `tools/ai_eval/run.py --model <m>`, not by feel.
 - AI intent / routing prompts (`understand.py`): a user's misread request is an example, not the bug — never add phrase or word lists. Change the rules only with `tools/ai_eval/intent.py`: add a fresh held-out set BEFORE trying a new version (a set used to judge a version is no longer unseen), keep examples out of the rules when they overlap the eval, and report the held-out score and the time per request (the model's output length decides the time).
 - AI writes at low temperature loop without a repeat penalty (Ollama's default is 1.0 = none; it aborts with "token repeat limit reached"): text answers go with `REPEAT_PENALTY` (engine.py), JSON answers without. The automatic context window is measured per machine (`core/ai/window.py`), not a constant — never re-add a fixed cap.
+- CodeMirror layers: real pages paint the sheet as `.cm-content`'s background, so a `layer({above: false})` is invisible there. Draw highlight layers `above: true`, see-through, `pointer-events: none` — and check new editor visuals with page view = Real pages too.
+- Headless agent CLIs as AI backends (`agy`): they are coding agents — never run one in the vault or with a skip-permissions flag. Run it in the app's own folder as an app-written agent with no tools plus a strict permission preset, and check by hand that a "write a file / run ls" request does nothing. Delete the conversation copy the CLI keeps (it holds notes).

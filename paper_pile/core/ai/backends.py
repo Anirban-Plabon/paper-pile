@@ -16,7 +16,7 @@ from paper_pile.core.config import Config
 class Backend:
     key: str  # ai.provider
     label: str
-    default_host: str
+    default_host: str  # "" = not a server (a program on this computer): no address setting
     key_hint: str  # placeholder of "API key variable"; "" = this backend takes no key
     loads_models: bool = False  # loads a model on demand (so "Load model at start" helps)
 
@@ -29,6 +29,7 @@ BACKENDS: dict[str, Backend] = {
         Backend(
             "openai", "OpenAI-compatible API", "https://api.openai.com/v1", "e.g. OPENAI_API_KEY"
         ),
+        Backend("antigravity", "Antigravity CLI", "", ""),  # a program: no address, no key
     )
 }
 # kept per backend: switching to another one and back restores them (ai.saved.<backend>)

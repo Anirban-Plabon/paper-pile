@@ -2,7 +2,7 @@
 """The AI edit eval against a real model (``docs/AI_EDITS.md`` §10, P26.15). Dev tool.
 
     uv run python tools/ai_eval/run.py --model gemma4:12b [--runs 3] [--case 05] [--host URL]
-        [--provider ollama|vllm|openai] [--api-key-env OPENAI_API_KEY]
+        [--provider ollama|vllm|openai|antigravity] [--api-key-env OPENAI_API_KEY]
 
 Every case (but the unit-only ones) runs ``--runs`` times on a fresh scratch vault through the
 app's own pipeline; prints the pass rate per case and per failing check, the model calls and
@@ -104,7 +104,9 @@ if __name__ == "__main__":
     parser.add_argument("--model", required=True)
     parser.add_argument("--runs", type=int, default=3)
     parser.add_argument("--case", default="", help="only cases whose name starts with this")
-    parser.add_argument("--provider", default="ollama", choices=("ollama", "vllm", "openai"))
+    parser.add_argument(
+        "--provider", default="ollama", choices=("ollama", "vllm", "openai", "antigravity")
+    )
     parser.add_argument("--host", default="", help="server address (default: the provider's)")
     parser.add_argument("--api-key-env", default="", help="variable holding the API key")
     parser.add_argument("--out", default="", help="report folder (default: a scratch folder)")

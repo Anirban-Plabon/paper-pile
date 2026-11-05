@@ -96,7 +96,7 @@ class NoteMenu:
     ) -> None:
         """Hide the button without a note; the split and pin items name what they will do."""
         self._button.set_visibility(has_note)
-        self._split_label.set_text("Close split" if split_open else "Split right")
+        self._split_label.set_text("Close this side" if split_open else "Split right")
         self._pin_label.set_text("Unpin note" if pinned else "Pin note")
         self.set_page_view(page_view)
 

@@ -11,7 +11,10 @@ through the event bus:
   ``vault.deleted``  (path, trashed)     moved to ``.trash/``
 
 Pinned notes (right-click → Pin) are listed above the folders. A folder's + (on hover) makes a
-new note in it.
+new note in it. Inside a folder its notes are in a box that shows at most ``NOTES_SHOWN`` of
+them and scrolls (user, 2026-11-04); in the daily-notes folder they are by date, newest first,
+and the box opens scrolled to today's note (the future days above it; ``static/tree.js``),
+marked with a dot — every time the folder is opened.
 
 The header above the tree has three buttons: search (swaps the tree for a search box over the
 full text of every note — the SQLite index — listing hits with a highlighted snippet; with an
@@ -33,10 +36,12 @@ import asyncio
 import html
 import logging
 from collections.abc import Awaitable, Callable
+from datetime import date
 from typing import Any
 
 from nicegui import background_tasks, ui
 
+from paper_pile.core.daily import daily_date, daily_order
 from paper_pile.core.events import EventBus
 from paper_pile.core.fsutil import reveal_in_file_manager
 from paper_pile.core.index import SearchHit
@@ -52,6 +57,7 @@ MENU_W, MENU_H = 210, 250  # rough size, only used to keep the menu on screen
 RECENT_SHOWN = 50  # notes listed in search mode
 HITS_SHOWN = 50  # vault-search hits listed
 VAULT_ROOT = ""  # the location value that means "the vault itself"
+NOTES_SHOWN = 10  # a folder's notes box shows this many rows, then scrolls
 
 
 class FileTree:
@@ -68,7 +74,9 @@ class FileTree:
         open_trash: Callable[[], Awaitable[None]] | None = None,
         confirm_delete: Callable[[], bool] = lambda: True,
         pinned: Callable[[], list[str]] = list,
+        daily: Callable[[], tuple[str, str] | None] = lambda: None,
     ) -> None:
+        self._daily = daily  # (folder, date format) of the daily notes, None when not shown
         self._pinned = pinned  # pinned notes, listed above the folders
         self._confirm_delete = confirm_delete  # Settings → Ask before deleting
         self._open_trash = open_trash  # the vault menu's Trash…
@@ -271,13 +279,35 @@ class FileTree:
             return 0
         hidden = self._hidden()
         entries = [e for e in entries if e.path not in hidden]
+        first: str | None = None
+        daily = self._daily()
+        dot = ""
+        if daily is not None and rel and (rel + "/").startswith(daily[0].strip("/") + "/"):
+            today = date.today()
+            entries, first = daily_order(entries, daily[0], daily[1], today)
+            if first is not None:
+                is_today = daily_date(first, daily[0], daily[1]) == today
+                dot = "Today" if is_today else "Latest day before today"
+
+        notes = [e for e in entries if not e.is_dir] if rel else []
         for entry in entries:
-            self._row(entry, depth)
+            if entry.is_dir or not rel:
+                self._row(entry, depth)
             if entry.is_dir and entry.path in self._expanded:
                 self._render_folder(entry.path, depth + 1)
+        if notes:  # a folder's notes: at most NOTES_SHOWN rows, then the box scrolls
+            box = ui.element("div").classes("pp-tree-notes")
+            box._props["data-folder"] = rel
+            if first is not None:
+                box._props["data-first"] = first  # tree.js scrolls it to the top of the box
+            box.style(f"max-height: calc({NOTES_SHOWN} * var(--pp-row-h))")
+            with box:
+                for entry in notes:
+                    self._row(entry, depth, dot if entry.path == first else "")
         return len(entries)
 
-    def _row(self, entry: TreeEntry, depth: int) -> None:
+    def _row(self, entry: TreeEntry, depth: int, dot: str = "") -> None:
+        """One row; ``dot``: the tip of a dot after the name (today's daily note)."""
         row = ui.element("div").classes("pp-tree-row")
         row._props["data-path"] = entry.path
         row._props["data-dir"] = "1" if entry.is_dir else "0"
@@ -292,6 +322,9 @@ class FileTree:
                 ui.element("span").classes("pp-ico pp-ico-chev")  # aligns notes
                 line_icon("file-text").classes("pp-ico pp-ico-note")
             ui.label(entry.name).classes("pp-tree-name")
+            if dot:
+                mark = ui.element("span").classes("pp-tree-dot")
+                mark._props["data-tip"] = dot
             if entry.is_dir:  # static/tree.js: a click here is "new note in this folder"
                 add = line_icon("plus").classes("pp-tree-add")
                 add._props["data-tip"] = "New note here"

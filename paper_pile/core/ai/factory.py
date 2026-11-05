@@ -111,6 +111,10 @@ def build_provider(
         flavor: Flavor = "vllm" if kind == "vllm" else "openai"
         key = api_key(api_key_env)
         return OpenAICompatProvider(host=host, model=model, flavor=flavor, api_key=key)
+    if kind == "antigravity":
+        from paper_pile.core.ai.antigravity_cli import AntigravityCliProvider
+
+        return AntigravityCliProvider(model=model)
     log.warning("unknown AI provider %r", kind)
     return MissingProvider(f"Unknown AI provider “{kind}” — pick one in Settings → AI.")
 

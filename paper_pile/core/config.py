@@ -47,7 +47,6 @@ DEFAULTS: dict[str, Any] = {
         "auto_title": True,
         "last_edited": True,  # an "edited" row (the file's time) in the properties
         "block_spacing": True,
-        "tidy_button": True,
         "page_view": "off",  # off | lines | pages (PLAN §4.17)
         "page_view_last": "lines",  # the style the ⋯ menu turns on
     },

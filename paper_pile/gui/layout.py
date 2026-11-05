@@ -208,6 +208,14 @@ class MainLayout:
             reopen = bool(self._setting("general.restore_tabs"))
             tabs = list(self.state.tabs) if reopen else []
             self.editor_pane.start(tabs, self.state.active if reopen else None)
+            ui.timer(1.0, self._sync_daily, once=True)  # the format may have changed meanwhile
+
+    async def _sync_daily(self) -> None:
+        """Daily notes renamed to the current date format (``EditorPane.sync_daily_names``)."""
+        if self.editor_pane is not None and await self.editor_pane.sync_daily_names():
+            if self.tree is not None:
+                self.tree.refresh()
+            self._refresh_calendar()
 
     def _follow_external_changes(self) -> None:
         """Re-list the tree when files change outside the app (watcher, P1.5)."""
@@ -426,6 +434,7 @@ class MainLayout:
                     open_trash=self.open_trash,
                     confirm_delete=lambda: bool(self._setting("general.confirm_delete")),
                     pinned=lambda: self.state.pinned,
+                    daily=self._tree_daily,
                 )
                 self.tree.build()
                 self.outline = OutlinePane(self._jump_to_line, self.toggle_outline)
@@ -553,6 +562,13 @@ class MainLayout:
         except VaultError:
             log.exception("could not apply the daily template to %s", path)
 
+    def _tree_daily(self) -> tuple[str, str] | None:
+        """The daily-notes folder and date format, for the tree's date order (None: hidden)."""
+        folder = str(self.config.get("vault.daily_notes_folder", "")).strip("/")
+        if not folder or not self.config.get("vault.show_daily_notes", True):
+            return None
+        return folder, str(self.config.get("vault.daily_notes_format", DEFAULT_FORMAT))
+
     def _tree_hidden(self) -> set[str]:
         """Folders the file tree leaves out: images and memories always, daily notes and
         templates unless their switch is on (Settings → General → Folders)."""
@@ -638,8 +654,6 @@ class MainLayout:
             self.editor_pane.set_options(editor_options(self.config))
         if self._status is not None and "editor.word_count" in changed:
             self._status.stats_label.set_visibility(bool(self._setting("editor.word_count")))
-        if self.editor_pane is not None and "editor.tidy_button" in changed:
-            self.editor_pane.show_tidy_buttons()
         if self.editor_pane is not None and "editor.last_edited" in changed:
             self.editor_pane.show_edited()
         if changed & {"features.ai", "features.calendar"}:
@@ -651,7 +665,10 @@ class MainLayout:
             self.profile.refresh()
         if any(k.startswith("vault.daily_notes") for k in changed):
             self._refresh_calendar()
+        if "vault.daily_notes_format" in changed:
+            background_tasks.create(self._sync_daily())
         tree_keys = {"vault.show_daily_notes", "vault.show_templates", "vault.images_folder"}
+        tree_keys |= {"vault.daily_notes_format"}  # the daily notes' date order
         if self.tree is not None and changed & (tree_keys | {"vault.daily_notes_folder"}):
             self.tree.refresh()
 

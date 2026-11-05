@@ -315,8 +315,10 @@ class AiEngine:
         computer (a remote ``ai.host`` or a hosted API)."""
         text = f"To answer, the AI reads the notes of “{self.vault.root.name}” on this computer."
         if not self.provider.local:
-            where = self.provider.host or self.provider.label
-            text += f" They are sent to {where}, another computer."
+            if self.provider.host:
+                text += f" They are sent to {self.provider.host}, another computer."
+            else:  # a program that passes them on (Antigravity CLI)
+                text += f" They are sent through {self.provider.label} to another computer."
         return text + " Limit or take it back any time in Settings → AI → Access."
 
     def has_access(self) -> bool:

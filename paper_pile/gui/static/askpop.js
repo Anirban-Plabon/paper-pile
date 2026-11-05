@@ -5,11 +5,12 @@
 //
 // Placing (user, 2026-10-31): the side is chosen ONCE, when the box opens — below the selection
 // when the full mini chat (--pp-askpop-full) fits there, else above when it fits there, else the
-// bigger side (the chat's height is then capped to it). The input row never moves after that:
-// the box is held by its edge next to the selection (top when it grows down, bottom when it grows
-// up) and the box and the chat have the same padding, so plain layout keeps the input still —
-// nothing is moved after a resize. The / list opens on the growing side when the full chat fits
-// there; otherwise where it fits (the growing side, else over the selection, else the bigger).
+// bigger side (the chat's height is then capped to it). The box is held by its edge next to the
+// selection (top when it grows down, bottom when it grows up). The mini chat has one fixed height
+// (user, 2026-11-04): its frame stays where it opened and the input is always at its bottom.
+// The small box's / list opens on the growing side when the full chat fits there; otherwise
+// where it fits (the growing side, else over the selection, else the bigger). In the chat the
+// list is inside the frame, above the input.
 (function () {
   const GAP = 8;
   const MARGIN = 6;
@@ -60,7 +61,7 @@
     if (!list) return;
     delete list.dataset.ppFlip;
     list.style.maxHeight = '';
-    if (full || !shown(list)) return;
+    if (full || !shown(list) || el.classList.contains('pp-askpop-chat')) return;
     const b = bounds();
     const r = row(el).getBoundingClientRect();
     const h = list.offsetHeight;

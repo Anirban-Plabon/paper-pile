@@ -363,12 +363,6 @@ SECTIONS: dict[str, tuple[Setting, ...]] = {
             group="Writing",
         ),
         Setting(
-            "editor.tidy_button",
-            "Tidy note button",
-            "bool",
-            group="Writing",
-        ),
-        Setting(
             "editor.word_count",
             "Word count",
             "bool",
@@ -596,6 +590,8 @@ def is_shown(
         return False
     if setting.key == "ai.api_key_env" and not BACKENDS[values["ai.provider"]].key_hint:
         return False  # this backend takes no key (Ollama)
+    if setting.key == "ai.host" and not BACKENDS[values["ai.provider"]].default_host:
+        return False  # a program, not a server (Antigravity CLI)
     if setting.key == "ai.preload" and not BACKENDS[values["ai.provider"]].loads_models:
         return False  # a server keeps its model loaded
     return searching or setting.essential or not values["settings.minimal"]

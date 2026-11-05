@@ -170,4 +170,39 @@
   document.addEventListener('keydown', (e) => {
     if (e.key === 'Escape' && menuOpen()) emitEvent('pp_ctx_close', {});
   });
+
+  // A folder's notes box (≤ 10 rows, then it scrolls; tree.py). Each time a folder is opened
+  // the box starts at its first note — in the daily-notes folder today's note (data-first),
+  // the future days above it (user, 2026-11-04). Python redraws the tree on every change, so
+  // while the folder stays open the box keeps the row at its top (not a pixel offset: notes
+  // added above it would push it down).
+  const kept = new Map(); // folder → {path, off}: the row at the box's top
+  const topRow = (box) => [...box.children].find((r) => r.offsetTop + r.offsetHeight > box.scrollTop);
+  function remember(box) {
+    const row = topRow(box);
+    kept.set(box.dataset.folder, row ? { path: row.dataset.path, off: box.scrollTop - row.offsetTop } : null);
+  }
+  document.addEventListener('scroll', (e) => {
+    const box = e.target;
+    if (box instanceof Element && box.classList.contains('pp-tree-notes') && box.dataset.ppPlaced) remember(box);
+  }, true);
+  window.ppEachFrame(function () {
+    const boxes = [...document.querySelectorAll('.pp-tree-notes')];
+    const open = new Set(boxes.map((b) => b.dataset.folder));
+    for (const folder of [...kept.keys()]) if (!open.has(folder)) kept.delete(folder); // closed
+    boxes.forEach((box) => {
+      if (box.dataset.ppPlaced || !box.getClientRects().length) return;
+      const k = kept.get(box.dataset.folder);
+      const rows = [...box.children];
+      const row = k && rows.find((r) => r.dataset.path === k.path);
+      if (row) {
+        box.scrollTop = row.offsetTop + k.off; // the box is the rows' offsetParent
+      } else {
+        const first = box.dataset.first && rows.find((r) => r.dataset.path === box.dataset.first);
+        box.scrollTop = first ? first.offsetTop : 0;
+      }
+      box.dataset.ppPlaced = '1';
+      remember(box);
+    });
+  });
 })();

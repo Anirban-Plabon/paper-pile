@@ -1,6 +1,7 @@
 """The bar on top of each editor (P21): ‹ › jump to the previous / next ``#`` / ``##`` section,
 then the note's title and the section at the top of the view (each cut short with … when long),
-then the note's own buttons (split, AI, ⋯) on the right. In split view each side has its own
+then the note's own buttons on the right: ⋯, and in split view × (close this side) before it —
+boxed together only while there are two (user, 2026-11-04). In split view each side has its own
 bar; the side being typed in is marked, and a click on its title shows another note there.
 
 Pure presentation: the editor pane fills the right-hand buttons (``tools``) and decides what the
@@ -22,7 +23,9 @@ class NoteHead:
         on_prev: Callable[[], None],
         on_next: Callable[[], None],
         on_title: Callable[[], None],
+        on_close: Callable[[], None],
     ) -> None:
+        self._on_close = on_close  # split view: close this side
         self._on_prev = on_prev
         self._on_next = on_next
         self._on_title = on_title  # split view: show another note on this side
@@ -33,6 +36,7 @@ class NoteHead:
         self._title: ui.label
         self._section: ui.label
         self._sep: ui.label
+        self._close: ui.button
         self._shown: tuple[str, str, bool, bool] | None = None
         self._split = False
 
@@ -46,7 +50,10 @@ class NoteHead:
                 self._title.on("click", lambda _e: self._on_title())
                 self._sep = ui.label("›").classes("pp-notehead-sep")
                 self._section = ui.label("").classes("pp-notehead-section")
-            self.tools = ui.element("div").classes("pp-seg pp-tools pp-tools-row pp-notehead-tools")
+            self.tools = ui.element("div").classes("pp-tools-row pp-notehead-tools")
+            with self.tools:
+                self._close = icon_button("x", self._on_close, "Close this side", "m")
+                self._close.set_visibility(False)
 
     def show(self, title: str, section: str, can_prev: bool, can_next: bool) -> None:
         """Name the note and the section on screen; an arrow with nowhere to go is dimmed."""
@@ -74,10 +81,14 @@ class NoteHead:
         """In split view the title picks another note, and the side being typed in is marked."""
         if split != self._split:
             self._split = split
+            boxed = "pp-seg pp-tools"  # × and ⋯ in one box; ⋯ alone needs none
             if split:
                 self.bar.classes("pp-notehead-split")
+                self.tools.classes(boxed)
             else:
                 self.bar.classes(remove="pp-notehead-split")
+                self.tools.classes(remove=boxed)
+            self._close.set_visibility(split)
             self._title_tip()
         if split and active:
             self.bar.classes("pp-notehead-active")

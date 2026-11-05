@@ -187,6 +187,10 @@ body.pp-native.pp-right-open .pp-rtabbar { padding-right: 112px; }
 .pp-tree-band { position: fixed; z-index: 2500; pointer-events: none; border: 1px solid var(--pp-accent); background: rgba(var(--pp-accent-rgb), .10); border-radius: var(--pp-r-sm); }
 .pp-tree-row { display: flex; align-items: center; gap: 4px; height: var(--pp-row-h); padding-right: 8px; cursor: pointer; user-select: none; white-space: nowrap; }
 .pp-tree-row:hover { background: rgba(127, 127, 127, .12); }
+/* a folder's notes: at most 10 rows (max-height from tree.py), then this box scrolls */
+/* today's daily note (the row the box opens at): a small accent dot after its name */
+.pp-tree-row > .pp-tree-dot { flex: none; width: 6px; height: 6px; margin-left: 6px; border-radius: 50%; background: var(--pp-accent); pointer-events: auto; }
+.pp-tree-notes { flex: none; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; position: relative; }
 .pp-tree-selected, .pp-tree-selected:hover,
 .pp-tree-banded, .pp-tree-banded:hover { background: rgba(var(--pp-accent-rgb), .18); }
 .pp-ico { font-size: var(--pp-icon-m); width: 16px; flex-shrink: 0; color: var(--pp-muted); }
@@ -649,6 +653,7 @@ body.pp-page-dragging, body.pp-page-dragging * { cursor: row-resize !important; 
 /* the text selection follows the theme colour too */
 /* the selection: selectionband.js draws it (square, inside the line box); CodeMirror's own layer reaches into the margins */
 .pp-editor .cm-selectionLayer { display: none; }
+.pp-editor .pp-sel-layer { pointer-events: none; }  /* over the text (selectionband.js) */
 .pp-editor .pp-sel { background: rgba(var(--pp-accent-rgb), .20); }
 .pp-editor .cm-focused .pp-sel { background: rgba(var(--pp-accent-rgb), .28); }
 /* callout types: a label such as Tip / Warning / Danger changes the box colour */
@@ -976,7 +981,8 @@ body.body--dark .pp-instr-box textarea { color-scheme: dark; }  /* the corner gr
 .pp-chat-mention { border-radius: var(--pp-r-ctrl); }
 .pp-tab, .pp-rtab { isolation: isolate; }
 .pp-tab:hover, .pp-rtab:hover { background: transparent; }
-.pp-tab-active:hover, .pp-rtab-active:hover { background: var(--pp-bg); }
+.pp-tab-active:hover { background: var(--pp-bg); }
+.pp-rtab-active:hover { background: var(--pp-bg-side); }  /* the right pane's colour, as when not hovered */
 .pp-tab:not(.pp-tab-active):not(.pp-tab-shown):hover::before, .pp-rtab:not(.pp-rtab-active):hover::before {
   content: ""; position: absolute; inset: 4px 3px; z-index: -1;
   border-radius: var(--pp-r-ctrl); background: rgba(127, 127, 127, .12);
@@ -1182,8 +1188,6 @@ input::selection, textarea::selection { background: rgba(var(--pp-accent-rgb), .
 .pp-fab.q-btn { position: absolute; z-index: 5; width: 32px; height: 32px; min-width: 0; min-height: 0; padding: 0; background: var(--pp-bg); color: var(--pp-muted); border: 1px solid var(--pp-border); box-shadow: 0 2px 8px rgba(0, 0, 0, .12); transition: opacity var(--pp-dur), color var(--pp-dur); }
 .pp-fab.q-btn:hover { color: var(--pp-accent); }
 .pp-fab.q-btn .q-icon { font-size: var(--pp-icon-m); }
-.pp-tidy-fab.q-btn { right: 22px; bottom: 16px; opacity: .7; }
-.pp-tidy-fab.q-btn:hover { opacity: 1; }
 .pp-chat-logwrap { position: relative; flex: 1 1 0; min-height: 0; width: 100%; display: flex; flex-direction: column; }
 .pp-chat-jumps { position: absolute; right: 14px; bottom: 10px; gap: 6px; z-index: 5; pointer-events: none; }
 .pp-chat-jumps .pp-fab.q-btn { position: static; pointer-events: auto; }
@@ -1486,7 +1490,7 @@ body.body--dark .pp-aidiff-chip-warn { color: #e3b341; }
 .pp-askpop-dragging, .pp-askpop-dragging * { cursor: grabbing !important; user-select: none; }
 /* the mini chat: a window with a header (drag to move, ×), the messages, the box at the bottom */
 .pp-askpop .pp-askpop-head, .pp-askpop .pp-askpop-log { display: none; }
-.pp-askpop-chat { width: min(384px, calc(100vw - 12px)); max-height: min(var(--pp-askpop-full), var(--pp-askpop-room, 480px)); padding: 0 10px 10px; gap: 8px; background: var(--pp-askpop-tint); border: 1px solid var(--pp-askpop-line); border-radius: var(--pp-r-popup); box-shadow: 0 8px 28px rgba(0, 0, 0, .16); animation: pp-pop var(--pp-dur) var(--pp-ease); }
+.pp-askpop-chat { width: min(384px, calc(100vw - 12px)); height: min(var(--pp-askpop-full), var(--pp-askpop-room, 480px)); padding: 0 10px 10px; gap: 8px; background: var(--pp-askpop-tint); border: 1px solid var(--pp-askpop-line); border-radius: var(--pp-r-popup); box-shadow: 0 8px 28px rgba(0, 0, 0, .16); animation: pp-pop var(--pp-dur) var(--pp-ease); }
 .pp-askpop-chat .pp-askpop-head { display: flex; height: 40px; flex: none; gap: 8px; padding: 0 0 0 4px; margin: 0 -4px 0 0; border-bottom: 1px solid var(--pp-askpop-line); cursor: grab; }
 .pp-askpop-title { flex: 1; font-size: 12.5px; font-weight: 600; }
 .pp-askpop-head-icon { color: var(--pp-accent); }
@@ -1496,27 +1500,23 @@ body.body--dark .pp-aidiff-chip-warn { color: #e3b341; }
 .pp-askpop-msg-cmd, .pp-askpop-msg-words { display: inline; }
 .pp-askpop-msg-cmd { margin-right: 6px; font-weight: 600; color: var(--pp-accent); }
 /* askpop.js picks the side once (data-pp-side = down / up; an attribute, since Python rewrites
-   the class list): the input row stays put and everything else is on the side away from the
-   selection — the / list next to the input, then the messages, then the header (down: at the
-   far end, so the input need not move when it appears) */
-.pp-askpop[data-pp-side="down"] .pp-askpop-bottom { order: 0; }
-.pp-askpop[data-pp-side="down"] .pp-askpop-cmds { order: 1; }
-.pp-askpop[data-pp-side="down"] .pp-askpop-log { order: 2; }
-.pp-askpop[data-pp-side="down"] .pp-askpop-head { order: 3; border-bottom: 0; border-top: 1px solid var(--pp-askpop-line); }
-.pp-askpop-chat[data-pp-side="down"] { padding: 10px 10px 0; }
-/* the box and the chat keep the input 11 px from the edge next to the selection (padding and a
-   border, transparent in the box), and pop in from that edge: the input never shifts */
+   the class list) and holds the box by its edge next to the selection. The mini chat has one
+   fixed height, so its frame never moves while it fills: header, messages, the / list, and the
+   input at the bottom — on either side (user, 2026-11-04). The small box (input only) opens
+   its / list away from the selection, so the input does not shift when the list appears. */
 .pp-askpop[data-pp-side="down"] { transform-origin: top left; }
 .pp-askpop[data-pp-side="up"] { transform-origin: bottom left; }
-.pp-askpop[data-pp-side="up"] .pp-askpop-head { order: 0; }
-.pp-askpop[data-pp-side="up"] .pp-askpop-log { order: 1; }
-.pp-askpop[data-pp-side="up"] .pp-askpop-cmds { order: 2; }
-.pp-askpop[data-pp-side="up"] .pp-askpop-bottom { order: 3; }
+.pp-askpop .pp-askpop-head { order: 0; }
+.pp-askpop .pp-askpop-log { order: 1; }
+.pp-askpop .pp-askpop-cmds { order: 2; }
+.pp-askpop .pp-askpop-bottom { order: 3; }
+.pp-askpop-box[data-pp-side="down"] .pp-askpop-cmds { order: 4; }
+/* in the chat the / list takes room from the messages, never from the input or the header */
+.pp-askpop-chat .pp-askpop-cmds { max-height: min(240px, calc(100% - 110px)); }
 /* no room on the growing side: the list over the selection instead, out of the box's flow */
 .pp-askpop-cmds[data-pp-flip] { position: absolute; left: 0; }
 .pp-askpop[data-pp-side="down"] .pp-askpop-cmds[data-pp-flip] { bottom: calc(100% + 6px); }
 .pp-askpop[data-pp-side="up"] .pp-askpop-cmds[data-pp-flip] { top: calc(100% + 6px); }
-.pp-askpop-chat .pp-askpop-cmds[data-pp-flip] { left: 10px; }
 /* the / list: as wide as the card (not under Move to chat) */
 .pp-askpop-cmds { flex: none; width: max-content; min-width: 180px; max-width: calc(100% - 68px); gap: 0; padding: 4px; max-height: 240px; overflow-y: auto; border: 1px solid var(--pp-askpop-line); border-radius: var(--pp-r-popup); background: var(--pp-askpop-tint); box-shadow: 0 4px 16px rgba(0, 0, 0, .12); }
 .pp-askpop-cmd { width: 100%; flex-wrap: nowrap; gap: 10px; padding: 6px 10px; border-radius: var(--pp-r-ctrl); cursor: pointer; font-size: 13px; }

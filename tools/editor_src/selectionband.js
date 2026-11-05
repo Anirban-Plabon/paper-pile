@@ -2,13 +2,15 @@
 // left and right edges as the AI's target band and the diff's rows (aiband.js) — instead of
 // CodeMirror's own selection layer, whose rectangles reach past the text into the margins
 // (hidden in app.css). While the Ask box holds the selection's text in its band (the editor is not
-// focused), the band alone shows it: one highlight at a time.
+// focused), the band alone shows it: one highlight at a time. It is drawn OVER the text,
+// see-through (as the AI band): under it, real pages' sheet (the content's own background) and
+// rendered blocks with a background would hide it while the mouse is still selecting.
 import { RectangleMarker, layer } from "@codemirror/view";
 import { lineBox } from "./aiband.js";
 import { askBandShown } from "./selectpopup.js";
 
 export const selectionBand = layer({
-  above: false,
+  above: true,
   class: "pp-sel-layer",
   markers(view) {
     if (askBandShown(view)) return [];

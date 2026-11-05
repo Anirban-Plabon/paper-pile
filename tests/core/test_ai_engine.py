@@ -331,4 +331,4 @@ def test_consent_names_a_host_on_another_computer(vault: Vault, fake: FakeProvid
     fake.local = False  # what a provider works out from its host (or a hosted API)
     assert "sent to http://192.168.1.20:11434, another computer" in ai.consent_text()
     fake.host = ""  # a backend without an address (a cloud SDK): its name is shown
-    assert "sent to Fake AI, another computer" in ai.consent_text()
+    assert "sent through Fake AI to another computer" in ai.consent_text()
