@@ -26,8 +26,8 @@ Legend: 🧠 = needs Opus · ⬜ todo · 🔄 in progress · ✅ done · ⛔ blo
   and the user's QA pass remain
 - **M7 / MC done** (2026-11-06, round A): see the task rows; real-app QA 19/19, editor QA 359/359
 - **Round B done** (2026-11-06): memory file in Settings + "remember …" in the chat
-- **Next task:** round C (citations in the normal chat), round D (M9: Ask the vault, saved
-  searches, suggested links)
+- **Round C done** (2026-11-06): citations in the normal chat
+- **Next task:** round D (M9: Ask the vault from the Ask box, saved searches, suggested links)
   (step card with call count, per-note review list, preview card, citation band, rename of saved
   citations); M0 eval when the user says so
 - **Waiting on the user:** open questions (PLAN_vault_agent §11) — languages in the test
@@ -131,7 +131,7 @@ Legend: 🧠 = needs Opus · ⬜ todo · 🔄 in progress · ✅ done · ⛔ blo
 ### MC — Citations (can start after M1)
 | ID | Task | Status | Notes |
 |---|---|---|---|
-| P30.43 | Source labels + label → location map | 🔄 | 2026-11-06 · `cite.py` `Source` (path, heading, lines, anchor), labels in the prompt as data; used by the vault agent — the normal chat and `@vault` still to switch over |
+| P30.43 | Source labels + label → location map | ✅ | 2026-11-06 · `cite.py` `Source` (path, heading, lines, anchor) in every vault answer; the normal chat numbers the notes it sends (`notes_block(labels=True)`, chat only — AI commands' one-shot prompts unchanged), checks the answer's numbers and keeps them as pills (`SavedTurn.vault` kind "chat"); gemma4: "NGOs pay $9.60 for the Basic plan [1]", no citation on a general question |
 | P30.44 | Citation check | 🔄 | 2026-11-06 · unknown labels dropped, quotes (≥ 12 chars) checked against their source, "N citations could not be verified" footer (5 tests); eval number pending |
 | P30.45 | Pills + numbered Sources + preview card | ✅ | 2026-11-06 · pills in the answer and the Sources line, one numbering per answer; hover = note § section + up to 220 characters of the cited text (saved excerpt) |
 | P30.46 | Click → open, flash, band; Ctrl+click → split | ✅ | 2026-11-06 · click → the note at the cited lines (glide + flash) + a band on them (`citeband.js`) until the next click / key / typing; Ctrl+click → split view; real-app checks (band shown, band gone after a click, split opened); editor QA 359/359 |
@@ -187,6 +187,7 @@ Legend: 🧠 = needs Opus · ⬜ todo · 🔄 in progress · ✅ done · ⛔ blo
 | 2026-11-06 | An answer to our own review / undo chips with nothing open says the change is no longer open | After a restart (the pending review lives in memory) "Apply all" would otherwise be read as a new request | claude |
 | 2026-11-06 | The memory file grows only when the user asks ("remember …" → a `remember` action, reviewed); the agent does not propose facts on its own | Facts the agent would infer need an extra model call per request and can be wrong; the user's own words are the evidence | claude |
 | 2026-11-06 | Emptying the memory file writes an empty file, never deletes it | Rule 4: it is the user's writing | claude |
+| 2026-11-06 | Normal chat: the notes block in the chat message is numbered and asks for [n]; the fixed system prompt and the one-shot command prompts are not changed | One citation system for every answer that uses notes (§7.1) without touching prompts the edit / command evals measure; the system prompt stays fixed for prompt caching | claude |
 
 ## Issues log
 | Date | Task | Symptom | Root cause | Fix | Gotcha? |
@@ -209,3 +210,4 @@ Legend: 🧠 = needs Opus · ⬜ todo · 🔄 in progress · ✅ done · ⛔ blo
 - 2026-11-06 · P30.37 injection + privacy hardening (M8): data framing everywhere, no reasons into understanding, remote notice, gate tests (3), PLAN §8; gemma4: hostile note not obeyed · 1718 tests (+3)
 - 2026-11-06 · M7 / MC round A: call count, per-note review ticks, note links, richer preview, citation band, renames, Insert as wikilinks, expired review message · 1724 tests; real-app QA 19/19; editor QA 359/359
 - 2026-11-06 · Round B: memory file in Settings (Edit dialog) + "remember …" in the chat (diff, Save / Cancel) · 1726 tests (+2); gemma4: both phrasings understood
+- 2026-11-06 · Round C: citations in the normal chat (numbered notes, checked, pills) · 1728 tests (+2); gemma4 cited the open note, none on a general question

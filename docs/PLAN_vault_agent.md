@@ -369,6 +369,10 @@ click → `static/chat.js` `pp_cite` → `ChatPane._open_cite` → the note at t
 the saved anchor (`cite.anchor_line`); a gone note / part says so. Still to come: the lasting
 band, a richer preview card, saved paths following renames, wikilinks on Insert into note.
 
+Later the same day (rounds A / C): the band (`citeband.js`), the longer preview, renames,
+wikilinks on Insert into note and citations in the normal chat (the chat's notes block is
+numbered; one-shot command prompts unchanged) were built.
+
 **Model side — labels, not paths** (`core/ai/vault/cite.py`, no UI imports):
 - Every note / section put in the prompt gets a short label: `[1]`, `[2]`…, with its title
   and heading. The prompt asks the model to put the label after each claim it takes from

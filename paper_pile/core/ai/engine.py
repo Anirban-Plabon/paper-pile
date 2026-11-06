@@ -749,9 +749,10 @@ class AiEngine:
         )
 
     @staticmethod
-    def with_notes(context: Context, message: str) -> str:
-        """``message`` with the context's notes in front of it."""
-        notes = context.notes_block()
+    def with_notes(context: Context, message: str, labels: bool = False) -> str:
+        """``message`` with the context's notes in front of it (``labels``: numbered for
+        citing, the chat)."""
+        notes = context.notes_block(labels)
         return notes + DIVIDER + message if notes else message
 
     def past_text(self, turn: SavedTurn, *, notes: bool = True) -> str:
@@ -789,7 +790,7 @@ class AiEngine:
         ``room`` tokens (all of the prompt; None = no limit), at most ``ai.history_turns``;
         failed and empty ones are left out."""
         system = ChatMessage("system", self.system_prompt() + self._summary_text())
-        ask = ChatMessage("user", self.with_notes(context, question))
+        ask = ChatMessage("user", self.with_notes(context, question, labels=True))
         keep = int(str(self.setting("ai.history_turns", HISTORY_TURNS)))
         left = None if room is None else room - message_tokens([system, ask])
         past: list[ChatMessage] = []
@@ -873,6 +874,44 @@ class AiEngine:
         if finish and finish[-1] != FINISHED:
             reply.cut = True
             reply.text = (reply.text + "\n\n" + CUT_OFF).strip()
+        self._chat_citations(reply, context)
+
+    @staticmethod
+    def _chat_citations(reply: SavedTurn, context: Context) -> None:
+        """The chat answer's ``[n]`` checked against the parts that were sent (unknown
+        numbers dropped) and kept as citations, so the chat shows them as pills that open
+        the note at the cited text (PLAN_vault_agent §7.1, P30.43). Parts without a note
+        (a loose selection, a file) are not citable."""
+        from paper_pile.core.ai.vault.cite import Source, check  # it imports this module
+
+        sources = [
+            Source(n, p.path, p.title, "", 1, 1, p.text, " ".join(p.text.split())[:80])
+            for n, p in enumerate(context.parts, 1)
+            if p.path
+        ]
+        if not sources or "[" not in reply.text:
+            return
+        checked = check(reply.text, sources)
+        if not checked.used:
+            return
+        reply.text = checked.text
+        reply.vault = {
+            "kind": "chat",
+            "cites": [
+                {
+                    "n": s.n,
+                    "path": s.path,
+                    "title": s.path.rsplit("/", 1)[-1].removesuffix(".md"),
+                    "heading": "",
+                    "start": 1,
+                    "end": 1,
+                    "anchor": s.anchor,
+                    "excerpt": " ".join(s.text.split())[:240],
+                }
+                for s in sources
+                if s.n in checked.used
+            ],
+        }
 
     # ---- redoing the last exchange -------------------------------------------------------
 
