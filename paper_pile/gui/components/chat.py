@@ -51,6 +51,7 @@ from paper_pile.core.ai.engine import AiEngine, Outgoing, Selection
 from paper_pile.core.ai.options import Option, suggest_options
 from paper_pile.core.ai.prompts import load_prompts, prompts_file, selection_kind, suggestions
 from paper_pile.core.ai.provider import Health, ProviderError, ProviderUnavailableError
+from paper_pile.core.ai.vault.cite import anchor_line
 from paper_pile.core.links import resolve_wikilink, wikilink_to
 from paper_pile.core.parser import render_chat_html
 from paper_pile.core.picker import switcher_notes
@@ -58,6 +59,7 @@ from paper_pile.gui.components.ai_access import confirm_access
 from paper_pile.gui.components.options_box import OptionsBox
 from paper_pile.gui.icons import ico, icon_button, line_icon, set_icon
 from paper_pile.gui.tips import tip
+from paper_pile.gui.vault_render import cite_pills
 
 log = logging.getLogger("paper_pile.chat")
 
@@ -173,6 +175,7 @@ class ChatPane:
         apply_to_note: Callable[[str, str, str], Awaitable[None]] | None = None,
         open_note: Callable[[str], None] = lambda path: None,
         edit_in_note: EditInNote | None = None,
+        open_at: Callable[[str, int, bool], None] = lambda path, line, split: None,
     ) -> None:
         self.ai = ai
         self.vault = ai.vault
@@ -180,6 +183,7 @@ class ChatPane:
         self._enabled = enabled
         self._apply_to_note = apply_to_note  # (path, old, new): show an answer as a diff there
         self._open_note = open_note  # a source under an answer was clicked
+        self._open_at = open_at  # a citation pill: (path, line, in split view)
         self._edit_in_note = edit_in_note  # a change command from the / list (PLAN §4.28)
         self._command_card: _CommandCard | None = None
         self._answering: _CommandCard | None = None  # the AI asked: the next message answers
@@ -287,6 +291,7 @@ class ChatPane:
         ui.on("pp_chat_pick", lambda e: self._picked(dict(e.args)))
         ui.on("pp_chip_close", lambda _e: self._close_chip())
         ui.on("pp_open_url", lambda e: self._open_url(e.args))
+        ui.on("pp_cite", lambda e: self._open_cite(dict(e.args)))  # a citation pill (chat.js)
         ui.timer(HEALTH_EVERY_S, lambda: background_tasks.create(self.check_health()))
         background_tasks.create(self.check_health())
         self.prune_chats()
@@ -569,7 +574,11 @@ class ChatPane:
                 content = THINKING
             else:
                 content = render_chat_html(turn.text)
+                if turn.vault.get("cites"):  # the vault agent's citations as pills (§7.1)
+                    content = cite_pills(content, turn.vault["cites"], self.ai.turns.index(turn))
             body = ui.html(content, sanitize=False).classes("pp-msg-body")
+            if turn.vault:
+                self._vault_extras(turn)
             with ui.row().classes("pp-msg-foot items-center"):
                 self._reply_meta(turn)
                 if not turn.error and turn.text.strip():
@@ -580,6 +589,62 @@ class ChatPane:
                             self._msg_button("refresh-cw", "Answer again", self._regenerate)
             self._typeset(body)
         return body
+
+    # ---- the vault agent's answers (PLAN_vault_agent §7) ---------------------------------------
+
+    def _vault_extras(self, turn: Turn) -> None:
+        """Under a vault answer: its steps (folded) and, on the newest answer only, its chips
+        — what they send is answered by the agent's open question or understood afresh, so
+        they are offered only while that is still the conversation's last word."""
+        steps = [s for s in turn.vault.get("steps", []) if isinstance(s, str)]
+        if steps:
+            with ui.expansion(f"{len(steps)} steps").props("dense").classes("pp-vault-steps"):
+                for line in steps:
+                    ui.label(line).classes("pp-muted pp-vault-step")
+        chips = [c for c in turn.vault.get("chips", []) if isinstance(c, dict) and c.get("label")]
+        live = self._task is None and bool(self.ai.turns) and turn is self.ai.turns[-1]
+        if not chips or not live:
+            return
+        with ui.row().classes("pp-vault-chips items-center"):
+            for c in chips:
+                ui.button(
+                    str(c["label"]), on_click=lambda c=c: self._vault_chip(c), color=None
+                ).props("flat dense no-caps").classes("pp-vault-chip")
+
+    async def _vault_chip(self, c: dict[str, object]) -> None:
+        """A chip: open notes, or send its text as the next message — the same path as typing."""
+        paths = c.get("open")
+        if isinstance(paths, list):
+            for path in paths:
+                if isinstance(path, str) and self.vault.exists(path):
+                    self._open_note(path)
+            return
+        text = str(c.get("send") or c.get("label") or "")
+        if text and self._task is None:
+            self._input.set_value(text)
+            await self.send()
+
+    def _open_cite(self, args: dict[str, object]) -> None:
+        """A citation pill was clicked: the note at the cited lines (found again when the note
+        changed since), in split view with Ctrl. A note that is gone or private now says so."""
+        try:
+            turn = self.ai.turns[int(str(args.get("turn")))]
+            n = int(str(args.get("n")))
+        except (ValueError, IndexError):
+            return
+        row = next((c for c in turn.vault.get("cites", []) if c.get("n") == n), None)
+        if row is None:
+            return
+        path = str(row.get("path", ""))
+        text = self.ai.read_note(path) if path and self.vault.exists(path) else None
+        if text is None:
+            ui.notify("That note is not available any more.", position="bottom", timeout=2500)
+            return
+        line = anchor_line(text, str(row.get("anchor", "")), int(row.get("start", 1) or 1))
+        if line is None:
+            ui.notify("This part changed since the answer.", position="bottom", timeout=2500)
+            line = int(row.get("start", 1) or 1)
+        self._open_at(path, line, bool(args.get("split")))
 
     def _msg_button(self, icon: str, label: str, on_click: Callable[[], object]) -> ui.button:
         button = ui.button(icon=ico(icon), on_click=on_click, color=None)

@@ -62,7 +62,7 @@ RESULTS = ResultSet(
 def test_locate_lists_sure_then_maybe() -> None:
     text = locate(RESULTS).text
     assert text.startswith("Found 3 notes.")
-    assert "1. **Yunus** — `Research`: founder" in text
+    assert "1. **Yunus** (Research): founder" in text
     assert "Might also be related:\n- Maybe: touches it" in text
     only_maybe = locate(ResultSet("q", [ResultItem("a.md", "A", relevance="maybe")])).text
     assert only_maybe.startswith("Possibly related:")

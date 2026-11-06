@@ -346,13 +346,27 @@ chat, not a second chat.
 - Later: "Ask the vault" from the Ask box (selection → related notes → link them here),
   saved searches in the left pane, suggested links.
 
+**As built (M7 first round, 2026-11-06):** a vault answer carries a payload saved with the
+chat turn (`SavedTurn.vault`: `kind`, `cites`, `chips`, `steps`, `review`); the chat draws
+chips under the newest vault answer only (a chip sends its text as the next message, or opens
+notes), folds the plan's steps under a multi-step answer, and shows progress in the existing
+status line. Hints exist only as chips. Real-app check: `tools/qa_vault_chat.py`.
+
 ### 7.1 Citations (user 2026-11-06)
 
 One citation system for every AI answer that uses notes: the normal chat, `@vault`, the
 vault agent, and later PDF pages (v2). Today the chat only lists the notes that were *sent*
 (P22.11 Sources, whole notes); this replaces that with checked, clickable citations.
 
-**Model side — labels, not paths** (`core/ai/cite.py`, no UI imports):
+**As built (MC first round, 2026-11-06):** pills from `[n]` in the answer and its Sources line
+(`gui/vault_render.py`; code, tags and unknown numbers left alone), one numbering across the
+steps of an answer (`session.relabel`), hover = note § section + the start of the cited text,
+click → `static/chat.js` `pp_cite` → `ChatPane._open_cite` → the note at the cited line via
+`EditorPane.open_link` (glide + flash), Ctrl+click → split view; the line is found again from
+the saved anchor (`cite.anchor_line`); a gone note / part says so. Still to come: the lasting
+band, a richer preview card, saved paths following renames, wikilinks on Insert into note.
+
+**Model side — labels, not paths** (`core/ai/vault/cite.py`, no UI imports):
 - Every note / section put in the prompt gets a short label: `[1]`, `[2]`…, with its title
   and heading. The prompt asks the model to put the label after each claim it takes from
   that source, and to quote briefly when it states a fact.

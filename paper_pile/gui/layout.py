@@ -720,8 +720,25 @@ class MainLayout:
             apply_to_note=self._apply_to_note,
             open_note=lambda path: self.bus.publish("tree.open", path=path),
             edit_in_note=self.editor_pane.edit_in_note,
+            open_at=self._open_cited,
         )
         self.chat.build()
+
+    def _open_cited(self, path: str, line: int, split: bool) -> None:
+        """A citation pill in the chat (PLAN_vault_agent §7.1): the note at the cited line —
+        the jump glides and flashes the line (P15.2); in split view with Ctrl."""
+        pane = self.editor_pane
+        if pane is None:
+            return
+
+        async def go() -> None:
+            if split:
+                await pane.open_in_split(path)
+                pane.goto_line(line)
+            else:
+                await pane.open_link(path, line=line)
+
+        pane._spawn(go())
 
     async def _apply_to_note(self, path: str, old: str, new: str) -> None:
         """A chat answer replaces the text it was asked about: shown as a diff in that note."""

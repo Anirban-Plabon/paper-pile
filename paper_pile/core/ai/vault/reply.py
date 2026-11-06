@@ -63,7 +63,7 @@ def locate(results: ResultSet) -> Reply:
         return Reply("No notes found.", results)
     lines: list[str] = []
     for i, item in enumerate(sure, 1):
-        where = f" — `{_folder(item.path)}`" if _folder(item.path) else ""
+        where = f" ({_folder(item.path)})" if _folder(item.path) else ""
         why = f": {item.reason}" if item.reason else ""
         lines.append(f"{i}. **{item.title}**{where}{why}")
     if maybe:

@@ -223,3 +223,31 @@ async def test_new_chat_forgets_the_last_result(setup: tuple[AiEngine, Backend])
     assert ai.vault_session().pending is not None
     ai.new_chat()
     assert ai.vault_session().pending is None and ai.vault_session().last is None
+
+
+async def test_payload_on_the_saved_reply(setup: tuple[AiEngine, Backend]) -> None:
+    ai, backend = setup
+    backend.plans["where are my microcredit notes?"] = {
+        "needs_vault": True,
+        "steps": [step(topic="microcredit", terms=["microcredit"])],
+        "question": "",
+        "options": [],
+    }
+    await ask(ai, "where are my microcredit notes?")
+    vault = ai.turns[-1].vault
+    assert vault["kind"] == "answer" and vault["steps"] == []
+    labels = [c["label"] for c in vault["chips"]]
+    assert "Summarise all" in labels and "Open all" in labels
+    backend.plans["summarise Pricing"] = {
+        "needs_vault": True,
+        "steps": [step("summarise", notes=["Pricing"])],
+        "question": "",
+        "options": [],
+    }
+    await ask(ai, "summarise Pricing")
+    question = ai.turns[-1].vault
+    assert question["kind"] == "question"
+    assert [c["send"] for c in question["chips"]] == ["Clients/Pricing", "Pricing"]
+    await ask(ai, "Clients/Pricing")  # what the chip sends answers the question
+    answered = ai.turns[-1].vault
+    assert answered["kind"] == "answer" and answered["cites"][0]["path"] == "Clients/Pricing.md"

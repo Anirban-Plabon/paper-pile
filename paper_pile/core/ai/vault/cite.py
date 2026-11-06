@@ -139,3 +139,24 @@ def to_wikilinks(text: str, sources: Sequence[Source], link: Callable[[str], str
         return f"({links})"
 
     return _LABELS.sub(swap, text)
+
+
+def anchor_line(text: str, anchor: str, start: int) -> int | None:
+    """The 1-based line where a citation's ``anchor`` (the start of the cited text,
+    whitespace-folded) begins in ``text`` now: ``start`` when it is still there, else where it
+    moved; None when it is gone (the note changed since the answer)."""
+    lines = text.split("\n")
+    if not anchor:
+        return start if 1 <= start <= len(lines) else None
+    want = " ".join(anchor.split())
+    key = want[: min(len(want), 40)]  # the first words: the rest may run over line breaks
+
+    def at(i: int) -> bool:
+        return " ".join(" ".join(lines[i - 1 :]).split()).startswith(key)
+
+    if 1 <= start <= len(lines) and at(start):
+        return start
+    for i in range(1, len(lines) + 1):
+        if key and key.split(" ", 1)[0] in lines[i - 1] and at(i):
+            return i
+    return None

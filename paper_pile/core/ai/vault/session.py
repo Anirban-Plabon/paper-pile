@@ -14,13 +14,14 @@ No UI imports; the engine is passed in (no import of ``engine`` at module level)
 """
 
 import logging
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field, replace
 from datetime import date
-from typing import TYPE_CHECKING, Literal
+from typing import TYPE_CHECKING, Any, Literal
 
 from paper_pile.core.ai.vault.candidates import Gatherer
 from paper_pile.core.ai.vault.cards import CardMaker, CardStore, card_search, card_summaries
+from paper_pile.core.ai.vault.cite import _LABELS, Source
 from paper_pile.core.ai.vault.edits import (
     Applied,
     EditBatch,
@@ -107,6 +108,77 @@ class Turn:
     sources: list[str] = field(default_factory=list)  # note paths the answer is from
     summary: str = ""  # the info line ("Vault: 4 notes · 2 steps")
     asked: bool = False  # the turn is a question to the user
+    payload: dict[str, Any] = field(default_factory=dict)  # SavedTurn.vault (cites, chips…)
+
+
+def chip(label: str, send: str = "", open_paths: Sequence[str] = ()) -> dict[str, Any]:
+    """A chip under the answer: clicking it sends ``send`` as the next message (the same path
+    as typing it), or opens ``open_paths``."""
+    out: dict[str, Any] = {"label": label}
+    if open_paths:
+        out["open"] = list(open_paths)
+    else:
+        out["send"] = send or label
+    return out
+
+
+def cite_rows(sources: Sequence[Source]) -> list[dict[str, Any]]:
+    """The citations as the chat file keeps them (P30.48): enough to open the note at the
+    cited lines and to find them again after edits (``anchor``)."""
+    return [
+        {
+            "n": s.n,
+            "path": s.path,
+            "title": s.title,
+            "heading": s.heading,
+            "start": s.start,
+            "end": s.end,
+            "anchor": s.anchor,
+        }
+        for s in sources
+    ]
+
+
+def relabel(reply: Reply, offset: int) -> Reply:
+    """``reply`` with its citation labels moved up by ``offset``: the steps of one answer
+    share one numbering, so every pill in it names one source."""
+    if not offset or not reply.sources:
+        return reply
+    text = _LABELS.sub(
+        lambda m: "[" + ", ".join(str(int(n) + offset) for n in m.group(1).split(",")) + "]",
+        reply.text,
+    )
+    sources = [replace(s, n=s.n + offset) for s in reply.sources]
+    checked = reply.checked
+    if checked is not None:
+        checked = replace(
+            checked,
+            text=text,
+            used=[n + offset for n in checked.used],
+            unverified=[n + offset for n in checked.unverified],
+        )
+    return replace(reply, text=text, sources=sources, checked=checked)
+
+
+def hint_chips(reply: Reply, message: str) -> list[dict[str, Any]]:
+    """The reply's hints as chips (data-made, §3.5): each sends a message the agent already
+    understands, or opens notes."""
+    out: list[dict[str, Any]] = []
+    for h in reply.hints:
+        if h.kind == "action" and h.value == "open":
+            out.append(chip(h.label, open_paths=[i.path for i in reply.results.sure()][:10]))
+        elif h.kind == "action" and h.value == "summarise":
+            out.append(chip(h.label, "Summarise these notes"))
+        elif h.kind == "action" and h.value == "extract":
+            out.append(chip(h.label, "Make a table of these notes"))
+        elif h.kind == "scope" and not h.value:
+            out.append(chip(h.label, f"@vault {message}"))
+        elif h.kind == "scope":
+            out.append(chip(h.label, f"Only the ones in @{h.value}/"))
+        elif h.kind == "near":
+            where = h.value if h.value.startswith("#") else f"@{h.value}/"
+            out.append(chip(h.label, f"{message} {where}"))
+    return out
 
 
 def agent_mode(value: object) -> Mode:
@@ -160,7 +232,7 @@ def question_text(choice: Choice) -> str:
 
 def reply_markdown(replies: list[Reply], titles: list[str]) -> str:
     """The step replies as one chat answer: each step's text, then its sources, notices,
-    the unverified-citations line and the next-step hints."""
+    the unverified-citations line. Next-step hints are chips (``payload["chips"]``), not text."""
     blocks: list[str] = []
     many = len(replies) > 1
     for title, reply in zip(titles, replies, strict=False):
@@ -176,8 +248,6 @@ def reply_markdown(replies: list[Reply], titles: list[str]) -> str:
             parts.append(f"_{note}_")
         if reply.unverified_note:
             parts.append(f"_{reply.unverified_note}_")
-        if reply.hints:
-            parts.append("Next: " + " · ".join(h.label for h in reply.hints))
         blocks.append("\n\n".join(parts))
     return "\n\n---\n\n".join(blocks)
 
@@ -327,7 +397,13 @@ class VaultSession:
 
     def _ask(self, pending: Pending) -> Turn:
         self.pending = pending
-        return Turn(question_text(pending.choice), asked=True, summary="Vault: a question first")
+        choice = pending.choice
+        return Turn(
+            question_text(choice),
+            asked=True,
+            summary="Vault: a question first",
+            payload={"kind": "question", "chips": [chip(o) for o in choice.options]},
+        )
 
     # ---- changes to notes (M6) -----------------------------------------------------------------
 
@@ -346,6 +422,14 @@ class VaultSession:
             [e.path for e in batch.ready if not e.new],
             f"Vault: {n} change{'s' if n != 1 else ''} to review",
             asked=True,
+            payload={
+                "kind": "review",
+                "chips": [chip(APPLY), chip(CANCEL)],
+                "review": [
+                    {"n": i, "title": e.title, "path": e.path, "new": e.new}
+                    for i, e in enumerate(batch.ready, 1)
+                ],
+            },
         )
 
     async def _apply(
@@ -354,7 +438,11 @@ class VaultSession:
         assert pending.batch is not None
         batch = pending.batch
         if picked == "cancel":
-            return Turn("Cancelled: no note was changed.", summary="Vault: cancelled")
+            return Turn(
+                "Cancelled: no note was changed.",
+                summary="Vault: cancelled",
+                payload={"kind": "cancelled"},
+            )
         status("Applying the changes…")
         writer = self.writer()
         done = apply_batch(batch, None if picked == "all" else list(picked), writer)  # type: ignore[arg-type]
@@ -386,8 +474,14 @@ class VaultSession:
             lines.append(
                 f"Reply “{UNDO}” to put the {n} note{'s' if n != 1 else ''} back as they were."
             )
+        chips = [chip(UNDO)] if done.before else []
+        if done.paths:
+            chips.append(chip("Open them", open_paths=done.paths[:10]))
         return Turn(
-            "\n".join(lines) or "Nothing was changed.", done.paths, "Vault: changes applied"
+            "\n".join(lines) or "Nothing was changed.",
+            done.paths,
+            "Vault: changes applied",
+            payload={"kind": "applied", "chips": chips},
         )
 
     def _undo(self, applied: Applied) -> Turn:
@@ -405,7 +499,12 @@ class VaultSession:
                 + ", ".join(applied.created)
                 + " (delete them to the trash if not needed)."
             )
-        return Turn("\n".join(lines) or "Nothing to undo.", restored, "Vault: undone")
+        return Turn(
+            "\n".join(lines) or "Nothing to undo.",
+            restored,
+            "Vault: undone",
+            payload={"kind": "undone"},
+        )
 
     async def _run(
         self,
@@ -435,8 +534,20 @@ class VaultSession:
         batch = next((r.review for r in result.replies if r.review is not None), None)
         if batch is not None and batch.ready:
             return self._review(message, plan, batch)
-        titles = [f"{i}. {line.split('. ', 1)[-1]}" for i, line in enumerate(card_lines(plan), 1)]
-        text = reply_markdown(result.replies, titles) or "Stopped."
+        steps = card_lines(plan)
+        titles = [f"{i}. {line.split('. ', 1)[-1]}" for i, line in enumerate(steps, 1)]
+        replies, offset = [], 0
+        for r in result.replies:  # one numbering for the whole answer: one source per pill
+            replies.append(relabel(r, offset))
+            offset += len(r.sources)
+        text = reply_markdown(replies, titles) or "Stopped."
+        chips = hint_chips(replies[-1], message) if replies else []
+        payload = {
+            "kind": "answer",
+            "cites": cite_rows([s for r in replies for s in r.sources]),
+            "chips": chips,
+            "steps": steps if many else [],
+        }
         sources = list(dict.fromkeys(s.path for r in result.replies for s in r.sources))
         if not sources:  # a list of notes cites nothing: the chat lists the notes found
             sources = [i.path for r in result.replies for i in r.results.sure()]
@@ -444,4 +555,4 @@ class VaultSession:
         notes = len(self.last) if self.last is not None else 0
         word = "note" if notes == 1 else "notes"
         summary = f"Vault: {notes} {word}" + (f" · {len(plan.steps)} steps" if many else "")
-        return Turn(text, sources, summary)
+        return Turn(text, sources, summary, payload=payload)

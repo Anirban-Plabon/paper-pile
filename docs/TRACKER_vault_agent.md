@@ -20,8 +20,11 @@ Legend: 🧠 = needs Opus · ⬜ todo · 🔄 in progress · ✅ done · ⛔ blo
   falls back unchanged; Settings → AI → Search the whole vault (Auto / With @ only / Off)
 - **M6 — Edits across notes** (2026-11-06): built — review in the chat, apply only what is
   picked, never over a changed note, Undo; the app's writer goes through the editor
-- **Next task:** M7 UI (step card, result blocks, chips, the review list as UI) and MC citation
-  UI; M0 eval when the user says so
+- **M7 / MC first round** (2026-11-06): chips, citation pills (hover, click → note at the line),
+  folded steps, structured answers saved in chats; real-app check `tools/qa_vault_chat.py` 14/14
+- **Next task:** M8 safety (injection / privacy gates, PLAN §8 text); then the rest of M7 / MC
+  (step card with call count, per-note review list, preview card, citation band, rename of saved
+  citations); M0 eval when the user says so
 - **Waiting on the user:** open questions (PLAN_vault_agent §11) — languages in the test
   vault, background note cards, budgets, model-made hints. Defaults are in §10.
 
@@ -93,7 +96,7 @@ Legend: 🧠 = needs Opus · ⬜ todo · 🔄 in progress · ✅ done · ⛔ blo
 |---|---|---|---|
 | P30.29a | Orchestration spike: LangGraph vs own state machine | ✅ | 2026-11-06 · same review flow (pause for review → new process resumes) both ways; own state machine chosen (Decision log) |
 | P30.29 🧠 | `propose_edit` over the edit pipeline | 🔄 | 2026-11-06 · `vault/edits.py`: target call (add / remove / change + section), one `EditRun` per note with the section as selection, removal by Python (no model); gemma4 added Sources sections to 2 notes; eval pending |
-| P30.30 | Dry run + review list | 🔄 | 2026-11-06 · dry run (left out + why), review as numbered diffs in the chat; "Apply all" / note numbers / "Cancel" by the next message; never applied without it (tests). The clickable review list is UI (M7) |
+| P30.30 | Dry run + review list | 🔄 | 2026-11-06 · dry run (left out + why), numbered diffs in the chat, Apply all / Cancel as chips (picking some notes: their numbers typed), then Undo + Open them chips; real-app check (`tools/qa_vault_chat.py`: Apply all clicked → file changed, Undo clicked → restored). A per-note accept / reject list is still to come |
 | P30.31 | Checkpoint + Undo (N notes) | ✅ | 2026-11-06 · texts before kept per change; "Undo" writes them back, a note changed again is left alone; the app's `EditorWriter` keeps a version-history entry first (tests) |
 | P30.32 | `write` a new note | 🔄 | 2026-11-06 · `vault/newnote.py`: summary of the found notes, citations as `[[wikilinks]]`, a new-note diff; written under a free name, never over a note (tests); eval pending |
 | P30.33 | Disk-conflict handling | ✅ | 2026-11-06 · a note changed after its diff is never written; its change is made again and shown for review (test through the chat) |
@@ -102,9 +105,9 @@ Legend: 🧠 = needs Opus · ⬜ todo · 🔄 in progress · ✅ done · ⛔ blo
 | ID | Task | Status | Notes |
 |---|---|---|---|
 | P30.49 | Connect the agent to the chat | ✅ | 2026-11-06 · `vault/session.py` + `AiEngine.answer()` / `vault_session()`; `ai.vault_agent` auto / at / off (Settings → AI); attachments and `@note` keep the old path; `@folder/` forced on steps; questions answered by the next message; reset on new / opened chat (8 tests through `answer()`); gemma4 run through `answer()`: list → "summarise Pricing" → "2" → "capital of France" all right. The app process must be restarted to pick it up |
-| P30.34 | Step card | ⬜ | |
-| P30.35 | Result blocks | ⬜ | |
-| P30.36 | Chips | ⬜ | |
+| P30.34 | Step card | 🔄 | 2026-11-06 · live steps in the chat's status line ("Step 2: Checking which notes fit 4/10…"), the plan's steps folded under a multi-step answer; Stop is the chat's own. A separate card with the call count is still to come |
+| P30.35 | Result blocks | 🔄 | 2026-11-06 · lists, tables and summaries as markdown in the answer; citations jump to the cited lines; "Open all" chip. Rich blocks (clickable rows, sortable tables) still to come |
+| P30.36 | Chips | ✅ | 2026-11-06 · under the newest vault answer only: question options, Apply all / Cancel, Undo, hints (Summarise all, Make a table, Open all, Search the whole vault, Only <folder>, nearest tags / folders); a chip sends its text as the next message (same path as typing) or opens notes; payload saved in the chat file; real-app check with real clicks (14 checks) |
 
 ### M8 — Safety and release
 | ID | Task | Status | Notes |
@@ -125,10 +128,10 @@ Legend: 🧠 = needs Opus · ⬜ todo · 🔄 in progress · ✅ done · ⛔ blo
 |---|---|---|---|
 | P30.43 | Source labels + label → location map | 🔄 | 2026-11-06 · `cite.py` `Source` (path, heading, lines, anchor), labels in the prompt as data; used by the vault agent — the normal chat and `@vault` still to switch over |
 | P30.44 | Citation check | 🔄 | 2026-11-06 · unknown labels dropped, quotes (≥ 12 chars) checked against their source, "N citations could not be verified" footer (5 tests); eval number pending |
-| P30.45 | Pills + numbered Sources + preview card | ⬜ | |
-| P30.46 | Click → open, flash, band; Ctrl+click → split | ⬜ | |
-| P30.47 | Re-find after edits; rename / delete / private | ⬜ | |
-| P30.48 | Saved in chats + Insert as section wikilinks | ⬜ | |
+| P30.45 | Pills + numbered Sources + preview card | 🔄 | 2026-11-06 · `[n]` → pills in the answer and the Sources line (`gui/vault_render.py`), one numbering across steps; hover = note § section + the start of the cited text (the app tooltip). A richer preview card is still to come |
+| P30.46 | Click → open, flash, band; Ctrl+click → split | 🔄 | 2026-11-06 · click (real-app check) opens the note at the cited line with the jump glide + flash (P15.2); Ctrl+click opens it in split view (not yet checked in the app); the lasting citation band is still to come |
+| P30.47 | Re-find after edits; rename / delete / private | 🔄 | 2026-11-06 · `cite.anchor_line` finds moved text again (tests); gone → "This part changed since the answer"; deleted / private note → "not available any more". Updating saved paths on rename is still to come |
+| P30.48 | Saved in chats + Insert as section wikilinks | 🔄 | 2026-11-06 · citations saved in the chat file (`SavedTurn.vault`, round-trip test); a new note gets `[[note#heading]]` links; "Insert into note" of a vault answer still inserts `[n]` |
 
 ## Decision log
 | Date | Decision | Reason | By |
@@ -168,6 +171,10 @@ Legend: 🧠 = needs Opus · ⬜ todo · 🔄 in progress · ✅ done · ⛔ blo
 | 2026-11-06 | Section removal done by Python, not the model; the diff region takes a neighbouring line so no blank line is left | Deterministic and exact; a region keeps its last line break, so replacing whole lines by "" left an empty line (found by a test) | claude |
 | 2026-11-06 | An edit / write on a named folder, tag or notes takes all of them (no search, no judge); topic edits search and judge by the topic | "Add Sources to every note in Research" must not be filtered by relevance to the instruction | claude |
 | 2026-11-06 | A pending review / undo lives in memory (lost when the app restarts or the next message is something else) | Enough for the text chat; persisting it under `.paper-pile/` comes with the M7 review list | claude |
+| 2026-11-06 | Vault answers keep their structure in the chat file (`SavedTurn.vault`: kind, cites, chips, steps; old files read as {}) — PLAN §4.26 format extended | Pills and chips need the data after a restart; the text alone loses which [n] is which note |  claude |
+| 2026-11-06 | Chips send their text as the next message (or open notes) instead of calling the agent directly | One path for typed and clicked answers: the session's pending question / review handles both, history shows what was chosen, nothing new to test twice | claude |
+| 2026-11-06 | Hints are chips only (no "Next: …" line in the answer text); chips only under the newest answer | The text line repeated the chips; older answers' chips would answer a question that is no longer open | claude |
+| 2026-11-06 | Citation pill clicks: a capture-phase listener in `static/chat.js` → `pp_cite` → Python opens the note (`Layout._open_cited`) | No editor-bundle rebuild; the bundle's link handler never sees pill clicks | claude |
 
 ## Issues log
 | Date | Task | Symptom | Root cause | Fix | Gotcha? |
@@ -184,3 +191,4 @@ Legend: 🧠 = needs Opus · ⬜ todo · 🔄 in progress · ✅ done · ⛔ blo
 - 2026-11-06 · P30.25–P30.28 agent loop, routing, plan card data, memory file (M5); gemma4: pricing 2025 → 2026 compared in one step, every change cited [1, 2] · 1686 tests (+16)
 - 2026-11-06 · P30.49 agent connected to the chat through `AiEngine.answer()` + setting; gemma4 through `answer()`: list, named-note summary, follow-up by number, plain question all right · 1694 tests (+8)
 - 2026-11-06 · P30.29a spike (own state machine) + P30.29–P30.33 edits across notes (M6): review, apply picked, redo over changed notes, Undo, new note; gemma4 through `answer()`: Sources added to 2 Research notes, applied, undone · 1706 tests (+12)
+- 2026-11-06 · M7 / MC first round: chips, citation pills (hover, click → note at the line, anchors found again), folded steps, structured answers saved in chats; real-app QA `tools/qa_vault_chat.py` 14/14 (question → chip → summary with pills → pill opens note → edit review → Apply all → Undo) · 1715 tests (+9)

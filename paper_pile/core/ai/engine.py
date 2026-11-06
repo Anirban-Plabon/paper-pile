@@ -827,6 +827,7 @@ class AiEngine:
         )
         if turn is not None:
             reply.text, reply.sources, reply.summary = turn.text, turn.sources, turn.summary
+            reply.vault = turn.payload
             yield turn.text
             return
         window = await self.window()

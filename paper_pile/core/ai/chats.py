@@ -56,6 +56,9 @@ class SavedTurn:
     at: float = field(default_factory=time.time)  # when it was sent / answered (0: not known)
     tokens: int = 0  # an answer's tokens (the backend's count, else estimated; 0: not known)
     took: float = 0.0  # seconds an answer took, from sending to its last word (0: not known)
+    # a vault-agent answer's structure (PLAN_vault_agent §7): citations ("cites"), the chips to
+    # offer ("chips") and its steps; {} for every other turn and in older chat files
+    vault: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass(slots=True)
@@ -173,6 +176,7 @@ def _turn(raw: Any) -> SavedTurn | None:
         _number(raw.get("at")),
         int(_number(raw.get("tokens"))),
         _number(raw.get("took")),
+        raw["vault"] if isinstance(raw.get("vault"), dict) else {},
     )
 
 

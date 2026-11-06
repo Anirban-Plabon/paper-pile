@@ -184,3 +184,13 @@ document.addEventListener('mousedown', function (e) {
   }, true);
   setInterval(all, 250);
 })();
+// A citation pill in a vault answer (gui/vault_render.py): which answer and which source; Ctrl /
+// Cmd opens the note in split view. Python finds the note and the lines (chat.py _open_cite).
+// Capture phase: the chat's own link handler (editor bundle) never sees these clicks.
+document.addEventListener('click', function (e) {
+  const pill = e.target && e.target.closest && e.target.closest('a.pp-cite');
+  if (!pill) return;
+  e.preventDefault();
+  e.stopImmediatePropagation();
+  emitEvent('pp_cite', { turn: pill.dataset.turn, n: pill.dataset.n, split: e.ctrlKey || e.metaKey });
+}, true);
