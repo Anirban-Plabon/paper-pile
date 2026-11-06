@@ -12,8 +12,10 @@ from nicegui import app, ui
 
 from paper_pile.core import assets
 from paper_pile.core.export import export_html, export_markdown
+from paper_pile.core.index import search_body
 from paper_pile.core.links import link_keys
 from paper_pile.core.merge import plan_merge
+from paper_pile.core.parser import parse
 from paper_pile.core.picker import search_notes
 from paper_pile.core.titles import note_name
 from paper_pile.core.vault import VaultError
@@ -31,6 +33,7 @@ log = logging.getLogger("paper_pile.note_actions")
 
 VAULT_ROOT = ""
 SUMMARIZE = "Summarize this note in a few short bullet points."
+RELATED_WORDS = 160  # of a note's text that tells the agent its subject
 
 
 def note_actions(pane: "EditorPane", note: Callable[[], str | None] | None = None) -> NoteActions:
@@ -58,6 +61,7 @@ def note_actions(pane: "EditorPane", note: Callable[[], str | None] | None = Non
         merge=with_note(lambda p: _merge(pane, p)),
         add_to_chat=with_note(pane.add_to_chat),
         summarize=with_note(lambda p: _ask(pane, p, SUMMARIZE, send=True)),
+        related=with_note(lambda p: _ask(pane, p, related_prompt(pane, p), send=True)),
         edit=with_note(pane.edit_note),
         copy_path=with_note(lambda p: _copy(pane, p)),
         copy_full_path=with_note(lambda p: _copy(pane, str(pane.vault.resolve(p)))),
@@ -65,6 +69,20 @@ def note_actions(pane: "EditorPane", note: Callable[[], str | None] | None = Non
         export_html=with_note(lambda p: _export(pane, p, "html")),
         export_pdf=with_note(lambda p: _export_pdf(pane, p)),
     )
+
+
+def related_prompt(pane: "EditorPane", path: str) -> str:
+    """The chat message that asks the vault agent for notes on the same subject as
+    ``path``: its title and its first words, so the agent knows the subject (it does not
+    read attached notes when it decides what to search)."""
+    title = (pane.index.title(path) if pane.index is not None else None) or path
+    try:
+        body = pane.note_text(path)
+    except (VaultError, OSError):
+        body = ""
+    words = " ".join(search_body(body, parse(body)).split())[:RELATED_WORDS]
+    about = f": {words}…" if words else ""
+    return f"@vault Which other notes are about the same subject as “{title}”{about}"
 
 
 async def _ask(pane: "EditorPane", path: str, prompt: str, *, send: bool) -> None:

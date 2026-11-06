@@ -28,6 +28,7 @@ LABELS = {
     "merge": "Merge into…",
     "add_to_chat": "Add to chat",
     "summarize": "Summarize",
+    "related": "Related notes",
     "edit": "Edit…",
     "copy_path": "Copy path",
     "copy_full_path": "Copy full path",

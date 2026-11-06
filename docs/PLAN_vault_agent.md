@@ -647,6 +647,17 @@ green + the stated eval numbers recorded in the tracker. 🧠 = needs Opus.
 | P30.47 | Re-find after edits; rename / delete / private handling | tests: changed note (anchor found / not found), renamed path updated in the chat file, deleted → dimmed |
 | P30.48 | Citations saved in chats + Insert into note as section wikilinks | reopened chat keeps citations (test); inserted answer holds `[[note#heading]]` links (test) |
 
+## 12a. M9 as built (2026-11-06)
+
+- **Related notes** (P30.39): the note's ⋯ → AI → *Related notes* sends `@vault Which other notes
+  are about the same subject as “<title>”: <first words>…` with the note attached; the agent
+  leaves that note out of its results.
+- **Link them here** (P30.42): a chip under that answer; the sure notes the note does not link
+  to yet go into its `## Related` section (made if missing) as a review diff.
+- **Saved searches** (P30.41): a *Save this search* chip; the chat's ⋯ menu lists them (click:
+  ask again; bin: forget); `.paper-pile/searches.json`.
+- **Embeddings** (P30.40): not done — it is an experiment measured by the eval.
+
 ## 13. Manual QA checklist (filled as features land)
 - [ ] A vault-wide summary in the native window and in `--serve`
 - [ ] Stop during a 30-note summary leaves no half state
@@ -658,3 +669,6 @@ green + the stated eval numbers recorded in the tracker. 🧠 = needs Opus.
 - [ ] Settings → AI → Search the whole vault: Auto / With @ only / Off each behave as described (§6a)
 - [ ] A real model (2+): a hostile note ("ignore the user…") is not obeyed in locate, summarise, compare
 - [ ] An edit across notes while one of them is open with unsaved typing: never written over
+- [ ] Note ⋯ → AI → Related notes, then Link them here: Related section with only new links
+- [ ] Save this search → chat ⋯ menu → click it: asked again; bin forgets it
+- [ ] Settings → AI → Notes for the AI about this vault; "remember …" in the chat → Save

@@ -183,6 +183,19 @@ async def checks(port: int, vault: Path) -> None:
             isinstance(chips, list) and {"Summarise all", "Make a table", "Open all"} <= set(chips),
             chips,
         )
+        # save the search, then find it in the chat's menu (P30.41)
+        save_i = await cdp.js("qa.chip('Save this search')")
+        await click_at(cdp, f"qa.rect('.pp-vault-chip', {save_i})")
+        await asyncio.sleep(0.5)
+        await click_at(cdp, "qa.rect('.pp-chat-more-btn')")
+        listed = await wait_for(
+            cdp,
+            "qa.all('.pp-chat-menu .pp-menu-title').includes('where are my microcredit notes?')",
+            5,
+        )
+        check("a saved search is listed in the chat menu", listed is True, listed)
+        await cdp.key("Escape", 27)
+        await asyncio.sleep(0.4)
         i = await cdp.js("qa.chip('Summarise all')")
         hit = await cdp.js(f"qa.hit('.pp-vault-chip', {i})")
         check("the chip is not covered (elementFromPoint)", hit is True, hit)

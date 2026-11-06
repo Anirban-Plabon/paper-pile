@@ -839,6 +839,7 @@ class AiEngine:
             attached=attached,
             open_note=self.link_name(snap.path) if snap.path else "",
             on_status=on_status,
+            from_note=self._from_note(out, scopes),
         )
         if turn is not None:
             reply.text, reply.sources, reply.summary = turn.text, turn.sources, turn.summary
@@ -875,6 +876,14 @@ class AiEngine:
             reply.cut = True
             reply.text = (reply.text + "\n\n" + CUT_OFF).strip()
         self._chat_citations(reply, context)
+
+    def _from_note(self, out: Outgoing, scopes: list[str]) -> str:
+        """The note an ``@vault`` request is about (the first attached note): the vault
+        agent leaves it out of its own results and can link the found notes into it
+        (Related notes, PLAN_vault_agent P30.39 / P30.42); "" otherwise."""
+        if not scopes or not out.notes:
+            return ""
+        return resolve_wikilink(out.notes[0], "", self.note_paths()) or ""
 
     @staticmethod
     def _chat_citations(reply: SavedTurn, context: Context) -> None:

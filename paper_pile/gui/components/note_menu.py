@@ -28,6 +28,7 @@ class NoteActions:
     merge: Action
     add_to_chat: Action
     summarize: Action
+    related: Action  # the vault agent: notes on the same subject (PLAN_vault_agent P30.39)
     edit: Action  # the Ask box on the whole note: say what to write or change
     copy_path: Action
     copy_full_path: Action
@@ -72,6 +73,7 @@ class NoteMenu:
             for icon, label, action in (
                 ("sparkles", "Add to chat", a.add_to_chat),
                 ("list-collapse", "Summarize", a.summarize),
+                ("waypoints", "Related notes", a.related),
                 ("pen-line", "Edit…", a.edit),
             ):
                 self._item(icon, label, action)

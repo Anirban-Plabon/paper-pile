@@ -33,6 +33,7 @@ class Model:
 
     def __init__(self, topic: str = "microcredit") -> None:
         self.topic = topic
+        self.maybe = ""  # cards with this word are judged "maybe"
         self.streamed: list[str] = []
 
     async def stream(self, msgs: Any, *, think: bool | None = None) -> AsyncIterator[str]:
@@ -45,7 +46,7 @@ class Model:
             cards = body.split("\n\n")[2:]
             return {
                 "verdicts": [
-                    {"n": n, "relevance": "yes" if self.topic in c.lower() else "no", "reason": "r"}
+                    {"n": n, "relevance": self._verdict(c.lower()), "reason": "r"}
                     for n, c in enumerate(cards, 1)
                 ]
             }
@@ -54,6 +55,11 @@ class Model:
         if schema is cards_mod.SCHEMA:
             return {"summary": "A card.", "terms": []}
         raise AssertionError(f"unexpected schema {schema}")
+
+    def _verdict(self, card: str) -> str:
+        if self.maybe and self.maybe in card:
+            return "maybe"
+        return "yes" if self.topic in card else "no"
 
 
 @pytest.fixture
@@ -214,3 +220,14 @@ def test_meta_text() -> None:
     many = meta_text(MetaResult("recent", 5, ["path"], [["a.md"], ["b.md"]]))
     assert many.startswith("5 in all, the first 2:") and "| a.md |" in many
     assert meta_text(MetaResult("untagged", 0, ["path"], [])) == "None (untagged)."
+
+
+def test_a_later_step_takes_only_the_sure_notes(agent: VaultAgent) -> None:
+    agent.engine.maybe = "pilot"  # type: ignore[attr-defined]  # the journal note: maybe
+    req = request(
+        Step("locate", "microcredit", ("microcredit",)),
+        Step("summarise", "microcredit", depends_on=0),
+    )
+    out = asyncio.run(run_plan(agent, make_plan(req, agent.tools.resolver, None, "m"), "m"))
+    assert "Journal/2026-11-02.md" in out.replies[0].results.paths  # listed as maybe
+    assert "Journal/2026-11-02.md" not in [s.path for s in out.replies[1].sources]

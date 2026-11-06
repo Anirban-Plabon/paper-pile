@@ -20,6 +20,7 @@ from datetime import date
 from typing import TYPE_CHECKING, Any, Literal
 
 from paper_pile.core.ai.chats import moved_path
+from paper_pile.core.ai.proposals import propose
 from paper_pile.core.ai.vault.candidates import Gatherer
 from paper_pile.core.ai.vault.cards import (
     CardMaker,
@@ -32,9 +33,12 @@ from paper_pile.core.ai.vault.cite import _LABELS, Source
 from paper_pile.core.ai.vault.edits import (
     Applied,
     EditBatch,
+    NoteEdit,
     NoteWriter,
+    Target,
     VaultWriter,
     apply_batch,
+    find_named,
     redo_stale,
     review_text,
     undo,
@@ -50,6 +54,7 @@ from paper_pile.core.ai.vault.tools import VaultTools
 from paper_pile.core.ai.vault.understand import RequestContext, VaultRequest, understand_request
 from paper_pile.core.daily import DEFAULT_FORMAT
 from paper_pile.core.index import Index
+from paper_pile.core.vault import VaultError
 
 if TYPE_CHECKING:
     from paper_pile.core.ai.engine import AiEngine
@@ -83,6 +88,7 @@ class Pending:
 
 
 APPLY, CANCEL, UNDO = "Apply all", "Cancel", "Undo"
+LINK_HERE = "Link them here"  # Related notes: the found notes as links in that note
 EXCERPT_CHARS = 240  # of a cited part kept for its hover preview
 EXPIRED = (  # an answer to a review / undo that is no longer open
     "That change is no longer open (the app was restarted, or another message came in "
@@ -238,6 +244,19 @@ def with_scopes(request: VaultRequest, scopes: list[str]) -> VaultRequest:
     return replace(request, steps=steps)
 
 
+def related_section(text: str, lines: list[str]) -> str:
+    """``text`` with ``lines`` (``- [[link]]``) at the end of its ``Related`` section, or in
+    a new one at the end of the note."""
+    sec = find_named(text, "Related")
+    if sec is None:
+        return text.rstrip() + "\n\n## Related\n\n" + "\n".join(lines) + "\n"
+    rows = text.split("\n")
+    end = sec.end
+    while end > sec.start and not rows[end - 1].strip():  # after its last line
+        end -= 1
+    return "\n".join([*rows[:end], *lines, *rows[end:]])
+
+
 def question_text(choice: Choice) -> str:
     lines = [choice.question, ""]
     lines += [f"{i}. {opt}" for i, opt in enumerate(choice.options, 1)]
@@ -279,6 +298,7 @@ class VaultSession:
         self._agent: VaultAgent | None = None
         self._remote_ok = False  # this chat's user agreed to send notes to a remote backend
         self._calls0 = 0  # the engine's call count when the current request began
+        self.link_target = ""  # the note the last @vault request was about (Related notes)
 
     def reset(self) -> None:
         """A new or another chat: forget the last result, any open question and the remote
@@ -375,11 +395,21 @@ class VaultSession:
         open_note: str = "",
         on_status: Callable[[str], None] | None = None,
         stop: Callable[[], bool] = lambda: False,
+        from_note: str = "",
     ) -> Turn | None:
-        """The agent's answer to ``message``, or None: the chat answers it the usual way."""
+        """The agent's answer to ``message``, or None: the chat answers it the usual way.
+        ``from_note``: the note an ``@vault`` request is about (left out of its results;
+        \"Link them here\" links the found notes into it)."""
         mode = agent_mode(
             self.engine.config.get("ai.vault_agent", "auto") if self.engine.config else "auto"
         )
+        if (
+            self.pending is None
+            and message.strip().casefold() == LINK_HERE.casefold()
+            and self.link_target
+            and self.last is not None
+        ):
+            return self._link_here()
         expired = (  # one of our own chips' answers, but the question it answered is gone
             self.pending is None
             and message.strip().casefold() in _OWN_ANSWERS
@@ -426,6 +456,7 @@ class VaultSession:
         facts = [s.detail for s in request.steps if s.action == "remember" and s.detail]
         if facts:  # a fact about the vault to keep: the memory file, after a review
             return self._remember(message, facts)
+        self.link_target = from_note
         request = with_scopes(request, scopes)
         plan = make_plan(request, agent.tools.resolver, self.last, message, scopes)
         if plan.choice is not None:
@@ -500,6 +531,36 @@ class VaultSession:
             asked=True,
             payload={"kind": "question", "chips": [chip("Save"), chip("Cancel")]},
         )
+
+    def _link_here(self) -> Turn:
+        """The found notes as links in a Related section of the note the request came
+        from (P30.42) — only notes it does not link to yet; a review, like any change."""
+        target, last = self.link_target, self.last
+        assert last is not None
+        writer = self.writer()
+        try:
+            text = writer.read(target)
+        except (VaultError, OSError):
+            return Turn("That note is not there any more.", summary="Vault: nothing to link")
+        linked = self._links_from(target)
+        found = [i for i in last.sure() if i.path != target and i.path not in linked]
+        if not found:
+            return Turn("It already links to every note found.", summary="Vault: nothing to link")
+        lines = [f"- [[{self.engine.link_name(i.path)}]]" for i in found]
+        after = related_section(text, lines)
+        proposal = propose(target, text, 0, len(text), after)
+        title = target.rsplit("/", 1)[-1].removesuffix(".md")
+        batch = EditBatch(LINK_HERE, Target("add", "Related", "link the related notes"))
+        batch.edits.append(NoteEdit(target, title, text, proposal))
+        return self._review(LINK_HERE, Plan([]), batch)
+
+    def _links_from(self, path: str) -> set[str]:
+        agent = self._agent
+        if agent is None:
+            return set()
+        rows = agent.tools.resolver.readable()
+        paths = {r.path for r in rows}
+        return set(agent.tools.resolver._links_out({path}, paths))
 
     def _ask(self, pending: Pending) -> Turn:
         self.pending = pending
@@ -635,8 +696,9 @@ class VaultSession:
             n = self.calls()
             status(f"{prefix}{label}{count}… · {n} model call{'s' if n != 1 else ''}")
 
+        skip = frozenset({self.link_target}) if self.link_target else frozenset()
         result: RunResult = await run_plan(
-            agent, plan, message, on_progress=progress, use_best=use_best, stop=stop
+            agent, plan, message, on_progress=progress, use_best=use_best, stop=stop, skip=skip
         )
         if result.choice is not None:
             return self._ask(Pending(message, plan, result.choice, use_best=use_best))
@@ -653,6 +715,10 @@ class VaultSession:
             offset += len(r.sources)
         text = reply_markdown(replies, titles) or "Stopped."
         chips = hint_chips(replies[-1], message) if replies else []
+        if self.link_target and self.last is not None and self.last.sure():
+            chips.insert(0, chip(LINK_HERE))  # Related notes: link them into the note
+        if self.last is not None and len(self.last):  # ask it again later (P30.41)
+            chips.append({"label": "Save this search", "save": message})
         payload = {
             "kind": "answer",
             "cites": cite_rows([s for r in replies for s in r.sources]),

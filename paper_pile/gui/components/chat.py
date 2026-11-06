@@ -52,6 +52,7 @@ from paper_pile.core.ai.options import Option, suggest_options
 from paper_pile.core.ai.prompts import load_prompts, prompts_file, selection_kind, suggestions
 from paper_pile.core.ai.provider import Health, ProviderError, ProviderUnavailableError
 from paper_pile.core.ai.vault.cite import anchor_line, answer_for_note
+from paper_pile.core.ai.vault.searches import remove_search, save_search, saved_searches
 from paper_pile.core.links import resolve_wikilink, wikilink_to
 from paper_pile.core.parser import render_chat_html
 from paper_pile.core.picker import switcher_notes
@@ -440,10 +441,42 @@ class ChatPane:
                     ui.label(f"More chats ({len(chats) - RECENT_CHATS})").classes("pp-menu-title")
                     line_icon("chevron-right", "s").classes("pp-menu-check")
                     self._more_chats_menu(chats[RECENT_CHATS:], menu, busy)
+            searches = saved_searches(self.vault.root)
+            if searches:  # vault questions to ask again (PLAN_vault_agent P30.41)
+                ui.separator()
+                ui.label("Saved searches").classes("pp-menu-caption")
+                for question in searches[:RECENT_CHATS]:
+                    self._search_item(question, menu, busy)
             ui.separator()
             with ui.menu_item(on_click=lambda _e=None: self._open_settings()):
                 line_icon("settings").classes("pp-menu-icon")
                 ui.label("AI settings").classes("pp-menu-title")
+
+    def _search_item(self, question: str, root: ui.menu, busy: bool) -> None:
+        """A saved search (P30.41): click asks it again; the bin forgets it (like a saved
+        chat's row)."""
+
+        async def run() -> None:
+            root.close()
+            if self._task is None:
+                self._input.set_value(question)
+                await self.send()
+
+        def forget() -> None:
+            remove_search(self.vault.root, question)
+            self._build_chat_menu(root)
+
+        item = ui.menu_item(on_click=run).classes("pp-chat-saved")
+        if busy:
+            item.props("disable")
+        with item:
+            line_icon("search").classes("pp-menu-icon")
+            tip(ui.label(question).classes("pp-menu-title"), question)
+            remove = line_icon("trash-2", "s").classes("pp-chat-saved-del")
+            tip(remove, "Forget this search")
+            remove.props("tabindex=0 role=button aria-label='Forget this search'")
+            remove.on("click.stop", lambda _e: forget())
+            remove.on("keydown.enter.stop", lambda _e: forget())
 
     def _chat_item(self, chat: SavedChat, root: ui.menu, busy: bool) -> None:
         item = ui.menu_item(on_click=lambda _e=None, c=chat.id: self.open_chat(c))
@@ -638,7 +671,15 @@ class ChatPane:
             ).classes("pp-vault-chip pp-vault-apply")
 
     async def _vault_chip(self, c: dict[str, object]) -> None:
-        """A chip: open notes, or send its text as the next message — the same path as typing."""
+        """A chip: open notes, save the search, or send its text as the next message — the
+        same path as typing."""
+        saved = c.get("save")
+        if isinstance(saved, str):
+            if save_search(self.vault.root, saved):
+                ui.notify(
+                    "Saved — run it again from the chat menu (⋯)", position="bottom", timeout=2500
+                )
+            return
         paths = c.get("open")
         if isinstance(paths, list):
             for path in paths:

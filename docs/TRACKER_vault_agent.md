@@ -27,7 +27,10 @@ Legend: 🧠 = needs Opus · ⬜ todo · 🔄 in progress · ✅ done · ⛔ blo
 - **M7 / MC done** (2026-11-06, round A): see the task rows; real-app QA 19/19, editor QA 359/359
 - **Round B done** (2026-11-06): memory file in Settings + "remember …" in the chat
 - **Round C done** (2026-11-06): citations in the normal chat
-- **Next task:** round D (M9: Ask the vault from the Ask box, saved searches, suggested links)
+- **Round D done** (2026-11-06): Related notes + Link them here, saved searches; P30.40 left for
+  the eval
+- **Next task:** M0 eval when the user says so (it decides every 🔄 above); the user's QA pass
+  (P30.38)
   (step card with call count, per-note review list, preview card, citation band, rename of saved
   citations); M0 eval when the user says so
 - **Waiting on the user:** open questions (PLAN_vault_agent §11) — languages in the test
@@ -123,10 +126,10 @@ Legend: 🧠 = needs Opus · ⬜ todo · 🔄 in progress · ✅ done · ⛔ blo
 ### M9 — Later
 | ID | Task | Status | Notes |
 |---|---|---|---|
-| P30.39 | Ask the vault from the Ask box | ⬜ | |
-| P30.40 | Embeddings experiment | ⬜ | only on a measured recall gap |
-| P30.41 | Saved searches | ⬜ | |
-| P30.42 | Suggested links | ⬜ | |
+| P30.39 | Ask the vault from the Ask box | 🔄 | 2026-11-06 · note ⋯ → AI → Related notes: asks the vault agent (@vault, the note's title + first words, the note attached); the note is left out of its own results; tested through `answer()` and on gemma4 (Yunus → journal, Banker to the Poor, Enterprise models; a hostile note judged only "maybe"). Not yet clicked in the real-app QA |
+| P30.40 | Embeddings experiment | ⏭️ | 2026-11-06 · skipped on purpose: it only exists to be measured against the eval (adopt embeddings only on a measured recall gain); waits for M0 |
+| P30.41 | Saved searches | ✅ | 2026-11-06 · "Save this search" chip under vault answers; `.paper-pile/searches.json` (`vault/searches.py`, newest first, ≤ 30); the chat's ⋯ menu lists them (click asks again, bin forgets); real-app check (listed in the menu) |
+| P30.42 | Suggested links | 🔄 | 2026-11-06 · "Link them here" after Related notes: a `## Related` section (or the existing one) with [[links]] to the sure notes it does not link yet, as a review (Apply / Cancel / Undo); tests; gemma4 run. The eval's precision number is still to come |
 
 ### MC — Citations (can start after M1)
 | ID | Task | Status | Notes |
@@ -188,6 +191,10 @@ Legend: 🧠 = needs Opus · ⬜ todo · 🔄 in progress · ✅ done · ⛔ blo
 | 2026-11-06 | The memory file grows only when the user asks ("remember …" → a `remember` action, reviewed); the agent does not propose facts on its own | Facts the agent would infer need an extra model call per request and can be wrong; the user's own words are the evidence | claude |
 | 2026-11-06 | Emptying the memory file writes an empty file, never deletes it | Rule 4: it is the user's writing | claude |
 | 2026-11-06 | Normal chat: the notes block in the chat message is numbered and asks for [n]; the fixed system prompt and the one-shot command prompts are not changed | One citation system for every answer that uses notes (§7.1) without touching prompts the edit / command evals measure; the system prompt stays fixed for prompt caching | claude |
+| 2026-11-06 | Ask the vault from a note = ⋯ → AI → Related notes (a chat message the agent answers), not a new Ask-box command | The AI command registry is for text commands on a selection; the chat path already runs the agent, shows chips and keeps history | claude |
+| 2026-11-06 | Saved searches live in the chat's ⋯ menu, not the left pane (plan said the left pane) | They are chat questions: the menu next to where they run, no new pane | claude |
+| 2026-11-06 | A step working on an earlier step's notes takes only its sure ones (all when none are sure) | gemma4 run: a maybe note (a hostile one) became sure in the second step and was offered as a link | claude |
+| 2026-11-06 | Not fixed: gemma4 sometimes adds an "answer" step after a locate that only repeats the question | No general rule without word lists; the eval should measure how often (observed in the Related notes run) | claude |
 
 ## Issues log
 | Date | Task | Symptom | Root cause | Fix | Gotcha? |
@@ -211,3 +218,4 @@ Legend: 🧠 = needs Opus · ⬜ todo · 🔄 in progress · ✅ done · ⛔ blo
 - 2026-11-06 · M7 / MC round A: call count, per-note review ticks, note links, richer preview, citation band, renames, Insert as wikilinks, expired review message · 1724 tests; real-app QA 19/19; editor QA 359/359
 - 2026-11-06 · Round B: memory file in Settings (Edit dialog) + "remember …" in the chat (diff, Save / Cancel) · 1726 tests (+2); gemma4: both phrasings understood
 - 2026-11-06 · Round C: citations in the normal chat (numbered notes, checked, pills) · 1728 tests (+2); gemma4 cited the open note, none on a general question
+- 2026-11-06 · Round D (M9): Related notes + Link them here, saved searches, later steps take only sure notes · 1735 tests; real-app QA 20/20; gemma4 Related notes run

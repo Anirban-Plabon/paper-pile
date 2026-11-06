@@ -167,6 +167,7 @@ async def run_plan(
     on_text: Callable[[int, str], None] | None = None,
     use_best: bool = False,
     stop: Callable[[], bool] = lambda: False,
+    skip: frozenset[str] = frozenset(),
 ) -> RunResult:
     """Every step of a ready ``plan``. ``use_best``: the user already chose to go on with the
     best candidates when a step found more than the budget."""
@@ -207,9 +208,10 @@ async def run_plan(
             out.replies.append(Reply(meta_text(result)))
             found_by_step.append(ResultSet(request))
             continue
-        after = (
-            found_by_step[planned.after].paths if 0 <= planned.after < len(found_by_step) else None
-        )
+        after = None
+        if 0 <= planned.after < len(found_by_step):  # an earlier step's notes: its sure ones
+            earlier = found_by_step[planned.after]  # (a maybe must not become sure here)
+            after = [i.path for i in earlier.sure()] or earlier.paths
         # a change's instruction is not what notes are judged by: its topic is
         judged_by = step.topic if step.action in CHANGE_ACTIONS and step.topic else request
         found = await find_notes(
@@ -222,6 +224,8 @@ async def run_plan(
             on_progress=progress,
             paths=after,
         )
+        if skip:  # the note the request came from is not its own answer
+            found.results = found.results.narrowed(lambda i: i.path not in skip)
         ask = None if use_best else big_job(found, agent.budgets)
         if ask is not None:
             out.choice = Choice(ask.question, ask.options, ask.values, ask.kind, step=i)
