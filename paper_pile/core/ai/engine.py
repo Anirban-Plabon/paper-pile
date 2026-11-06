@@ -76,6 +76,7 @@ from paper_pile.core.settings import language_name
 from paper_pile.core.vault import Vault
 
 if TYPE_CHECKING:
+    from paper_pile.core.ai.vault.edits import NoteWriter
     from paper_pile.core.ai.vault.session import VaultSession
 
 log = logging.getLogger("paper_pile.ai.engine")
@@ -181,6 +182,9 @@ class AiEngine:
         self.chat_id = new_chat_id()
         self.created = time.time()
         self._vault_session: VaultSession | None = None  # the vault agent (vault/session.py)
+        # how the vault agent reads and writes notes for edits across notes: the app sets one
+        # that goes through the editor (open tabs, autosave, index, history); None = the files
+        self.note_writer: NoteWriter | None = None
 
     def vault_session(self) -> "VaultSession":
         """The vault agent for this chat (made on first use; PLAN_vault_agent P30.49)."""

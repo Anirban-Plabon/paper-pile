@@ -21,6 +21,16 @@ from typing import TYPE_CHECKING, Literal
 
 from paper_pile.core.ai.vault.candidates import Gatherer
 from paper_pile.core.ai.vault.cards import CardMaker, CardStore, card_search, card_summaries
+from paper_pile.core.ai.vault.edits import (
+    Applied,
+    EditBatch,
+    NoteWriter,
+    VaultWriter,
+    apply_batch,
+    redo_stale,
+    review_text,
+    undo,
+)
 from paper_pile.core.ai.vault.memory import load_memory
 from paper_pile.core.ai.vault.meta import VaultMeta
 from paper_pile.core.ai.vault.plan import Choice, Plan, card_lines, choose, make_plan
@@ -47,6 +57,7 @@ STAGES = {  # progress as the chat's status line shows it
     "cards": "Reading the notes",
     "merge": "Putting the summary together",
     "extract": "Gathering the facts",
+    "propose": "Preparing the changes",
 }
 
 
@@ -58,6 +69,34 @@ class Pending:
     plan: Plan
     choice: Choice
     use_best: bool = False
+    batch: EditBatch | None = None  # a review: changes waiting for the user (M6)
+    applied: Applied | None = None  # an applied change the user may undo
+
+
+APPLY, CANCEL, UNDO = "Apply all", "Cancel", "Undo"
+
+
+def review_answer(text: str, count: int) -> list[int] | str | None:
+    """The user's answer to a review: ``"all"``, ``"cancel"``, the note numbers picked
+    (``"1, 3"``), or None when the message is something else (a new request)."""
+    t = " ".join(text.split()).casefold().rstrip(".")
+    if t == APPLY.casefold():
+        return "all"
+    if t == CANCEL.casefold():
+        return "cancel"
+    parts = [p.strip() for p in t.replace(" ", ",").split(",") if p.strip()]
+    if parts and all(p.isdigit() for p in parts):
+        picks = sorted({int(p) for p in parts if 1 <= int(p) <= count})
+        return picks or None
+    return None
+
+
+def review_question(batch: EditBatch) -> str:
+    n = len(batch.ready)
+    pick = "the numbers of the notes to change (like 1, 3)" if n > 1 else ""
+    choices = [f"“{APPLY}”"] + ([pick] if pick else []) + [f"“{CANCEL}”"]
+    reply = f"Reply {', '.join(choices[:-1])} or {choices[-1]}."
+    return f"{review_text(batch)}\n\nNothing is changed yet. {reply}"
 
 
 @dataclass(slots=True)
@@ -195,6 +234,8 @@ class VaultSession:
                 self.engine, tools, gatherer, maker, VaultMeta(ix, resolver), today=self.today
             )
         self._agent.memory = load_memory(self.engine.vault.root)
+        self._agent.writer = self.writer()
+        self._agent.link = self.engine.link_name
         return self._agent
 
     # ---- one message ---------------------------------------------------------------------------
@@ -219,7 +260,14 @@ class VaultSession:
         status = on_status or (lambda _t: None)
 
         pending, self.pending = self.pending, None
-        if pending is not None:
+        if pending is not None and pending.batch is not None:
+            picked = review_answer(message, len(pending.batch.ready))
+            if picked is not None:
+                return await self._apply(pending, picked, status)
+        elif pending is not None and pending.applied is not None:
+            if picked_option(pending.choice, message) is not None:
+                return self._undo(pending.applied)
+        elif pending is not None:
             value = picked_option(pending.choice, message)
             if value is not None:
                 return await self._resume(agent, pending, value, status, stop)
@@ -281,6 +329,84 @@ class VaultSession:
         self.pending = pending
         return Turn(question_text(pending.choice), asked=True, summary="Vault: a question first")
 
+    # ---- changes to notes (M6) -----------------------------------------------------------------
+
+    def writer(self) -> NoteWriter:
+        """The app's writer (open tabs, autosave, index, history) when it set one, else the
+        files directly (tools, tests)."""
+        given = getattr(self.engine, "note_writer", None)
+        return given if given is not None else VaultWriter(self.engine.vault)
+
+    def _review(self, message: str, plan: Plan, batch: EditBatch) -> Turn:
+        choice = Choice("Apply the changes?", (APPLY, CANCEL), ("all", "cancel"), "review")
+        self.pending = Pending(message, plan, choice, batch=batch)
+        n = len(batch.ready)
+        return Turn(
+            review_question(batch),
+            [e.path for e in batch.ready if not e.new],
+            f"Vault: {n} change{'s' if n != 1 else ''} to review",
+            asked=True,
+        )
+
+    async def _apply(
+        self, pending: Pending, picked: list[int] | str, status: Callable[[str], None]
+    ) -> Turn:
+        assert pending.batch is not None
+        batch = pending.batch
+        if picked == "cancel":
+            return Turn("Cancelled: no note was changed.", summary="Vault: cancelled")
+        status("Applying the changes…")
+        writer = self.writer()
+        done = apply_batch(batch, None if picked == "all" else list(picked), writer)  # type: ignore[arg-type]
+        lines: list[str] = []
+        if done.paths:
+            names = ", ".join(p.rsplit("/", 1)[-1][:-3] for p in done.paths)
+            lines.append(
+                f"Changed {len(done.paths)} note{'s' if len(done.paths) != 1 else ''}: {names}."
+            )
+        if done.created:
+            lines.append("New note: " + ", ".join(done.created))
+        if done.failed:
+            lines.append("Could not write: " + ", ".join(done.failed))
+        if done.stale:  # changed since the diff was made: never written over — diffs made again
+            status("Some notes changed meanwhile: making their changes again…")
+            again = await redo_stale(self.engine, batch, done.stale, writer)
+            names = ", ".join(e.title for e in done.stale)
+            if again.ready:
+                turn = self._review(pending.message, pending.plan, again)
+                intro = "\n".join(lines) + "\n\n" if lines else ""
+                again_note = f"{names} changed after the diff was made; here is the change again:"
+                turn.text = f"{intro}{again_note}\n\n{turn.text}"
+                return turn
+            lines.append(f"{names} changed after the diff was made and were left as they are.")
+        if done.before:
+            n = len(done.before)
+            choice = Choice("Undo?", (UNDO,), ("undo",), "undo")
+            self.pending = Pending(pending.message, pending.plan, choice, applied=done)
+            lines.append(
+                f"Reply “{UNDO}” to put the {n} note{'s' if n != 1 else ''} back as they were."
+            )
+        return Turn(
+            "\n".join(lines) or "Nothing was changed.", done.paths, "Vault: changes applied"
+        )
+
+    def _undo(self, applied: Applied) -> Turn:
+        restored, kept = undo(applied, self.writer())
+        lines = []
+        if restored:
+            lines.append(
+                f"Put back {len(restored)} note{'s' if len(restored) != 1 else ''} as they were."
+            )
+        if kept:
+            lines.append("Changed again since, so left as they are: " + ", ".join(kept))
+        if applied.created:
+            lines.append(
+                "New notes are kept: "
+                + ", ".join(applied.created)
+                + " (delete them to the trash if not needed)."
+            )
+        return Turn("\n".join(lines) or "Nothing to undo.", restored, "Vault: undone")
+
     async def _run(
         self,
         agent: VaultAgent,
@@ -306,6 +432,9 @@ class VaultSession:
             return self._ask(Pending(message, plan, result.choice, use_best=use_best))
         if result.last is not None:
             self.last = result.last
+        batch = next((r.review for r in result.replies if r.review is not None), None)
+        if batch is not None and batch.ready:
+            return self._review(message, plan, batch)
         titles = [f"{i}. {line.split('. ', 1)[-1]}" for i, line in enumerate(card_lines(plan), 1)]
         text = reply_markdown(result.replies, titles) or "Stopped."
         sources = list(dict.fromkeys(s.path for r in result.replies for s in r.sources))

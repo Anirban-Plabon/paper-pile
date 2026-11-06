@@ -91,6 +91,8 @@ def _plan_step(
         plan.choice = _name_choice(index, name, candidates, is_folder)
     if step.scope.notes and not step.terms:
         out.search = False  # named notes are read, not searched
+    if step.action in ("edit", "write"):
+        out.search = False  # a change to "the notes in X" is a change to all of them
     return out
 
 

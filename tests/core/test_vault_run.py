@@ -188,7 +188,7 @@ def test_run_meta_answer_and_not_yet(agent: VaultAgent) -> None:
     out = asyncio.run(run_plan(agent, plan, "m"))
     assert out.replies[0].text.startswith("5 notes")
     assert out.replies[1].sources and out.replies[1].checked is not None
-    assert "not available yet" in out.replies[2].text
+    assert out.replies[2].text == "No notes found."  # an edit with nothing to change
 
 
 def test_run_empty_and_big_job(agent: VaultAgent) -> None:

@@ -63,6 +63,7 @@ from paper_pile.gui.icons import icon_button, line_icon, set_icon
 from paper_pile.gui.theme import EDITOR_OPTION_KEYS, ThemeController, editor_options
 from paper_pile.gui.tips import tip
 from paper_pile.gui.vault_host import VaultHost
+from paper_pile.gui.vault_writer import EditorWriter
 from paper_pile.gui.window import WindowChrome
 
 log = logging.getLogger("paper_pile.layout")
@@ -764,6 +765,8 @@ class MainLayout:
             on_pins_changed=self._pins_changed,
         )
         self.editor_pane.build()
+        # edits across notes go through the editor (tabs, autosave, index, history; P30.31)
+        self.ai.note_writer = EditorWriter(self.editor_pane)
         with self.editor_pane.empty_host:
             self._start_actions()
         with self.editor_pane.status_host:  # the footer under the editor, beside Backlinks

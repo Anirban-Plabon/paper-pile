@@ -18,8 +18,10 @@ Legend: 🧠 = needs Opus · ⬜ todo · 🔄 in progress · ✅ done · ⛔ blo
   the card UI is M7, memory proposals M6); hand-checked on gemma4
 - **P30.49 — connected to the chat** (2026-11-06): `AiEngine.answer()` asks the agent first,
   falls back unchanged; Settings → AI → Search the whole vault (Auto / With @ only / Off)
-- **Next task:** M6 — edits across notes, starting with the orchestration spike (P30.29a,
-  LangGraph vs own state machine) if the user agrees
+- **M6 — Edits across notes** (2026-11-06): built — review in the chat, apply only what is
+  picked, never over a changed note, Undo; the app's writer goes through the editor
+- **Next task:** M7 UI (step card, result blocks, chips, the review list as UI) and MC citation
+  UI; M0 eval when the user says so
 - **Waiting on the user:** open questions (PLAN_vault_agent §11) — languages in the test
   vault, background note cards, budgets, model-made hints. Defaults are in §10.
 
@@ -89,11 +91,12 @@ Legend: 🧠 = needs Opus · ⬜ todo · 🔄 in progress · ✅ done · ⛔ blo
 ### M6 — Edits across notes
 | ID | Task | Status | Notes |
 |---|---|---|---|
-| P30.29 🧠 | `propose_edit` over the edit pipeline | ⬜ | |
-| P30.30 | Dry run + review list | ⬜ | |
-| P30.31 | Checkpoint + Undo (N notes) | ⬜ | |
-| P30.32 | `write` a new note | ⬜ | |
-| P30.33 | Disk-conflict handling | ⬜ | |
+| P30.29a | Orchestration spike: LangGraph vs own state machine | ✅ | 2026-11-06 · same review flow (pause for review → new process resumes) both ways; own state machine chosen (Decision log) |
+| P30.29 🧠 | `propose_edit` over the edit pipeline | 🔄 | 2026-11-06 · `vault/edits.py`: target call (add / remove / change + section), one `EditRun` per note with the section as selection, removal by Python (no model); gemma4 added Sources sections to 2 notes; eval pending |
+| P30.30 | Dry run + review list | 🔄 | 2026-11-06 · dry run (left out + why), review as numbered diffs in the chat; "Apply all" / note numbers / "Cancel" by the next message; never applied without it (tests). The clickable review list is UI (M7) |
+| P30.31 | Checkpoint + Undo (N notes) | ✅ | 2026-11-06 · texts before kept per change; "Undo" writes them back, a note changed again is left alone; the app's `EditorWriter` keeps a version-history entry first (tests) |
+| P30.32 | `write` a new note | 🔄 | 2026-11-06 · `vault/newnote.py`: summary of the found notes, citations as `[[wikilinks]]`, a new-note diff; written under a free name, never over a note (tests); eval pending |
+| P30.33 | Disk-conflict handling | ✅ | 2026-11-06 · a note changed after its diff is never written; its change is made again and shown for review (test through the chat) |
 
 ### M7 — UI
 | ID | Task | Status | Notes |
@@ -159,6 +162,12 @@ Legend: 🧠 = needs Opus · ⬜ todo · 🔄 in progress · ✅ done · ⛔ blo
 | 2026-11-06 | The agent is wired into `AiEngine.answer()` (one entry point for chat, regenerate, history) with the old path as fallback; new task P30.49 | User: "make sure everything should remain connected" — no second chat, no UI fork | user |
 | 2026-11-06 | `ai.vault_agent` setting: auto (default, plan §10) / at / off; attachments and `@note` mentions keep the old path | Auto costs one understanding call per plain message (~5–15 s on gemma4 here); `at` / `off` let the user trade that away | claude |
 | 2026-11-06 | A step that names notes never takes the last result (`from_result` dropped in parse); the rule says the last result is only for messages that point back at it | Real run through `answer()`: after a list, gemma4 answered "summarise Pricing" from the previous social-business notes | claude |
+| 2026-11-06 | Orchestration: own small state machine, not LangGraph (spike P30.29a) | Same flow in 78 vs 81 lines and both resumed across processes; LangGraph 1.2.20 adds 42 packages (langchain-core, pydantic, orjson…), needs a separate async checkpointer + aiosqlite for async nodes, and re-runs the paused node from its start on resume. Revisit for the v2 PDF agent if its graph grows | claude |
+| 2026-11-06 | Core never writes notes for edits: a `NoteWriter` does — the app's `EditorWriter` (editor pane: open tab, autosave, index, `keep_version`), else `VaultWriter` (files; tools / tests) | Rule 1 (no UI in core) and data safety: an open tab with unsaved typing must never be written behind its back | claude |
+| 2026-11-06 | Review in the chat as text for now (numbered diffs; "Apply all" / numbers / "Cancel"; "Undo" after) — the clickable review list is M7 | The chat is text today; every change still goes through a diff the user picks, never applied at once | claude |
+| 2026-11-06 | Section removal done by Python, not the model; the diff region takes a neighbouring line so no blank line is left | Deterministic and exact; a region keeps its last line break, so replacing whole lines by "" left an empty line (found by a test) | claude |
+| 2026-11-06 | An edit / write on a named folder, tag or notes takes all of them (no search, no judge); topic edits search and judge by the topic | "Add Sources to every note in Research" must not be filtered by relevance to the instruction | claude |
+| 2026-11-06 | A pending review / undo lives in memory (lost when the app restarts or the next message is something else) | Enough for the text chat; persisting it under `.paper-pile/` comes with the M7 review list | claude |
 
 ## Issues log
 | Date | Task | Symptom | Root cause | Fix | Gotcha? |
@@ -174,3 +183,4 @@ Legend: 🧠 = needs Opus · ⬜ todo · 🔄 in progress · ✅ done · ⛔ blo
 - 2026-11-06 · P30.20–P30.24 + P30.43–P30.44 locate, answer, summarise, extract, hints, fast-path runner, citations (M4); gemma4 end to end: locate / answer / summarise / extract / meta all right on the trap vault · 1670 tests (+23)
 - 2026-11-06 · P30.25–P30.28 agent loop, routing, plan card data, memory file (M5); gemma4: pricing 2025 → 2026 compared in one step, every change cited [1, 2] · 1686 tests (+16)
 - 2026-11-06 · P30.49 agent connected to the chat through `AiEngine.answer()` + setting; gemma4 through `answer()`: list, named-note summary, follow-up by number, plain question all right · 1694 tests (+8)
+- 2026-11-06 · P30.29a spike (own state machine) + P30.29–P30.33 edits across notes (M6): review, apply picked, redo over changed notes, Undo, new note; gemma4 through `answer()`: Sources added to 2 Research notes, applied, undone · 1706 tests (+12)

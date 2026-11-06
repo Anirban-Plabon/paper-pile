@@ -6,7 +6,7 @@ dropped, a quoted passage that is not in its source is marked unverified. No UI 
 """
 
 import re
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 
 ANCHOR_CHARS = 80  # of the cited text kept to find the lines again after edits
@@ -118,3 +118,24 @@ def check(answer: str, sources: Sequence[Source]) -> Checked:
             if src is not None and quote not in fold(src.text) and n not in out.unverified:
                 out.unverified.append(n)
     return out
+
+
+def to_wikilinks(text: str, sources: Sequence[Source], link: Callable[[str], str]) -> str:
+    """``text`` with its labels as wikilinks to the cited notes (``[1, 2]`` → ``([[A]],
+    [[B]])``), for text that goes into a note (P30.48). ``link(path)`` is how a path is
+    written in a link; a section citation links to its heading."""
+    known = {s.n: s for s in sources}
+
+    def one(n: int) -> str:
+        src = known[n]
+        name = link(src.path)
+        return f"[[{name}#{src.heading}]]" if src.heading else f"[[{name}]]"
+
+    def swap(m: re.Match[str]) -> str:
+        nums = [n for n in _numbers(m.group(1)) if n in known]
+        if not nums:
+            return m.group(0)
+        links = ", ".join(one(n) for n in nums)
+        return f"({links})"
+
+    return _LABELS.sub(swap, text)

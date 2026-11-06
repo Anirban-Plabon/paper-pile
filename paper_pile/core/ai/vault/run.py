@@ -1,9 +1,9 @@
 """Running a plan (PLAN_vault_agent §5.2): each step, in order, either takes the fast path —
 find its notes (``find.py``) and act on them: locate, answer, summarise, extract, meta — or,
 for ``compare`` and open-ended steps, the agent loop (``loop.py``). A step that depends on an
-earlier one works on that step's notes. Actions not built yet (write, edit — M6) answer so,
-plainly. A big job stops the run with a question; Stop ends it between steps (and inside the
-loop between actions). No UI imports.
+earlier one works on that step's notes. ``edit`` / ``write`` end in a review (M6): proposals
+only, the run stops until the user picks what to apply. A big job stops the run with a
+question; Stop ends it between steps (and inside the loop between actions). No UI imports.
 """
 
 from collections.abc import Callable, Sequence
@@ -14,24 +14,24 @@ from paper_pile.core.ai.engine import AiEngine
 from paper_pile.core.ai.vault.answer import answer
 from paper_pile.core.ai.vault.candidates import Gatherer
 from paper_pile.core.ai.vault.cards import CardMaker
+from paper_pile.core.ai.vault.edits import NoteWriter, VaultWriter, propose_batch, review_text
 from paper_pile.core.ai.vault.extract import extract
 from paper_pile.core.ai.vault.find import DEFAULT_BUDGETS, Budgets, big_job, find_notes
 from paper_pile.core.ai.vault.hints import hints
 from paper_pile.core.ai.vault.loop import AgentLoop
 from paper_pile.core.ai.vault.meta import MetaResult, VaultMeta
+from paper_pile.core.ai.vault.newnote import propose_new_note
 from paper_pile.core.ai.vault.plan import Choice, Plan, PlannedStep
 from paper_pile.core.ai.vault.reply import Reply, locate
 from paper_pile.core.ai.vault.results import ResultSet
 from paper_pile.core.ai.vault.scope import note_folders
 from paper_pile.core.ai.vault.summarise import summarise_many, summarise_note
 from paper_pile.core.ai.vault.tools import VaultTools
+from paper_pile.core.ai.vault.understand import Step
 
 Progress = Callable[[int, str, int, int], None]  # step, stage, done, total
-NOT_YET = {
-    "write": "Writing a new note from the results is not available yet.",
-    "edit": "Changing notes across the vault is not available yet.",
-}
 LOOP_ACTIONS = {"compare", "other"}  # no fixed pipeline: the agent loop (§5.2)
+CHANGE_ACTIONS = {"edit", "write"}  # end in a review: nothing is written before the user picks
 
 
 @dataclass(slots=True)
@@ -44,6 +44,8 @@ class VaultAgent:
     budgets: Budgets = DEFAULT_BUDGETS
     today: Callable[[], date] = date.today
     memory: str = ""  # the vault memory file (memory.py)
+    writer: NoteWriter | None = None  # how notes are read / written for edits (M6)
+    link: Callable[[str], str] = lambda p: p.rsplit("/", 1)[-1][:-3]  # path → [[link]] name
 
     def facts(self, path: str) -> tuple[list[str], list[str]]:
         ix = self.tools.index
@@ -90,10 +92,10 @@ async def _act(
 ) -> Reply:
     step = planned.step
     words = [w for t in step.terms for w in t.split()]
-    if step.action in NOT_YET:
-        return Reply(NOT_YET[step.action], results)
     if not len(results):
         return Reply("No notes found.", results)
+    if step.action in CHANGE_ACTIONS:
+        return await _change(agent, step, request, results, progress)
     if step.action == "locate":
         return locate(results)
     if step.action == "answer":
@@ -108,6 +110,39 @@ async def _act(
     if step.action == "extract":
         return await extract(agent.engine, agent.tools, request, results, on_progress=progress)
     return Reply("I can't do that across the vault yet.", results)
+
+
+async def _change(
+    agent: VaultAgent,
+    step: Step,
+    request: str,
+    results: ResultSet,
+    progress: Callable[[str, int, int], None],
+) -> Reply:
+    """Edits across notes / a new note: proposals for review — nothing is written here."""
+    writer = agent.writer or VaultWriter(agent.engine.vault)
+    if step.action == "write":
+        folder = step.scope.folders[0] if step.scope.folders else ""
+        batch = await propose_new_note(
+            agent.engine,
+            agent.tools,
+            agent.maker,
+            request,
+            results,
+            topic=step.topic,
+            folder=folder,
+            link=agent.link,
+        )
+    else:
+        items = results.sure() or results.maybe()
+        batch = await propose_batch(
+            agent.engine,
+            request,
+            [(i.path, i.title) for i in items],
+            writer,
+            on_progress=progress,
+        )
+    return Reply(review_text(batch), results, review=batch)
 
 
 def _text_for(
@@ -175,10 +210,12 @@ async def run_plan(
         after = (
             found_by_step[planned.after].paths if 0 <= planned.after < len(found_by_step) else None
         )
+        # a change's instruction is not what notes are judged by: its topic is
+        judged_by = step.topic if step.action in CHANGE_ACTIONS and step.topic else request
         found = await find_notes(
             agent.engine,
             agent.gatherer,
-            request,
+            judged_by,
             planned,
             agent.facts,
             budgets=agent.budgets,
@@ -196,4 +233,8 @@ async def run_plan(
         found_by_step.append(found.results)
         if len(found.results):
             out.last = found.results
+        if reply.review is not None and reply.review.ready:
+            if i + 1 < len(plan.steps):
+                reply.notices.append("The steps after this one wait until the change is done.")
+            break  # the user reviews before anything else happens
     return out

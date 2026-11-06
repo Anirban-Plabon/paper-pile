@@ -5,9 +5,13 @@ form for the chat history and for a front end that shows only text. No UI import
 """
 
 from dataclasses import dataclass, field
+from typing import TYPE_CHECKING
 
 from paper_pile.core.ai.vault.cite import Checked, Source
 from paper_pile.core.ai.vault.results import ResultSet
+
+if TYPE_CHECKING:
+    from paper_pile.core.ai.vault.edits import EditBatch
 
 
 @dataclass(frozen=True, slots=True)
@@ -35,6 +39,7 @@ class Reply:
     table: Table | None = None
     hints: list[Hint] = field(default_factory=list)
     notices: list[str] = field(default_factory=list)
+    review: "EditBatch | None" = None  # changes to notes waiting for the user (M6)
 
     @property
     def unverified_note(self) -> str:

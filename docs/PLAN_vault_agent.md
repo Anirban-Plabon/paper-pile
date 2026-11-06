@@ -284,6 +284,27 @@ with M7.
 - Conflicts: a note changed on disk since the diff was made → that diff is redone, never
   applied over the newer text.
 
+**As built (M6, 2026-11-06)** — `core/ai/vault/edits.py`, `newnote.py`, `gui/vault_writer.py`:
+- Target: one JSON call per step → `kind` (add / remove / change), `section`, a one-note
+  instruction. Dry run without a model: "already has a X section" / "no X section"; more than
+  15 notes are left out with that reason.
+- Proposals: add / change = one `EditRun` per note (the single-note pipeline with its guards;
+  a change of a named section has the section as its selection); remove = the section's
+  lines cut by Python (no model). Edits / writes on a named folder / tag / notes take all of
+  them; a topic edit searches and judges by the topic.
+- Review in the chat (text until M7): numbered diffs, what was left out and why; the next
+  message "Apply all", note numbers ("1, 3") or "Cancel"; anything else drops the review.
+- Apply through a `NoteWriter`: the app's `EditorWriter` (editor pane: open tab updated,
+  autosave, index, a version-history entry first); `VaultWriter` for tools / tests. A note
+  whose text is not the one its diff was made from is never written: its change is made again
+  and shown for review.
+- Undo: the next message "Undo" writes the texts from before back (a note changed again is
+  left alone); new notes are kept (deleting is the user's, to the trash).
+- New note (`write`): a summary of the found notes with citations turned into `[[wikilinks]]`,
+  offered as a new-note diff, created under a free name (never over a note).
+- Orchestration: our own small state machine (pending review / undo in the session), not
+  LangGraph — spike P30.29a, Decision log.
+
 ## 6a. How the agent connects to the rest of the AI (P30.49, user 2026-11-06)
 
 "Make sure everything remains connected": the agent is one more path inside the existing
@@ -547,6 +568,7 @@ green + the stated eval numbers recorded in the tracker. 🧠 = needs Opus.
 ### M6 — Edits across notes
 | ID | Task | Acceptance |
 |---|---|---|
+| P30.29a | Orchestration spike: LangGraph vs own state machine | the same review flow both ways, resumed in a new process; decision logged |
 | P30.29 🧠 | `propose_edit` over the edit pipeline (add / remove / correct / rewrite / append) | eval edit-one: right note + section, nothing else touched |
 | P30.30 | Dry run + review list (accept / reject per note) | GUI test + real-app check; multi-note never auto-applied (test) |
 | P30.31 | Checkpoint + "Undo this change (N notes)" | restores every note (test); version history entries present |
