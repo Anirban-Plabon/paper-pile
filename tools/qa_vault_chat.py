@@ -27,7 +27,7 @@ from paper_pile.core.ai.access import Grant, save_grant  # noqa: E402
 
 PORT = int(os.environ.get("QA_PORT", "9363"))
 NOTES = {
-    "Research/Yunus.md": "# Yunus\n\nFounder of Grameen Bank.\nMicrocredit for the poor.\n",
+    "Research/Yunus.md": "# Yunus\n\nFounder of Grameen Bank.\nMicrocredit for the poor.\n\n## Groups\n\nLoans to groups.\n",
     "Research/Bank.md": "# Bank\n\n## Groups\n\nMicrocredit groups lend to each other.\n",
     "Other.md": "# Other\n\nNothing here.\n",
 }
@@ -129,6 +129,26 @@ async def wait_for(cdp: Cdp, expr: str, seconds: float = 15) -> object:
     return value
 
 
+async def click_at(cdp: Cdp, rect_expr: str, ctrl: bool = False) -> None:
+    """A real mouse click at the centre of what ``rect_expr`` names (Ctrl held with ``ctrl``)."""
+    pos = await cdp.js(rect_expr)
+    if not pos:
+        return
+    x, y = pos
+    mods = 2 if ctrl else 0
+    await cdp.call("Input.dispatchMouseEvent", type="mouseMoved", x=x, y=y, modifiers=mods)
+    for kind in ("mousePressed", "mouseReleased"):
+        await cdp.call(
+            "Input.dispatchMouseEvent",
+            type=kind,
+            x=x,
+            y=y,
+            button="left",
+            clickCount=1,
+            modifiers=mods,
+        )
+
+
 async def send(cdp: Cdp, text: str) -> None:
     await cdp.js("document.querySelector('.pp-chat .pp-chat-input textarea').focus()")
     await cdp.type(text)
@@ -206,6 +226,20 @@ async def checks(port: int, vault: Path) -> None:
         )
         tab = await cdp.js("qa.all('.pp-tab-active .pp-tab-name, .pp-tab.pp-tab-active')")
         check("the cited note is the active tab", bool(tab), tab)
+        band = await wait_for(cdp, "document.querySelectorAll('.pp-cite-band').length", 5)
+        check("a band stays on the cited lines", bool(band), band)
+        await click_at(cdp, "qa.rect('.pp-split .cm-content')")  # a click in the note
+        await asyncio.sleep(0.4)
+        gone = await cdp.js("document.querySelectorAll('.pp-cite-band').length")
+        check("the band goes on the next click", gone == 0, gone)
+        link = await cdp.js("qa.hit('.pp-chat a[href^=\"pp-note:\"]', 0)")
+        check("a note title in a list is a link, not covered", link is True, link)
+        await click_at(cdp, "qa.rect('.pp-chat a[href^=\"pp-note:\"]', 0)")
+        named = await wait_for(cdp, "qa.doc().includes('Microcredit') && qa.doc()", 10)
+        check("clicking a note title opens it", bool(named), named)
+        await click_at(cdp, "qa.rect('.pp-chat .pp-cite', 0)", ctrl=True)
+        split = await wait_for(cdp, "!!document.querySelector('.pp-split-on')", 8)
+        check("Ctrl+click on a pill opens split view", split is True, split)
 
         # the review flow: diffs, Apply all, Undo — clicked chips, files checked on disk
         bank = vault / "Research" / "Bank.md"
@@ -218,16 +252,23 @@ async def checks(port: int, vault: Path) -> None:
             review,
         )
         check("nothing is written before Apply", bank.read_text() == before, bank.read_text())
-        i = await cdp.js("qa.chip('Apply all')")
-        check("Apply all is offered as a chip", i is not None and i >= 0, i)
-        pos = await cdp.js(f"qa.rect('.pp-vault-chip', {i})")
-        if pos:
-            await cdp.click(*pos)
+        yunus = vault / "Research" / "Yunus.md"
+        yunus_before = yunus.read_text()
+        ticks = await cdp.js("qa.all('.pp-vault-tick')")
+        check("a tick per note in the review", isinstance(ticks, list) and len(ticks) == 2, ticks)
+        order = [t.split(". ", 1)[-1] for t in ticks] if isinstance(ticks, list) else []
+        drop = order.index("Yunus") if "Yunus" in order else 1
+        await click_at(cdp, f"qa.rect('.pp-vault-tick', {drop})")  # untick Yunus
+        await asyncio.sleep(0.3)
+        await click_at(cdp, "qa.rect('.pp-vault-apply')")
         applied = await wait_for(cdp, "qa.last().startsWith('Changed') && qa.last()", 15)
+        await asyncio.sleep(1.5)  # the editor's write lands on disk
         check(
-            "Apply all changed the note",
-            bool(applied) and "## Groups" not in bank.read_text(),
-            [applied, bank.read_text()],
+            "Apply selected changed only the ticked note",
+            bool(applied)
+            and "## Groups" not in bank.read_text()
+            and yunus.read_text() == yunus_before,
+            [applied, bank.read_text(), yunus.read_text()],
         )
         i = await cdp.js("qa.chip('Undo')")
         pos = await cdp.js(f"qa.rect('.pp-vault-chip', {i})") if i is not None and i >= 0 else None

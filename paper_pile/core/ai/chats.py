@@ -329,3 +329,44 @@ def chat_note_name(chat: SavedChat) -> str:
     """A note name for saving the chat into the vault (its title, minus what names forbid)."""
     name = " ".join(_NOT_IN_NAMES.sub(" ", chat.title).split()).lstrip(".").strip()
     return name[:TITLE_CHARS].rstrip(" .…") or "Chat"
+
+
+def moved_path(path: str, old: str, new: str) -> str:
+    """``path`` after the note or folder ``old`` became ``new`` (unchanged when not under it)."""
+    if path == old:
+        return new
+    if path.startswith(old + "/"):
+        return new + path[len(old) :]
+    return path
+
+
+def rename_in_turns(turns: list[SavedTurn], old: str, new: str) -> bool:
+    """Note paths kept with answers (sources, the vault agent's citations and review items)
+    follow a rename; True when anything changed (PLAN_vault_agent P30.47)."""
+    changed = False
+    for turn in turns:
+        sources = [moved_path(p, old, new) for p in turn.sources]
+        if sources != turn.sources:
+            turn.sources, changed = sources, True
+        for key in ("cites", "review"):
+            for row in turn.vault.get(key, []) if turn.vault else []:
+                if isinstance(row, dict) and isinstance(row.get("path"), str):
+                    moved = moved_path(row["path"], old, new)
+                    if moved != row["path"]:
+                        row["path"], changed = moved, True
+        for chip in turn.vault.get("chips", []) if turn.vault else []:
+            if isinstance(chip, dict) and isinstance(chip.get("open"), list):
+                paths = [moved_path(p, old, new) if isinstance(p, str) else p for p in chip["open"]]
+                if paths != chip["open"]:
+                    chip["open"], changed = paths, True
+    return changed
+
+
+def rename_in_chats(folder: Path, old: str, new: str) -> int:
+    """Every saved chat's note paths follow a rename; how many chat files were rewritten."""
+    count = 0
+    for chat in list_chats(folder):
+        if rename_in_turns(chat.turns, old, new):
+            save_chat(folder, chat)
+            count += 1
+    return count

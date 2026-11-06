@@ -10,6 +10,7 @@ from collections.abc import Sequence
 from typing import Any
 
 _LABELS = re.compile(r"\[(\d+(?:\s*,\s*\d+)*)\]")
+PREVIEW = 220  # characters of the cited text in a pill's hover
 _CODE = re.compile(r"(<pre\b.*?</pre>|<code\b.*?</code>|<[^>]+>)", re.DOTALL | re.IGNORECASE)
 
 
@@ -18,9 +19,9 @@ def cite_tip(row: dict[str, Any]) -> str:
     where = str(row.get("title") or row.get("path") or "")
     if row.get("heading"):
         where += f" § {row['heading']}"
-    anchor = " ".join(str(row.get("anchor") or "").split())
-    if anchor:
-        where += f" — “{anchor[:80]}{'…' if len(anchor) > 80 else ''}”"
+    text = " ".join(str(row.get("excerpt") or row.get("anchor") or "").split())
+    if text:
+        where += f" — “{text[:PREVIEW]}{'…' if len(text) > PREVIEW else ''}”"
     return where
 
 

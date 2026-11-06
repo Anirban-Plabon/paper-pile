@@ -244,6 +244,11 @@ class Editor(
         """Put the caret on a 1-based line of the shown note and scroll it to the top."""
         self.run_method("gotoLine", line)
 
+    def show_cited(self, first: int, last: int) -> None:
+        """A chat citation: jump to ``first`` and keep a band on ``first``..``last`` until the
+        next click or key (``citeband.js``, PLAN_vault_agent §7.1)."""
+        self.run_method("showCited", first, last)
+
     def insert_at_cursor(self, text: str) -> None:
         self.run_method("insertAtCursor", text)
 

@@ -94,6 +94,9 @@ export default {
     async gotoLine(line) {
       (await this.ready).gotoLine(line);
     },
+    async showCited(first, last) {  // a chat citation's lines (citeband.js)
+      (await this.ready).showCited(first, last);
+    },
     async insertAtCursor(text) {
       (await this.ready).insertAtCursor(text);
     },

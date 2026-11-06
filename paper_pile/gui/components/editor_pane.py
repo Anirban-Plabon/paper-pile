@@ -469,6 +469,17 @@ class EditorPane:
             return
         await self._open_split(path)
 
+    async def open_cited(self, path: str, first: int, last: int, *, split: bool = False) -> None:
+        """A chat citation (PLAN_vault_agent §7.1): ``path`` open (in split view with
+        ``split``), its lines ``first``..``last`` jumped to and banded until the next click."""
+        if split:
+            await self.open_in_split(path)
+        else:
+            await self.open(path)
+        tab = self.tabs.find(path)
+        if tab is not None and first > 0:  # 0: just open it (a note named in a list)
+            self._editor_for(tab.id).show_cited(first, last)
+
     async def open_in_split(self, path: str) -> None:
         """Show ``path`` on the right side of the split (opening the split if needed)."""
         if self._split_open:

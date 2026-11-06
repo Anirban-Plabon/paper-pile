@@ -294,3 +294,17 @@ def card_summaries(
         return out
 
     return summaries
+
+
+def _rename_tree_sql(table: str) -> str:
+    return (
+        f"UPDATE {table} SET path = ? || substr(path, ?) WHERE path = ? OR substr(path, 1, ?) = ?"
+    )
+
+
+def rename_tree(store: CardStore, old: str, new: str) -> None:
+    """Cards of a renamed note, or of every note under a renamed folder, follow it."""
+    params = (new, len(old) + 1, old, len(old) + 1, old + "/")
+    with store._lock:
+        store._db.execute(_rename_tree_sql("cards"), params)
+        store._db.execute(_rename_tree_sql("cards_fts"), params)

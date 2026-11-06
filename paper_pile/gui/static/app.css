@@ -1742,3 +1742,8 @@ body.body--dark .pp-aidiff-chip-warn { color: #e3b341; }
 .pp-vault-steps { font-size: 12px; color: var(--pp-muted); }
 .pp-vault-steps .q-item { min-height: 24px; padding: 0 4px; }
 .pp-vault-step { font-size: 12px; padding: 1px 4px; user-select: text; -webkit-user-select: text; }
+.pp-editor .pp-cite-band { background: rgba(var(--pp-accent-rgb), .10); }
+.pp-editor .pp-cite-band-layer { pointer-events: none; }
+.pp-vault-review { gap: 0; margin-top: 4px; }
+.pp-vault-review .pp-vault-tick { font-size: 12.5px; min-height: 26px; }
+.pp-vault-review .pp-vault-apply.q-btn { align-self: flex-start; margin-top: 4px; min-height: 28px; padding: 0 12px; font-size: 12.5px; border: 1px solid var(--pp-border); border-radius: 14px; }

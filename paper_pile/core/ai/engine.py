@@ -39,6 +39,8 @@ from paper_pile.core.ai.chats import (
     list_chats,
     load_chat,
     new_chat_id,
+    rename_in_chats,
+    rename_in_turns,
     save_chat,
 )
 from paper_pile.core.ai.context import (
@@ -178,6 +180,7 @@ class AiEngine:
         self.summarized = 0
         self._busy: asyncio.Task[object] | None = None  # the task an answer streams in
         self.last_usage: tuple[int | None, int | None] = (None, None)  # prompt, answer tokens
+        self.calls_made = 0  # model calls since the app started (stream / ask_json)
         self._compact_failed = -1  # turns when the last summary failed (no new try for a while)
         self.chat_id = new_chat_id()
         self.created = time.time()
@@ -515,6 +518,17 @@ class AiEngine:
     def notes_changed(self) -> None:
         """A note was created, renamed or deleted."""
         self.notes.invalidate()
+
+    def note_renamed(self, old: str, new: str) -> None:
+        """A note or folder moved: paths kept with answers follow it — the open chat, every
+        saved chat, the vault agent's last result and note cards (PLAN_vault_agent P30.47)."""
+        rename_in_turns(self.turns, old, new)
+        try:
+            rename_in_chats(self.chats_dir(), old, new)
+        except OSError:
+            log.warning("could not update saved chats after a rename", exc_info=True)
+        if self._vault_session is not None:
+            self._vault_session.renamed(old, new)
 
     def link_name(self, path: str) -> str:
         """How ``path`` is written in a ``[[link]]`` ("" without a path)."""
@@ -1032,6 +1046,7 @@ class AiEngine:
         model = await self.chosen_model()
         if not model:
             raise ProviderError(NO_MODEL)
+        self.calls_made += 1  # every model call (the vault agent shows how many a request took)
         size = window or await self.window()
         room = max(MIN_ANSWER, size - message_tokens(messages))
         if max_answer is not None:

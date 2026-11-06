@@ -26,6 +26,7 @@ import { streamAppend, streamBegin, streamEnd, streamField } from "./stream.js";
 import { proposalExtension, showProposal } from "./proposal.js";
 import { askAbout, markTarget, selectPopup, settlePopup } from "./selectpopup.js";
 import { selectionBand } from "./selectionband.js";
+import { citeBand, showCiteBand } from "./citeband.js";
 import { typeset } from "./typeset.js";
 
 const CHANGE_DEBOUNCE_MS = 300;
@@ -240,6 +241,7 @@ export function createEditor(
       proposalExtension,
       drawSelection(), // the caret; the selection itself is selectionBand (square, in the line box)
       selectionBand,
+      citeBand, // a chat citation's lines (citeband.js)
       dropCursor(),
       tooltips({ tooltipSpace }),
       highlightSelectionMatches(),
@@ -602,6 +604,14 @@ export function createEditor(
       const pos = doc.line(Math.max(1, Math.min(line, doc.lines))).from;
       view.focus();
       jumpTo(view, pos);
+    },
+    // A chat citation (PLAN_vault_agent §7.1): jump to its first line, then a band on its lines
+    // that stays until the next click or key (citeband.js).
+    showCited(first, last) {
+      const doc = view.state.doc;
+      view.focus();
+      jumpTo(view, doc.line(Math.max(1, Math.min(first, doc.lines))).from);
+      showCiteBand(view, first, last);
     },
     insertAtCursor(text) {
       view.dispatch(view.state.replaceSelection(text), { userEvent: "input.paste", scrollIntoView: true });

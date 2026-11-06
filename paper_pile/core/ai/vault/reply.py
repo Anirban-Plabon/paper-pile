@@ -56,6 +56,12 @@ def _folder(path: str) -> str:
     return path.rsplit("/", 1)[0] if "/" in path else ""
 
 
+def note_link(path: str) -> str:
+    """A markdown link target that opens ``path`` from the chat (``static/chat.js``
+    ``pp-note:``; the chat's other links only open web pages)."""
+    return f"<pp-note:{path}>"
+
+
 def locate(results: ResultSet) -> Reply:
     """The notes found, as a list with why each is there — no model call (P30.20)."""
     sure, maybe = results.sure(), results.maybe()
@@ -65,12 +71,12 @@ def locate(results: ResultSet) -> Reply:
     for i, item in enumerate(sure, 1):
         where = f" ({_folder(item.path)})" if _folder(item.path) else ""
         why = f": {item.reason}" if item.reason else ""
-        lines.append(f"{i}. **{item.title}**{where}{why}")
+        lines.append(f"{i}. [**{item.title}**]({note_link(item.path)}){where}{why}")
     if maybe:
         lines.append("")
         lines.append("Might also be related:" if sure else "Possibly related:")
         for item in maybe:
             why = f": {item.reason}" if item.reason else ""
-            lines.append(f"- {item.title}{why}")
+            lines.append(f"- [{item.title}]({note_link(item.path)}){why}")
     head = f"Found {len(sure)} note{'s' if len(sure) != 1 else ''}." if sure else ""
     return Reply("\n".join([head, "", *lines]).strip(), results)

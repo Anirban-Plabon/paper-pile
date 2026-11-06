@@ -19,8 +19,15 @@ from dataclasses import dataclass, field, replace
 from datetime import date
 from typing import TYPE_CHECKING, Any, Literal
 
+from paper_pile.core.ai.chats import moved_path
 from paper_pile.core.ai.vault.candidates import Gatherer
-from paper_pile.core.ai.vault.cards import CardMaker, CardStore, card_search, card_summaries
+from paper_pile.core.ai.vault.cards import (
+    CardMaker,
+    CardStore,
+    card_search,
+    card_summaries,
+    rename_tree,
+)
 from paper_pile.core.ai.vault.cite import _LABELS, Source
 from paper_pile.core.ai.vault.edits import (
     Applied,
@@ -75,6 +82,12 @@ class Pending:
 
 
 APPLY, CANCEL, UNDO = "Apply all", "Cancel", "Undo"
+EXCERPT_CHARS = 240  # of a cited part kept for its hover preview
+EXPIRED = (  # an answer to a review / undo that is no longer open
+    "That change is no longer open (the app was restarted, or another message came in "
+    "between). Ask for the change again."
+)
+_OWN_ANSWERS = {APPLY.casefold(), CANCEL.casefold(), UNDO.casefold()}
 
 
 def review_answer(text: str, count: int) -> list[int] | str | None:
@@ -134,6 +147,7 @@ def cite_rows(sources: Sequence[Source]) -> list[dict[str, Any]]:
             "start": s.start,
             "end": s.end,
             "anchor": s.anchor,
+            "excerpt": " ".join(s.text.split())[:EXCERPT_CHARS],  # the hover preview
         }
         for s in sources
     ]
@@ -263,6 +277,7 @@ class VaultSession:
         self.pending: Pending | None = None
         self._agent: VaultAgent | None = None
         self._remote_ok = False  # this chat's user agreed to send notes to a remote backend
+        self._calls0 = 0  # the engine's call count when the current request began
 
     def reset(self) -> None:
         """A new or another chat: forget the last result, any open question and the remote
@@ -270,6 +285,29 @@ class VaultSession:
         self.last = None
         self.pending = None
         self._remote_ok = False
+
+    def _last_vault_kind(self) -> str:
+        """The kind of the chat's newest vault answer before this message ("" if none)."""
+        turns = getattr(self.engine, "turns", [])
+        for turn in reversed(turns[:-1]):  # the message itself is the last turn
+            if turn.role == "assistant":
+                return str(turn.vault.get("kind", "")) if turn.vault else ""
+        return ""
+
+    def renamed(self, old: str, new: str) -> None:
+        """A note or folder moved: the last result, an open review and note cards follow."""
+        if self.last is not None:
+            items = [replace(i, path=moved_path(i.path, old, new)) for i in self.last.items]
+            self.last = ResultSet(self.last.request, items)
+        if self.pending is not None and self.pending.batch is not None:
+            for edit in self.pending.batch.edits:
+                edit.path = moved_path(edit.path, old, new)
+        if self._agent is not None:
+            rename_tree(self._agent.maker.store, old, new)
+
+    def calls(self) -> int:
+        """Model calls the current request has made so far (understanding included)."""
+        return max(0, getattr(self.engine, "calls_made", 0) - self._calls0)
 
     def remote_notice(self) -> str:
         """The notice before the first vault job of a chat when the backend is not on this
@@ -341,10 +379,18 @@ class VaultSession:
         mode = agent_mode(
             self.engine.config.get("ai.vault_agent", "auto") if self.engine.config else "auto"
         )
+        expired = (  # one of our own chips' answers, but the question it answered is gone
+            self.pending is None
+            and message.strip().casefold() in _OWN_ANSWERS
+            and self._last_vault_kind() in ("review", "applied")
+        )
+        if expired:
+            return Turn(EXPIRED, summary="Vault: nothing open", payload={"kind": "expired"})
         agent = self.agent()
         if agent is None:
             return None
         status = on_status or (lambda _t: None)
+        self._calls0 = getattr(self.engine, "calls_made", 0)  # this request's calls start here
 
         pending, self.pending = self.pending, None
         if pending is not None and pending.batch is not None:
@@ -552,7 +598,8 @@ class VaultSession:
             label = STAGES.get(stage, stage.removeprefix("loop: ").split("(", 1)[0].capitalize())
             count = f" {done}/{total}" if total else ""
             prefix = f"Step {step + 1}: " if many else ""
-            status(f"{prefix}{label}{count}…")
+            n = self.calls()
+            status(f"{prefix}{label}{count}… · {n} model call{'s' if n != 1 else ''}")
 
         result: RunResult = await run_plan(
             agent, plan, message, on_progress=progress, use_best=use_best, stop=stop
@@ -577,6 +624,7 @@ class VaultSession:
             "cites": cite_rows([s for r in replies for s in r.sources]),
             "chips": chips,
             "steps": steps if many else [],
+            "calls": self.calls(),
         }
         sources = list(dict.fromkeys(s.path for r in result.replies for s in r.sources))
         if not sources:  # a list of notes cites nothing: the chat lists the notes found
@@ -584,5 +632,7 @@ class VaultSession:
             sources = list(dict.fromkeys(sources))
         notes = len(self.last) if self.last is not None else 0
         word = "note" if notes == 1 else "notes"
+        calls = self.calls()
         summary = f"Vault: {notes} {word}" + (f" · {len(plan.steps)} steps" if many else "")
+        summary += f" · {calls} model call{'s' if calls != 1 else ''}"
         return Turn(text, sources, summary, payload=payload)

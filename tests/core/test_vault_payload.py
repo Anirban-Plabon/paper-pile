@@ -34,6 +34,7 @@ def test_cite_rows_and_chips() -> None:
             "start": 3,
             "end": 5,
             "anchor": "The plan is simple.",
+            "excerpt": "The plan is simple.",
         }
     ]
     assert chip("Apply all") == {"label": "Apply all", "send": "Apply all"}

@@ -194,3 +194,13 @@ document.addEventListener('click', function (e) {
   e.stopImmediatePropagation();
   emitEvent('pp_cite', { turn: pill.dataset.turn, n: pill.dataset.n, split: e.ctrlKey || e.metaKey });
 }, true);
+// A note named in a vault answer's list ([**Title**](<pp-note:path>), core/ai/vault/reply.py):
+// open it (Ctrl / Cmd: split view). Capture phase, like the pills.
+document.addEventListener('click', function (e) {
+  const link = e.target && e.target.closest && e.target.closest('.pp-msg-body a[href^="pp-note:"]');
+  if (!link) return;
+  e.preventDefault();
+  e.stopImmediatePropagation();
+  const path = decodeURIComponent(link.getAttribute('href').slice('pp-note:'.length));
+  emitEvent('pp_note', { path: path, split: e.ctrlKey || e.metaKey });
+}, true);

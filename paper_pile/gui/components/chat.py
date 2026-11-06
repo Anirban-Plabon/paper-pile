@@ -51,7 +51,7 @@ from paper_pile.core.ai.engine import AiEngine, Outgoing, Selection
 from paper_pile.core.ai.options import Option, suggest_options
 from paper_pile.core.ai.prompts import load_prompts, prompts_file, selection_kind, suggestions
 from paper_pile.core.ai.provider import Health, ProviderError, ProviderUnavailableError
-from paper_pile.core.ai.vault.cite import anchor_line
+from paper_pile.core.ai.vault.cite import anchor_line, answer_for_note
 from paper_pile.core.links import resolve_wikilink, wikilink_to
 from paper_pile.core.parser import render_chat_html
 from paper_pile.core.picker import switcher_notes
@@ -175,7 +175,7 @@ class ChatPane:
         apply_to_note: Callable[[str, str, str], Awaitable[None]] | None = None,
         open_note: Callable[[str], None] = lambda path: None,
         edit_in_note: EditInNote | None = None,
-        open_at: Callable[[str, int, bool], None] = lambda path, line, split: None,
+        open_at: Callable[[str, int, int, bool], None] = lambda path, first, last, split: None,
     ) -> None:
         self.ai = ai
         self.vault = ai.vault
@@ -183,7 +183,7 @@ class ChatPane:
         self._enabled = enabled
         self._apply_to_note = apply_to_note  # (path, old, new): show an answer as a diff there
         self._open_note = open_note  # a source under an answer was clicked
-        self._open_at = open_at  # a citation pill: (path, line, in split view)
+        self._open_at = open_at  # a citation pill: (path, first line, last line, in split view)
         self._edit_in_note = edit_in_note  # a change command from the / list (PLAN §4.28)
         self._command_card: _CommandCard | None = None
         self._answering: _CommandCard | None = None  # the AI asked: the next message answers
@@ -292,6 +292,7 @@ class ChatPane:
         ui.on("pp_chip_close", lambda _e: self._close_chip())
         ui.on("pp_open_url", lambda e: self._open_url(e.args))
         ui.on("pp_cite", lambda e: self._open_cite(dict(e.args)))  # a citation pill (chat.js)
+        ui.on("pp_note", lambda e: self._open_named(dict(e.args)))  # a note named in a list
         ui.timer(HEALTH_EVERY_S, lambda: background_tasks.create(self.check_health()))
         background_tasks.create(self.check_health())
         self.prune_chats()
@@ -605,11 +606,36 @@ class ChatPane:
         live = self._task is None and bool(self.ai.turns) and turn is self.ai.turns[-1]
         if not chips or not live:
             return
+        review = [r for r in turn.vault.get("review", []) if isinstance(r, dict)]
+        if turn.vault.get("kind") == "review" and len(review) > 1:
+            self._review_list(review)
         with ui.row().classes("pp-vault-chips items-center"):
             for c in chips:
                 ui.button(
                     str(c["label"]), on_click=lambda c=c: self._vault_chip(c), color=None
                 ).props("flat dense no-caps").classes("pp-vault-chip")
+
+    def _review_list(self, review: list[dict[str, object]]) -> None:
+        """A review of changes to several notes (P30.30): one tick per note, all ticked;
+        *Apply selected* sends the ticked numbers — the same answer as typing "1, 3"."""
+        boxes: list[tuple[int, ui.checkbox]] = []
+        with ui.column().classes("pp-vault-review"):
+            for row in review:
+                n = int(str(row.get("n", 0)))
+                label = f"{n}. {row.get('title', '')}" + (" (new note)" if row.get("new") else "")
+                boxes.append(
+                    (n, ui.checkbox(label, value=True).props("dense").classes("pp-vault-tick"))
+                )
+
+            async def apply_ticked() -> None:
+                picked = [n for n, box in boxes if box.value]
+                if picked and self._task is None:
+                    self._input.set_value(", ".join(map(str, picked)))
+                    await self.send()
+
+            ui.button("Apply selected", on_click=apply_ticked, color=None).props(
+                "flat dense no-caps"
+            ).classes("pp-vault-chip pp-vault-apply")
 
     async def _vault_chip(self, c: dict[str, object]) -> None:
         """A chip: open notes, or send its text as the next message — the same path as typing."""
@@ -623,6 +649,15 @@ class ChatPane:
         if text and self._task is None:
             self._input.set_value(text)
             await self.send()
+
+    def _open_named(self, args: dict[str, object]) -> None:
+        """A note named in a vault answer's list (``pp-note:`` link): open it, in split
+        view with Ctrl."""
+        path = str(args.get("path") or "")
+        if path and self.vault.exists(path):
+            self._open_at(path, 0, 0, bool(args.get("split")))
+        elif path:
+            ui.notify("That note is not there any more.", position="bottom", timeout=2500)
 
     def _open_cite(self, args: dict[str, object]) -> None:
         """A citation pill was clicked: the note at the cited lines (found again when the note
@@ -640,11 +675,13 @@ class ChatPane:
         if text is None:
             ui.notify("That note is not available any more.", position="bottom", timeout=2500)
             return
-        line = anchor_line(text, str(row.get("anchor", "")), int(row.get("start", 1) or 1))
+        start = int(row.get("start", 1) or 1)
+        end = max(start, int(row.get("end", start) or start))
+        line = anchor_line(text, str(row.get("anchor", "")), start)
         if line is None:
             ui.notify("This part changed since the answer.", position="bottom", timeout=2500)
-            line = int(row.get("start", 1) or 1)
-        self._open_at(path, line, bool(args.get("split")))
+            line, end = start, start  # just the place, no band over text it no longer is
+        self._open_at(path, line, line + (end - start), bool(args.get("split")))
 
     def _msg_button(self, icon: str, label: str, on_click: Callable[[], object]) -> ui.button:
         button = ui.button(icon=ico(icon), on_click=on_click, color=None)
@@ -709,6 +746,9 @@ class ChatPane:
         async def insert() -> None:
             if target is not None and apply_to is not None:
                 await apply_to(*target)
+            elif turn.vault:  # a vault answer: citations as [[links]], no Sources line (P30.48)
+                cites = turn.vault.get("cites", [])
+                await self._insert_reply(answer_for_note(turn.text, cites, self.ai.link_name))
             else:
                 await self._insert_reply(turn.text)
 

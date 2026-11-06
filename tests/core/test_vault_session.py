@@ -147,7 +147,8 @@ async def test_vault_request_answered_by_the_agent(setup: tuple[AiEngine, Backen
     text, sources, summary = await ask(ai, "where are my microcredit notes?")
     assert text.startswith("Found 3 notes.") and "Secret" not in text
     assert set(sources) == {"Research/Yunus.md", "Research/Bank.md", "Clients/Pricing.md"}
-    assert summary == "Vault: 3 notes" and "chat" not in backend.kinds
+    assert summary == "Vault: 3 notes · 3 model calls"  # understanding, judge, more terms
+    assert "chat" not in backend.kinds
     # the follow-up sees the last result
     assert ai.vault_session().last is not None and len(ai.vault_session().last or []) == 3
 

@@ -200,6 +200,8 @@ class MainLayout:
         self.bus.subscribe("vault.created", lambda path: self._on_created())
         self.bus.subscribe("tree.add_to_chat", lambda path: self._chat_add_note(path))
         self.bus.subscribe("vault.renamed", lambda old, new: self._recent_renamed(old, new))
+        # chat citations, the vault agent's last result and note cards follow (P30.47)
+        self.bus.subscribe("vault.renamed", lambda old, new: self.ai.note_renamed(old, new))
         self.bus.subscribe("note.reveal", lambda path: self._reveal_in_tree(path))
         for event in ("vault.created", "vault.renamed", "vault.deleted"):
             self.bus.subscribe(event, lambda **_: self.ai.notes_changed())
@@ -724,21 +726,13 @@ class MainLayout:
         )
         self.chat.build()
 
-    def _open_cited(self, path: str, line: int, split: bool) -> None:
-        """A citation pill in the chat (PLAN_vault_agent §7.1): the note at the cited line —
-        the jump glides and flashes the line (P15.2); in split view with Ctrl."""
+    def _open_cited(self, path: str, first: int, last: int, split: bool) -> None:
+        """A citation pill in the chat (PLAN_vault_agent §7.1): the note at the cited lines —
+        the jump glides and flashes (P15.2), a band stays on the lines until the next click or
+        key; in split view with Ctrl."""
         pane = self.editor_pane
-        if pane is None:
-            return
-
-        async def go() -> None:
-            if split:
-                await pane.open_in_split(path)
-                pane.goto_line(line)
-            else:
-                await pane.open_link(path, line=line)
-
-        pane._spawn(go())
+        if pane is not None:
+            pane._spawn(pane.open_cited(path, first, last, split=split))
 
     async def _apply_to_note(self, path: str, old: str, new: str) -> None:
         """A chat answer replaces the text it was asked about: shown as a diff in that note."""

@@ -160,3 +160,32 @@ def anchor_line(text: str, anchor: str, start: int) -> int | None:
         if key and key.split(" ", 1)[0] in lines[i - 1] and at(i):
             return i
     return None
+
+
+_NOTE_LINK = re.compile(r"\[(?:\*\*)?([^\]\n]+?)(?:\*\*)?\]\(<?pp-note:([^)>\n]+)>?\)")
+_META_LINE = re.compile(r"^(Sources: .*|_.*_)$")
+
+
+def answer_for_note(
+    text: str, cites: Sequence[dict[str, object]], link: Callable[[str], str]
+) -> str:
+    """A vault answer as text for a note ("Insert into note", P30.48): its ``[n]`` become
+    wikilinks to the cited notes (and sections), its note-title links become wikilinks, and the
+    lines about the answer itself (Sources, notices) are left out."""
+    sources = [
+        Source(
+            int(str(c["n"])),
+            str(c.get("path", "")),
+            str(c.get("title", "")),
+            str(c.get("heading", "")),
+            0,
+            0,
+            "",
+        )
+        for c in cites
+        if isinstance(c.get("n"), int) and c.get("path")
+    ]
+    body = "\n".join(line for line in text.split("\n") if not _META_LINE.match(line.strip()))
+    body = to_wikilinks(body, sources, link)
+    body = _NOTE_LINK.sub(lambda m: f"[[{link(m.group(2))}]]", body)
+    return re.sub(r"\n{3,}", "\n\n", body).strip()
