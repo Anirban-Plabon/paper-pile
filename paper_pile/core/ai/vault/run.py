@@ -1,8 +1,9 @@
-"""Running a plan on the fast path (PLAN_vault_agent §5.2): each step finds its notes
-(``find.py``) and acts on them — locate, answer, summarise, extract, meta — in order; a step
-that depends on an earlier one works on that step's notes. Actions that are not built yet
-(compare, write, edit, other — M5 / M6) answer so, plainly. A big job stops the run with a
-question. No UI imports.
+"""Running a plan (PLAN_vault_agent §5.2): each step, in order, either takes the fast path —
+find its notes (``find.py``) and act on them: locate, answer, summarise, extract, meta — or,
+for ``compare`` and open-ended steps, the agent loop (``loop.py``). A step that depends on an
+earlier one works on that step's notes. Actions not built yet (write, edit — M6) answer so,
+plainly. A big job stops the run with a question; Stop ends it between steps (and inside the
+loop between actions). No UI imports.
 """
 
 from collections.abc import Callable, Sequence
@@ -16,20 +17,21 @@ from paper_pile.core.ai.vault.cards import CardMaker
 from paper_pile.core.ai.vault.extract import extract
 from paper_pile.core.ai.vault.find import DEFAULT_BUDGETS, Budgets, big_job, find_notes
 from paper_pile.core.ai.vault.hints import hints
+from paper_pile.core.ai.vault.loop import AgentLoop
 from paper_pile.core.ai.vault.meta import MetaResult, VaultMeta
 from paper_pile.core.ai.vault.plan import Choice, Plan, PlannedStep
 from paper_pile.core.ai.vault.reply import Reply, locate
 from paper_pile.core.ai.vault.results import ResultSet
+from paper_pile.core.ai.vault.scope import note_folders
 from paper_pile.core.ai.vault.summarise import summarise_many, summarise_note
 from paper_pile.core.ai.vault.tools import VaultTools
 
 Progress = Callable[[int, str, int, int], None]  # step, stage, done, total
 NOT_YET = {
-    "compare": "Comparing notes is not available yet.",
     "write": "Writing a new note from the results is not available yet.",
     "edit": "Changing notes across the vault is not available yet.",
-    "other": "I can't do that across the vault yet.",
 }
+LOOP_ACTIONS = {"compare", "other"}  # no fixed pipeline: the agent loop (§5.2)
 
 
 @dataclass(slots=True)
@@ -41,6 +43,7 @@ class VaultAgent:
     meta: VaultMeta
     budgets: Budgets = DEFAULT_BUDGETS
     today: Callable[[], date] = date.today
+    memory: str = ""  # the vault memory file (memory.py)
 
     def facts(self, path: str) -> tuple[list[str], list[str]]:
         ix = self.tools.index
@@ -50,12 +53,19 @@ class VaultAgent:
         readable = {r.path for r in self.tools.resolver.readable()}
         return sorted({t for p, t in self.tools.index.tag_pairs() if p in readable})
 
+    def folders(self) -> list[str]:
+        return note_folders(r.path for r in self.tools.resolver.readable())
+
+    def loop(self) -> AgentLoop:
+        return AgentLoop(self.engine, self.tools, self.meta, today=self.today, memory=self.memory)
+
 
 @dataclass(slots=True)
 class RunResult:
     replies: list[Reply] = field(default_factory=list)
     last: ResultSet | None = None  # the result set follow-ups refer to
     choice: Choice | None = None  # the run stopped to ask this
+    stopped: bool = False
 
 
 def meta_text(result: MetaResult) -> str:
@@ -97,7 +107,7 @@ async def _act(
         )
     if step.action == "extract":
         return await extract(agent.engine, agent.tools, request, results, on_progress=progress)
-    return Reply(NOT_YET.get(step.action, NOT_YET["other"]), results)
+    return Reply("I can't do that across the vault yet.", results)
 
 
 def _text_for(
@@ -121,19 +131,40 @@ async def run_plan(
     on_progress: Progress | None = None,
     on_text: Callable[[int, str], None] | None = None,
     use_best: bool = False,
+    stop: Callable[[], bool] = lambda: False,
 ) -> RunResult:
     """Every step of a ready ``plan``. ``use_best``: the user already chose to go on with the
     best candidates when a step found more than the budget."""
     out = RunResult()
     found_by_step: list[ResultSet] = []
     for i, planned in enumerate(plan.steps):
+        if stop():
+            out.stopped = True
+            break
         step = planned.step
 
         def progress(stage: str, done: int, total: int, i: int = i) -> None:
             if on_progress is not None:
                 on_progress(i, stage, done, total)
 
+        def loop_step(k: int, label: str, i: int = i) -> None:
+            if on_progress is not None:
+                on_progress(i, f"loop: {label}", k + 1, 0)
+
         request = step.detail or message
+        if step.action in LOOP_ACTIONS:
+            reply = await agent.loop().run(
+                request,
+                agent.folders(),
+                on_step=loop_step,
+                on_text=_text_for(on_text, i),
+                stop=stop,
+            )
+            out.replies.append(reply)
+            found_by_step.append(reply.results)
+            if len(reply.results):
+                out.last = reply.results
+            continue
         if step.action == "meta":
             paths: Sequence[str] | None = planned.paths
             scope = step.scope if paths is not None else None
@@ -158,14 +189,7 @@ async def run_plan(
         if ask is not None:
             out.choice = Choice(ask.question, ask.options, ask.values, ask.kind, step=i)
             return out
-        reply = await _act(
-            agent,
-            planned,
-            request,
-            found.results,
-            _text_for(on_text, i),
-            progress,
-        )
+        reply = await _act(agent, planned, request, found.results, _text_for(on_text, i), progress)
         reply.hints = hints(planned, found.results, agent.tools.resolver, agent.tags())
         reply.notices = [*plan.notices, *reply.notices] if i == 0 else reply.notices
         out.replies.append(reply)

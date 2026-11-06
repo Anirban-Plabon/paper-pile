@@ -52,3 +52,10 @@ def test_check_verifies_quotes() -> None:
 
 def test_fold() -> None:
     assert fold("It’s  a “Test” — ok") == 'it\'s a "test" - ok'
+
+
+def test_check_turns_paths_and_titles_into_labels() -> None:
+    srcs = make_sources(PARTS)
+    got = check("Grameen [Research/Yunus.md]. Lamps [Village solar]. A [link](x.md) [Other].", srcs)
+    assert got.text == "Grameen [1]. Lamps [2]. A [link](x.md) [Other]."
+    assert got.used == [1, 2]

@@ -209,10 +209,13 @@ class RequestContext:
     open_note: str = ""  # its title
     last_result: str = ""  # ResultSet.compact()
     scoped: Sequence[str] = ()  # @folder/ / @vault scopes the message carries ("" = vault)
+    memory: str = ""  # the vault memory file (memory.py), the user's own description
 
 
 def messages(request: str, ctx: RequestContext) -> list[ChatMessage]:
     parts = [f"Today is {ctx.today.isoformat()} ({ctx.today.strftime('%A')})."]
+    if ctx.memory:
+        parts.append(f"About this vault (written by the user):\n{ctx.memory}")
     if ctx.folders:
         parts.append("Folders: " + ", ".join(list(ctx.folders)[:SHOWN_FOLDERS]))
     if ctx.tags:

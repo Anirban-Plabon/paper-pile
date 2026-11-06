@@ -26,7 +26,7 @@ from paper_pile.core.ai.engine import AiEngine
 from paper_pile.core.ai.vault.candidates import Gatherer
 from paper_pile.core.ai.vault.cards import CardMaker, CardStore, card_search, card_summaries
 from paper_pile.core.ai.vault.meta import VaultMeta
-from paper_pile.core.ai.vault.plan import make_plan
+from paper_pile.core.ai.vault.plan import card_lines, make_plan, needs_card
 from paper_pile.core.ai.vault.run import VaultAgent, run_plan
 from paper_pile.core.ai.vault.scope import ScopeResolver, describe, note_folders
 from paper_pile.core.ai.vault.tools import VaultTools
@@ -70,6 +70,10 @@ MINI = {
     "times a week; reels; influencer outreach.\n",
     "Clients/Acme.md": "#client\n# Acme\nBudget 10k, invoice monthly.\n",
     "Private/Diary.md": "---\nai: false\n---\nPrivate thoughts on social business.\n",
+    "Plans/Pricing 2025.md": "# Pricing 2025\nBasic plan 10 dollars a month, Pro 25. "
+    "Discount for NGOs: 30 percent.\n",
+    "Plans/Pricing 2026.md": "# Pricing 2026\nBasic plan 12 dollars a month, Pro 25, new "
+    "Team plan 60. NGO discount dropped to 20 percent.\n",
 }
 
 
@@ -115,6 +119,8 @@ async def find(ai: AiEngine, root: Path, request: str, cards: bool) -> None:
         return
     show_request(found)
     plan = make_plan(found, resolver, None, request)
+    if needs_card(plan):
+        print("  plan card:\n    " + "\n    ".join(card_lines(plan)))
     if plan.choice is not None:
         print(f"  ASK: {plan.choice.question} {list(plan.choice.options)}")
         return

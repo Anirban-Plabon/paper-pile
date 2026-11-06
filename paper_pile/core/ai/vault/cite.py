@@ -13,6 +13,7 @@ ANCHOR_CHARS = 80  # of the cited text kept to find the lines again after edits
 QUOTE_MIN = 12  # shorter quoted text is not checked (a quoted word is not a quotation)
 
 _LABELS = re.compile(r"\[(\d+(?:\s*,\s*\d+)*)\]")
+_NAMED = re.compile(r"\[([^\[\]\n]{2,120})\](?!\()")  # [Some note.md] — not a markdown link
 # a quotation right before a label: “…” [2] or "…" [2] (up to 40 chars between)
 _QUOTED = re.compile(
     '[“"]([^”"\n]{' + str(QUOTE_MIN) + r",400})[”\"][^\[\n]{0,40}\[(\d+(?:\s*,\s*\d+)*)\]"
@@ -92,7 +93,17 @@ def check(answer: str, sources: Sequence[Source]) -> Checked:
         dropped.extend(str(n) for n in nums if n not in known)
         return f"[{', '.join(map(str, good))}]" if good else ""
 
-    text = _LABELS.sub(keep_known, answer)
+    by_name: dict[str, int] = {}
+    for s in sources:  # a model that cites a path or a title instead of its label
+        for name in (s.path, s.path.rsplit("/", 1)[-1], s.title):
+            by_name.setdefault(fold(name), s.n)
+
+    def name_to_label(m: re.Match[str]) -> str:
+        n = by_name.get(fold(m.group(1)))
+        return f"[{n}]" if n is not None else m.group(0)
+
+    text = _NAMED.sub(name_to_label, answer)
+    text = _LABELS.sub(keep_known, text)
     text = re.sub(r"[ \t]+([.,;:!?])", r"\1", text)  # a removed label leaves no gap
     out.text = text
     out.dropped = dropped

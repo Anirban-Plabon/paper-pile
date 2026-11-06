@@ -14,7 +14,9 @@ Legend: 🧠 = needs Opus · ⬜ todo · 🔄 in progress · ✅ done · ⛔ blo
 - **M3 — Find and judge:** built (P30.18–P30.19 ✅; P30.16–P30.17 🔄 until the eval)
 - **M4 — Read actions:** built with the fast-path runner and the citation core (P30.20–P30.24,
   P30.43–P30.44 🔄 until the eval); hand-checked end to end on gemma4
-- **Next task:** M5 — P30.25 JSON-action loop for compare / open-ended steps, P30.26 routing
+- **M5 — Agent loop:** built (P30.25–P30.28 🔄: loop, routing, plan card data, memory file;
+  the card UI is M7, memory proposals M6); hand-checked on gemma4
+- **Next task:** M6 — edits across notes (P30.29 `propose_edit` over the edit pipeline …)
 - **Waiting on the user:** open questions (PLAN_vault_agent §11) — languages in the test
   vault, background note cards, budgets, model-made hints. Defaults are in §10.
 
@@ -76,10 +78,10 @@ Legend: 🧠 = needs Opus · ⬜ todo · 🔄 in progress · ✅ done · ⛔ blo
 ### M5 — Agent loop
 | ID | Task | Status | Notes |
 |---|---|---|---|
-| P30.25 🧠 | JSON-action loop + budgets + Stop | ⬜ | |
-| P30.26 | Fast-path / loop routing | 🔄 | 2026-11-06 · fast-path runner `run.py` built (steps in order, `after` → earlier step's notes, big-job stop, hints); the loop and the routing between them come with P30.25 |
-| P30.27 | Plan card | ⬜ | |
-| P30.28 | Vault memory file | ⬜ | |
+| P30.25 🧠 | JSON-action loop + budgets + Stop | 🔄 | 2026-11-06 · `loop.py`: 8 read tools as JSON actions, reads become labelled sources, 8 steps / 20 reads, Stop, answer streamed + checked; no read → top 3 found notes read for it; runaway / read limit / private / injection tests (8); gemma4 pricing compare right with [1, 2]; eval pending |
+| P30.26 | Fast-path / loop routing | 🔄 | 2026-11-06 · `run.py`: compare / other → loop, the rest fast path; Stop between steps; repeated answer steps dropped (`plan.without_repeats`); the boundary is the eval's to move |
+| P30.27 | Plan card | 🔄 | 2026-11-06 · core: `needs_card` (several steps or a change), `card_lines`, `drop_step` (dependencies renumbered); the card itself is UI (M7) |
+| P30.28 | Vault memory file | 🔄 | 2026-11-06 · `.paper-pile/ai.md` (`memory.py`, ≤ 2000 chars) sent with understanding and the loop (tests); proposing additions as a diff comes with M6; Settings entry with M7 |
 
 ### M6 — Edits across notes
 | ID | Task | Status | Notes |
@@ -146,6 +148,10 @@ Legend: 🧠 = needs Opus · ⬜ todo · 🔄 in progress · ✅ done · ⛔ blo
 | 2026-11-06 | Fast-path runner (`run.py`) built in M4, ahead of the M5 loop | Every read action needs a runner to be tried end to end; the loop (P30.25) adds open-ended steps on top of it | claude |
 | 2026-11-06 | Citation core (`cite.py`, P30.43–P30.44) built in M4, before the rest of MC | `answer` / `summarise` / `extract` must cite from the start; the UI parts of MC stay later | claude |
 | 2026-11-06 | Summaries of many notes cite note cards (summaries), not note text: their sources have no anchor and open the note's top | The map step reuses cards to save model calls; a quote from a card is verified against the card | claude |
+| 2026-11-06 | Loop: the answer is always written in a separate streamed call from labelled sources + findings (never the model's JSON); when it read nothing, the first 3 notes it found are read for the answer | gemma4 searched once, said final and cited `[Plans/Pricing 2025.md]` paths — right facts, uncheckable citations | claude |
+| 2026-11-06 | Citation check turns a bracketed path / file name / title of a source into its label | Same run: models fall back to naming the note; the label is what the UI and the checker know | claude |
+| 2026-11-06 | An `answer` step that depends on an earlier `answer` / `compare` is dropped in code (`without_repeats`); a prompt rule for it was tried and reverted | gemma4 split "how did my pricing change?" into compare + answer (two identical answers). The rule did not stop it and reversed the order of "find … and make a table" (extract before locate) | claude |
+| 2026-11-06 | Memory file read by app code directly (`.paper-pile` stays out of the AI's read tools) | It is the user's instructions to the agent, not vault content the agent explores | claude |
 
 ## Issues log
 | Date | Task | Symptom | Root cause | Fix | Gotcha? |
@@ -159,3 +165,4 @@ Legend: 🧠 = needs Opus · ⬜ todo · 🔄 in progress · ✅ done · ⛔ blo
 - 2026-11-06 · P30.13–P30.15 understanding + plan built, hand-checked on gemma4:12b (9 requests) · 1625 tests (+21)
 - 2026-11-06 · P30.16–P30.19 candidates, judge, second round, note cards, budgets (M3); hand check on a 9-note trap vault: 5/5 on-topic found (4 yes + 1 maybe), 0 false friends · 1647 tests (+22)
 - 2026-11-06 · P30.20–P30.24 + P30.43–P30.44 locate, answer, summarise, extract, hints, fast-path runner, citations (M4); gemma4 end to end: locate / answer / summarise / extract / meta all right on the trap vault · 1670 tests (+23)
+- 2026-11-06 · P30.25–P30.28 agent loop, routing, plan card data, memory file (M5); gemma4: pricing 2025 → 2026 compared in one step, every change cited [1, 2] · 1686 tests (+16)

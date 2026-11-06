@@ -210,7 +210,14 @@ gemma4.
 - `compare` and open-ended steps run the **loop**: the model gets the tools (§5.3) as a
   JSON action list and answers `{tool, args}` or `{final}`; Python runs the tool, returns a
   compact result; max steps (default 8) and max notes read (default 20) per request; the
-  user sees each step and can Stop.
+  user sees each step and can Stop. As built (P30.25, `loop.py`): one flat action object
+  with every field required (`tool`, `note`, `section`, `folder`, `terms`, `tag`, `dates`,
+  `date_kind`, `direction`, `query`); each `read` becomes a labelled source shown to the
+  model as data; other results are kept as findings. The answer is always a separate
+  streamed call from the labelled sources + findings, citations checked; when the model read
+  nothing itself, the first 3 notes it found are read for the answer. Routing (`run.py`):
+  `compare` / `other` → loop, the rest fast path. An `answer` step that only re-answers
+  from an earlier `answer` / `compare` is dropped (`plan.without_repeats`).
 - Eval decides the boundary: if a fast-path action scores better in the loop, it moves.
 
 ### 5.3 Tools (`core/ai/vault/tools.py`, plain Python, unit-tested without a model)
@@ -236,6 +243,10 @@ network.
 For multi-step or editing requests the agent first shows its plan ("1. find client notes
 · 2. extract budgets · 3. add a Budget section to 3 notes"). The user can run it, remove a
 step, or change the scope. Read-only single-step requests run at once (no card).
+Core built (P30.27, `plan.py`): `needs_card` (several steps, or any edit / write step),
+`card_lines` ("1. Make a table from notes about client budgets in Clients", "2. Change the
+notes of step 1: add a Budget section"), `drop_step` (later dependencies renumbered). The
+card UI is M7.
 
 ### 5.5 Results and context
 
@@ -252,6 +263,10 @@ Optional `.paper-pile/ai.md` (user-editable, shown in Settings → AI): facts ab
 vault's layout ("daily notes in Journal/ as YYYY-MM-DD", "one note per client with a
 Budget section"). Sent with every vault request. The agent may *propose* additions as a
 diff after it learned something ("your meeting notes share a template — save that?").
+Built (P30.28, `memory.py`): read by app code (≤ 2000 chars) and shown to the model as
+"About this vault (written by the user)" in the understanding call and the loop; the AI's
+read tools never open `.paper-pile`. Proposals as diffs come with M6, the Settings entry
+with M7.
 
 ## 6. Writing and editing across notes
 

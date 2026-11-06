@@ -125,6 +125,25 @@ def unguessed(step: Step, message: str, forced: Sequence[str] = ()) -> Step:
     return replace(step, scope=replace(step.scope, folders=keep_folders, tags=keep_tags))
 
 
+ANSWERS = {"answer", "compare"}  # steps whose reply is already an answer to the question
+
+
+def without_repeats(steps: Sequence[Step]) -> list[Step]:
+    """The steps without an ``answer`` that only answers again from an earlier answer /
+    compare step's notes (gemma4 split "how did X change?" into compare + answer: the same
+    answer twice). Later dependencies on a dropped step move to what it depended on."""
+    keep: list[Step] = []
+    new_index: dict[int, int] = {}
+    for i, step in enumerate(steps):
+        dep = step.depends_on
+        if step.action == "answer" and 0 <= dep < i and steps[dep].action in ANSWERS:
+            new_index[i] = new_index.get(dep, -1)
+            continue
+        new_index[i] = len(keep)
+        keep.append(replace(step, depends_on=new_index.get(dep, -1) if dep >= 0 else -1))
+    return keep
+
+
 def make_plan(
     request: VaultRequest,
     resolver: ScopeResolver,
@@ -137,13 +156,81 @@ def make_plan(
     fewer notes, maybe none). Guessed folders / tags of topic searches are dropped
     (:func:`unguessed`)."""
     plan = Plan(steps=[])
-    for i, step in enumerate(request.steps):
+    for i, step in enumerate(without_repeats(request.steps)):
         step = unguessed(step, message, [f.strip("/") for f in forced])
         plan.steps.append(_plan_step(i, step, resolver, last, plan))
     if request.question:
         opts = request.options[:MAX_CHOICES]
         plan.choice = Choice(request.question, opts, opts, "open")
     return plan
+
+
+CARD_ACTIONS = {"edit", "write"}  # steps that change the vault always show the plan card
+VERBS = {
+    "locate": "Find",
+    "answer": "Answer from",
+    "summarise": "Summarise",
+    "extract": "Make a table from",
+    "meta": "Count / list",
+    "compare": "Compare",
+    "write": "Write a new note from",
+    "edit": "Change",
+    "other": "Work through",
+}
+
+
+def needs_card(plan: Plan) -> bool:
+    """Show the plan before running (§5.4): several steps, or any step that changes notes.
+    A single read-only step runs at once."""
+    return len(plan.steps) > 1 or any(p.step.action in CARD_ACTIONS for p in plan.steps)
+
+
+def _target(planned: PlannedStep) -> str:
+    step = planned.step
+    if planned.after >= 0:
+        return f"the notes of step {planned.after + 1}"
+    bits: list[str] = []
+    if step.topic:
+        bits.append(f"notes about {step.topic}" if planned.search else step.topic)
+    if step.scope.folders:
+        bits.append("in " + ", ".join(step.scope.folders))
+    if step.scope.tags:
+        bits.append("tagged " + ", ".join("#" + t for t in step.scope.tags))
+    if step.scope.dates is not None:
+        start, end = step.scope.dates.iso()
+        bits.append(f"dated {start} to {end}" if start != end else f"dated {start}")
+    if planned.paths is not None and not planned.search:
+        bits.append(f"({len(planned.paths)} notes)")
+    return " ".join(bits) or "the whole vault"
+
+
+def card_lines(plan: Plan) -> list[str]:
+    """The plan card: one line per step, numbered from 1 ("2. Change the notes of step 1:
+    add a Budget section")."""
+    out = []
+    for i, planned in enumerate(plan.steps, 1):
+        step = planned.step
+        what = f": {step.detail}" if step.detail and step.action in CARD_ACTIONS else ""
+        out.append(f"{i}. {VERBS.get(step.action, 'Work through')} {_target(planned)}{what}")
+    return out
+
+
+def drop_step(plan: Plan, index: int) -> Plan:
+    """The plan without step ``index`` (the user removed it on the card). Later steps that
+    depended on it lose that dependency and keep their own target; numbers shift down."""
+    if not 0 <= index < len(plan.steps):
+        return plan
+    steps = []
+    for i, planned in enumerate(plan.steps):
+        if i == index:
+            continue
+        after = planned.after
+        if after == index:
+            after = -1
+        elif after > index:
+            after -= 1
+        steps.append(replace(planned, after=after))
+    return Plan(steps, plan.choice, list(plan.notices))
 
 
 def choose(plan: Plan, value: str, resolver: ScopeResolver) -> Plan:
