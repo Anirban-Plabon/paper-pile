@@ -284,6 +284,35 @@ with M7.
 - Conflicts: a note changed on disk since the diff was made → that diff is redone, never
   applied over the newer text.
 
+## 6a. How the agent connects to the rest of the AI (P30.49, user 2026-11-06)
+
+"Make sure everything remains connected": the agent is one more path inside the existing
+chat, not a second chat.
+
+- **One entry point**: `AiEngine.answer()` (the generator the chat pane, regenerate and
+  the saved history already use) asks `AiEngine.vault_session()` (`core/ai/vault/session.py`)
+  first. When the session returns a turn, that is the reply (`text`, `sources`, `summary`
+  on the existing `SavedTurn` — no new chat-file fields yet); otherwise the usual answer is
+  made exactly as before (open note, mentions, tabs, the old `@vault` sections). The chat UI
+  did not change: status lines go through the existing `on_status`.
+- **When the agent looks** (`ai.vault_agent`, Settings → AI → "Search the whole vault",
+  essential row): `auto` (default) = messages with no attachment, and any `@vault` /
+  `@folder/` message; `at` = only `@` messages; `off` = never (the old `@vault` search).
+  A selection, a picked note, a file or an `@note` mention in the text is an attachment: the
+  message is about that, so the agent stays out unless an `@` scope is there too.
+- **Fallbacks**: the model says the vault is not needed, cannot be asked, or gives no
+  usable steps → the usual answer. No index (tests, tools) → the usual answer.
+- **`@folder/`** scopes are put on every step that finds its own notes and has no folder
+  (`session.with_scopes`); they are never dropped as guesses.
+- **Questions**: an ambiguous name or a big job becomes the reply (numbered options); the
+  next message answers it by number or option text (`picked_option`), else it is a new
+  request. New / opened chat → the session forgets its last result and open question.
+- **Shared parts**: `Provider` + `AiEngine.stream` / `ask_json`, `read_note` + `AccessPolicy`
+  (same checks as the chat), the app's `Index`, `daily.py`, the vault memory file. Later:
+  the edit pipeline (M6), citations in the normal chat (P30.43), chips / step card (M7).
+- **Cost**: in `auto` every plain chat message gets one understanding call first
+  (~5–15 s on gemma4:12b here, 2 s for "capital of France"); `at` avoids it.
+
 ## 7. UI and citations
 
 - **Step card** in the chat: live steps ("34 candidates → 12 relevant → summarising
@@ -527,6 +556,7 @@ green + the stated eval numbers recorded in the tracker. 🧠 = needs Opus.
 ### M7 — UI
 | ID | Task | Acceptance |
 |---|---|---|
+| P30.49 | Connect the agent to the chat (§6a) | `AiEngine.answer` asks the agent first and falls back unchanged; mode setting; `@folder/` kept; pending question answered by the next message; reset on new chat (tests through `answer()`); real-model run through `answer()` |
 | P30.34 | Step card (live steps, call count, Stop) | GUI test + real-app check native + `--serve` |
 | P30.35 | Result blocks (lists, tables, citations jump to section) | real-app check |
 | P30.36 | Chips: ambiguity, hints, big-job confirm, follow-ups | GUI test + real-app check |

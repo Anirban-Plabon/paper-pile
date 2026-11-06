@@ -41,6 +41,7 @@ ICON_COLORS = {"default": "Default", "accent": "Accent"}  # value -> shown
 AI_PROVIDERS = {k: b.label for k, b in BACKENDS.items()}  # ai.provider -> shown
 EDIT_MODES = {"ask": "Ask first", "auto": "Apply at once", "readonly": "Read-only"}  # ai.edits
 EDIT_PLANNING = {"auto": "Auto", "selection": "Selection only"}  # ai.edit_planning
+VAULT_AGENT = {"auto": "Auto", "at": "With @ only", "off": "Off"}  # ai.vault_agent
 MOTION_FACTORS = {"off": 0.0, "fast": 0.6, "normal": 1.0, "slow": 1.6}  # × every duration
 MODES = ("live", "source")
 PAPER_SIZES = ("A4", "Letter")  # core/printdoc.py PAPERS
@@ -458,6 +459,15 @@ SECTIONS: dict[str, tuple[Setting, ...]] = {
             tuple(EDIT_PLANNING),
             help="Auto may also fix related places",
             group="Context",
+        ),
+        Setting(
+            "ai.vault_agent",
+            "Search the whole vault",
+            "choice",
+            tuple(VAULT_AGENT),
+            help="Auto: the chat looks through your notes when a question needs them",
+            group="Context",
+            essential=True,
         ),
         Setting(
             "ai.selection_popup",

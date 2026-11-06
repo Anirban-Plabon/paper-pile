@@ -16,7 +16,10 @@ Legend: 🧠 = needs Opus · ⬜ todo · 🔄 in progress · ✅ done · ⛔ blo
   P30.43–P30.44 🔄 until the eval); hand-checked end to end on gemma4
 - **M5 — Agent loop:** built (P30.25–P30.28 🔄: loop, routing, plan card data, memory file;
   the card UI is M7, memory proposals M6); hand-checked on gemma4
-- **Next task:** M6 — edits across notes (P30.29 `propose_edit` over the edit pipeline …)
+- **P30.49 — connected to the chat** (2026-11-06): `AiEngine.answer()` asks the agent first,
+  falls back unchanged; Settings → AI → Search the whole vault (Auto / With @ only / Off)
+- **Next task:** M6 — edits across notes, starting with the orchestration spike (P30.29a,
+  LangGraph vs own state machine) if the user agrees
 - **Waiting on the user:** open questions (PLAN_vault_agent §11) — languages in the test
   vault, background note cards, budgets, model-made hints. Defaults are in §10.
 
@@ -95,6 +98,7 @@ Legend: 🧠 = needs Opus · ⬜ todo · 🔄 in progress · ✅ done · ⛔ blo
 ### M7 — UI
 | ID | Task | Status | Notes |
 |---|---|---|---|
+| P30.49 | Connect the agent to the chat | ✅ | 2026-11-06 · `vault/session.py` + `AiEngine.answer()` / `vault_session()`; `ai.vault_agent` auto / at / off (Settings → AI); attachments and `@note` keep the old path; `@folder/` forced on steps; questions answered by the next message; reset on new / opened chat (8 tests through `answer()`); gemma4 run through `answer()`: list → "summarise Pricing" → "2" → "capital of France" all right. The app process must be restarted to pick it up |
 | P30.34 | Step card | ⬜ | |
 | P30.35 | Result blocks | ⬜ | |
 | P30.36 | Chips | ⬜ | |
@@ -152,6 +156,9 @@ Legend: 🧠 = needs Opus · ⬜ todo · 🔄 in progress · ✅ done · ⛔ blo
 | 2026-11-06 | Citation check turns a bracketed path / file name / title of a source into its label | Same run: models fall back to naming the note; the label is what the UI and the checker know | claude |
 | 2026-11-06 | An `answer` step that depends on an earlier `answer` / `compare` is dropped in code (`without_repeats`); a prompt rule for it was tried and reverted | gemma4 split "how did my pricing change?" into compare + answer (two identical answers). The rule did not stop it and reversed the order of "find … and make a table" (extract before locate) | claude |
 | 2026-11-06 | Memory file read by app code directly (`.paper-pile` stays out of the AI's read tools) | It is the user's instructions to the agent, not vault content the agent explores | claude |
+| 2026-11-06 | The agent is wired into `AiEngine.answer()` (one entry point for chat, regenerate, history) with the old path as fallback; new task P30.49 | User: "make sure everything should remain connected" — no second chat, no UI fork | user |
+| 2026-11-06 | `ai.vault_agent` setting: auto (default, plan §10) / at / off; attachments and `@note` mentions keep the old path | Auto costs one understanding call per plain message (~5–15 s on gemma4 here); `at` / `off` let the user trade that away | claude |
+| 2026-11-06 | A step that names notes never takes the last result (`from_result` dropped in parse); the rule says the last result is only for messages that point back at it | Real run through `answer()`: after a list, gemma4 answered "summarise Pricing" from the previous social-business notes | claude |
 
 ## Issues log
 | Date | Task | Symptom | Root cause | Fix | Gotcha? |
@@ -166,3 +173,4 @@ Legend: 🧠 = needs Opus · ⬜ todo · 🔄 in progress · ✅ done · ⛔ blo
 - 2026-11-06 · P30.16–P30.19 candidates, judge, second round, note cards, budgets (M3); hand check on a 9-note trap vault: 5/5 on-topic found (4 yes + 1 maybe), 0 false friends · 1647 tests (+22)
 - 2026-11-06 · P30.20–P30.24 + P30.43–P30.44 locate, answer, summarise, extract, hints, fast-path runner, citations (M4); gemma4 end to end: locate / answer / summarise / extract / meta all right on the trap vault · 1670 tests (+23)
 - 2026-11-06 · P30.25–P30.28 agent loop, routing, plan card data, memory file (M5); gemma4: pricing 2025 → 2026 compared in one step, every change cited [1, 2] · 1686 tests (+16)
+- 2026-11-06 · P30.49 agent connected to the chat through `AiEngine.answer()` + setting; gemma4 through `answer()`: list, named-note summary, follow-up by number, plain question all right · 1694 tests (+8)

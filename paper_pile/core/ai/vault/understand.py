@@ -160,8 +160,9 @@ for a calendar date or period (leave out the parts not said), {"from", "to"} as 
 for explicit dates. date_kind: "edited" when it is about when notes were changed, \
 "content" when it is about what the notes are dated or about (meetings, daily notes, \
 events), "any" when unclear.
-- from_result: when the step works on the previous answer's notes listed below: "all", or \
-their numbers like "2,3". Empty otherwise.
+- from_result: only when the message points back at the notes of the previous answer listed \
+below (all of them, or some by their place in the list): "all", or their numbers like \
+"2,3". Empty when the message names other notes or asks about a topic of its own.
 
 topic: the subject in a few words ("" when the step has none, e.g. a count of all notes).
 terms: what to search the notes for, so that notes about the topic are found even when they \
@@ -257,13 +258,16 @@ def _step(raw: object, index: int, today: date) -> Step | None:
     meta = ""
     if action == "meta":  # a meta name on another action is noise
         meta = str(raw["meta"]) if raw.get("meta") in QUERIES else "count"
+    scope = scope_from_json(raw, today)
+    # a step that works on an earlier step's notes does not also take the last answer's, and a
+    # step that names notes works on those (gemma4 took the last result for "summarise Pricing")
+    takes_last = not ok_dep and not scope.notes
     return Step(
         action=action,
         topic=str(raw.get("topic") or "").strip(),
         terms=_strs(raw.get("terms"), MAX_TERMS),
-        scope=scope_from_json(raw, today),
-        # a step that works on an earlier step's notes does not also take the last answer's
-        from_result="" if ok_dep else _from_result(raw.get("from_result")),
+        scope=scope,
+        from_result=_from_result(raw.get("from_result")) if takes_last else "",
         meta=meta,
         detail=str(raw.get("detail") or "").strip(),
         depends_on=depends if ok_dep and isinstance(depends, int) else -1,

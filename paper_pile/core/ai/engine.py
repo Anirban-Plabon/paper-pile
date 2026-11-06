@@ -13,7 +13,7 @@ import time
 from collections.abc import AsyncIterator, Callable, Mapping, Sequence
 from dataclasses import dataclass, replace
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from paper_pile.core.ai.access import (
     AccessDeniedError,
@@ -74,6 +74,9 @@ from paper_pile.core.index import query_words
 from paper_pile.core.links import resolve_wikilink, wikilink_to
 from paper_pile.core.settings import language_name
 from paper_pile.core.vault import Vault
+
+if TYPE_CHECKING:
+    from paper_pile.core.ai.vault.session import VaultSession
 
 log = logging.getLogger("paper_pile.ai.engine")
 
@@ -177,6 +180,15 @@ class AiEngine:
         self._compact_failed = -1  # turns when the last summary failed (no new try for a while)
         self.chat_id = new_chat_id()
         self.created = time.time()
+        self._vault_session: VaultSession | None = None  # the vault agent (vault/session.py)
+
+    def vault_session(self) -> "VaultSession":
+        """The vault agent for this chat (made on first use; PLAN_vault_agent P30.49)."""
+        if self._vault_session is None:
+            from paper_pile.core.ai.vault.session import VaultSession  # it imports this module
+
+            self._vault_session = VaultSession(self)
+        return self._vault_session
 
     # ---- settings ------------------------------------------------------------------------
 
@@ -433,6 +445,8 @@ class AiEngine:
         self.summary, self.summarized = "", 0
         self._compact_failed = -1
         self.chat_id, self.created = new_chat_id(), time.time()
+        if self._vault_session is not None:
+            self._vault_session.reset()
 
     def open_chat(self, chat_id: str) -> bool:
         """Make a saved chat the open one; False when it cannot be read."""
@@ -445,6 +459,8 @@ class AiEngine:
         self.summary, self.summarized = chat.summary, chat.summarized
         self._compact_failed = -1
         self.chat_id, self.created = chat.id, chat.created
+        if self._vault_session is not None:
+            self._vault_session.reset()
         return True
 
     def delete_chat(self, chat_id: str) -> bool:
@@ -782,8 +798,33 @@ class AiEngine:
         on_status: Callable[[str], None] | None = None,
     ) -> AsyncIterator[str]:
         """Answer ``out``: the reply's text grows as the pieces arrive (also yielded).
-        ``on_status`` hears what happens before the answer starts (a summary being made)."""
+        ``on_status`` hears what happens before the answer starts (a summary being made).
+
+        The vault agent looks first (PLAN_vault_agent P30.49): when it answers — finding,
+        summarising, comparing notes across the vault, or asking which note was meant — that
+        is the reply; otherwise the usual answer below (open note, mentions, ``@vault``
+        sections) is made exactly as before."""
         question = out.turn.text
+        scopes = self.vault_scopes(question)
+        paths = self.note_paths()
+        mentioned = [  # an @note in the text is attached like a picked note
+            n
+            for n in extract_mentions(self.strip_vault_tags(question))
+            if resolve_wikilink(n, "", paths)
+        ]
+        attached = bool(out.attached.strip() or out.notes or mentioned)
+        self._require_access()
+        turn = await self.vault_session().handle(
+            self.strip_vault_tags(question).strip() or question,
+            scopes=scopes,
+            attached=attached,
+            open_note=self.link_name(snap.path) if snap.path else "",
+            on_status=on_status,
+        )
+        if turn is not None:
+            reply.text, reply.sources, reply.summary = turn.text, turn.sources, turn.summary
+            yield turn.text
+            return
         window = await self.window()
         room = window - self.answer_room(window)
         compacted = await self.compact_if_needed(room, on_status)

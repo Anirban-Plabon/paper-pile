@@ -43,6 +43,7 @@ from paper_pile.core.settings import (
     MOTION_LABELS,
     PAGE_VIEWS,
     SECTIONS,
+    VAULT_AGENT,
     Setting,
     accent_colors,
     is_shown,
@@ -102,6 +103,7 @@ _SEGMENTED = {
     "editor.page_view",
     "ai.edits",
     "ai.edit_planning",
+    "ai.vault_agent",
 }
 _SCOPES = (("global", "All vaults"), ("vault", "This vault"))
 _FOLDED = {("AI", "Advanced")}  # (section, group) shown in a closed expansion
@@ -442,6 +444,7 @@ class SettingsPane:
                 "appearance.icons": ICON_COLORS,
                 "ai.edits": EDIT_MODES,
                 "ai.edit_planning": EDIT_PLANNING,
+                "ai.vault_agent": VAULT_AGENT,
             }.get(setting.key, {})
             self._segmented(
                 [(c, labels.get(c, c) if not icons else "", icons.get(c)) for c in setting.choices],

@@ -83,6 +83,9 @@ DEFAULTS: dict[str, Any] = {
         "edit_planning": "auto",  # auto: plan across the note | selection: one call (PLAN §4.29)
         "prompts_file": "",  # your suggested prompts: a markdown list (vault-relative / absolute)
         "selection_popup": True,  # the Ask box under a settled selection (PLAN §4.27)
+        # the vault agent (PLAN_vault_agent P30.49): auto = chat messages without attachments
+        # and @ scopes; at = only @vault / @folder/; off = never (the old @vault search)
+        "vault_agent": "auto",
     },
     "paste": {"smart_paste": True},
     "features": {"ai": True, "calendar": True},  # PLAN §4.18

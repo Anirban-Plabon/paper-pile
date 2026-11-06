@@ -22,6 +22,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from paper_pile.core.ai.access import grant_now
+from paper_pile.core.ai.context import EditorSnapshot
 from paper_pile.core.ai.engine import AiEngine
 from paper_pile.core.ai.vault.candidates import Gatherer
 from paper_pile.core.ai.vault.cards import CardMaker, CardStore, card_search, card_summaries
@@ -154,11 +155,26 @@ async def main(args: argparse.Namespace) -> int:
     config.set("ai.provider", args.provider)
     config.set("ai.model", args.model)
     config.set("ai.preload", False)
-    if args.find:
+    if args.find or args.chat:
         vault = Vault(root)
         for rel, text in MINI.items():
             vault.create_note(rel, text)
         grant_now(root, work / "a")
+    if args.chat:  # through AiEngine.answer, as the chat pane does (P30.49)
+        index = Index(Vault(root))
+        index.sync()
+        ai = AiEngine(Vault(root), config, index, access_dir=work / "a")
+        for request in args.requests or ["where are my social business notes?", "1"]:
+            out = ai.add_message(request)
+            reply = ai.start_reply()
+            t = time.monotonic()
+            seen: list[str] = []
+            async for _ in ai.answer(reply, out, EditorSnapshot(), on_status=seen.append):
+                pass
+            print(f"\n> {request}   ({time.monotonic() - t:.1f} s; {' → '.join(seen[-4:])})")
+            print("  " + reply.text.replace("\n", "\n  "))
+            print(f"  [{reply.summary}] sources: {reply.sources}")
+        return 0
     ai = AiEngine(Vault(root), config, access_dir=work / "a")
     if args.find:
         for request in args.requests or FIND_SAMPLES:
@@ -182,5 +198,6 @@ if __name__ == "__main__":
     p.add_argument("--provider", default="ollama")
     p.add_argument("--find", action="store_true", help="also gather and judge on a small vault")
     p.add_argument("--cards", action="store_true", help="with --find: make note cards first")
+    p.add_argument("--chat", action="store_true", help="through AiEngine.answer like the chat")
     p.add_argument("requests", nargs="*")
     raise SystemExit(asyncio.run(main(p.parse_args())))
