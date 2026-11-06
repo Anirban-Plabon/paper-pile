@@ -9,8 +9,9 @@ Legend: 🧠 = needs Opus · ⬜ todo · 🔄 in progress · ✅ done · ⛔ blo
 ## Current focus
 - **Milestone:** M1 — Vault tools and index: done (P30.8–P30.12, 2026-11-06). M0 (eval) comes
   later: user 2026-11-06, "start implementing … do not run eval or large scale test yet"
-- **Next task:** P30.13 — vault understanding prompt + parser, developed against gemma4
-  (small hand checks only; no eval runs yet)
+- **M2 — Understanding:** built and hand-checked on gemma4 (P30.13–P30.15 🔄: accepted only on
+  eval numbers, and the eval is not run yet)
+- **Next task:** M3 — P30.16 candidates (term widening + several sources), P30.17 judge
 - **Waiting on the user:** open questions (PLAN_vault_agent §11) — languages in the test
   vault, background note cards, budgets, model-made hints. Defaults are in §10.
 
@@ -48,9 +49,9 @@ Legend: 🧠 = needs Opus · ⬜ todo · 🔄 in progress · ✅ done · ⛔ blo
 ### M2 — Understanding
 | ID | Task | Status | Notes |
 |---|---|---|---|
-| P30.13 🧠 | Vault understanding prompt + parser | ⬜ | |
-| P30.14 🧠 | Ambiguity rules | ⬜ | |
-| P30.15 | Multi-part split + dependencies | ⬜ | |
+| P30.13 🧠 | Vault understanding prompt + parser | 🔄 | 2026-11-06 · built (`vault/understand.py`), hand-checked on gemma4:12b (`tools/vault_try.py`, ~5–13 s per request warm); acceptance waits for the eval (M0) |
+| P30.14 🧠 | Ambiguity rules | 🔄 | 2026-11-06 · model's open choice + `vault/plan.py` name / folder ambiguity → one question with options, `choose()` re-resolves; missing names → notices; eval pending |
+| P30.15 | Multi-part split + dependencies | 🔄 | 2026-11-06 · steps + `depends_on` parsed and planned (`after`); gemma4 splits "list X, then add Y" into extract → edit; eval pending |
 
 ### M3 — Find and judge
 | ID | Task | Status | Notes |
@@ -131,12 +132,17 @@ Legend: 🧠 = needs Opus · ⬜ todo · 🔄 in progress · ✅ done · ⛔ blo
 | 2026-11-06 | Daily-note dates computed at query time from path + settings, not stored in the index | The index stays independent of settings; a daily-format change needs no rebuild | claude |
 | 2026-11-06 | Index `private` column (front matter `ai: false`) and `words`; `tag_pairs` instead of a tag count so callers count only readable notes | Listings and meta must never read note texts nor count private notes | claude |
 | 2026-11-06 | Note names: a full path with extension is exact; a bare name never counts as an exact path ("pricing" with `Pricing.md` and `Clients/Pricing.md` is ambiguous); on equal search hits the more specific section wins | Found by tests: a root note silently won over a same-named note in a folder; the `#` title section always beat the `##` that held the words | claude |
+| 2026-11-06 | Understanding schema: every step field required, target fields before topic / terms; meta queries described one by one ("how many" takes the list that matches what is counted); `from_result` dropped when no last result was shown or the step depends on an earlier one; meta kept only on meta steps | gemma4 hand check: optional target fields were never filled (folder, "last week" ignored); "how many notes have no tags" → `count`; `from_result: "-1"` / `"all"` with no earlier answer | claude |
+| 2026-11-06 | A folder name written with `/` is matched only against whole paths of the same depth | A missing `Clients/x` was silently read as `Clients` by the close-spelling rule (a wider scope than asked) | claude |
+| 2026-11-06 | Not fixed by prompt: gemma4 reads "social business" as social media (its own knowledge) | No word lists (CLAUDE.md); wrong candidates are the judge's to drop (P30.17), and the eval will measure it | claude |
 
 ## Issues log
 | Date | Task | Symptom | Root cause | Fix | Gotcha? |
 |---|---|---|---|---|---|
+| 2026-11-06 | P30.13 | gemma4 never filled a step's folders / dates although the message named them | The fields were optional in the JSON schema; with schema-constrained output the model skips optional properties | Every field required (empty values allowed), target fields ordered before topic / terms | y |
 
 ## Session log
 - 2026-11-06 · P30.1 plan + tracker written (no code)
 - 2026-11-06 · Citations section + MC tasks added to the plan (docs only)
 - 2026-11-06 · P30.8–P30.12 vault tools and index (M1) · 1604 tests (+61), ruff + mypy clean
+- 2026-11-06 · P30.13–P30.15 understanding + plan built, hand-checked on gemma4:12b (9 requests) · 1625 tests (+21)

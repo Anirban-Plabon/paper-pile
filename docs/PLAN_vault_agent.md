@@ -148,10 +148,23 @@ such month that has started.
 
 ### 5.1 Understanding (`core/ai/vault/understand.py`)
 
-One JSON call: `{steps: [{action, target{…}, topic, terms[], options{…}, depends_on}],
-ambiguous: [{step, kind, choices?}], needs_vault: bool}`. Schema-validated, lenient parse
-(`structured.py`). A message that does not need the vault returns `needs_vault: false` and
-the chat answers as today. `@vault` / `@folder/` / `@note` force `needs_vault: true`.
+One JSON call (as built, P30.13): `{needs_vault, steps: [{action, meta, folders, tags,
+notes, linked_from, links_to, dates, date_kind, from_result, topic, terms, detail,
+depends_on}], question, options}`. Every step field is required and the target comes before
+topic / terms (a constrained model skips optional fields). The model is shown today's date,
+the readable folders and the most used tags, the open note, the `@` scopes of the message
+and the last result set (numbered). Lenient parse: malformed steps dropped, `meta` only on
+meta steps, `from_result` only `"all"` / numbers and only when a last result was shown, a
+question only with ≥ 2 options. A message that does not need the vault returns
+`needs_vault: false` and the chat answers as today. `@vault` / `@folder/` / `@note` force
+`needs_vault: true`.
+
+**Plan** (`core/ai/vault/plan.py`, P30.14 / P30.15, no model): each step's target resolved
+(`ScopeResolver`), notes taken from the last result (`from_result`) or from an earlier step
+(`depends_on` → `after`), and named notes read rather than searched. One question at a time:
+the model's open choice first, else the first ambiguous note / folder name with its
+candidates as options; `choose()` narrows that name and resolves the step again. Names that
+match nothing (or only private notes) become notices, never guesses.
 
 ### 5.2 Fast path vs loop
 

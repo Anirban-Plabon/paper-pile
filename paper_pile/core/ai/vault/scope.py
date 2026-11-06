@@ -110,7 +110,9 @@ def match_names(name: str, rows: Iterable[NoteRow]) -> list[str]:
 
 def match_folders(name: str, folders: Iterable[str]) -> list[str]:
     """Vault folders ``name`` means: the exact path, else folders whose last part is the name
-    (``Clients`` finds ``Work/Clients``), else close spellings of a last part."""
+    (``Clients`` finds ``Work/Clients``), else close spellings. A name written with a ``/``
+    is only compared with whole paths of the same depth, so a missing ``Clients/x`` never
+    turns into ``Clients``."""
     key = name.strip().strip("/").casefold()
     if not key:
         return []
@@ -118,12 +120,19 @@ def match_folders(name: str, folders: Iterable[str]) -> list[str]:
     exact = [f for f in folders if f.casefold() == key]
     if exact:
         return exact
+    if "/" in key:
+        depth = key.count("/")
+        same = {f.casefold(): f for f in folders if f.count("/") == depth}
+        close = difflib.get_close_matches(key, list(same), n=3, cutoff=NAME_CUTOFF)
+        return [same[c] for c in close]
     tail = [f for f in folders if f.rsplit("/", 1)[-1].casefold() == key]
     if tail:
         return tail
-    tails = {f.rsplit("/", 1)[-1].casefold(): f for f in folders}
+    tails: dict[str, list[str]] = {}
+    for f in folders:
+        tails.setdefault(f.rsplit("/", 1)[-1].casefold(), []).append(f)
     close = difflib.get_close_matches(key, list(tails), n=3, cutoff=NAME_CUTOFF)
-    return [tails[c] for c in close]
+    return [f for c in close for f in tails[c]]
 
 
 def note_folders(paths: Iterable[str]) -> list[str]:

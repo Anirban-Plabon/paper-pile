@@ -113,6 +113,8 @@ def test_match_folders() -> None:
     assert match_folders("clients/", folders) == ["Clients"]  # exact beats last-part
     assert match_folders("marketng", folders) == ["Marketing"]
     assert match_folders("nothing", folders) == []
+    assert match_folders("clients/x", folders) == []  # a missing subfolder is not its parent
+    assert match_folders("work/clinets", folders) == ["Work/Clients"]  # same depth, close
     assert set(match_folders("clients", ["Work/Clients", "Archive/Clients"])) == {
         "Work/Clients",
         "Archive/Clients",
