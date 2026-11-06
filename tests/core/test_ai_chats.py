@@ -14,6 +14,9 @@ from paper_pile.core.ai.chats import (
     load_chat,
     new_chat_id,
     save_chat,
+    token_text,
+    took_text,
+    turn_time,
 )
 from paper_pile.core.vault import Vault
 
@@ -186,3 +189,58 @@ def test_delete_from_a_folder_outside_the_vault(tmp_path: Path) -> None:
     delete_chat(Vault(vault), outside, "x")
     assert list_chats(outside) == []
     assert list((vault / ".trash").rglob("x.json"))
+
+
+def test_turn_time_today_other_day_other_year_unknown() -> None:
+    import time
+
+    now = time.mktime((2026, 11, 6, 15, 0, 0, 0, 0, -1))
+    at = time.mktime((2026, 11, 6, 9, 5, 0, 0, 0, -1))
+    assert turn_time(at, now) == "09:05"
+    assert turn_time(at - 86400, now) == "Nov 5, 09:05"
+    assert turn_time(time.mktime((2025, 3, 2, 18, 30, 0, 0, 0, -1)), now) == "Mar 2, 2025, 18:30"
+    assert turn_time(0, now) == ""
+
+
+def test_turn_time_kept_and_old_files_have_none(tmp_path: Path) -> None:
+    chat = _chat(new_chat_id(), 5.0)
+    assert chat.turns[0].at > 0  # stamped when made
+    folder = chats_folder(tmp_path)
+    save_chat(folder, chat)
+    assert load_chat(folder, chat.id) == chat
+    path = folder / f"{chat.id}.json"
+    data = json.loads(path.read_text())
+    for turn in data["turns"]:
+        del turn["at"]
+    path.write_text(json.dumps(data))
+    loaded = load_chat(folder, chat.id)
+    assert loaded is not None and [t.at for t in loaded.turns] == [0.0, 0.0]
+
+
+def test_token_and_took_text() -> None:
+    assert [token_text(n) for n in (0, 850, 999, 1000, 1940, 12_400)] == [
+        "0 toks",
+        "850 toks",
+        "999 toks",
+        "1k toks",
+        "1.9k toks",
+        "12k toks",
+    ]
+    shown = [took_text(s) for s in (0.84, 12.3, 65.2, 600)]
+    assert shown == ["0.8s", "12.3s", "1m 05s", "10m 00s"]
+
+
+def test_answer_size_and_time_kept_and_old_files_have_none(tmp_path: Path) -> None:
+    chat = _chat(new_chat_id(), 5.0)
+    chat.turns[1].tokens, chat.turns[1].took = 1940, 4.2
+    folder = chats_folder(tmp_path)
+    save_chat(folder, chat)
+    loaded = load_chat(folder, chat.id)
+    assert loaded is not None and (loaded.turns[1].tokens, loaded.turns[1].took) == (1940, 4.2)
+    path = folder / f"{chat.id}.json"
+    data = json.loads(path.read_text())
+    data["turns"][1]["tokens"] = "lots"  # damaged: not known
+    del data["turns"][1]["took"]
+    path.write_text(json.dumps(data))
+    loaded = load_chat(folder, chat.id)
+    assert loaded is not None and (loaded.turns[1].tokens, loaded.turns[1].took) == (0, 0.0)

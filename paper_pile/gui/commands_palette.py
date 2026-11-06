@@ -261,7 +261,7 @@ def palette_commands(layout: "MainLayout") -> list[PaletteCommand]:
                 )
                 for c in AI_COMMANDS
             ),
-            C("write", "Write with AI…", actions.write, "", "pen-line", "ai", when=ai_note),
+            C("edit", "Edit with AI…", actions.edit, "", "pen-line", "ai", when=ai_note),
         ),
         *g(
             "View",

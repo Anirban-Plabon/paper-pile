@@ -206,6 +206,50 @@ async def test_vault_hits_send_their_matching_section(tmp_path: Path) -> None:
     index.close()
 
 
+def test_vault_scopes_by_name_and_folder(tmp_path: Path) -> None:
+    v = Vault(tmp_path / "My Notes")
+    v.root.mkdir()
+    ai = AiEngine(v, Config(vault=v.root), provider_factory=lambda _c: FakeProvider(delay=0))
+    assert ai.vault_token == "My-Notes"
+    assert ai.vault_scopes("@vault what?") == [""]
+    v.create_note("Projects/web/site.md", "# Site\n")
+    ai.notes_changed()
+    both = ai.vault_scopes("see @my-notes/ and @My-Notes/projects/web/, ok")
+    assert both == ["", "Projects/web/"]
+    assert ai.vault_scopes("mail me@vault.com or @My-Notes/projects (no slash)") == []
+    assert ai.vault_scopes("plain question") == []
+    # the @ list's form (user 2026-11-06): a folder of the vault, without the vault's name
+    assert ai.vault_scopes("in @projects/ and @Projects/web/?") == ["Projects/", "Projects/web/"]
+    assert ai.vault_scopes("@nowhere/ is no folder") == []
+    v.create_note("Old Stuff/a.md", "# A\n")
+    ai.notes_changed()
+    assert ai.vault_scopes("in @Old\xa0Stuff/ please") == ["Old Stuff/"]
+    assert ai.strip_vault_tags("ask @Projects/ and @nowhere/ x") == "ask   and @nowhere/ x"
+
+
+async def test_folder_mention_searches_only_that_folder(tmp_path: Path) -> None:
+    from paper_pile.core.index import Index
+
+    v = Vault(tmp_path / "v")
+    v.root.mkdir()
+    (v.root / "garden").mkdir()
+    v.create_note("garden/tomatoes.md", "# Tomatoes\nWater the tomatoes daily.\n")
+    v.create_note("shop.md", "# Shop\nBuy tomatoes and water.\n")
+    index = Index(v)
+    index.rebuild()
+    fake = FakeProvider(delay=0)
+    ai = AiEngine(v, Config(vault=v.root), index, provider_factory=lambda _c: fake,
+                  access_dir=tmp_path / "cfg")  # fmt: skip
+    ai.allow()
+    found = ai.vault_search("@v/garden/ how often should I water the tomatoes?")
+    assert [path for path, _t, _x in found] == ["garden/tomatoes.md"]
+    everywhere = ai.vault_search("@v/ how often should I water the tomatoes?")
+    assert {path for path, _t, _x in everywhere} == {"garden/tomatoes.md", "shop.md"}
+    found = ai.vault_search("@garden/ how often should I water the tomatoes?")
+    assert [path for path, _t, _x in found] == ["garden/tomatoes.md"]
+    index.close()
+
+
 # ---- failures ------------------------------------------------------------------------------
 
 

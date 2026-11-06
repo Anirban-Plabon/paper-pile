@@ -68,5 +68,9 @@ class WindowChrome:
         maximized = bool(e.args.get("max"))
         if op == "maximize":
             self._do("restore" if maximized else "maximize")
-        elif op == "gesture" and native.method_queue is not None and not maximized:
-            native.method_queue.put(("start_system_gesture", (str(e.args["edge"]),), {}))
+        elif op == "gesture" and native.method_queue is not None:
+            edge = str(e.args["edge"])
+            # a maximized window can be dragged (the compositor restores it, so it can go to
+            # another screen; user 2026-11-06), never resized
+            if edge == "move" or not maximized:
+                native.method_queue.put(("start_system_gesture", (edge,), {}))

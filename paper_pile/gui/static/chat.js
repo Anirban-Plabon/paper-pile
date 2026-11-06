@@ -1,5 +1,35 @@
 // Chat input: Enter sends, Shift+Enter or Ctrl+Enter makes a new line (the textarea is Quasar's, so this is
 // done with one delegated listener). The chat log keeps itself scrolled to the newest text.
+// The list over the box (@ notes, / commands; drawn by chat.py): ↑ / ↓ move its highlight,
+// Enter or Tab picks the highlighted row, Esc closes it. What a pick does is decided in Python.
+document.addEventListener('keydown', function (e) {
+  const area = e.target && e.target.closest && e.target.closest('.pp-chat-input textarea');
+  if (!area || area.closest('.pp-askpop') || e.isComposing) return;
+  const compose = area.closest('.pp-chat-compose');
+  const list = compose && compose.querySelector('.pp-chat-mentions');
+  if (!list || list.getClientRects().length === 0) return;
+  const rows = [...list.querySelectorAll('.pp-chat-pick')];
+  const at = rows.findIndex((r) => r.classList.contains('pp-chat-pick-active'));
+  if (rows.length && (e.key === 'ArrowDown' || e.key === 'ArrowUp')) {
+    const next = (at + (e.key === 'ArrowDown' ? 1 : -1) + rows.length) % rows.length;
+    rows.forEach((r, i) => r.classList.toggle('pp-chat-pick-active', i === next));
+    rows[next].scrollIntoView({ block: 'nearest' });
+  } else if (rows.length && (e.key === 'Tab' || (e.key === 'Enter' && !e.shiftKey && !e.ctrlKey))) {
+    const row = rows[Math.max(0, at)];
+    emitEvent('pp_chat_pick', { kind: row.dataset.kind, id: row.dataset.id });
+  } else if (e.key === 'Escape') {
+    emitEvent('pp_chat_pick', { kind: 'close' });
+  } else {
+    return;
+  }
+  e.preventDefault();
+  e.stopImmediatePropagation();
+}, true);
+document.addEventListener('mouseover', function (e) {  // the mouse moves the highlight too
+  const row = e.target && e.target.closest && e.target.closest('.pp-chat-mentions .pp-chat-pick');
+  if (!row || row.classList.contains('pp-chat-pick-active')) return;
+  row.parentElement.querySelectorAll('.pp-chat-pick').forEach((r) => r.classList.toggle('pp-chat-pick-active', r === row));
+});
 document.addEventListener('keydown', function (e) {
   const area = e.target && e.target.closest && e.target.closest('.pp-chat-input textarea');
   if (!area || area.closest('.pp-askpop') || e.key !== 'Enter' || e.shiftKey || e.isComposing) return;
@@ -87,4 +117,70 @@ document.addEventListener('mousedown', function (e) {
       if (!watched.has(card)) { watched.add(card); sizes.observe(card); }
     });
   });
+})();
+// A code block in any chat (the chat pane, the Ask box's mini chat) gets a Copy button in its
+// corner on hover. It is added on the first hover, so a re-drawn answer needs nothing else.
+(function () {
+  const ICON_MS = 1200;
+  document.addEventListener('mouseover', function (e) {
+    const pre = e.target && e.target.closest && e.target.closest('.pp-msg-body pre');
+    if (!pre || pre.querySelector(':scope > .pp-code-copy')) return;
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'pp-code-copy';
+    button.dataset.tip = 'Copy code';
+    button.innerHTML = window.ppIconSvg('copy', 's');
+    button.addEventListener('mousedown', function (ev) { ev.preventDefault(); }); // keep the selection
+    button.addEventListener('click', function (ev) {
+      ev.stopPropagation();
+      const code = pre.querySelector('code');
+      const text = code ? code.textContent : [...pre.childNodes].filter((n) => n !== button).map((n) => n.textContent).join('');
+      if (navigator.clipboard) navigator.clipboard.writeText(text.replace(/\n$/, ''));
+      button.innerHTML = window.ppIconSvg('check', 's');
+      setTimeout(function () { button.innerHTML = window.ppIconSvg('copy', 's'); }, ICON_MS);
+    });
+    pre.appendChild(button);
+  });
+})();
+// Mentions in the chat box are shown in the accent colour (user 2026-11-06). A textarea cannot
+// colour part of its text, so a copy of the text is drawn right behind it (same font, padding,
+// wrapping and scroll) with the mentions marked, and the textarea's own text is see-through (its
+// caret and selection stay). Painted on input and every 250 ms (Python sets the value too).
+(function () {
+  const TOKEN = /@\[\[[^\[\]\n]+\]\]|(^|[^\w@])(@(?:[^\s@\[\]]|\u00a0)+)/g;  // a name's spaces are no-break ones
+  const COPY = ['fontFamily', 'fontSize', 'fontWeight', 'lineHeight', 'letterSpacing', 'wordSpacing',
+    'paddingTop', 'paddingRight', 'paddingBottom', 'paddingLeft', 'tabSize'];
+  const esc = (s) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  const marked = (text) => esc(text).replace(TOKEN, function (all, before, word) {
+    if (word === undefined) return '<span class="pp-at">' + all + '</span>';
+    return before + '<span class="pp-at">' + word + '</span>';
+  });
+  function paint(area) {
+    let back = area.previousElementSibling;
+    if (!back || !back.classList.contains('pp-chat-back')) {
+      back = document.createElement('div');
+      back.className = 'pp-chat-back';
+      back.setAttribute('aria-hidden', 'true');
+      area.before(back);
+      area.dataset.ppBack = '1';
+      area.addEventListener('scroll', function () { back.scrollTop = area.scrollTop; });
+    }
+    const st = getComputedStyle(area);
+    COPY.forEach(function (k) { if (back.style[k] !== st[k]) back.style[k] = st[k]; });
+    back.style.left = area.offsetLeft + 'px';
+    back.style.top = area.offsetTop + 'px';
+    back.style.width = area.clientWidth + 'px';
+    back.style.height = area.clientHeight + 'px';
+    if (back.dataset.v !== area.value) {
+      back.dataset.v = area.value;
+      back.innerHTML = marked(area.value) + '​';  // a closing newline still takes a line
+    }
+    back.scrollTop = area.scrollTop;
+  }
+  const all = function () { document.querySelectorAll('.pp-chat-input textarea').forEach(paint); };
+  document.addEventListener('input', function (e) {
+    const area = e.target && e.target.closest && e.target.closest('.pp-chat-input textarea');
+    if (area) requestAnimationFrame(function () { paint(area); });  // after ppChatFit's height
+  }, true);
+  setInterval(all, 250);
 })();

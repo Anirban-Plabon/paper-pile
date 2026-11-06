@@ -146,9 +146,11 @@
 // edge of the row with a vertical line between it and the tabs (the row is padded by that area,
 // so no tab hides under it). A click brings the next hidden tab on that side fully into view (one
 // tab per click); an arrow with nothing more on its side is dimmed. The strip gets
-// `pp-tabs-overflow` (shows the list button) while any row is cut off.
+// `pp-tabs-overflow` (shows the list button) while any row is cut off. The last row's › sits right
+// after the + button (user 2026-11-06), not over the row's end: that row is padded on the left only
+// (`pp-tabs-end`).
 (function () {
-  const AREA = 26; // px each arrow takes (keep in sync with .pp-tabs-arrow in app.css)
+  const AREA = 34; // px each arrow takes (keep in sync with .pp-tabs-arrow in app.css)
   const arrows = new WeakMap(); // tab row → [left, right]
   // The tabs' positions in the row's scrolled content, and the part of it that is in view.
   function tabBoxes(bar) {
@@ -158,13 +160,15 @@
       return { left: r.left - origin, right: r.right - origin };
     });
   }
+  const endArea = (bar) => (bar.classList.contains('pp-tabs-end') ? 0 : AREA); // the › area
   function step(bar, side) {
-    const view = { left: bar.scrollLeft + AREA, right: bar.scrollLeft + bar.clientWidth - AREA };
+    const right = endArea(bar);
+    const view = { left: bar.scrollLeft + AREA, right: bar.scrollLeft + bar.clientWidth - right };
     const tabs = tabBoxes(bar);
     let to = null;
     if (side === 'right') {
       const next = tabs.find(function (t) { return t.right > view.right + 1; });
-      if (next) to = next.right - (bar.clientWidth - AREA);
+      if (next) to = next.right - (bar.clientWidth - right);
     } else {
       const prev = tabs.slice().reverse().find(function (t) { return t.left < view.left - 1; });
       if (prev) to = prev.left - AREA;
@@ -177,7 +181,7 @@
     pair = ['left', 'right'].map(function (side) {
       const a = document.createElement('div');
       a.className = 'pp-tabs-arrow pp-tabs-arrow-' + side;
-      a.innerHTML = window.ppIconSvg('chevron-' + side, 's');
+      a.innerHTML = window.ppIconSvg('chevron-' + side, 'm');
       a.dataset.tip = side === 'left' ? 'Previous tab' : 'Next tab';
       a.addEventListener('mousedown', function (e) { e.preventDefault(); });
       a.addEventListener('click', function () { step(bar, side); });
@@ -192,17 +196,26 @@
     if (!strip) return;
     const pair = arrowsOf(bar);
     const shown = bar.offsetParent !== null;
+    const plus = strip.querySelector(':scope > .pp-tab-new');
+    const bars = [...strip.querySelectorAll(':scope > .pp-tabbar')].filter((b) => b.offsetParent !== null);
+    const last = !!plus && bars[bars.length - 1] === bar;
+    if (last !== bar.classList.contains('pp-tabs-end')) bar.classList.toggle('pp-tabs-end', last);
+    pair[1].classList.toggle('pp-tabs-arrow-after', last);
+    if (last && plus.nextElementSibling !== pair[1]) plus.after(pair[1]);
     const padded = bar.classList.contains('pp-tabs-scroll');
     // overflow without the arrows' own padding, so showing them never decides whether they show
-    const over = shown && bar.scrollWidth - (padded ? 2 * AREA : 0) > bar.clientWidth + 1;
+    const over = shown && bar.scrollWidth - (padded ? AREA + endArea(bar) : 0) > bar.clientWidth + 1;
     if (over !== padded) bar.classList.toggle('pp-tabs-scroll', over);
     const sRect = strip.getBoundingClientRect();
     const bRect = bar.getBoundingClientRect();
     pair[0].style.left = bRect.left - sRect.left + 'px';
-    pair[1].style.left = bRect.right - sRect.left - AREA + 'px';
+    pair[1].style.left = last ? '' : bRect.right - sRect.left - AREA + 'px';
     pair.forEach(function (a) { a.classList.toggle('pp-on', over); });
     pair[0].classList.toggle('pp-off', bar.scrollLeft <= 1);
     pair[1].classList.toggle('pp-off', bar.scrollLeft + bar.clientWidth >= bar.scrollWidth - 1);
+    // which edges cut a tab off (they fade, app.css); data-*: Python rewrites the class list
+    const cut = (over && bar.scrollLeft > 1 ? 'l' : '') + (over && !pair[1].classList.contains('pp-off') ? 'r' : '');
+    if ((bar.dataset.ppCut || '') !== cut) bar.dataset.ppCut = cut;
     let any = false;
     strip.querySelectorAll('.pp-tabbar').forEach(function (b) {
       if (b.offsetParent !== null && b.scrollWidth > b.clientWidth + 1) any = true;

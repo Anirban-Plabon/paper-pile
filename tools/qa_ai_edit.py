@@ -154,10 +154,11 @@ async def ask_box(cdp: Cdp, selected: str, command: str, words: str) -> None:
     if os.environ.get("QA_SHOTS") and command == "/tone":
         shot = await cdp.call("Page.captureScreenshot", format="png")
         Path(os.environ["QA_SHOTS"], "box-list.png").write_bytes(base64.b64decode(shot["data"]))
-    check(
-        f"Ask box: the / list is narrower than the box ({command})",
-        widths[0] and widths[1] and widths[0] < widths[1],
-        widths,
+    row = await cdp.js("qa.box('.pp-askpop-bottom')")
+    check(  # 2026-11-06 (user): the list a bit larger, up to the box row's 320 px
+        f"Ask box: the / list fits the box row ({command})",
+        widths[0] and row and widths[0] <= row[1],
+        [widths, row],
     )
     await cdp.key("Enter", 13)
     await asyncio.sleep(0.4)

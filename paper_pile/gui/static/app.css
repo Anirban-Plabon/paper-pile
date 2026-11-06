@@ -178,8 +178,8 @@ body.pp-maximized .pp-wincontrols .pp-win-max .pp-win-restore { display: inline-
 .pp-resize-nw { top: 0; left: 0; cursor: nwse-resize; }
 .pp-resize-se { bottom: 0; right: 0; cursor: nwse-resize; }
 body:not(.pp-native) .pp-wincontrols, body:not(.pp-native) .pp-resize { display: none; }
-body.pp-native:not(.pp-right-open) .pp-tabstrip { padding-right: 112px; }
-body.pp-native.pp-right-open .pp-rtabbar { padding-right: 112px; }
+body.pp-native:not(.pp-right-open) .pp-tabstrip { padding-right: 108px; }  /* the window buttons: 4 + 3 × 30 + 2 × 4 + 6 */
+body.pp-native.pp-right-open .pp-rtabbar { padding-right: 108px; }
 .pp-files-search { width: calc(100% - 12px); margin: 6px 6px 2px; flex: none; font-size: 13px; }
 .pp-tree-sub { margin-left: auto; padding-left: 8px; overflow: hidden; text-overflow: ellipsis; font-size: 11px; pointer-events: none; }
 .pp-left-body { overflow: hidden; padding: 0; gap: 0; }
@@ -427,10 +427,9 @@ body.pp-page-dragging, body.pp-page-dragging * { cursor: row-resize !important; 
 .pp-tabstrip { position: relative; }
 .pp-tabstrip .pp-tab { flex: 0 1 auto; min-width: 96px; }
 .pp-tabstrip .pp-tab-title { min-width: 0; }
-.pp-tabs-list { display: none !important; flex: none; gap: 2px; padding: 0 6px !important; width: auto !important; }
+.pp-tabs-list { display: none !important; flex: none; gap: 3px; height: 30px; min-height: 0 !important; margin: 0 4px 0 6px; padding: 0 7px !important; width: auto !important; }
 .pp-tabs-overflow .pp-tabs-list { display: inline-flex !important; }
 .pp-tabs-list .q-btn__content { gap: 2px; flex-wrap: nowrap; }
-.pp-tabs-list-count { font-size: 11px; font-weight: 600; color: var(--pp-muted); }
 .pp-tabs-list-menu { max-height: 60vh; }
 .pp-tabs-list-menu .pp-tabs-list-on .pp-note-menu-label { font-weight: 600; color: var(--pp-accent); }
 .pp-editor-area { flex: 1 1 0; min-height: 0; width: 100%; position: relative; }
@@ -561,9 +560,15 @@ body.pp-page-dragging, body.pp-page-dragging * { cursor: row-resize !important; 
 .pp-chat-log { flex: 1 1 0; min-height: 0; width: 100%; overflow-y: auto; padding: 8px 12px; gap: 10px; flex-wrap: nowrap; }
 .pp-chat-empty { padding-top: 6px; }
 .pp-msg { width: 100%; gap: 2px; flex: none; }
-.pp-msg-who { font-size: 11px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; color: var(--pp-muted); }
 .pp-msg-text { white-space: pre-wrap; font-size: 13px; }
-.pp-msg-user .pp-msg-text { background: rgba(var(--pp-accent-rgb), .1); border-radius: var(--pp-r-ctrl); padding: 6px 10px; align-self: stretch; }
+/* the user's message: a bubble on the right, as wide as its text, never the whole pane */
+.pp-msg-user { align-items: flex-end; }
+.pp-msg-user .pp-msg-text { background: rgba(var(--pp-accent-rgb), .1); border-radius: var(--pp-r-ctrl); padding: 6px 10px; align-self: flex-end; width: fit-content; max-width: 85%; overflow-wrap: anywhere; }
+.pp-msg-user .pp-msg-quote { align-items: flex-end; }
+.pp-msg-user .pp-msg-attach { align-self: flex-end; max-width: 85%; text-align: right; }
+/* the native window makes the whole page unselectable (pywebview's text_select=False);
+   what was written in a chat can be selected and copied */
+.pp-msg-text, .pp-msg-body, .pp-msg-attach, .pp-msg-reasoning-text, .pp-askpop-msg-cmd, .pp-askpop-msg-words { user-select: text; -webkit-user-select: text; cursor: auto; }
 .pp-msg-body { font-size: 13px; line-height: 1.5; width: 100%; overflow-wrap: anywhere; }
 .pp-msg-body p { margin: .35em 0; }
 .pp-msg-body pre { background: var(--pp-code-bg, #f3f4f6); border-radius: var(--pp-r-ctrl); padding: 8px 10px; overflow-x: auto; font-size: 12px; }
@@ -581,12 +586,29 @@ body.pp-page-dragging, body.pp-page-dragging * { cursor: row-resize !important; 
 .pp-access-head { flex-wrap: nowrap; gap: 8px 16px; }
 .pp-access-item { gap: 6px; }
 .pp-access-path { flex: 1; min-width: 0; overflow-wrap: anywhere; }
-.pp-msg-actions { gap: 0; opacity: .6; }
-.pp-msg:hover .pp-msg-actions { opacity: 1; }
+/* a message's buttons show on hover; their row keeps its height, so nothing moves */
+.pp-msg-actions { gap: 0; opacity: 0; transition: opacity var(--pp-dur-fast) var(--pp-ease); }
+.pp-msg:hover .pp-msg-actions, .pp-msg-actions:focus-within { opacity: 1; }
+/* one line under a message: its info and its buttons in one size (20 px high, 11 px text,
+   14 px icons); an answer's info first, the user's buttons first (its time at the bubble's edge) */
+.pp-msg-foot { gap: 2px 8px; flex-wrap: wrap; min-height: 20px; }
+.pp-msg-foot-user { align-self: flex-end; }
+.pp-msg-meta { gap: 0 4px; flex-wrap: wrap; font-size: 11px; line-height: 20px; }
+.pp-msg-foot .pp-msg-ctx { font-size: 11px; line-height: 20px; white-space: nowrap; }
+.pp-msg-actions .q-btn { width: 20px; height: 20px; min-width: 20px; min-height: 0; padding: 0; }
+/* a code block's Copy (static/chat.js adds it on hover) */
+.pp-msg-body pre { position: relative; }
+.pp-code-copy { position: absolute; top: 6px; right: 6px; display: inline-flex; align-items: center; justify-content: center; width: 20px; height: 20px; padding: 0; border: none; background: none; color: var(--pp-muted); cursor: pointer; opacity: 0; transition: opacity var(--pp-dur-fast) var(--pp-ease); }
+.pp-msg-body pre:hover .pp-code-copy, .pp-code-copy:focus-visible { opacity: 1; }
+.pp-code-copy:hover { color: var(--pp-fg); }
+.pp-code-copy svg.pp-i { font-size: var(--pp-icon-s); }
 .pp-chat-compose { position: relative; width: 100%; flex: none; gap: 2px; padding: 8px 12px 12px; }
-.pp-chat-mentions { width: 100%; gap: 0; border: 1px solid var(--pp-border); border-radius: var(--pp-r-popup); background: var(--pp-bg); box-shadow: 0 4px 14px rgba(0, 0, 0, .12); }
-.pp-chat-mention { width: 100%; padding: 3px 10px; gap: 8px; cursor: pointer; font-size: 12px; }
-.pp-chat-mention:hover { background: rgba(var(--pp-accent-rgb), .12); }
+/* the list over the box (@ notes, / commands): the + menu's container (user 2026-11-06) */
+.pp-chat-mentions { width: 100%; gap: 0; padding: 4px; border: 1px solid var(--pp-border); border-radius: var(--pp-r-popup); background: var(--pp-bg); color: var(--pp-fg); box-shadow: 0 8px 28px rgba(0, 0, 0, .2); max-height: 320px; overflow-y: auto; flex-wrap: nowrap; }
+.pp-chat-mention { width: 100%; flex: none; min-height: 32px; padding: 0 12px; gap: 10px; cursor: pointer; font-size: 13px; border-radius: var(--pp-r-ctrl); }
+.pp-chat-mention.pp-chat-pick-active { background: rgba(127, 127, 127, .12); }
+.pp-chat-pick-folder { flex: 0 1 auto; min-width: 0; max-width: 45%; font-size: 11.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pp-chat-pick-none { padding: 8px 12px; font-size: 13px; }
 
 /* settings dialog, profile block (P8) */
 .pp-profile { width: 100%; flex: none; gap: 4px; height: var(--pp-foot-h); box-sizing: border-box; padding: 0 8px 0 12px; border-top: 1px solid var(--pp-border); }
@@ -631,9 +653,23 @@ body.pp-page-dragging, body.pp-page-dragging * { cursor: row-resize !important; 
 .pp-menu-check { font-size: var(--pp-icon-s); color: var(--pp-muted); }
 .pp-chat-more { gap: 0; min-width: 220px; }
 .pp-chat-more-search { padding: 0 10px; }
+/* the + menu (user 2026-11-06: smaller; search on top, 5 notes) */
+.pp-chat-menu:has(.pp-chat-add-notes) { min-width: 220px; max-width: 260px; }
+.pp-chat-menu:has(.pp-chat-add-notes) .q-item { min-height: 32px; }
+.pp-chat-add-search { padding: 0 8px; margin-bottom: 2px; border-bottom: 1px solid var(--pp-border); }
+/* its line as wide as the menu's separators (6 px in), the search icon over the notes' icons and the
+   text over their names (user 2026-11-06) */
+.pp-chat-add-search { margin: 0 6px 2px; padding: 0 2px 0 10px; }
+.pp-chat-add-search .q-field__prepend { padding-right: 10px; height: 34px; }
+.pp-chat-add-search .q-field__control { min-height: 34px; height: 34px; }
+.pp-chat-add-notes { gap: 0; }
+.pp-chat-soon-badge { flex: none; padding: 1px 6px; border-radius: 999px; font-size: 10px; background: rgba(127, 127, 127, .16); color: var(--pp-muted); }
+.pp-chat-menu .pp-chat-access { padding: 4px 12px 2px; font-size: 11px; max-width: 260px; }
 .pp-chat-strip { width: 100%; gap: 4px; padding: 4px 6px 6px; border-bottom: 1px solid var(--pp-border); }
 .pp-chat-refs, .pp-chat-chips { display: contents; }
-.pp-chat-ref { gap: 3px; padding: 1px 2px 1px 8px; max-width: 100%; background: rgba(127, 127, 127, .14); border-radius: 999px; font-size: 12px; }
+/* attached things (user 2026-11-06: a softer rectangle, a little taller, so its × has room) */
+.pp-chat-ref { gap: 4px; min-height: 26px; padding: 3px 3px 3px 9px; max-width: 100%; background: rgba(127, 127, 127, .14); border-radius: 6px; font-size: 12px; }
+.pp-chat-ref .q-btn { width: 20px; height: 20px; min-width: 20px; min-height: 0; padding: 0; flex: none; }
 .pp-chat-chip-text { cursor: pointer; flex: 1 1 auto; gap: 0; }
 .pp-chat-ref-note { color: rgb(var(--pp-accent-rgb)); font-weight: 500; }
 .pp-chat-chip-open { background: rgba(var(--pp-accent-rgb), .16); }
@@ -996,7 +1032,8 @@ body.body--dark .pp-instr-box textarea { color-scheme: dark; }  /* the corner gr
 body.body--dark { --pp-tip-bg: #e6e8eb; --pp-tip-fg: #1f2328; }
 
 /* Icon buttons: a rounded rectangle on hover, like every other hover */
-.pp-icon-btn.q-btn, .pp-chat-ref .q-btn, .pp-chat-chip .q-btn { border-radius: var(--pp-r-ctrl); }
+.pp-icon-btn.q-btn { border-radius: var(--pp-r-ctrl); }
+.pp-chat-ref .q-btn, .pp-chat-chip .q-btn { border-radius: 4px; }
 .pp-chat-model-chev { flex: none; }
 .pp-chat-model-name { min-width: 0; }
 
@@ -1037,6 +1074,11 @@ body.body--dark { --pp-tip-bg: #e6e8eb; --pp-tip-fg: #1f2328; }
 .pp-chat-input .q-field__control-container { padding: 0; }
 .pp-chat-input .q-field__native { padding: 7px 0; min-height: 34px; line-height: 20px; }
 .pp-chat-input .q-field__native::placeholder { line-height: 20px; }
+/* mentions in the accent colour: in a sent message, and in the box by a copy of its text drawn
+   behind the see-through textarea (static/chat.js) */
+.pp-at { color: var(--pp-accent); }
+.pp-chat-back { position: absolute; margin: 0; white-space: pre-wrap; overflow-wrap: break-word; word-break: normal; overflow: hidden; pointer-events: none; color: var(--pp-fg); }
+.pp-chat-input textarea[data-pp-back] { position: relative; z-index: 1; color: transparent; caret-color: var(--pp-fg); background: transparent; }
 
 /* Profile dialog: avatar preview + plain buttons (the uploader is hidden) */
 .pp-profile-pic { width: 100%; gap: 16px; padding: 4px 0; }
@@ -1379,15 +1421,21 @@ body.body--dark { --pp-set-box-bg: rgba(255, 255, 255, .035); }
 .pp-set-box > .pp-mem { padding: 12px 0; }
 .pp-chat-disclaimer { width: 100%; padding: 6px 12px 0; text-align: center; font-size: 11px; line-height: 14px; color: var(--pp-muted); user-select: none; }
 .pp-chat-compose:has(.pp-chat-disclaimer) { padding-bottom: 8px; }
-/* tab overflow (tabs.js): each arrow has its own 26 px area at an edge of the row; the row is
-   padded by those areas, so no tab hides under one */
-.pp-tabbar.pp-tabs-scroll { padding: 6px 26px 0; scroll-padding: 0 26px; }
+/* tab overflow (tabs.js): each arrow has its own 34 px area at an edge of the row (2026-11-06,
+   user: room for the arrow); the row is padded by those areas, so no tab hides under one */
+.pp-tabbar.pp-tabs-scroll { padding: 6px 34px 0; scroll-padding: 0 34px; }
+/* the last row's › is right after + (tabs.js, user 2026-11-06): a 30 px button in the strip's flow */
+.pp-tabbar.pp-tabs-scroll.pp-tabs-end { padding-right: 0; scroll-padding-right: 0; }
+.pp-tabstrip > .pp-tabs-arrow.pp-tabs-arrow-after { position: relative; top: auto; flex: none; width: 30px; height: 30px; padding-top: 0; margin-left: 2px; background: transparent; box-shadow: none; }
+.pp-tabstrip > .pp-tabs-arrow.pp-tabs-arrow-after::before { left: 2px; right: 2px; height: 26px; margin-top: -13px; }
+.pp-tabstrip > .pp-tabs-arrow-after.pp-on { margin-right: auto; }
+.pp-tabstrip:has(> .pp-tabs-arrow-after.pp-on) > .pp-tab-new.q-btn { margin-right: 0; }
 /* tabs are a little lower than their row: air above them (the row stays as tall as the footer) */
 .pp-tabbar, .pp-rtabbar { padding-top: 6px; }
-.pp-tabs-arrow { position: absolute; top: 0; height: 100%; width: 26px; display: none; align-items: center; justify-content: center; cursor: pointer; color: var(--pp-muted); background: var(--pp-bg-side); z-index: 2; transition: color var(--pp-dur-fast) ease, background-color var(--pp-dur-fast) ease; }
+.pp-tabs-arrow { position: absolute; top: 0; height: 100%; width: 34px; padding-top: 3px; display: none; align-items: center; justify-content: center; cursor: pointer; color: var(--pp-muted); background: var(--pp-bg-side); z-index: 2; transition: color var(--pp-dur-fast) ease, background-color var(--pp-dur-fast) ease; }
 .pp-tabs-arrow.pp-on { display: flex; }
 /* each arrow is a small rounded box inside its (opaque, full-height) area: no tab shows through */
-.pp-tabs-arrow::before { content: ""; position: absolute; left: 2px; right: 2px; top: 50%; height: 24px; margin-top: -12px; z-index: -1; border: 1px solid var(--pp-border); border-radius: var(--pp-r-ctrl); background: var(--pp-bg); transition: background-color var(--pp-dur-fast) ease; }
+.pp-tabs-arrow::before { content: ""; position: absolute; left: 4px; right: 4px; top: 50%; height: 26px; margin-top: -11px; z-index: -1; border: 1px solid var(--pp-border); border-radius: var(--pp-r-ctrl); background: var(--pp-bg); transition: background-color var(--pp-dur-fast) ease; }
 .pp-tabs-arrow:hover { color: var(--pp-fg); }
 .pp-tabs-arrow:hover::before { background: linear-gradient(rgba(127, 127, 127, .14), rgba(127, 127, 127, .14)), var(--pp-bg); }
 .pp-tabs-arrow.pp-off { color: var(--pp-muted); opacity: .35; cursor: default; }
@@ -1396,12 +1444,77 @@ body.body--dark { --pp-set-box-bg: rgba(255, 255, 255, .035); }
 .pp-picker-group { width: 100%; flex: none; padding: 10px 10px 3px; font-size: 11px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; color: var(--pp-muted); user-select: none; }
 .pp-picker-list > .pp-picker-group:first-child { padding-top: 4px; }
 /* + right after the last tab, centred in the row like the pane button at its end (same size) */
-.pp-tabstrip > .pp-tab-new.q-btn { flex: none; margin: 0 auto 0 4px; width: 30px; height: 30px; min-width: 0; min-height: 0; border-radius: var(--pp-r-ctrl); overflow: visible; }
+.pp-tabstrip > .pp-tab-new.q-btn { flex: none; margin: 0 auto 0 7px; width: 30px; height: 30px; min-width: 0; min-height: 0; border-radius: var(--pp-r-ctrl); overflow: visible; }
 /* a short divider between the last tab and + (like the ones between tabs); none beside the active tab */
-.pp-tabstrip > .pp-tab-new.q-btn::after { content: ""; position: absolute; left: -4px; top: 6px; bottom: 6px; width: 1px; background: var(--pp-border); pointer-events: none; }
+.pp-tabstrip > .pp-tab-new.q-btn::after { content: ""; position: absolute; left: -4px; /* centred between the last tab and + */ top: 6px; bottom: 6px; width: 1px; background: var(--pp-border); pointer-events: none; }
 .pp-tabstrip:has(> .pp-tabbar > :last-child:is(.pp-tab-active, .pp-tab-shown)) > .pp-tab-new.q-btn::after { display: none; }
 /* after an active last tab its ramp is the gap: + follows it at once */
 .pp-tabstrip:has(> .pp-tabbar > :last-child:is(.pp-tab-active, .pp-tab-shown)) > .pp-tab-new.q-btn { margin-left: 0; }
+/* the divider before + spans the same height as the ones between tabs (+ is centred in the row,
+   the tabs sit 6 px lower: their dividers run from 6 + 10 px to 9 px above the row's bottom) */
+.pp-tabstrip > .pp-tab-new.q-btn::after { top: calc(16px - (var(--pp-tab-h) - 30px) / 2); bottom: calc(9px - (var(--pp-tab-h) - 30px) / 2); }
+/* one gap inside every tab (user 2026-11-06): its first thing (icon or name) to the left line, its
+   last thing (name or ×) to the right line and the icon to the top line all show 10 px of white
+   on screen (measured on the drawn pixels: an icon's and a letter's ink start ~1 px inside their
+   box, so the box gap is 9 px; the × glyph is ~3 px inside its box, which is pulled out by its
+   padding + that). An inactive tab has no border, so it gets 1 px more padding in its place:
+   switching tabs moves nothing. In a tab wider than its text (min-width) the × keeps to the
+   right edge. */
+:root { --pp-tab-gap: 9px; }
+.pp-tab, .pp-rtab, .pp-rtabs-icons .pp-rtab, .pp-tabstrip .pp-tab.pp-tab-pinned { padding: 1px calc(var(--pp-tab-gap) + 1px) 0; }
+.pp-tab-active, .pp-tab-shown, .pp-rtab-active, .pp-rtabs-icons .pp-rtab.pp-rtab-active, .pp-tabstrip .pp-tab.pp-tab-pinned:is(.pp-tab-active, .pp-tab-shown) { padding: 0 var(--pp-tab-gap); }
+.pp-tab > .pp-tab-close, .pp-rtab > .pp-rtab-close { margin: 0 -5px 0 auto; }
+.pp-tab > .pp-tab-dirty { margin-left: auto; }
+.pp-tab > .pp-tab-dirty ~ .pp-tab-close { margin-left: -2px; }
+/* the strip's buttons after the tabs (+, ›, the open-tabs list ⌄, the pane button) are one kind
+   (user 2026-11-06: "congested"): 30 px squares, 16 px icons, no box around the arrows (a hover
+   background like the others), the list one chevron without a count, 4 px between them; the ‹ at
+   the row's start is centred on the same line as they are */
+.pp-tabs-arrow { padding-top: 0; }
+.pp-tabs-arrow::before { top: 50%; left: 2px; right: 2px; height: 30px; margin-top: -15px; border: none; background: transparent; }
+.pp-tabs-arrow:hover::before { background: rgba(127, 127, 127, .14); }
+.pp-tabs-arrow.pp-off::before { background: transparent; }
+.pp-tabstrip > .pp-tabs-arrow.pp-tabs-arrow-after { width: 30px; margin-left: 4px; }
+.pp-tabstrip > .pp-tabs-arrow.pp-tabs-arrow-after::before { left: 0; right: 0; height: 30px; margin-top: -15px; }
+.pp-tabs-list { width: 30px !important; padding: 0 !important; margin: 0 0 0 4px; }
+.pp-tabstrip > .pp-icon-btn.q-btn:last-child { margin-left: 4px; }
+/* One centre line for the whole top bar (user 2026-11-06): tabs sit 6 px below the top (room for
+   their rounded tops), so their names and icons are 3.5 px below the bar's middle. Every button
+   of the bar (strip, left header, folded-pane column, the ‹ area) is moved down
+   onto that line: --pp-tab-drop is twice the offset (a margin-top in a centred row moves its
+   item by half of it). */
+:root { --pp-tab-drop: 7px; }
+.pp-tabstrip > .q-btn, .pp-tabstrip > .pp-tabs-arrow-after, .pp-left-top > *, .pp-ribbon-top > * { margin-top: var(--pp-tab-drop); }
+/* except the window buttons: centred in the bar's height, on their own (user 2026-11-06: "do not match them with other") */
+.pp-tabs-arrow { padding-top: var(--pp-tab-drop); }
+.pp-tabstrip > .pp-tabs-arrow.pp-tabs-arrow-after { padding-top: 0; }
+/* no divider between the last tab and + (+ has its own hover box) */
+.pp-tabstrip > .pp-tab-new.q-btn::after { display: none; }
+.pp-tabstrip > .pp-tab-new.q-btn { margin-left: 4px; margin-top: var(--pp-tab-drop); }
+.pp-left-top > * { margin-top: calc(var(--pp-tab-drop) + 1px); }  /* its row's bottom line is a border: 1 px less room */
+/* the window buttons are the strip's buttons: 30 × 30, 4 px apart */
+.pp-wincontrols { gap: 4px; }
+.pp-wincontrols .pp-icon-btn.q-btn { width: 30px; height: 30px; min-width: 0; min-height: 0; }
+/* An inactive tab keeps no room for its ×: on hover the × appears over the end of its name (the
+   name fades out under it; it also stands where the unsaved dot is). */
+.pp-tabstrip .pp-tab { flex: 0 1 auto; min-width: 96px; }  /* many tabs: they shrink to 96 px ("12-Oct-…"), then scroll (user 2026-11-06, back to shrinking) */
+.pp-tab:not(.pp-tab-active, .pp-tab-shown) > .pp-tab-close { position: absolute; right: calc(var(--pp-tab-gap) + 1px - 3px); top: 50%; margin: 0; transform: translateY(calc(-50% + .5px)); }
+.pp-tab:not(.pp-tab-active, .pp-tab-shown):hover > :is(.pp-tab-title, .pp-tab-hint):nth-last-child(3) { -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 26px), transparent calc(100% - 12px)); mask-image: linear-gradient(to right, #000 calc(100% - 26px), transparent calc(100% - 12px)); }
+.pp-tab:not(.pp-tab-active, .pp-tab-shown):hover > .pp-tab-dirty { visibility: hidden; }
+/* every hover shape of the bar is the same rounded box as a tab's hover (user 2026-11-06: "+ hover
+   doesn't match the tab"): 28 px high, 10–38 px from the top (the tab line's centre, 24), 8 px
+   corners. The buttons are 30 × 28; the ‹ › areas draw that box centred on the same line. */
+.pp-tab:not(.pp-tab-active):not(.pp-tab-shown):hover::before, .pp-rtab:not(.pp-rtab-active):hover::before { inset: 4px 3px 3px; }
+.pp-tabstrip > .q-btn, .pp-left-top > .q-btn, .pp-ribbon-top > .q-btn, .pp-wincontrols .pp-icon-btn.q-btn { height: 28px !important; min-height: 0 !important; border-radius: var(--pp-r-ctrl); }
+.pp-tabs-arrow::before { top: calc(50% + var(--pp-tab-drop) / 2); height: 28px; margin-top: -14px; }
+.pp-tabstrip > .pp-tabs-arrow.pp-tabs-arrow-after { height: 28px; }
+.pp-tabstrip > .pp-tabs-arrow.pp-tabs-arrow-after::before { top: 0; height: 28px; margin-top: 0; }
+/* a tab cut off at an edge of a scrolling row fades out there (tabs.js data-pp-cut: l, r, lr), and
+   the last row keeps 8 px before + so a cut tab never touches it */
+.pp-tabbar[data-pp-cut="l"] { -webkit-mask-image: linear-gradient(to right, transparent 34px, #000 62px); mask-image: linear-gradient(to right, transparent 34px, #000 62px); }
+.pp-tabbar[data-pp-cut="r"] { -webkit-mask-image: linear-gradient(to left, transparent 0, #000 28px); mask-image: linear-gradient(to left, transparent 0, #000 28px); }
+.pp-tabbar[data-pp-cut="lr"] { -webkit-mask-image: linear-gradient(to right, transparent 34px, #000 62px, #000 calc(100% - 28px), transparent); mask-image: linear-gradient(to right, transparent 34px, #000 62px, #000 calc(100% - 28px), transparent); }
+.pp-tabstrip:has(> .pp-tabbar.pp-tabs-scroll) > .pp-tab-new.q-btn { margin-left: 8px; }
 /* editor options: readable line length and the current line's band */
 .pp-editor .cm-editor.pp-readable:not(.pp-page-view) .cm-content { max-width: 46em; margin: 0 auto; }
 .pp-editor .cm-editor .cm-activeLine { background-color: rgba(127, 127, 127, .07); }
@@ -1473,7 +1586,8 @@ body.body--dark .pp-aidiff-chip-warn { color: #e3b341; }
    the composer's card with Move to chat beside it (box), grown into a small floating chat (chat),
    or dissolved while the AI rewrites the text (gone). askpop.js sets left / top; it lives in
    <body> (ui.teleport). */
-.pp-askpop { --pp-askpop-tint: var(--pp-bg); --pp-askpop-line: var(--pp-border); --pp-askpop-full: 480px; position: fixed; z-index: 3000; left: 0; top: 0; width: min(362px, calc(100vw - 12px)); padding: 10px; border: 1px solid transparent; display: flex; flex-direction: column; gap: 6px; font-family: Roboto, -apple-system, "Helvetica Neue", Helvetica, Arial, sans-serif; color: var(--pp-fg); }
+.pp-askpop { --pp-askpop-tint: var(--pp-bg); --pp-askpop-line: var(--pp-border); --pp-askpop-full: 480px; position: fixed; z-index: 3000; left: 0; top: 0; width: min(342px, calc(100vw - 12px)); padding: 10px; border: 1px solid transparent; display: flex; flex-direction: column; gap: 6px; font-family: Roboto, -apple-system, "Helvetica Neue", Helvetica, Arial, sans-serif; color: var(--pp-fg); }
+/* the small box: its card + Move to chat as wide as the editor's / menu (320 px, user 2026-11-06) */
 .pp-askpop-box { animation: pp-pop var(--pp-dur) var(--pp-ease); }
 .pp-askpop-bottom { width: 100%; flex: none; gap: 6px; }
 /* the card as the chat's composer: 6 px around a 34 px row, 24 px corners */
@@ -1490,7 +1604,7 @@ body.body--dark .pp-aidiff-chip-warn { color: #e3b341; }
 .pp-askpop-dragging, .pp-askpop-dragging * { cursor: grabbing !important; user-select: none; }
 /* the mini chat: a window with a header (drag to move, ×), the messages, the box at the bottom */
 .pp-askpop .pp-askpop-head, .pp-askpop .pp-askpop-log { display: none; }
-.pp-askpop-chat { width: min(384px, calc(100vw - 12px)); height: min(var(--pp-askpop-full), var(--pp-askpop-room, 480px)); padding: 0 10px 10px; gap: 8px; background: var(--pp-askpop-tint); border: 1px solid var(--pp-askpop-line); border-radius: var(--pp-r-popup); box-shadow: 0 8px 28px rgba(0, 0, 0, .16); animation: pp-pop var(--pp-dur) var(--pp-ease); }
+.pp-askpop-chat { width: min(384px, calc(100vw - 12px)); height: min(var(--pp-askpop-full), var(--pp-askpop-room, 480px)); padding: 0 10px 10px; gap: 8px; background: var(--pp-askpop-tint); border: 1px solid var(--pp-askpop-line); border-radius: var(--pp-r-popup); box-shadow: 0 8px 28px rgba(0, 0, 0, .16); }
 .pp-askpop-chat .pp-askpop-head { display: flex; height: 40px; flex: none; gap: 8px; padding: 0 0 0 4px; margin: 0 -4px 0 0; border-bottom: 1px solid var(--pp-askpop-line); cursor: grab; }
 .pp-askpop-title { flex: 1; font-size: 12.5px; font-weight: 600; }
 .pp-askpop-head-icon { color: var(--pp-accent); }
@@ -1498,6 +1612,18 @@ body.body--dark .pp-aidiff-chip-warn { color: #e3b341; }
 .pp-askpop-chat .pp-askpop-card { background: var(--pp-bg); }
 .pp-askpop-chat .pp-askpop-card, .pp-askpop-chat .pp-askpop-to-chat.q-btn { box-shadow: none; }
 .pp-askpop-msg-cmd, .pp-askpop-msg-words { display: inline; }
+/* the box's hint over the empty input: an Enter key icon (corner-down-right: the user wanted it mirrored), "Ask, / a command" (an icon cannot go in
+   a placeholder; the placeholder is one space so :placeholder-shown tells an empty box) */
+.pp-askpop-row > .pp-askpop-hint { grid-area: input; align-self: start; gap: 6px; padding: 7px 6px; font-size: 13.5px; line-height: 20px; color: var(--pp-muted); pointer-events: none; white-space: nowrap; overflow: hidden; min-width: 0; }
+.pp-askpop-hint .q-label, .pp-askpop-hint > div { overflow: hidden; text-overflow: ellipsis; }
+.pp-askpop-row:not(:has(textarea:placeholder-shown)) > .pp-askpop-hint { visibility: hidden; }
+.pp-askpop .pp-chat-multi .pp-askpop-hint { padding-left: 8px; }
+/* growing into the mini chat: its size is known (fixed height), so the frame is drawn at once and
+   uncovered from the small box's footprint (clip-path, no layout change), away from the selection */
+.pp-askpop-chat[data-pp-side="down"] { animation: pp-askpop-grow-down calc(var(--pp-dur) * 1.6) var(--pp-ease); }
+.pp-askpop-chat[data-pp-side="up"] { animation: pp-askpop-grow-up calc(var(--pp-dur) * 1.6) var(--pp-ease); }
+@keyframes pp-askpop-grow-down { from { clip-path: inset(0 calc(100% - 342px) calc(100% - 66px) 0 round 24px); } to { clip-path: inset(0 0 0 0 round var(--pp-r-popup)); } }
+@keyframes pp-askpop-grow-up { from { clip-path: inset(calc(100% - 66px) calc(100% - 342px) 0 0 round 24px); } to { clip-path: inset(0 0 0 0 round var(--pp-r-popup)); } }
 .pp-askpop-msg-cmd { margin-right: 6px; font-weight: 600; color: var(--pp-accent); }
 /* askpop.js picks the side once (data-pp-side = down / up; an attribute, since Python rewrites
    the class list) and holds the box by its edge next to the selection. The mini chat has one
@@ -1512,16 +1638,17 @@ body.body--dark .pp-aidiff-chip-warn { color: #e3b341; }
 .pp-askpop .pp-askpop-bottom { order: 3; }
 .pp-askpop-box[data-pp-side="down"] .pp-askpop-cmds { order: 4; }
 /* in the chat the / list takes room from the messages, never from the input or the header */
-.pp-askpop-chat .pp-askpop-cmds { max-height: min(240px, calc(100% - 110px)); }
+.pp-askpop-chat .pp-askpop-cmds { max-height: min(300px, calc(100% - 110px)); }
+.pp-askpop-cmd-title, .pp-chat-cmd > .q-label, .pp-chat-cmd > div { white-space: nowrap; }
 /* no room on the growing side: the list over the selection instead, out of the box's flow */
 .pp-askpop-cmds[data-pp-flip] { position: absolute; left: 0; }
 .pp-askpop[data-pp-side="down"] .pp-askpop-cmds[data-pp-flip] { bottom: calc(100% + 6px); }
 .pp-askpop[data-pp-side="up"] .pp-askpop-cmds[data-pp-flip] { top: calc(100% + 6px); }
 /* the / list: as wide as the card (not under Move to chat) */
-.pp-askpop-cmds { flex: none; width: max-content; min-width: 180px; max-width: calc(100% - 68px); gap: 0; padding: 4px; max-height: 240px; overflow-y: auto; border: 1px solid var(--pp-askpop-line); border-radius: var(--pp-r-popup); background: var(--pp-askpop-tint); box-shadow: 0 4px 16px rgba(0, 0, 0, .12); }
-.pp-askpop-cmd { width: 100%; flex-wrap: nowrap; gap: 10px; padding: 6px 10px; border-radius: var(--pp-r-ctrl); cursor: pointer; font-size: 13px; }
+.pp-askpop-cmds { flex: none; width: max-content; min-width: 280px; max-width: 100%; gap: 0; padding: 4px; max-height: 300px; overflow-y: auto; border: 1px solid var(--pp-askpop-line); border-radius: var(--pp-r-popup); background: var(--pp-askpop-tint); box-shadow: 0 4px 16px rgba(0, 0, 0, .12); }
+.pp-askpop-cmd { width: 100%; flex-wrap: nowrap; gap: 10px; padding: 7px 12px; border-radius: var(--pp-r-ctrl); cursor: pointer; font-size: 13.5px; }
 .pp-askpop-cmd:hover, .pp-askpop-cmd-active { background: rgba(var(--pp-accent-rgb), .12); }
-.pp-askpop-cmd-sub { margin-left: auto; min-width: 0; font-size: 11.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pp-askpop-cmd-sub { margin-left: auto; padding-left: 12px; min-width: 0; font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 /* a rewrite: the box fades out at once; the text pulses until the AI's version replaces it */
 .pp-askpop-gone { pointer-events: none; animation: pp-askpop-dissolve var(--pp-dur-fast) var(--pp-ease) forwards; }
 @keyframes pp-askpop-dissolve { to { opacity: 0; transform: scale(.96); } }
@@ -1566,12 +1693,11 @@ body.body--dark .pp-aidiff-chip-warn { color: #e3b341; }
 .pp-chat-suggestion.q-btn:hover { border-color: rgba(var(--pp-accent-rgb), .6); color: var(--pp-accent); }
 
 /* Chat extras (P22.11): sources under an answer, the folded reasoning, actions on your message. */
-.pp-msg-sources { gap: 2px 4px; font-size: 11px; flex-wrap: wrap; }
-.pp-msg-source.q-btn { font-size: 11.5px; min-height: 20px; padding: 0 6px; color: var(--pp-wiki, var(--pp-accent)); border-radius: var(--pp-r-sm); }
+.pp-msg-source.q-btn { font-size: 11.5px; min-height: 20px; min-width: 0; padding: 0 3px; margin: 0 -3px; color: var(--pp-wiki, var(--pp-accent)); border-radius: var(--pp-r-sm); }
 .pp-msg-reasoning { font-size: 12px; color: var(--pp-muted); }
 .pp-msg-reasoning .q-item { min-height: 24px; padding: 0 4px; }
 .pp-msg-reasoning-text { white-space: pre-wrap; font-size: 12px; padding: 2px 4px 6px; }
-.pp-msg-actions-user { justify-content: flex-end; width: 100%; }
+
 
 /* The options box (PLAN §4.28): the AI's options for a command run without words */
 .pp-optbox { width: 100%; gap: 2px; }
@@ -1600,9 +1726,10 @@ body.body--dark .pp-aidiff-chip-warn { color: #e3b341; }
 .pp-ai-action-main.q-btn { color: #fff; background: var(--pp-accent); border-color: var(--pp-accent); }
 .pp-ai-action-main.q-btn:hover { background: var(--pp-accent); filter: brightness(1.08); }
 /* the chat box's / list: the AI commands (PLAN §4.28) */
-.pp-chat-cmd { padding: 5px 10px; font-size: 12.5px; }
-.pp-chat-cmd-sub { margin-left: auto; min-width: 0; font-size: 11.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* the chat box's / list: a little larger (user 2026-11-06) */
+.pp-chat-cmd { padding: 7px 12px; gap: 10px; font-size: 13.5px; }
+.pp-chat-cmd-sub { margin-left: auto; padding-left: 12px; min-width: 0; font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .pp-chat-cmdcard-cmd { display: block; }
 /* the chat box's / and @ lists: as wide as their longest line, always narrower than the box */
-.pp-chat-compose .pp-chat-mentions { align-self: flex-start; width: max-content; min-width: 180px; max-width: calc(100% - 24px); }
+.pp-chat-compose .pp-chat-mentions { align-self: flex-start; width: max-content; min-width: 260px; max-width: calc(100% - 24px); }
 .pp-chat-cmd .q-icon, .pp-chat-cmd svg { flex: none; }

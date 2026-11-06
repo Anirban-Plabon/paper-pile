@@ -53,6 +53,9 @@ class SavedTurn:
     sources: list[str] = field(default_factory=list)  # notes an answer was given from (paths)
     reasoning: str = ""  # a thinking model's reasoning for an answer
     cut: bool = False  # the answer did not finish (stopped, failed or at its length limit)
+    at: float = field(default_factory=time.time)  # when it was sent / answered (0: not known)
+    tokens: int = 0  # an answer's tokens (the backend's count, else estimated; 0: not known)
+    took: float = 0.0  # seconds an answer took, from sending to its last word (0: not known)
 
 
 @dataclass(slots=True)
@@ -91,6 +94,36 @@ def ago(ts: float, now: float) -> str:
         return "yesterday"
     fmt = "%b %d" if day.tm_year == today.tm_year else "%b %d, %Y"
     return time.strftime(fmt, day).replace(" 0", " ")
+
+
+def turn_time(ts: float, now: float) -> str:
+    """When a message was sent, under it: "13:04" today, else "Nov 5, 13:04" ("Nov 5, 2025,
+    13:04" in another year); "" when not known (chats saved before times were kept)."""
+    if ts <= 0:
+        return ""
+    day, today = time.localtime(ts), time.localtime(now)
+    clock = time.strftime("%H:%M", day)
+    if (day.tm_year, day.tm_yday) == (today.tm_year, today.tm_yday):
+        return clock
+    fmt = "%b %d" if day.tm_year == today.tm_year else "%b %d, %Y"
+    return f"{time.strftime(fmt, day).replace(' 0', ' ')}, {clock}"
+
+
+def token_text(tokens: int) -> str:
+    """An answer's size under it: "850 toks", "1.9k toks", "12k toks" (k = 1000)."""
+    if tokens < 1000:
+        return f"{tokens} toks"
+    k = tokens / 1000
+    shown = f"{k:.0f}" if k >= 10 else f"{k:.1f}".removesuffix(".0")
+    return f"{shown}k toks"
+
+
+def took_text(seconds: float) -> str:
+    """How long an answer took: "0.8s", "12.3s", "1m 05s"."""
+    if seconds < 60:
+        return f"{seconds:.1f}s"
+    minutes, rest = divmod(round(seconds), 60)
+    return f"{minutes}m {rest:02d}s"
 
 
 def chats_folder(vault: Path, setting: str = "") -> Path:
@@ -137,7 +170,14 @@ def _turn(raw: Any) -> SavedTurn | None:
         [n for n in _list(raw.get("sources")) if isinstance(n, str)],
         str(raw.get("reasoning", "") or ""),
         bool(raw.get("cut", False)),
+        _number(raw.get("at")),
+        int(_number(raw.get("tokens"))),
+        _number(raw.get("took")),
     )
+
+
+def _number(raw: Any) -> float:
+    return float(raw) if isinstance(raw, int | float) and not isinstance(raw, bool) else 0.0
 
 
 def _list(raw: Any) -> list[Any]:

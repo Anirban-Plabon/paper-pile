@@ -56,7 +56,7 @@ AI_COMMANDS: tuple[AiCommand, ...] = (
     AiCommand(
         "ai-rewrite",
         "Rewrite",
-        "Change the text as you ask",
+        "Reword it",
         "pen-line",
         "change",
         ("rephrase", "reword", "improve", "modify", "edit", "fix", "grammar", "shorter", "longer"),
@@ -74,7 +74,7 @@ AI_COMMANDS: tuple[AiCommand, ...] = (
     AiCommand(
         "ai-tone",
         "Change tone",
-        "Formal, casual, friendly…",
+        "Formal, casual…",
         "message-circle",
         "change",
         ("tone", "formal", "casual", "friendly", "style", "voice"),
@@ -87,7 +87,7 @@ AI_COMMANDS: tuple[AiCommand, ...] = (
     AiCommand(
         "ai-summarize",
         "Summarize",
-        "Written under the text",
+        "Short version below",
         "scroll-text",
         "answer",
         ("summary", "tldr", "short version"),
@@ -103,7 +103,7 @@ AI_COMMANDS: tuple[AiCommand, ...] = (
     AiCommand(
         "ai-explain",
         "Explain",
-        "Written under the text",
+        "Explained below",
         "brain",
         "answer",
         ("what does this mean", "meaning", "clarify"),
@@ -120,7 +120,7 @@ AI_COMMANDS: tuple[AiCommand, ...] = (
     AiCommand(
         "ai-outline",
         "Outline",
-        "Written under the text",
+        "Key points below",
         "list-tree",
         "answer",
         ("outline", "structure", "key points", "bullets"),
@@ -137,7 +137,7 @@ AI_COMMANDS: tuple[AiCommand, ...] = (
     AiCommand(
         "ai-translate",
         "Translate",
-        "Shown first; you choose to put it in",
+        "Preview, then insert",
         "languages",
         "shown",
         ("translate", "language", "translation"),

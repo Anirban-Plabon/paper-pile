@@ -1,11 +1,12 @@
 """Right pane: AI chat (PLAN §4.11).
 
 Streamed replies rendered as markdown (math and diagrams typeset), Stop, Copy and *Insert into
-note* per reply. The composer is one rounded card: attachment chips (selections, notes, text
-files), a ``+`` menu (open tabs, other notes, the editor's selection, upload, include all open
-tabs), the input with its ``@`` picker, the model picker and Send. What the model sees is built
-by the AI engine (:mod:`paper_pile.core.ai.engine`), which also keeps the open chat; this pane
-only draws. If the AI backend can't be reached the pane says so and everything else keeps working.
+note* (a diff first) per reply. The composer is one rounded card: attachment chips (selections,
+notes, text files), a ``+`` menu (open tabs, other notes, the editor's selection, upload, include
+all open tabs), the input with its ``@`` picker, the model picker and Send. What the model sees
+is built by the AI engine (:mod:`paper_pile.core.ai.engine`), which also keeps the open chat;
+this pane only draws. If the AI backend can't be reached the pane says so and everything else
+keeps working.
 
 A header row shows the chat's title; its ⋮ button opens the chat menu: New chat, the latest
 saved chats (*Memories*, one line each; older ones under *More chats*) and *AI settings*. Chats
@@ -27,7 +28,14 @@ from nicegui import Client, background_tasks, ui
 
 from paper_pile.core.ai.access import AccessDeniedError
 from paper_pile.core.ai.attachments import AttachmentError, FileRef, read_text_file
-from paper_pile.core.ai.chats import SavedChat, SavedQuote, list_chats
+from paper_pile.core.ai.chats import (
+    SavedChat,
+    SavedQuote,
+    list_chats,
+    token_text,
+    took_text,
+    turn_time,
+)
 from paper_pile.core.ai.chats import SavedTurn as Turn
 from paper_pile.core.ai.commands import (
     AiCommand,
@@ -39,14 +47,13 @@ from paper_pile.core.ai.commands import (
 )
 from paper_pile.core.ai.context import EditorSnapshot, source_view
 from paper_pile.core.ai.edit_run import Again, EditEnd
-from paper_pile.core.ai.edits import edit_action, edit_mode
 from paper_pile.core.ai.engine import AiEngine, Outgoing, Selection
 from paper_pile.core.ai.options import Option, suggest_options
 from paper_pile.core.ai.prompts import load_prompts, prompts_file, selection_kind, suggestions
 from paper_pile.core.ai.provider import Health, ProviderError, ProviderUnavailableError
 from paper_pile.core.links import resolve_wikilink, wikilink_to
 from paper_pile.core.parser import render_chat_html
-from paper_pile.core.picker import search_notes
+from paper_pile.core.picker import switcher_notes
 from paper_pile.gui.components.ai_access import confirm_access
 from paper_pile.gui.components.options_box import OptionsBox
 from paper_pile.gui.icons import ico, icon_button, line_icon, set_icon
@@ -76,9 +83,45 @@ def show_stop(button: ui.button, busy: bool) -> None:
 
 
 RENDER_EVERY_S = 0.08  # how often a streaming reply is redrawn
+MENTION_NOTES = 8  # notes in the @ list
+MENTION_FOLDERS = 6  # the vault's top folders listed above them (more: type their name)
+FOLDER_ROWS = 50  # folders and notes listed for @<folder>/ (the list scrolls)
+ADD_NOTES = 5  # notes listed in the + menu (recent ones, or the best matches)
+LIVE_META_S = 0.2  # how often the size and time under an answer being written count up
 HEALTH_EVERY_S = 30.0
 RECENT_CHATS = 5  # shown in the ⋮ menu; older ones under "More chats"
-_MENTION_TAIL = re.compile(r"@([^\s@\[\]]*)$")
+_MENTION_TAIL = re.compile(r"@((?:[^\s@\[\]]|\xa0)*)$")
+# a mention in a sent message (as ``core.ai.context.extract_mentions`` reads them)
+_MENTION_SHOWN = re.compile(r"@\[\[([^\[\]\n]+)\]\]|(?<![\w@])@((?:[^\s@\[\]]|\xa0)+)")
+_MENTION_TRAIL = ".,;:!?)"
+
+
+def mention_html(text: str) -> str:
+    """A user message as HTML: each ``@[[note]]`` / ``@note`` / ``@folder/`` shown as ``@note``
+    in the accent colour (user 2026-11-06: no ``[[ ]]``); the rest escaped as it is."""
+    out: list[str] = []
+    last = 0
+    for m in _MENTION_SHOWN.finditer(text):
+        name = m.group(1) or m.group(2)
+        trail = len(name) - len(name.rstrip(_MENTION_TRAIL)) if m.group(2) else 0
+        name = name[: len(name) - trail]
+        if not name:
+            continue
+        out += [
+            html.escape(text[last : m.start()]),
+            f'<span class="pp-at">@{html.escape(name)}</span>',
+        ]
+        last = m.end() - trail
+    out.append(html.escape(text[last:]))
+    return "".join(out)
+
+
+def mention_text(name: str) -> str:
+    """How a picked note or folder goes into the box: ``@name``, its spaces as no-break spaces
+    (they look the same and keep it one mention: user 2026-11-06, no ``[[ ]]``); ``@[[name]]``
+    only when it could not be one (brackets, a line break, a closing ``.`` / ``)`` …)."""
+    bare = re.fullmatch(r"[^\n\t@\[\]]+", name) and not name.endswith(tuple(_MENTION_TRAIL))
+    return "@" + name.replace(" ", "\xa0") if bare else f"@[[{name}]]"
 
 
 # a change command run from the chat box: (path, selected text or None for the whole note,
@@ -119,11 +162,12 @@ class ChatPane:
         self,
         ai: AiEngine,
         snapshot: Callable[[], Awaitable[EditorSnapshot]],
-        insert_text: Callable[[str], None],
+        insert_text: Callable[[str], Awaitable[None]],  # an answer into the note, as a diff
         on_health: Callable[[Health], None] = lambda health: None,
         user_name: Callable[[], str] = lambda: "",
         open_paths: Callable[[], list[str]] = lambda: [],
         active_path: Callable[[], str | None] = lambda: None,
+        recent_paths: Callable[[], list[str]] = lambda: [],  # recently opened notes, newest first
         open_settings: Callable[[], None] = lambda: None,
         enabled: Callable[[], bool] = lambda: True,  # the AI feature switch
         apply_to_note: Callable[[str, str, str], Awaitable[None]] | None = None,
@@ -145,9 +189,12 @@ class ChatPane:
         self._user_name = user_name
         self._open_paths = open_paths
         self._active_path = active_path
+        self._recent_paths = recent_paths
         self._open_settings = open_settings
         self.health = Health(False, "Checking the AI…")
         self._task: asyncio.Task[None] | None = None
+        self._answer_started = 0.0  # time.monotonic() when the answer being written was asked
+        self._live_stats: ui.label | None = None  # its size and time so far, under it
         self._asking = False  # an Allow / Not now card is waiting in the chat
         self._include_tabs = False
         self._selections: list[Selection] = []
@@ -237,6 +284,7 @@ class ChatPane:
                     on_rejected=lambda: ui.notify("Files must be at most 200 KB.", type="warning"),
                 ).classes("hidden")
         ui.on("pp_chat_send", lambda _e: self._enter_pressed())
+        ui.on("pp_chat_pick", lambda e: self._picked(dict(e.args)))
         ui.on("pp_chip_close", lambda _e: self._close_chip())
         ui.on("pp_open_url", lambda e: self._open_url(e.args))
         ui.timer(HEALTH_EVERY_S, lambda: background_tasks.create(self.check_health()))
@@ -490,23 +538,29 @@ class ChatPane:
         self._scroll_down()
 
     def _bubble(self, turn: Turn) -> ui.html | None:
+        """One message, with one line under it (user 2026-11-06): its buttons, shown on hover,
+        and its info, in one size. The user's: a bubble on the right as wide as its text (at
+        most most of the pane); under it Copy, Edit (the last one) and its time. An answer:
+        the text; under it its info (:meth:`_reply_meta`) and Copy / Insert into note /
+        Answer again. The bubbles tell who wrote what (no names)."""
         if turn.role == "user":
             with ui.column().classes("pp-msg pp-msg-user"):
-                ui.label(self._user_name() or "You").classes("pp-msg-who")
                 for quote in turn.quotes:
                     self._quote_chip(quote)
                 rest = "\n".join(turn.attachment.splitlines()[len(turn.quotes) :])
                 if rest:  # notes and files (the quotes' lines come first)
                     ui.label(rest).classes("pp-muted pp-msg-attach")
-                ui.label(turn.text).classes("pp-msg-text")
-                if self._task is None and turn is self._last("user"):
-                    with ui.row().classes("pp-msg-actions pp-msg-actions-user items-center"):
-                        ui.button(icon=ico("pencil"), on_click=self._edit_last).props(
-                            "flat dense size=xs"
-                        ).props('data-tip="Edit and send again"')
+                ui.html(mention_html(turn.text), sanitize=False).classes("pp-msg-text")
+                with ui.row().classes("pp-msg-foot pp-msg-foot-user items-center no-wrap"):
+                    with ui.row().classes("pp-msg-actions items-center no-wrap"):
+                        self._msg_button("copy", "Copy", lambda t=turn: self._copy(t.text))
+                        if self._task is None and turn is self._last("user"):
+                            self._msg_button("pencil", "Edit and send again", self._edit_last)
+                    when = turn_time(turn.at, time.time())
+                    if when:
+                        ui.label(when).classes("pp-muted pp-msg-ctx")
             return None
         with ui.column().classes("pp-msg pp-msg-ai" + (" pp-msg-error" if turn.error else "")):
-            ui.label("Assistant").classes("pp-msg-who")
             if turn.reasoning:  # a thinking model's reasoning, folded away
                 with ui.expansion("Reasoning").props("dense").classes("pp-msg-reasoning"):
                     ui.label(turn.reasoning.strip()).classes("pp-muted pp-msg-reasoning-text")
@@ -516,45 +570,85 @@ class ChatPane:
             else:
                 content = render_chat_html(turn.text)
             body = ui.html(content, sanitize=False).classes("pp-msg-body")
-            if turn.summary:
-                ui.label(turn.summary).classes("pp-muted pp-msg-ctx")
-            if turn.sources and not turn.error:
-                with ui.row().classes("pp-msg-sources items-center"):
-                    ui.label("Sources").classes("pp-muted")
-                    for path in turn.sources:
-                        name = path.rsplit("/", 1)[-1].rsplit(".", 1)[0]
-                        source = ui.button(
-                            name, on_click=lambda _e=None, p=path: self._open_note(p)
-                        )
-                        source.props("flat dense no-caps").classes("pp-msg-source")
-                        tip(source, path)
-            if not turn.error and turn.text.strip():
-                with ui.row().classes("pp-msg-actions items-center"):
-                    ui.button(icon=ico("copy"), on_click=lambda t=turn: self._copy(t.text)).props(
-                        "flat dense size=xs"
-                    ).props('data-tip="Copy"')
-                    mode = edit_mode(self.ai.setting("ai.edits", "ask"))
-                    if edit_action(mode, "insert") != "refuse":  # an insert, like the commands
-                        ui.button(
-                            icon=ico("file-plus"),
-                            on_click=lambda t=turn: self._insert_reply(t.text),
-                        ).props("flat dense size=xs").props('data-tip="Insert into note"')
-                    if self._task is None and turn is self.ai.turns[-1]:
-                        ui.button(icon=ico("refresh-cw"), on_click=self._regenerate).props(
-                            "flat dense size=xs"
-                        ).props('data-tip="Answer again"')
-                    target = self.ai.edit_from_reply(turn) if self._apply_to_note else None
-                    if target is not None and self._apply_to_note is not None:
-                        apply = self._apply_to_note
-
-                        async def apply_reply(t: tuple[str, str, str] = target) -> None:
-                            await apply(*t)
-
-                        ui.button(icon=ico("file-diff"), on_click=apply_reply).props(
-                            "flat dense size=xs"
-                        ).props('data-tip="Apply to note (shows the changes first)"')
+            with ui.row().classes("pp-msg-foot items-center"):
+                self._reply_meta(turn)
+                if not turn.error and turn.text.strip():
+                    with ui.row().classes("pp-msg-actions items-center no-wrap"):
+                        self._msg_button("copy", "Copy", lambda t=turn: self._copy(t.text))
+                        self._into_note_button(turn)
+                        if self._task is None and turn is self.ai.turns[-1]:
+                            self._msg_button("refresh-cw", "Answer again", self._regenerate)
             self._typeset(body)
         return body
+
+    def _msg_button(self, icon: str, label: str, on_click: Callable[[], object]) -> ui.button:
+        button = ui.button(icon=ico(icon), on_click=on_click, color=None)
+        button.props("flat dense size=xs").props(f'data-tip="{label}"')
+        return button
+
+    def _reply_meta(self, turn: Turn) -> None:
+        """One line under an answer (user 2026-11-06): "From <notes> · 1.9k toks · 13:53 · 4.2s"
+        (its size, when it ended, how long it took). While it is written the size and the time
+        so far count up live and the clock time is left out. What was sent along ("Context:
+        note · 1.2k / 8k tokens") is the hover text."""
+        live = self._task is not None and bool(self.ai.turns) and turn is self.ai.turns[-1]
+        if not live and not (turn.sources or turn.tokens or turn.took or turn.at):
+            return
+        row = ui.row().classes("pp-msg-meta items-center")
+        self._draw_meta(row, turn, live)
+        if live:  # the sources arrive once the context is built: then the row is drawn again
+            drawn = [tuple(turn.sources)]
+
+            def tick() -> None:
+                if tuple(turn.sources) != drawn[0]:
+                    drawn[0] = tuple(turn.sources)
+                    self._draw_meta(row, turn, True)
+                elif self._live_stats is not None:
+                    self._live_stats.set_text(self._meta_stats(turn, True))
+
+            ui.timer(LIVE_META_S, tick)  # beside the row (drawing the row again clears it)
+
+    def _draw_meta(self, row: ui.row, turn: Turn, live: bool) -> None:
+        row.clear()
+        sources = turn.sources if not turn.error else []
+        with row:
+            if sources:
+                ui.label("From").classes("pp-muted pp-msg-ctx")
+                for path in sources:
+                    name = path.rsplit("/", 1)[-1].rsplit(".", 1)[0]
+                    source = ui.button(name, on_click=lambda _e=None, p=path: self._open_note(p))
+                    source.props("flat dense no-caps").classes("pp-msg-source")
+                    tip(source, path)
+            stats = ui.label("").classes("pp-muted pp-msg-ctx pp-msg-stats")
+            stats.set_text(self._meta_stats(turn, live))
+            if turn.summary:
+                tip(stats, turn.summary.replace("Context: ", "Sent along: ", 1))
+        self._live_stats = stats if live else None
+
+    def _meta_stats(self, turn: Turn, live: bool) -> str:
+        """ "1.9k toks · 13:53 · 4.2s"; live: "120 toks · 3.1s" (no clock time yet)."""
+        tokens = self.ai.reply_tokens(turn) if live else turn.tokens
+        seconds = time.monotonic() - self._answer_started if live else turn.took
+        when = "" if live else turn_time(turn.at, time.time())
+        bits = [token_text(tokens) if tokens else "", when, took_text(seconds) if seconds else ""]
+        text = " · ".join(bit for bit in bits if bit)
+        return f"· {text}" if text and turn.sources and not turn.error else text
+
+    def _into_note_button(self, turn: Turn) -> None:
+        """*Insert into note*, one button, always a diff first (user 2026-11-06): an answer about
+        one attached selection replaces that text in its note; any other goes in at the caret of
+        the note on screen. The edit permission decides as for any AI change."""
+        target = self.ai.edit_from_reply(turn) if self._apply_to_note else None
+        apply_to = self._apply_to_note
+
+        async def insert() -> None:
+            if target is not None and apply_to is not None:
+                await apply_to(*target)
+            else:
+                await self._insert_reply(turn.text)
+
+        shown = "replaces the selection; shows the changes first" if target else "shows it first"
+        self._msg_button("file-plus", f"Insert into note ({shown})", insert)
 
     def _quote_chip(self, quote: SavedQuote) -> None:
         """A sent selection: the same chip as in the composer; a click unfolds its text."""
@@ -577,7 +671,6 @@ class ChatPane:
                     row.classes(remove="pp-chat-chip-open")
 
             with row:
-                line_icon("quote").classes("pp-chat-ref-icon")
                 label = ui.html(_chip_text(quote.note, quote.kind, quote.size), sanitize=False)
                 label.classes("pp-chat-ref-text pp-chat-chip-text")
                 label.on("click", toggle)
@@ -607,9 +700,8 @@ class ChatPane:
         self._js(f"navigator.clipboard && navigator.clipboard.writeText({json.dumps(text)})")
         ui.notify("Copied", timeout=1200, position="bottom")
 
-    def _insert_reply(self, text: str) -> None:
-        self._insert(text.strip() + "\n")
-        ui.notify("Inserted into the note", timeout=1500, position="bottom")
+    async def _insert_reply(self, text: str) -> None:
+        await self._insert(text.strip())
 
     # ---- adding things to the message ----------------------------------------------------
 
@@ -741,29 +833,20 @@ class ChatPane:
         menu.on("hide", lambda _e: set_icon(self._plus, "plus"))
 
     def _build_menu(self, menu: ui.menu) -> None:
+        """The ``+`` menu (user 2026-11-06: smaller): a search bar on top, under it 5 notes —
+        open and recently opened ones (the note on screen first, ticked) or, while typing, the
+        best matches — then Upload, outside files, *Select from screen* (coming soon) and
+        *Include open tabs*."""
         menu.clear()
-        active = self._active_path()
-        paths = self._open_paths()
         with menu:
-            ui.label(self.ai.policy().describe()).classes("pp-muted pp-chat-access")
-            for path in paths:
-                title = path.rsplit("/", 1)[-1].rsplit(".", 1)[0]
-                with ui.menu_item(on_click=lambda _e=None, p=path: self.add_notes([p])):
-                    line_icon("file-text").classes("pp-menu-icon")
-                    ui.label(title).classes("pp-menu-title")
-                    if path == active:
-                        line_icon("check", "s").classes("pp-menu-check pp-check")
-            with ui.menu_item(auto_close=False):
-                line_icon("ellipsis").classes("pp-menu-icon")
-                ui.label("Add more notes").classes("pp-menu-title")
-                line_icon("chevron-right", "s").classes("pp-menu-check")
-                self._more_notes_menu(menu)
+            search = ui.input(placeholder="Search notes")
+            search.props("dense borderless autofocus clearable").classes("pp-chat-add-search")
+            with search.add_slot("prepend"):  # where the notes' icons are, under it
+                line_icon("search").classes("pp-menu-icon")
+            results = ui.column().classes("pp-chat-more pp-chat-add-notes")
+            search.on_value_change(lambda e: self._fill_notes(results, menu, e.value or ""))
+            self._fill_notes(results, menu, "")
             ui.separator()
-            with ui.menu_item(
-                on_click=lambda _e=None: background_tasks.create(self._from_screen())
-            ):
-                line_icon("text-select").classes("pp-menu-icon")
-                ui.label("Select from screen").classes("pp-menu-title")
             with ui.menu_item(on_click=lambda _e=None: self._upload.run_method("pickFiles")):
                 line_icon("paperclip").classes("pp-menu-icon")
                 ui.label("Upload files").classes("pp-menu-title")
@@ -774,6 +857,10 @@ class ChatPane:
                     ui.label("Outside files").classes("pp-menu-title")
                     line_icon("chevron-right", "s").classes("pp-menu-check")
                     self._outside_menu(menu, outside)
+            with ui.menu_item().props("disable").classes("pp-chat-soon"):
+                line_icon("text-select").classes("pp-menu-icon")
+                ui.label("Select from screen").classes("pp-menu-title")
+                ui.label("Coming soon").classes("pp-chat-soon-badge")
             ui.separator()
             with ui.menu_item(auto_close=False):
                 line_icon("app-window").classes("pp-menu-icon")
@@ -781,30 +868,24 @@ class ChatPane:
                 ui.switch(
                     value=self._include_tabs, on_change=lambda e: self._set_include_tabs(e.value)
                 ).props("dense")
+            ui.label(self.ai.policy().describe()).classes("pp-muted pp-chat-access")
 
-    def _more_notes_menu(self, root: ui.menu) -> None:
-        with ui.menu().props('anchor="top end" self="top start"').classes("pp-chat-menu"):
-            results = ui.column().classes("pp-chat-more")
-
-            def pick(path: str) -> None:
-                self.add_notes([path])
-                root.close()
-
-            def fill(query: str) -> None:
-                results.clear()
-                with results:
-                    for path in search_notes(query, self.ai.note_paths(), limit=8):
-                        title = path.rsplit("/", 1)[-1].rsplit(".", 1)[0]
-                        with ui.menu_item(on_click=lambda _e=None, p=path: pick(p)):
-                            ui.label(title).classes("pp-menu-title")
-                            folder = path.rpartition("/")[0]
-                            if folder:
-                                ui.label(folder).classes("pp-muted")
-
-            ui.input(placeholder="Search notes", on_change=lambda e: fill(e.value or "")).props(
-                "dense borderless autofocus"
-            ).classes("pp-chat-more-search")
-            fill("")
+    def _fill_notes(self, results: ui.column, menu: ui.menu, query: str) -> None:
+        """The ``+`` menu's notes: :data:`ADD_NOTES` recent ones, or the best matches."""
+        active = self._active_path()
+        recent = [p for p in (active, *self._open_paths(), *self._recent_paths()) if p]
+        paths = switcher_notes(query, self.ai.note_paths(), recent, limit=ADD_NOTES)
+        results.clear()
+        with results:
+            if not paths:
+                ui.label("No notes found").classes("pp-muted pp-menu-empty")
+            for path in paths:
+                title = path.rsplit("/", 1)[-1].rsplit(".", 1)[0]
+                with ui.menu_item(on_click=lambda _e=None, p=path: self.add_notes([p])):
+                    line_icon("file-text").classes("pp-menu-icon")
+                    ui.label(title).classes("pp-menu-title")
+                    if path == active:
+                        line_icon("check", "s").classes("pp-menu-check pp-check")
 
     def _outside_menu(self, root: ui.menu, files: list[Path]) -> None:
         """Files of the outside folders the AI may read (Settings → AI → Access)."""
@@ -837,16 +918,6 @@ class ChatPane:
 
     def _spawn(self, coro: Awaitable[None]) -> None:
         background_tasks.create(coro)
-
-    async def _from_screen(self) -> None:
-        """Attach what is selected in the note, or tell the user to select something."""
-        snap = await self._snapshot()
-        if snap.selection.strip():
-            self.set_selection(snap.selection, snap.path or "")
-            return
-        with self._client:  # a background task has no UI context of its own
-            ui.notify("Select text in a note: it is attached automatically", timeout=2500)
-        self._js("document.querySelector('.cm-content')?.focus()")
 
     def set_selection(self, text: str, path: str) -> None:
         """Attach text selected in the editor. Attachments stay until removed with their cross;
@@ -883,7 +954,6 @@ class ChatPane:
                 if picked is self._open:
                     row.classes("pp-chat-chip-open")
                 with row:
-                    line_icon("quote").classes("pp-chat-ref-icon")
                     text = _chip_text(picked.note, picked.kind, picked.size())
                     label = ui.html(text, sanitize=False)
                     label.classes("pp-chat-ref-text pp-chat-chip-text")
@@ -928,6 +998,13 @@ class ChatPane:
             self._render_suggestions()  # typing hides the prompts, an empty box shows them
 
     def _update_mentions(self, value: str) -> None:
+        """The list over the box: ``/`` → the AI commands, ``@`` → folders and notes (user
+        2026-11-06: like a coding agent's file picker). ``@`` lists the vault's top folders
+        first (``a/``), then notes (recent first, the best matches as more is typed);
+        ``@a/…`` lists that folder's folders and notes. ↑ / ↓ move, Enter or Tab picks, Esc
+        closes (``static/chat.js``). A picked folder only completes the path: left in the
+        message, ``@a/b/`` asks the AI to search that folder (:meth:`AiEngine.vault_scopes`;
+        the whole vault is ``@vault``)."""
         self._mentions.clear()
         if re.fullmatch(r"/\S*", value):  # the AI commands (PLAN §4.28)
             self._update_commands(value[1:])
@@ -936,30 +1013,109 @@ class ChatPane:
         if not m:
             self._mentions.set_visibility(False)
             return
-        hits = search_notes(m.group(1), self.ai.note_paths(), limit=6)
-        tail = m.group(0)
+        query, tail = m.group(1), m.group(0)
+        rows = self._folder_rows(query)  # (kind, id, icon, title, muted)
+        if "/" not in query:
+            rows = [r for r in rows if r[0] == "folder"][:MENTION_FOLDERS]
+            active = self._active_path()
+            recent = [p for p in (active, *self._open_paths(), *self._recent_paths()) if p]
+            notes = switcher_notes(query, self.ai.note_paths(), recent, limit=MENTION_NOTES)
+            rows += [self._note_row(path) for path in notes]
         with self._mentions:
-            for path in hits:
-                label = path.rsplit("/", 1)[-1].rsplit(".", 1)[0]
-                row = ui.row().classes("pp-chat-mention items-baseline no-wrap")
+            if not rows:
+                ui.label(f"Nothing matches “{query}”").classes("pp-muted pp-chat-pick-none")
+            for i, (kind, ident, icon, title, muted) in enumerate(rows):
+                row = ui.row().classes(
+                    "pp-chat-mention pp-chat-pick items-center no-wrap"
+                    + (" pp-chat-pick-active" if i == 0 else "")
+                )
+                row.props(f'data-kind="{kind}" data-id="{html.escape(ident, quote=True)}"')
                 with row:
-                    ui.label(label)
-                    folder = path.rpartition("/")[0]
-                    if folder:
-                        ui.label(folder).classes("pp-muted")
-                row.on("click", lambda _e, p=path, t=tail: self._pick_mention(p, t))
-        self._mentions.set_visibility(bool(hits))
+                    line_icon(icon).classes("pp-menu-icon")
+                    ui.label(title).classes("pp-menu-title")
+                    if muted:
+                        ui.label(muted).classes("pp-muted pp-chat-pick-folder")
+                row.on(
+                    "mousedown.prevent",
+                    lambda _e, k=kind, d=ident, t=tail: self._pick_row(k, d, t),
+                )
+        self._mentions.set_visibility(True)
+
+    @staticmethod
+    def _note_row(path: str) -> tuple[str, str, str, str, str]:
+        title = path.rsplit("/", 1)[-1].rsplit(".", 1)[0]
+        return ("note", path, "file-text", title, path.rpartition("/")[0])
+
+    def _folder_rows(self, rest: str) -> list[tuple[str, str, str, str, str]]:
+        """``@a/b/x``: the folders and notes right in ``a/b/`` whose names start with ``x``
+        (folders first; ``@x``: the vault's top folders). Hidden folders (``.trash``,
+        ``.template``…) are left out unless typed. ``@<vault>/…`` (the first form) is read as
+        ``@…``."""
+        rest = rest.replace("\xa0", " ")  # a picked folder's spaces (mention_text)
+        token = self.ai.vault_token.lower() + "/"
+        paths = self.ai.note_paths()
+        if rest.lower().startswith(token) and not any(p.lower().startswith(token) for p in paths):
+            rest = rest[len(token) :]
+        folder, _, start = rest.rpartition("/")
+        prefix = f"{folder}/" if folder else ""
+        start = start.lower()
+        folders: set[str] = set()
+        notes: list[str] = []
+        for path in paths:
+            if not path.lower().startswith(prefix.lower()):
+                continue
+            inner = path[len(prefix) :]
+            if "/" in inner:
+                name = inner.split("/", 1)[0]
+                if name.lower().startswith(start) and (start or not name.startswith(".")):
+                    folders.add(prefix + name)
+            elif inner.lower().startswith(start):
+                notes.append(path)
+        rows = [
+            ("folder", f"{path}/", "folder", f"{path.rsplit('/', 1)[-1]}/", "")
+            for path in sorted(folders, key=str.lower)
+        ]
+        # a note's folder is the path already typed: not shown again
+        for path in sorted(notes, key=str.lower):
+            rows.append(("note", path, "file-text", self._note_row(path)[3], ""))
+        return rows[:FOLDER_ROWS]
+
+    def _pick_row(self, kind: str, ident: str, tail: str) -> None:
+        if kind == "note":
+            self._pick_mention(ident, tail)
+        elif kind == "folder":  # complete the path; the list then shows what is in it
+            value = self._input.value or ""
+            self._input.set_value(value[: len(value) - len(tail)] + mention_text(ident))
+            self.focus_input()
+
+    def _picked(self, args: dict[str, object]) -> None:
+        """Enter / Tab in the list over the box (``static/chat.js``): its highlighted row."""
+        kind, picked = str(args.get("kind", "")), str(args.get("id", ""))
+        if kind == "cmd":
+            cmd = ai_command(picked)
+            if cmd is not None:
+                self._pick_command(cmd)
+        elif kind in ("note", "folder"):
+            m = _MENTION_TAIL.search(self._input.value or "")
+            if m and (kind == "folder" or picked in set(self.ai.note_paths())):
+                self._pick_row(kind, picked, m.group(0))
+        elif kind == "close":
+            self._mentions.set_visibility(False)
 
     def _update_commands(self, query: str) -> None:
         hits = search_commands(query)
         with self._mentions:
-            for cmd in hits:
-                row = ui.row().classes("pp-chat-mention pp-chat-cmd items-center no-wrap")
+            for i, cmd in enumerate(hits):
+                row = ui.row().classes(
+                    "pp-chat-mention pp-chat-cmd pp-chat-pick items-center no-wrap"
+                    + (" pp-chat-pick-active" if i == 0 else "")
+                )
+                row.props(f'data-kind="cmd" data-id="{cmd.id}"')
                 with row:
-                    line_icon(cmd.icon, "s")
+                    line_icon(cmd.icon)
                     ui.label(cmd.title)
                     ui.label(cmd.subtitle).classes("pp-muted pp-chat-cmd-sub")
-                row.on("click", lambda _e, c=cmd: self._pick_command(c))
+                row.on("mousedown.prevent", lambda _e, c=cmd: self._pick_command(c))
         self._mentions.set_visibility(bool(hits))
 
     def _pick_command(self, cmd: AiCommand) -> None:
@@ -972,7 +1128,7 @@ class ChatPane:
     def _pick_mention(self, path: str, tail: str) -> None:
         name = wikilink_to(path, "", set(self.ai.note_paths()))
         value = self._input.value or ""
-        self._input.set_value(value[: len(value) - len(tail)] + f"@[[{name}]] ")
+        self._input.set_value(value[: len(value) - len(tail)] + mention_text(name) + " ")
         self._mentions.set_visibility(False)
 
     # ---- sending -------------------------------------------------------------------------
@@ -1201,7 +1357,6 @@ class ChatPane:
         cmd = ai_command(card.command_id)
         classes = "pp-msg pp-msg-ai pp-chat-cmdcard" + (" pp-msg-error" if card.error else "")
         with ui.column().classes(classes):
-            ui.label("Assistant").classes("pp-msg-who")
             if cmd is not None:
                 ui.label(f"/{command_name(cmd)} {card.words}".strip()).classes(
                     "pp-askpop-msg-cmd pp-chat-cmdcard-cmd"
@@ -1230,6 +1385,7 @@ class ChatPane:
 
     async def _answer(self, out: Outgoing) -> None:
         reply = self.ai.start_reply()
+        self._answer_started = time.monotonic()  # the info line counts from here (live)
         self._render_log()
         body = self._last_body()
         try:
@@ -1258,6 +1414,7 @@ class ChatPane:
             log.exception("chat failed")
             self._fail(reply, "Something went wrong; see the log.")
         finally:
+            self.ai.finish_reply(reply, time.monotonic() - self._answer_started)
             self._task = None
             show_stop(self._send, False)
             self._render_log()

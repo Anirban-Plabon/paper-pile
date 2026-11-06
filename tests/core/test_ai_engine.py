@@ -332,3 +332,19 @@ def test_consent_names_a_host_on_another_computer(vault: Vault, fake: FakeProvid
     assert "sent to http://192.168.1.20:11434, another computer" in ai.consent_text()
     fake.host = ""  # a backend without an address (a cloud SDK): its name is shown
     assert "sent through Fake AI to another computer" in ai.consent_text()
+
+
+async def test_finish_reply_size_time_and_counts_of_this_answer_only(
+    vault: Vault, fake: FakeProvider
+) -> None:
+    ai = engine(vault, fake)
+    out = ai.add_message("hello")
+    reply = ai.start_reply()
+    ai.last_usage = (500, 999)  # left from an earlier call (a summary): not this answer's
+    async for _ in ai.answer(reply, out, EditorSnapshot()):
+        pass
+    assert AiEngine.reply_tokens(reply) > 0
+    ai.finish_reply(reply, 3.14159)
+    assert reply.took == 3.1 and reply.at > 0
+    assert reply.tokens == (ai.last_usage[1] or AiEngine.reply_tokens(reply))
+    assert reply.tokens != 999

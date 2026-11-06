@@ -11,7 +11,7 @@
   document.addEventListener('mousedown', (e) => {
     if (e.button !== 0) return;
     const edge = e.target.closest ? e.target.closest('.pp-resize') : null;
-    if (edge) send('gesture', { edge: edge.dataset.edge });
+    if (edge) { if (!maxed()) send('gesture', { edge: edge.dataset.edge }); }
     else if (zoneOf(e.target) && !e.target.closest(SKIP)) {
       // the second press of a double-click on a tab row starts no move (a compositor may take a
       // double-click on a move gesture as "maximize")
@@ -22,9 +22,9 @@
     e.preventDefault();
   });
 
-  // a double-click on an empty part of a top row maximizes / restores; never on a tab row (tabs
-  // and the space beside them: double-clicking tabs is for tabs)
+  // a double-click on an empty part of a top row maximizes / restores — the tab rows' empty
+  // space too (user 2026-11-06); never on a tab or a button
   document.addEventListener('dblclick', (e) => {
-    if (zoneOf(e.target) && !e.target.closest(SKIP) && !e.target.closest(TABS)) send('maximize');
+    if (zoneOf(e.target) && !e.target.closest(SKIP)) send('maximize');
   });
 })();

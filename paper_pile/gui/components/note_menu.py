@@ -28,8 +28,7 @@ class NoteActions:
     merge: Action
     add_to_chat: Action
     summarize: Action
-    rewrite: Action
-    write: Action
+    edit: Action  # the Ask box on the whole note: say what to write or change
     copy_path: Action
     copy_full_path: Action
     export_markdown: Action
@@ -73,8 +72,7 @@ class NoteMenu:
             for icon, label, action in (
                 ("sparkles", "Add to chat", a.add_to_chat),
                 ("list-collapse", "Summarize", a.summarize),
-                ("wand-sparkles", "Rewrite", a.rewrite),
-                ("pen-line", "Write…", a.write),
+                ("pen-line", "Edit…", a.edit),
             ):
                 self._item(icon, label, action)
                 self._ai_parts.append(self._last_item)

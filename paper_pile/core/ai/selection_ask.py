@@ -56,5 +56,5 @@ def box_commands(query: str, ctx: CommandContext) -> list[BoxCommand]:
     out = [BoxCommand(c.id, c.title, c.subtitle, c.icon) for c in found]
     q = query.strip().lower()
     if not q or any(w.startswith(q) for w in ("delete", "remove", "erase")):
-        out.append(BoxCommand(DELETE, "Delete", "Remove the selected text", "trash-2"))
+        out.append(BoxCommand(DELETE, "Delete", "Remove it", "trash-2"))
     return out

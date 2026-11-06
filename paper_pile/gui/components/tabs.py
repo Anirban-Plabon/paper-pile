@@ -74,7 +74,6 @@ class TabBar:
         self._bar: ui.element
         self._dots: dict[int, ui.label] = {}
         self._list_menu: ui.menu
-        self._list_count: ui.label
 
     def build(self) -> None:
         with ui.row().classes("pp-tabstrip pp-dragzone no-wrap items-center") as self._strip:
@@ -88,13 +87,15 @@ class TabBar:
                 .props("flat dense no-caps")
                 .classes("pp-icon-btn pp-tabs-list") as list_button
             ):
-                line_icon("chevrons-down")
-                self._list_count = ui.label("").classes("pp-tabs-list-count")
+                line_icon("chevron-down")  # one chevron, no count (user 2026-11-06)
                 self._list_menu = ui.menu().classes("pp-note-menu pp-tabs-list-menu")
                 self._list_menu.props("anchor='bottom right' self='top right'")
             tip(list_button, "All open tabs")
             self.toggles["right"] = icon_button(
-                "panel-right-close", lambda: self._on_toggle_pane("right"), "Hide AI chat (Ctrl+L)"
+                "panel-right-close",
+                lambda: self._on_toggle_pane("right"),
+                "Hide AI chat (Ctrl+L)",
+                size="m",  # 16 px like every icon of the top bar
             )
         ui.on("pp_tab_move", lambda e: self._moved(e.args))
 
@@ -172,7 +173,6 @@ class TabBar:
         tabs = self._tabs.tabs
         titles = self._tabs.titles()
         shown = {self._tabs.active} if split is None else {split.left, split.right}
-        self._list_count.set_text(str(len(tabs)))
         self._list_menu.clear()
         with self._list_menu:
             for tab in tabs:

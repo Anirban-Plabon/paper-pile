@@ -43,7 +43,7 @@ if TYPE_CHECKING:
 
 log = logging.getLogger("paper_pile.gui.ask_popup")
 
-PLACEHOLDER = "Ask about this, or / for commands"
+PLACEHOLDER = "Ask, / a command"  # after an Enter key icon (the box's hint, not a placeholder)
 CARET_PLACEHOLDER = "What should it write?"
 Mode = Literal["closed", "box", "chat", "gone"]  # gone: dissolved while a rewrite runs
 QUIET_S = 1.0  # after a rewrite / delete: the selection its edit settles again opens no box
@@ -148,12 +148,17 @@ class AskPopup:
                     # the picked / command, in the accent colour (Backspace in an empty box: gone)
                     self._chip = ui.label("").classes("pp-chat-plus pp-askpop-chip")
                     self._chip.set_visibility(False)
+                    # the hint is drawn over the empty box (an icon cannot go in a placeholder);
+                    # the placeholder is one space, so CSS knows when the box is empty
                     self._input = (
-                        ui.textarea(placeholder=PLACEHOLDER)
+                        ui.textarea(placeholder=" ")
                         .props("borderless dense autogrow input-style='max-height: 160px'")
                         .classes("pp-chat-input pp-askpop-input")
                     )
                     self._input.on_value_change(lambda e: self._typed(e.value or ""))
+                    with ui.row().classes("pp-askpop-hint items-center no-wrap"):
+                        line_icon("corner-down-right", "s").classes("pp-askpop-hint-icon")
+                        self._hint = ui.label(PLACEHOLDER)
                     self._send = ui.button(
                         icon=ico("arrow-up"), on_click=self._send_or_stop, color=None
                     )
@@ -363,7 +368,7 @@ class AskPopup:
 
     def _show_hint(self) -> None:
         hint = "Add details" if self._command else CARET_PLACEHOLDER if self._caret else PLACEHOLDER
-        self._input.props(f'placeholder="{hint}"')
+        self._hint.set_text(hint)
         self._js(  # fit the box to the new placeholder (static/chat.js)
             "document.querySelectorAll('.pp-askpop textarea')"
             ".forEach(a => window.ppChatFit && window.ppChatFit(a))"
@@ -797,7 +802,7 @@ class AskPopup:
                 row.props(f'data-id="{command_id}"')
                 with row:
                     if icon:
-                        line_icon(icon, "s")
+                        line_icon(icon)
                     ui.label(title).classes("pp-askpop-cmd-title")
                     if subtitle:
                         ui.label(subtitle).classes("pp-muted pp-askpop-cmd-sub")

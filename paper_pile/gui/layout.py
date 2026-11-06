@@ -250,7 +250,10 @@ class MainLayout:
         with self._ribbon:
             with ui.row().classes("pp-ribbon-top pp-dragzone items-center justify-center"):
                 icon_button(
-                    "panel-left-open", lambda: self.toggle("left"), "Show file tree (Ctrl+B)"
+                    "panel-left-open",
+                    lambda: self.toggle("left"),
+                    "Show file tree (Ctrl+B)",
+                    size="m",  # 16 px like every icon of the top bar
                 )
             with ui.element("div").classes("pp-seg pp-tools pp-tools-column"):  # as in the pane
                 icon_button(
@@ -419,7 +422,10 @@ class MainLayout:
         with ui.column().classes("pp-pane pp-left"):
             with ui.row().classes("pp-left-top pp-dragzone items-center no-wrap"):
                 icon_button(
-                    "panel-left-close", lambda: self.toggle("left"), "Hide file tree (Ctrl+B)"
+                    "panel-left-close",
+                    lambda: self.toggle("left"),
+                    "Hide file tree (Ctrl+B)",
+                    size="m",  # 16 px like every icon of the top bar
                 )
                 ui.label(f"paper-pile — {self.vault.name}").classes("pp-win-title")
             with ui.column().classes("pp-pane-body pp-left-body"):
@@ -702,11 +708,12 @@ class MainLayout:
         self.chat = ChatPane(
             self.ai,
             snapshot=self.editor_pane.ai_snapshot,
-            insert_text=self.editor_pane.insert_text,
+            insert_text=self.editor_pane.propose_insert,
             on_health=self._on_ai_health,
             user_name=lambda: self.profile.name if self.profile else "",
             open_paths=lambda: self.editor_pane.open_paths() if self.editor_pane else [],
             active_path=self._active_path,
+            recent_paths=lambda: list(self.state.recent_notes),
             open_settings=lambda: self.open_settings("AI"),
             enabled=self.ai_on,
             apply_to_note=self._apply_to_note,

@@ -31,7 +31,6 @@ log = logging.getLogger("paper_pile.note_actions")
 
 VAULT_ROOT = ""
 SUMMARIZE = "Summarize this note in a few short bullet points."
-WRITE = "Write "
 
 
 def note_actions(pane: "EditorPane", note: Callable[[], str | None] | None = None) -> NoteActions:
@@ -59,8 +58,7 @@ def note_actions(pane: "EditorPane", note: Callable[[], str | None] | None = Non
         merge=with_note(lambda p: _merge(pane, p)),
         add_to_chat=with_note(pane.add_to_chat),
         summarize=with_note(lambda p: _ask(pane, p, SUMMARIZE, send=True)),
-        rewrite=with_note(pane.rewrite),
-        write=with_note(lambda p: pane.ask_chat(p, WRITE, False)),
+        edit=with_note(pane.edit_note),
         copy_path=with_note(lambda p: _copy(pane, p)),
         copy_full_path=with_note(lambda p: _copy(pane, str(pane.vault.resolve(p)))),
         export_markdown=with_note(lambda p: _export(pane, p, "md")),

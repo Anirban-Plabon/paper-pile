@@ -77,7 +77,6 @@ from paper_pile.core.vault import Vault
 
 log = logging.getLogger("paper_pile.ai.engine")
 
-VAULT_TAG = re.compile(r"(?<![\w@])@vault\b", re.IGNORECASE)  # search the vault for the message
 VAULT_HITS = 3
 ASK_AGAIN_S = 60.0  # an unknown context length is asked again after this long
 MIN_ANSWER = 256  # tokens an answer may always take (``num_predict``), however full the window
@@ -591,7 +590,7 @@ class AiEngine:
         messages go with those messages (:meth:`past_text`), not here."""
         policy = self._require_access()
         found = self.vault_search(question)
-        question = VAULT_TAG.sub(" ", question)
+        question = self.strip_vault_tags(question)
         current = snap.path if policy.may_send(snap.path, snap.text) else None
         return build_context(
             self.vault,
@@ -609,17 +608,22 @@ class AiEngine:
         )
 
     def vault_search(self, question: str) -> list[tuple[str, str, str]]:
-        """``@vault`` in a message: ``(path, title, text)`` of the best few notes for it from the
+        """``@vault`` / ``@<vault>/`` in a message (``@<vault>/<folder>/``: only that folder;
+        :meth:`vault_scopes`): ``(path, title, text)`` of the best few notes for it from the
         vault's index that the AI may read, each as its section with most of the question's
         words (whole notes would not fit: the notes' share holds about one)."""
-        if not VAULT_TAG.search(question):
+        scopes = self.vault_scopes(question)
+        if not scopes:
             return []
         search = getattr(self.index, "search", None)
         if not callable(search):
             return []
-        asked = VAULT_TAG.sub(" ", question)
+        asked = self.strip_vault_tags(question)
+        whole = "" in scopes
         out: list[tuple[str, str, str]] = []
-        for hit in search(asked, limit=VAULT_HITS * 4, any_words=True):
+        for hit in search(asked, limit=VAULT_HITS * (4 if whole else 20), any_words=True):
+            if not whole and not hit.path.startswith(tuple(scopes)):
+                continue
             text = self.read_note(hit.path)
             if text is None:
                 continue
@@ -628,6 +632,59 @@ class AiEngine:
             if len(out) == VAULT_HITS:
                 break
         return out
+
+    @property
+    def vault_token(self) -> str:
+        """The vault's name as ``@<token>/`` (its folder's name, spaces as ``-``): still read
+        as the whole vault, though the ``@`` list no longer offers it (user 2026-11-06)."""
+        return vault_token(self.vault.root)
+
+    def _vault_tags(self) -> re.Pattern[str]:
+        """``@vault`` or ``@a/b/`` (a folder path, ``/`` at the end); which of the latter name a
+        folder is decided by :meth:`_scope_of`."""
+        return re.compile(
+            r"(?<![\w@])@(?:((?:(?:[^\s/@\[\]]|\xa0)+/)+)|vault\b)(?=[\s.,;:!?)]|$)",
+            re.IGNORECASE,
+        )
+
+    def _scope_of(self, m: re.Match[str], folders: dict[str, str]) -> str | None:
+        """The part of the vault one ``@…`` tag names: ``""`` (``@vault``, ``@<vault>/``), a
+        folder of the vault (``"a/b/"``, as written in the vault), or None (no such folder)."""
+        if m.group(1) is None:
+            return ""
+        path = m.group(1).replace("\xa0", " ")  # the chat box joins a name's words so
+        if path.lower() in folders:
+            return folders[path.lower()]
+        head, _, rest = path.partition("/")
+        if head.lower() == self.vault_token.lower():  # @<vault>/…: the 2026-11-06 form
+            return "" if not rest else folders.get(rest.lower())
+        return None
+
+    def _folders(self) -> dict[str, str]:
+        """Every folder that holds notes (at any depth): ``"a/b/"`` by its lower case."""
+        out: dict[str, str] = {}
+        for path in self.note_paths():
+            parts = path.split("/")[:-1]
+            for i in range(1, len(parts) + 1):
+                folder = "/".join(parts[:i]) + "/"
+                out.setdefault(folder.lower(), folder)
+        return out
+
+    def strip_vault_tags(self, text: str) -> str:
+        """``text`` without the tags :meth:`vault_scopes` reads (other ``@…`` stay)."""
+        folders = self._folders()
+        return self._vault_tags().sub(
+            lambda m: " " if self._scope_of(m, folders) is not None else m.group(0), text
+        )
+
+    def vault_scopes(self, text: str) -> list[str]:
+        """The parts of the vault a message asks the AI to search (user 2026-11-06, the ``@``
+        picker): ``""`` for the whole vault (``@vault``, ``@<vault>/``), ``"a/b/"`` for a folder
+        (``@a/b/``, or ``@<vault>/a/b/`` as first written); [] when it names none. A folder
+        tag that names no folder of the vault is not one."""
+        folders = self._folders()
+        scopes = (self._scope_of(m, folders) for m in self._vault_tags().finditer(text))
+        return list(dict.fromkeys(s for s in scopes if s is not None))
 
     def related_sections(
         self, words: str, skip: str = "", limit: int = 3
@@ -749,6 +806,7 @@ class AiEngine:
             reply.reasoning += text
 
         finish: list[str] = []
+        self.last_usage = (None, None)  # the counts of this answer only (not the summary's)
         async for piece in self.stream(messages, window, reasoned, finish.append):
             reply.text += piece
             yield piece
@@ -757,6 +815,18 @@ class AiEngine:
             reply.text = (reply.text + "\n\n" + CUT_OFF).strip()
 
     # ---- redoing the last exchange -------------------------------------------------------
+
+    @staticmethod
+    def reply_tokens(reply: SavedTurn) -> int:
+        """About how many tokens the answer has so far (its reasoning too: the model wrote it)."""
+        return estimate_tokens(reply.reasoning + reply.text)
+
+    def finish_reply(self, reply: SavedTurn, seconds: float) -> None:
+        """An answer ended (finished, stopped or failed): when, how long it took and its size
+        (the backend's count when it gave one, else estimated)."""
+        reply.at = time.time()
+        reply.took = round(seconds, 1)
+        reply.tokens = self.last_usage[1] or self.reply_tokens(reply)
 
     def _outgoing_for(self, turn: SavedTurn) -> Outgoing:
         """What an earlier user message sent along, rebuilt from the saved turn."""
@@ -1077,3 +1147,8 @@ def short_count(tokens: int) -> str:
     k = tokens / 1024
     shown = f"{k:.0f}" if k >= 10 else f"{k:.1f}".removesuffix(".0")
     return shown + "k"
+
+
+def vault_token(root: Path) -> str:
+    """A vault's name as one word, for ``@<name>/`` (spaces as ``-``; "vault" when empty)."""
+    return "-".join(root.name.split()) or "vault"

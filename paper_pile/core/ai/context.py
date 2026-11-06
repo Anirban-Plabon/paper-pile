@@ -45,7 +45,8 @@ _HEADINGS: dict[Kind, str] = {
     "tab": "Open note",
     "linked": "Linked note",
 }
-_MENTION = re.compile(r"@\[\[([^\[\]\n]+)\]\]|(?<![\w@])@([^\s@\[\]]+)")
+# ``@name`` may hold no-break spaces: the chat box writes a name with spaces that way
+_MENTION = re.compile(r"@\[\[([^\[\]\n]+)\]\]|(?<![\w@])@((?:[^\s@\[\]]|\xa0)+)")
 
 
 @dataclass(slots=True)
@@ -166,7 +167,7 @@ def extract_mentions(text: str) -> list[str]:
     """Note names mentioned in a chat message: ``@[[Some note]]`` or ``@word``."""
     names: list[str] = []
     for m in _MENTION.finditer(text):
-        name = (m.group(1) or m.group(2) or "").strip().rstrip(".,;:!?)")
+        name = (m.group(1) or m.group(2) or "").replace("\xa0", " ").strip().rstrip(".,;:!?)")
         if name and name not in names:
             names.append(name)
     return names

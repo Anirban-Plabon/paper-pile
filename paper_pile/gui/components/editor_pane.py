@@ -1485,10 +1485,16 @@ class EditorPane:
         text, start, end = found
         await self._apply_edit(target.tab_id, text, TextEdit((TextChange(start, end, ""),), start))
 
-    async def rewrite(self, path: str) -> None:
-        """⋯ → Rewrite: the AI's version of the whole body of ``path`` (its front matter stays),
-        shown as a diff (PLAN §4.26)."""
-        await self.run_on_note(path, "ai-rewrite")
+    async def edit_note(self, path: str) -> None:
+        """⋯ → Edit… (user 2026-11-06: in place of Rewrite and Write…): the Ask box at the caret
+        with the whole note as its text; what the user types is understood as a change (a diff)
+        or a question (answered in the box), as for a selection (PLAN §4.27)."""
+        await self.open(path)
+        tab_id = self.tabs.active
+        if tab_id is None or self._active_path() != path:
+            return
+        self.focus_note()
+        await self._ask_whole(tab_id, path, "")
 
     async def run_on_note(self, path: str, command_id: str, words: str = "") -> None:
         """An AI command with the whole body of ``path`` as its target (nothing selected, PLAN
@@ -1951,6 +1957,24 @@ class EditorPane:
         action = replacement_action(self._edit_mode(), old, new, FINISHED)  # a finished answer
         if action is not None:
             await self.propose_edit(tab.id, text, start, start + len(old), new, action)
+
+    async def propose_insert(self, answer: str) -> None:
+        """A chat answer *Insert into note* with no text it was asked about: put in at the caret
+        of the note on screen (on lines of its own, as a block) and shown as a diff first, like
+        *Apply to note* (the edit permission decides: a diff to accept, at once, or read only)."""
+        tab_id = self.tabs.active
+        body = clean_reply(answer, "").strip()
+        text = await self._live_text(tab_id) if tab_id is not None else None
+        selection = await self._editor_for(tab_id).get_selection() if tab_id is not None else None
+        if tab_id is None or text is None or selection is None or not body:
+            self._toast("Open a note to insert into.", error=True)
+            return
+        start = codepoint_index(text, selection[1])
+        end = codepoint_index(text, selection[2])
+        spacing = bool(self._config.get("editor.block_spacing", True)) if self._config else True
+        insert, _at = spaced_block(text, start, end, body, blank_lines=spacing)
+        action = edit_action(self._edit_mode(), "replace")
+        await self.propose_edit(tab_id, text, start, end, insert, action)
 
     async def _show_proposal(self, tab_id: int, text: str) -> None:
         proposal = self._proposals.get(tab_id)
