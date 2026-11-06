@@ -28,6 +28,8 @@ from paper_pile.core.ai.backends import hints, status, switch_backend
 from paper_pile.core.ai.install import ai_available, ai_unavailable
 from paper_pile.core.ai.instructions import MAX_TEXT_CHARS
 from paper_pile.core.ai.provider import Health
+from paper_pile.core.ai.vault.memory import MAX_CHARS as MEMORY_MAX_CHARS
+from paper_pile.core.ai.vault.memory import read_memory_file, save_memory
 from paper_pile.core.colors import parse_color
 from paper_pile.core.config import Config, Scope, scope_for
 from paper_pile.core.settings import (
@@ -410,6 +412,56 @@ class SettingsPane:
         if setting.key == "ai.instructions":
             self._instruction(setting)
             return
+        if setting.key == "ai.vault_agent" and self._vault_root is not None:
+            self._plain_row(setting, current)
+            self._vault_memory_row()
+            return
+        self._plain_row(setting, current)
+
+    def _vault_memory_row(self) -> None:
+        """Notes for the AI about this vault (``.paper-pile/ai.md``, PLAN_vault_agent §5.6):
+        sent with every vault request; the chat adds a fact when asked to remember one."""
+        with ui.row().classes("pp-set-row items-center"):
+            with ui.column().classes("pp-set-text"):
+                ui.label("Notes for the AI about this vault").classes("pp-set-label")
+                ui.label(
+                    "How your vault is organised (where daily notes are, what a folder holds). "
+                    "Sent with every vault search."
+                ).classes("pp-set-help")
+            with ui.row().classes("pp-set-control items-center"):
+                ui.button("Edit", on_click=self._edit_vault_memory, color=None).props(
+                    "flat dense no-caps"
+                ).classes("pp-set-button")
+
+    async def _edit_vault_memory(self) -> None:
+        root = self._vault_root
+        if root is None:
+            return
+        with self._content, Dialog() as dialog, ui.card().classes("pp-dialog pp-instr-dialog"):
+            ui.label("Notes for the AI about this vault").classes("pp-dialog-title")
+            box = ui.textarea(
+                value=read_memory_file(root),
+                placeholder="e.g.\n- Daily notes are in Journal/ as YYYY-MM-DD\n"
+                "- One note per client in Clients/, each with a Budget section",
+            ).props(f"outlined maxlength={MEMORY_MAX_CHARS * 2}")
+            box.classes("pp-instr-big")
+            ui.label(
+                f"The first {MEMORY_MAX_CHARS} characters are sent. Saved in .paper-pile/ai.md."
+            ).classes("pp-muted pp-instr-count")
+            with ui.row().classes("items-center w-full no-wrap"):
+                ui.space()
+                ui.button("Cancel", on_click=dialog.close).props("flat no-caps")
+                save = ui.button("Save", on_click=lambda: dialog.submit(True))
+                save.props("no-caps unelevated")
+        if await dialog:
+            try:
+                save_memory(root, str(box.value or ""))
+                ui.notify("Saved", position="bottom", timeout=1500)
+            except OSError as exc:
+                ui.notify(f"Could not save: {exc}", type="warning", position="bottom")
+        dialog.delete()
+
+    def _plain_row(self, setting: Setting, current: Any) -> None:
         hint = hints(setting.key, str(self._values()["ai.provider"]), str(current))
         if hint is not None:  # depends on the AI backend
             setting = replace(setting, help=hint[0], placeholder=hint[1])

@@ -177,6 +177,7 @@ VERBS = {
     "compare": "Compare",
     "write": "Write a new note from",
     "edit": "Change",
+    "remember": "Remember",
     "other": "Work through",
 }
 

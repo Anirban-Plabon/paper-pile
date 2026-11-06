@@ -11,6 +11,7 @@ agent-proposed addition is only ever a diff the user applies (M6). No UI imports
 import logging
 from pathlib import Path
 
+from paper_pile.core.fsutil import atomic_write_bytes
 from paper_pile.core.vault import META_DIR
 
 log = logging.getLogger("paper_pile.ai.vault.memory")
@@ -34,3 +35,28 @@ def load_memory(vault_root: Path, max_chars: int = MAX_CHARS) -> str:
         log.warning("could not read %s", path)
         return ""
     return text if len(text) <= max_chars else text[:max_chars].rstrip() + "\n…"
+
+
+def read_memory_file(vault_root: Path) -> str:
+    """The whole memory file as the user wrote it ("" when there is none) — for editing."""
+    try:
+        return memory_path(vault_root).read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError):
+        return ""
+
+
+def save_memory(vault_root: Path, text: str) -> None:
+    """Write the memory file (atomically). An empty text empties it — the file is the user's
+    writing and is never deleted (rule 4)."""
+    path = memory_path(vault_root)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    body = text.rstrip() + "\n" if text.strip() else ""
+    atomic_write_bytes(path, body.encode("utf-8"))
+
+
+def with_fact(text: str, fact: str) -> str:
+    """The memory file with one more fact as a list line (a repeat is not added twice)."""
+    line = "- " + " ".join(fact.split()).lstrip("-• ").strip()
+    if line == "- " or line in text.splitlines():
+        return text
+    return (text.rstrip() + "\n" if text.strip() else "") + line + "\n"

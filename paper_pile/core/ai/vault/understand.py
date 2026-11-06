@@ -23,7 +23,16 @@ from paper_pile.core.ai.vault.scope import Scope, scope_from_json
 log = logging.getLogger("paper_pile.ai.vault.understand")
 
 Action = Literal[
-    "locate", "answer", "summarise", "extract", "meta", "compare", "write", "edit", "other"
+    "locate",
+    "answer",
+    "summarise",
+    "extract",
+    "meta",
+    "compare",
+    "write",
+    "edit",
+    "remember",
+    "other",
 ]
 ACTIONS: tuple[Action, ...] = (
     "locate",
@@ -34,6 +43,7 @@ ACTIONS: tuple[Action, ...] = (
     "compare",
     "write",
     "edit",
+    "remember",
     "other",
 )
 MAX_STEPS = 5
@@ -140,6 +150,9 @@ so "how many …" takes the list that matches what is counted:
 - "compare": how notes differ, or how something changed over time across notes.
 - "write": a new note made from what was found.
 - "edit": existing notes to be changed (add, remove, correct or rewrite something in them).
+- "remember": the user tells you a fact about how their vault or notes are organised
+(where kinds of notes are kept, how they are named, what a folder or tag is for), to be \
+kept for later requests. detail: that fact as one short sentence. It changes no note.
 - "other": anything else about the vault.
 
 target fields of a step — they narrow which notes the step works on, so a wrong one hides \

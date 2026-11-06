@@ -263,6 +263,9 @@ Optional `.paper-pile/ai.md` (user-editable, shown in Settings → AI): facts ab
 vault's layout ("daily notes in Journal/ as YYYY-MM-DD", "one note per client with a
 Budget section"). Sent with every vault request. The agent may *propose* additions as a
 diff after it learned something ("your meeting notes share a template — save that?").
+Settings → AI → "Notes for the AI about this vault" opens it in a dialog (emptying keeps the
+file). "Remember …" in the chat is a `remember` action: the fact is shown as a diff of the
+file, Save writes it (P30.28, 2026-11-06). The agent does not propose facts by itself.
 Built (P30.28, `memory.py`): read by app code (≤ 2000 chars) and shown to the model as
 "About this vault (written by the user)" in the understanding call and the loop; the AI's
 read tools never open `.paper-pile`. Proposals as diffs come with M6, the Settings entry

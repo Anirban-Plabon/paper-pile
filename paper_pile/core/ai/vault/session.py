@@ -39,7 +39,7 @@ from paper_pile.core.ai.vault.edits import (
     review_text,
     undo,
 )
-from paper_pile.core.ai.vault.memory import load_memory
+from paper_pile.core.ai.vault.memory import load_memory, read_memory_file, save_memory, with_fact
 from paper_pile.core.ai.vault.meta import VaultMeta
 from paper_pile.core.ai.vault.plan import Choice, Plan, card_lines, choose, make_plan
 from paper_pile.core.ai.vault.reply import Reply
@@ -79,6 +79,7 @@ class Pending:
     use_best: bool = False
     batch: EditBatch | None = None  # a review: changes waiting for the user (M6)
     applied: Applied | None = None  # an applied change the user may undo
+    memory: str = ""  # the memory file as it would be after a "remember" (saved on Save)
 
 
 APPLY, CANCEL, UNDO = "Apply all", "Cancel", "Undo"
@@ -422,6 +423,9 @@ class VaultSession:
         request = await understand_request(self.engine, message, ctx)
         if request is None or not request.needs_vault or not request.steps:
             return None  # the usual chat answer (old @vault search included)
+        facts = [s.detail for s in request.steps if s.action == "remember" and s.detail]
+        if facts:  # a fact about the vault to keep: the memory file, after a review
+            return self._remember(message, facts)
         request = with_scopes(request, scopes)
         plan = make_plan(request, agent.tools.resolver, self.last, message, scopes)
         if plan.choice is not None:
@@ -437,6 +441,15 @@ class VaultSession:
         stop: Callable[[], bool],
     ) -> Turn | None:
         choice = pending.choice
+        if choice.kind == "memory":
+            if value != "save":
+                return Turn("Not saved.", summary="Vault: cancelled", payload={"kind": "cancelled"})
+            save_memory(self.engine.vault.root, pending.memory)
+            return Turn(
+                "Saved to the notes for the AI about this vault (Settings → AI).",
+                summary="Vault: remembered",
+                payload={"kind": "remembered"},
+            )
         if choice.kind == "remote":
             if value != "go":
                 return Turn("Cancelled: nothing was sent.", summary="Vault: cancelled")
@@ -465,6 +478,27 @@ class VaultSession:
             return self._ask(Pending(pending.message, plan, plan.choice))
         return await self._run(
             agent, plan, pending.message, status, stop, use_best=pending.use_best
+        )
+
+    def _remember(self, message: str, facts: list[str]) -> Turn:
+        """A fact about the vault to keep (PLAN_vault_agent §5.6): shown as the change to
+        the memory file first; Save writes it."""
+        root = self.engine.vault.root
+        before = read_memory_file(root)
+        after = before
+        for fact in facts:
+            after = with_fact(after, fact)
+        if after == before:
+            return Turn("That is already in the notes for the AI.", summary="Vault: nothing new")
+        added = [line for line in after.splitlines() if line not in before.splitlines()]
+        diff = "\n".join(f"+ {line}" for line in added)
+        choice = Choice("Save it?", ("Save", "Cancel"), ("save", "cancel"), "memory")
+        self.pending = Pending(message, Plan([]), choice, memory=after)
+        return Turn(
+            f"I would add this to the notes for the AI about this vault:\n\n```diff\n{diff}\n```",
+            summary="Vault: to remember",
+            asked=True,
+            payload={"kind": "question", "chips": [chip("Save"), chip("Cancel")]},
         )
 
     def _ask(self, pending: Pending) -> Turn:

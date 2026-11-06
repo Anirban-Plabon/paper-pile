@@ -25,8 +25,9 @@ Legend: 🧠 = needs Opus · ⬜ todo · 🔄 in progress · ✅ done · ⛔ blo
 - **M8 safety** (2026-11-06): hardening + gate tests + PLAN §8 done; the eval's injection group
   and the user's QA pass remain
 - **M7 / MC done** (2026-11-06, round A): see the task rows; real-app QA 19/19, editor QA 359/359
-- **Next task:** round B (memory file in Settings + "remember …"), round C (citations in the
-  normal chat), round D (M9: Ask the vault, saved searches, suggested links)
+- **Round B done** (2026-11-06): memory file in Settings + "remember …" in the chat
+- **Next task:** round C (citations in the normal chat), round D (M9: Ask the vault, saved
+  searches, suggested links)
   (step card with call count, per-note review list, preview card, citation band, rename of saved
   citations); M0 eval when the user says so
 - **Waiting on the user:** open questions (PLAN_vault_agent §11) — languages in the test
@@ -93,7 +94,7 @@ Legend: 🧠 = needs Opus · ⬜ todo · 🔄 in progress · ✅ done · ⛔ blo
 | P30.25 🧠 | JSON-action loop + budgets + Stop | 🔄 | 2026-11-06 · `loop.py`: 8 read tools as JSON actions, reads become labelled sources, 8 steps / 20 reads, Stop, answer streamed + checked; no read → top 3 found notes read for it; runaway / read limit / private / injection tests (8); gemma4 pricing compare right with [1, 2]; eval pending |
 | P30.26 | Fast-path / loop routing | 🔄 | 2026-11-06 · `run.py`: compare / other → loop, the rest fast path; Stop between steps; repeated answer steps dropped (`plan.without_repeats`); the boundary is the eval's to move |
 | P30.27 | Plan card | 🔄 | 2026-11-06 · core: `needs_card` (several steps or a change), `card_lines`, `drop_step` (dependencies renumbered); the card itself is UI (M7) |
-| P30.28 | Vault memory file | 🔄 | 2026-11-06 · `.paper-pile/ai.md` (`memory.py`, ≤ 2000 chars) sent with understanding and the loop (tests); proposing additions as a diff comes with M6; Settings entry with M7 |
+| P30.28 | Vault memory file | ✅ | 2026-11-06 · `.paper-pile/ai.md` (`memory.py`, ≤ 2000 chars sent) with understanding and the loop; Settings → AI → "Notes for the AI about this vault" (Edit dialog; emptied, never deleted); "remember …" in the chat = a new `remember` action → the addition shown as a diff, Save / Cancel chips (tests; gemma4 recognised "remember that…" and "note that…", a question stayed a search). Additions the agent would think of itself are not proposed (only what the user asks) |
 
 ### M6 — Edits across notes
 | ID | Task | Status | Notes |
@@ -184,6 +185,8 @@ Legend: 🧠 = needs Opus · ⬜ todo · 🔄 in progress · ✅ done · ⛔ blo
 | 2026-11-06 | A citation band is a CodeMirror field + layer (`citeband.js`) cleared by the transaction (user select / input / delete), not by DOM events | A DOM mousedown handler never ran (another extension handles the click first) — found by the real-app QA | claude |
 | 2026-11-06 | Notes in vault lists are markdown links with a `pp-note:` target, opened by a capture-phase listener in `chat.js` | The chat renders markdown; its own link handler only opens web pages; no bundle change | claude |
 | 2026-11-06 | An answer to our own review / undo chips with nothing open says the change is no longer open | After a restart (the pending review lives in memory) "Apply all" would otherwise be read as a new request | claude |
+| 2026-11-06 | The memory file grows only when the user asks ("remember …" → a `remember` action, reviewed); the agent does not propose facts on its own | Facts the agent would infer need an extra model call per request and can be wrong; the user's own words are the evidence | claude |
+| 2026-11-06 | Emptying the memory file writes an empty file, never deletes it | Rule 4: it is the user's writing | claude |
 
 ## Issues log
 | Date | Task | Symptom | Root cause | Fix | Gotcha? |
@@ -205,3 +208,4 @@ Legend: 🧠 = needs Opus · ⬜ todo · 🔄 in progress · ✅ done · ⛔ blo
 - 2026-11-06 · M7 / MC first round: chips, citation pills (hover, click → note at the line, anchors found again), folded steps, structured answers saved in chats; real-app QA `tools/qa_vault_chat.py` 14/14 (question → chip → summary with pills → pill opens note → edit review → Apply all → Undo) · 1715 tests (+9)
 - 2026-11-06 · P30.37 injection + privacy hardening (M8): data framing everywhere, no reasons into understanding, remote notice, gate tests (3), PLAN §8; gemma4: hostile note not obeyed · 1718 tests (+3)
 - 2026-11-06 · M7 / MC round A: call count, per-note review ticks, note links, richer preview, citation band, renames, Insert as wikilinks, expired review message · 1724 tests; real-app QA 19/19; editor QA 359/359
+- 2026-11-06 · Round B: memory file in Settings (Edit dialog) + "remember …" in the chat (diff, Save / Cancel) · 1726 tests (+2); gemma4: both phrasings understood
