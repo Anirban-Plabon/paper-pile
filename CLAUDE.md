@@ -10,6 +10,7 @@ start of every session. It is short on purpose; details live in `docs/`.
 | `CLAUDE.md` | Rules, conventions, gotchas | You, via the update protocol below |
 | `docs/PLAN.md` | Spec + phased task list with acceptance criteria | You, only when a requirement changes |
 | `docs/TRACKER.md` | Live status, decisions, issues, session log | You, after every task |
+| `docs/PLAN_vault_agent.md` / `docs/TRACKER_vault_agent.md` | P30 vault agent: spec + eval, and its live status | Same rules as PLAN / TRACKER |
 
 If code and docs disagree, **stop and reconcile** — never let them drift silently.
 

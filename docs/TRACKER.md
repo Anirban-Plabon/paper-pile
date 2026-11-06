@@ -6,6 +6,7 @@
 Legend: 🧠 = needs Opus (see PLAN §6 model guidance) · ⬜ todo · 🔄 in progress · ✅ done · ⛔ blocked · ⏭️ skipped/deferred
 
 ## Current focus
+- **Next phase:** P30 — Vault agent (user request 2026-11-06): own plan `docs/PLAN_vault_agent.md` and tracker `docs/TRACKER_vault_agent.md`; P30.1 (plan) done, next P30.2 (eval test vault)
 - **Phase:** P29 — Understanding a typed request + small AI fixes (user request 2026-10-31, PLAN §4.31): P29.1–P29.7 done (P29.6 Ask box frame, P29.7 note header only ⋯: 2026-11-04)
 - **Phase:** P28 — Model- and backend-independent AI (user request 2026-10-31, PLAN §4.30): P28.1–P28.6 done (P28.6 Antigravity CLI 2026-11-05); vLLM / hosted API not tried on a real server of that kind (Ollama's `/v1` used), manual QA item in the checklist
 - **Phase:** P27 — Context window and looping answers (user request 2026-10-31, PLAN §4.26): P27.1 (automatic window measured per machine), P27.2 (repeat penalty + one retry), P27.3 (fixed blocks change when asked) done
@@ -394,6 +395,7 @@ Legend: 🧠 = needs Opus (see PLAN §6 model guidance) · ⬜ todo · 🔄 in p
 <!-- YYYY-MM-DD · decision · reason · (who: user / claude) -->
 | Date | Decision | Reason | By |
 |---|---|---|---|
+| 2026-11-06 | P30 vault agent planned in its own files (`docs/PLAN_vault_agent.md`, `docs/TRACKER_vault_agent.md`); eval first; decisions for P30 are logged in its tracker | User: vault-wide search / summarise / edit with many question types, "create a newer plan to execute one by one and tracker as well, new eval as well" | user |
 | 2026-11-06 | Tabs shrink to 96 px again before scrolling (reverses the same day's "full name, then scroll"); one hover shape for the whole bar (the tab's); cut-off edges fade | User: "when too many tabs make them like 12-oct-....", "+ button hover doesnt match with the curvature of tab", "< in left side not in the middle of box" | user |
 | 2026-11-06 | Top bar: one centre line (the tab names'), all buttons 30 px / 16 px icons / 4 px apart incl. window buttons, no box on ‹ ›, list = one chevron without count, no divider before +; tabs as wide as their names (72–220 px) and scroll instead of shrinking, inactive × on hover over the name; a mention with spaces written with no-break spaces (no `[[ ]]`) | User: "the top bar looks so congested … left and right arrow no need box and bottom arrow should be one and number is not required … tab name, icons should be properly aligned"; answers to 3 questions + "do 1, 2 and 3"; "@[[AI in Education]] still [[]]" | user |
 | 2026-11-06 | `@` lists the vault's top folders (no `<vault>/` row) and `@<folder>/` searches that folder (the `@<vault>/…` form still read); picked notes go in as `@name`, mentions shown in the accent colour without `[[ ]]` (sent message and the box); one 10 px gap inside every tab; the + divider as tall as the tab dividers | User: "spacing from icon to tab line on the left and tab name to right is not equal … current icon to tab top line should be the ref … for all tabs"; "vertical dividers are not in same horizontal position"; "@[[test]] just colored them accent color not in [[]]"; "folder suggestion should start from the folders in the vault, not vault itself" | user |
@@ -964,3 +966,4 @@ Legend: 🧠 = needs Opus (see PLAN §6 model guidance) · ⬜ todo · 🔄 in p
 - 2026-11-06 · P29.14 9th round (top bar on one line, plain arrows / one-chevron list, full-name tabs, 16 px pane buttons, 30 px window buttons, no-break-space mentions) · 1542 tests, real-app check
 - 2026-11-06 · P29.14 10th round (tabs shrink again, one hover box shape for the bar, ‹ box centred, faded cut-off edges) · 1542 tests, real-app check
 - 2026-11-06 · P29.14 11th round (window buttons centred in the bar, not on the tab line) · real-app check
+- 2026-11-06 · P30.1 vault agent plan + tracker written (docs only)

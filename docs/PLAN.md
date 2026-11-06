@@ -1158,6 +1158,7 @@ graph view · front-matter queries · git sync · TUI (Textual, reusing core) ·
 RHEL/server packaging · multi-user/teams.
 (Built since this list was written: split panes P10.6, tags P11, daily notes & templates P13.)
 PDFs (viewer, OCR, vectorless agentic RAG over reports / manuals / books) and images / screenshots sent to vision models are planned for **v2**: `docs/PLAN_v2.md`.
+Vault-wide AI (find / read / summarise / extract / edit notes by topic, folder, tag, date or name; multi-part requests; its own eval) is planned as **P30**: `docs/PLAN_vault_agent.md` (status: `docs/TRACKER_vault_agent.md`).
 
 ---
 
