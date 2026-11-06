@@ -106,27 +106,50 @@ Hints come from the result data (folders, tags, maybe-set, sizes), not from a mo
 
 ## 4. Finding notes (retrieval)
 
-1. **Understand** (§5.1) gives topic, widened terms, scope.
-2. **Candidates**, from several sources, unioned and ranked:
-   - FTS on the topic words and on the widened terms (synonyms, related names, other
-     language forms the model proposes — up to ~12 terms);
-   - titles, headings (new `headings` table), tags;
-   - link neighbours of strong hits (one hop);
-   - note cards (§4.1) once built;
-   - scope filter applied in SQL (folder prefix, tag, date range, private notes removed).
-3. **Judge**: compact note cards (title, path, tags, headings, best section ~300 chars),
-   ~10 per call → `yes` / `maybe` / `no` + one-line reason. Catches notes that share no
-   words with the request; drops keyword false hits ("social" in "social life").
-4. **Budget**: candidates capped (default 60); more → ask ("80 notes match — narrow by
-   folder, or judge the best 60?").
+As built (P30.16–P30.19, `core/ai/vault/candidates.py`, `judge.py`, `expand.py`,
+`find.py`):
+
+1. **Understand** (§5.1) gives topic, widened terms, scope. The scope comes only from what
+   the message says; a topic alone never gives a folder or tag (gemma4 narrowed "social
+   business" to Marketing on its own before this rule).
+2. **Candidates**, from several sources, unioned and ranked (`Gatherer`):
+   - FTS per term (each term's words all present; titles weigh more, headings are in the
+     body); a narrowed search looks further down the ranking (`SCOPED_FTS_LIMIT`);
+   - tags a term names;
+   - note cards (§4.1) whose summary / concepts match a term;
+   - link neighbours (one hop, out and in) of the 5 strongest hits;
+   - always inside the step's notes, never a private note. A step with a fixed note set
+     and no terms (a folder, a tag, named notes, the last result) takes those notes
+     unjudged.
+3. **Judge**: note cards (title, folder, tags, headings, the card summary when current,
+   the best section ~300 chars), 10 per call → `yes` / `maybe` / `no` + one-line reason.
+   A note about one case or application of the subject is "yes". A note the model leaves
+   out, or a failed batch, stays as "maybe" (never silently dropped).
+4. **Second round** (`expand.py`): when anything was judged "yes", one call asks for up to
+   8 further terms drawn from those notes (what the user's own notes call the topic);
+   new candidates (≤ 20) are judged the same way. This corrects a model whose idea of
+   the topic is off (gemma4 widened "social business" with social-media terms; the
+   second round added microfinance / social enterprise from the Yunus note).
+5. **Budget** (`Budgets`: 60 candidates, second round on, 20 more): above the cap the
+   step reports `capped` and `big_job()` asks "N notes match — use the best 60, or narrow
+   it down?".
+
+Hand check (gemma4:12b, 9-note vault with traps, "where are my social business notes?"):
+first round only 2 of 5 on-topic notes; + second round 3; + cards 4 sure + 1 maybe, both
+false friends (social-media plan, "social evening after a business dinner") dropped.
+~20 s for find + judge with a warm model.
 
 ### 4.1 Note cards (the vault map)
 
-Per note, cached by content hash in `.paper-pile/cards.db` (rebuildable — rule #2):
-title, path, tags, headings, dates, a 2–3 sentence summary, key terms. Built lazily (when a
-note is read by the agent) and optionally in the background when idle (setting, off by
-default on slow machines). Cards feed candidate search (FTS over card summaries) and the
-summarise map step (a fresh card = no model call). Same idea as the v2 PDF tree summaries.
+As built (P30.18, `core/ai/vault/cards.py`): per note a 2–3 sentence summary naming its
+subject by its usual general name(s) and up to 8 concepts, cached by content hash in
+`.paper-pile/cards.db` (rebuildable — rule #2; a new card prompt version starts it again).
+A card is used only while the note's hash matches the index and only for notes the AI may
+read now. Cards feed candidate search (FTS over summaries + concepts), the judge (the
+summary is shown on the note's card) and later the summarise map step (a current card = no
+model call). Made lazily by `CardMaker.ensure` for the notes the agent works on; making
+them for a whole vault in the background is open question §11.2 — it costs about 7.5 s per
+note on gemma4:12b on this machine (8 notes in 60 s).
 
 ### 4.2 Dates
 

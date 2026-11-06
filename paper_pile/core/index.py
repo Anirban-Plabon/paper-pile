@@ -577,6 +577,11 @@ class Index:
 
     # ---- the vault agent (schema 5) --------------------------------------------------------
 
+    def hashes(self) -> dict[str, str]:
+        """``{path: sha256 of the text}`` as indexed (to tell a cached note card is current)."""
+        with self._lock:
+            return dict(self._db.execute("SELECT path, hash FROM notes").fetchall())
+
     def note_rows(self, paths: Collection[str] | None = None) -> list[NoteRow]:
         """Every note (or those in ``paths``) without its text, by path."""
         with self._lock:

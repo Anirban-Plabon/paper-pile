@@ -142,8 +142,12 @@ so "how many …" takes the list that matches what is counted:
 - "edit": existing notes to be changed (add, remove, correct or rewrite something in them).
 - "other": anything else about the vault.
 
-target fields of a step — they narrow which notes the step works on. Fill every one the \
-message gives, also when the same thing is said in detail; [] / {} / "" when it does not:
+target fields of a step — they narrow which notes the step works on, so a wrong one hides \
+the notes the user wants. Set a field only when the message itself limits the notes that \
+way: it names the folder, tag, note, link or period, or calls the notes by a kind that one \
+folder holds. Never guess where notes on a topic might be kept — a topic alone gives no \
+folder and no tag; it is searched for with terms. Fill every field the message does give, \
+also when the same thing is said in detail; [] / {} / "" otherwise:
 - folders, tags, notes: the folders, tags and note names the message limits the step to. \
 Use the lists of the vault's folders and tags below to write them as they exist (a folder \
 the user calls by a kind of note, like their daily notes or meetings, is the folder that \

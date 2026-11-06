@@ -29,6 +29,7 @@ log = logging.getLogger("paper_pile.ai.vault.tools")
 
 READ_CHARS = 6000  # a read's default cap (the agent asks for a section when a note is longer)
 SNIPPET_CHARS = 300
+SCOPED_FTS_LIMIT = 500  # full-text hits looked at per term when the search is narrowed
 
 
 class ToolError(Exception):
@@ -215,23 +216,36 @@ class VaultTools:
     # ---- search --------------------------------------------------------------------------------
 
     def search(
-        self, terms: Sequence[str], scope: Scope | None = None, limit: int = 20
+        self,
+        terms: Sequence[str],
+        scope: Scope | None = None,
+        limit: int = 20,
+        *,
+        within: set[str] | None = None,
     ) -> list[Hit]:
         """Notes matching any of ``terms`` (each term's words all present), best first: notes
-        matching more terms first, then by full-text rank. Inside ``scope`` when given."""
+        matching more terms first, then by full-text rank. Inside ``scope`` and / or the paths
+        ``within`` when given."""
         terms = [t.strip() for t in terms if t and t.strip()]
         if not terms:
             return []
+        narrowed = scope is not None and not scope.empty
         allowed = (
             set(self.resolver.resolve(scope).paths)
-            if scope is not None and not scope.empty
+            if scope is not None and narrowed
             else {r.path for r in self.resolver.readable()}
+        )
+        if within is not None:
+            allowed &= within
+        # a narrowed search looks further down the vault-wide ranking for its few notes
+        fts_limit = (
+            max(limit * 4, SCOPED_FTS_LIMIT) if narrowed or within is not None else limit * 4
         )
         score: dict[str, float] = {}
         matched: dict[str, list[str]] = {}
         titles: dict[str, str] = {}
         for term in terms:
-            for rank, hit in enumerate(self.index.search(term, limit=limit * 4)):
+            for rank, hit in enumerate(self.index.search(term, limit=fts_limit)):
                 if hit.path not in allowed:
                     continue
                 score[hit.path] = score.get(hit.path, 0.0) + 1.0 + 1.0 / (rank + 2)

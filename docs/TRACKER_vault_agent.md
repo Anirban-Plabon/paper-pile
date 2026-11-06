@@ -11,7 +11,8 @@ Legend: 🧠 = needs Opus · ⬜ todo · 🔄 in progress · ✅ done · ⛔ blo
   later: user 2026-11-06, "start implementing … do not run eval or large scale test yet"
 - **M2 — Understanding:** built and hand-checked on gemma4 (P30.13–P30.15 🔄: accepted only on
   eval numbers, and the eval is not run yet)
-- **Next task:** M3 — P30.16 candidates (term widening + several sources), P30.17 judge
+- **M3 — Find and judge:** built (P30.18–P30.19 ✅; P30.16–P30.17 🔄 until the eval)
+- **Next task:** M4 — read actions on the found notes (P30.20 locate … P30.24 hints)
 - **Waiting on the user:** open questions (PLAN_vault_agent §11) — languages in the test
   vault, background note cards, budgets, model-made hints. Defaults are in §10.
 
@@ -56,10 +57,10 @@ Legend: 🧠 = needs Opus · ⬜ todo · 🔄 in progress · ✅ done · ⛔ blo
 ### M3 — Find and judge
 | ID | Task | Status | Notes |
 |---|---|---|---|
-| P30.16 | Term widening + multi-source candidates | ⬜ | |
-| P30.17 🧠 | Judge | ⬜ | |
-| P30.18 | Note cards cache | ⬜ | |
-| P30.19 | Budgets + big-job confirm | ⬜ | |
+| P30.16 | Term widening + multi-source candidates | 🔄 | 2026-11-06 · `candidates.py` (search, tags, cards, link neighbours, scope, cap) + `expand.py` second round from the kept notes; hand-checked; eval pending |
+| P30.17 🧠 | Judge | 🔄 | 2026-11-06 · `judge.py`: 10 cards per call, yes / maybe / no + reason, unjudged → maybe; card summary shown; hand-checked (both false friends dropped); eval pending |
+| P30.18 | Note cards cache | ✅ | 2026-11-06 · `cards.py`: `cards.db` by content hash, rebuildable, stale / private never used, lazy `CardMaker`, card search + summaries for the gatherer (7 tests) |
+| P30.19 | Budgets + big-job confirm | ✅ | 2026-11-06 · `find.py` `Budgets`, `capped`, `big_job()` question; `find_notes` runs one step's find stage with progress (7 tests) |
 
 ### M4 — Read actions
 | ID | Task | Status | Notes |
@@ -135,6 +136,10 @@ Legend: 🧠 = needs Opus · ⬜ todo · 🔄 in progress · ✅ done · ⛔ blo
 | 2026-11-06 | Understanding schema: every step field required, target fields before topic / terms; meta queries described one by one ("how many" takes the list that matches what is counted); `from_result` dropped when no last result was shown or the step depends on an earlier one; meta kept only on meta steps | gemma4 hand check: optional target fields were never filled (folder, "last week" ignored); "how many notes have no tags" → `count`; `from_result: "-1"` / `"all"` with no earlier answer | claude |
 | 2026-11-06 | A folder name written with `/` is matched only against whole paths of the same depth | A missing `Clients/x` was silently read as `Clients` by the close-spelling rule (a wider scope than asked) | claude |
 | 2026-11-06 | Not fixed by prompt: gemma4 reads "social business" as social media (its own knowledge) | No word lists (CLAUDE.md); wrong candidates are the judge's to drop (P30.17), and the eval will measure it | claude |
+| 2026-11-06 | Understanding rule: a target field only when the message limits the notes that way; a topic alone gives no folder / tag | gemma4 narrowed "where are my social business notes" to the Marketing folder + #marketing on its own, hiding every on-topic note | claude |
+| 2026-11-06 | Second search round from the notes judged "yes" (`expand.py`), not a better first prompt | The model's first idea of a topic can be wrong; the user's confirmed notes are better evidence of what their notes call it, and it needs no word lists | claude |
+| 2026-11-06 | The judge sees the note card's summary; a note about one case / application of the subject is "yes" | gemma4 rejected the village-solar social enterprise as "a specific product idea rather than general notes" when it saw only the note's first lines | claude |
+| 2026-11-06 | Cards made lazily per request for now; background making stays open (§11.2) | ~7.5 s per note on gemma4:12b here: a whole vault is a long job to start without the user's choice | claude |
 
 ## Issues log
 | Date | Task | Symptom | Root cause | Fix | Gotcha? |
@@ -146,3 +151,4 @@ Legend: 🧠 = needs Opus · ⬜ todo · 🔄 in progress · ✅ done · ⛔ blo
 - 2026-11-06 · Citations section + MC tasks added to the plan (docs only)
 - 2026-11-06 · P30.8–P30.12 vault tools and index (M1) · 1604 tests (+61), ruff + mypy clean
 - 2026-11-06 · P30.13–P30.15 understanding + plan built, hand-checked on gemma4:12b (9 requests) · 1625 tests (+21)
+- 2026-11-06 · P30.16–P30.19 candidates, judge, second round, note cards, budgets (M3); hand check on a 9-note trap vault: 5/5 on-topic found (4 yes + 1 maybe), 0 false friends · 1647 tests (+22)
