@@ -22,7 +22,9 @@ Legend: 🧠 = needs Opus · ⬜ todo · 🔄 in progress · ✅ done · ⛔ blo
   picked, never over a changed note, Undo; the app's writer goes through the editor
 - **M7 / MC first round** (2026-11-06): chips, citation pills (hover, click → note at the line),
   folded steps, structured answers saved in chats; real-app check `tools/qa_vault_chat.py` 14/14
-- **Next task:** M8 safety (injection / privacy gates, PLAN §8 text); then the rest of M7 / MC
+- **M8 safety** (2026-11-06): hardening + gate tests + PLAN §8 done; the eval's injection group
+  and the user's QA pass remain
+- **Next task:** the rest of M7 / MC
   (step card with call count, per-note review list, preview card, citation band, rename of saved
   citations); M0 eval when the user says so
 - **Waiting on the user:** open questions (PLAN_vault_agent §11) — languages in the test
@@ -112,8 +114,8 @@ Legend: 🧠 = needs Opus · ⬜ todo · 🔄 in progress · ✅ done · ⛔ blo
 ### M8 — Safety and release
 | ID | Task | Status | Notes |
 |---|---|---|---|
-| P30.37 | Injection + privacy hardening | ⬜ | |
-| P30.38 | Manual QA + user's real-model pass | ⬜ | |
+| P30.37 | Injection + privacy hardening | 🔄 | 2026-11-06 · data framing in every note-text prompt; understanding never sees note text nor the judge's reasons; remote notice once per chat; gate tests (`test_vault_safety.py`: privacy, injection, remote) pass; PLAN §8 updated; gemma4 hand check: hostile note not obeyed. Waits for the eval's injection group on 2 models |
+| P30.38 | Manual QA + user's real-model pass | ⬜ | checklist in PLAN_vault_agent §13 (extended 2026-11-06); the user's pass |
 
 ### M9 — Later
 | ID | Task | Status | Notes |
@@ -175,6 +177,8 @@ Legend: 🧠 = needs Opus · ⬜ todo · 🔄 in progress · ✅ done · ⛔ blo
 | 2026-11-06 | Chips send their text as the next message (or open notes) instead of calling the agent directly | One path for typed and clicked answers: the session's pending question / review handles both, history shows what was chosen, nothing new to test twice | claude |
 | 2026-11-06 | Hints are chips only (no "Next: …" line in the answer text); chips only under the newest answer | The text line repeated the chips; older answers' chips would answer a question that is no longer open | claude |
 | 2026-11-06 | Citation pill clicks: a capture-phase listener in `static/chat.js` → `pp_cite` → Python opens the note (`Layout._open_cited`) | No editor-bundle rebuild; the bundle's link handler never sees pill clicks | claude |
+| 2026-11-06 | The understanding call gets the last result as titles + paths only (no judge reasons) | The reasons are model output written after reading notes: an instruction in a note could reach the call that decides what to do through them | claude |
+| 2026-11-06 | Remote backends: once per chat, ask before the first vault job (Go on / Cancel); nothing read for the model before | Plan §9; the access consent names where notes go, this says how many and when | claude |
 
 ## Issues log
 | Date | Task | Symptom | Root cause | Fix | Gotcha? |
@@ -192,3 +196,4 @@ Legend: 🧠 = needs Opus · ⬜ todo · 🔄 in progress · ✅ done · ⛔ blo
 - 2026-11-06 · P30.49 agent connected to the chat through `AiEngine.answer()` + setting; gemma4 through `answer()`: list, named-note summary, follow-up by number, plain question all right · 1694 tests (+8)
 - 2026-11-06 · P30.29a spike (own state machine) + P30.29–P30.33 edits across notes (M6): review, apply picked, redo over changed notes, Undo, new note; gemma4 through `answer()`: Sources added to 2 Research notes, applied, undone · 1706 tests (+12)
 - 2026-11-06 · M7 / MC first round: chips, citation pills (hover, click → note at the line, anchors found again), folded steps, structured answers saved in chats; real-app QA `tools/qa_vault_chat.py` 14/14 (question → chip → summary with pills → pill opens note → edit review → Apply all → Undo) · 1715 tests (+9)
+- 2026-11-06 · P30.37 injection + privacy hardening (M8): data framing everywhere, no reasons into understanding, remote notice, gate tests (3), PLAN §8; gemma4: hostile note not obeyed · 1718 tests (+3)

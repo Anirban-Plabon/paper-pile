@@ -262,11 +262,28 @@ class VaultSession:
         self.last: ResultSet | None = None
         self.pending: Pending | None = None
         self._agent: VaultAgent | None = None
+        self._remote_ok = False  # this chat's user agreed to send notes to a remote backend
 
     def reset(self) -> None:
-        """A new or another chat: forget the last result and any open question."""
+        """A new or another chat: forget the last result, any open question and the remote
+        agreement (asked again in the next chat)."""
         self.last = None
         self.pending = None
+        self._remote_ok = False
+
+    def remote_notice(self) -> str:
+        """The notice before the first vault job of a chat when the backend is not on this
+        computer (PLAN_vault_agent §9); "" when it is local or the user already agreed."""
+        provider = self.engine.provider
+        if getattr(provider, "local", True) or self._remote_ok:
+            return ""
+        agent = self._agent
+        most = agent.budgets.candidates if agent is not None else 60
+        where = f"{provider.label} at {provider.host}" if provider.host else provider.label
+        return (
+            f"Looking through your vault sends parts of your notes (up to {most} notes) to "
+            f"{where}, which is not on this computer. Go on?"
+        )
 
     # ---- the agent -----------------------------------------------------------------------------
 
@@ -350,7 +367,9 @@ class VaultSession:
             folders=agent.folders(),
             tags=agent.tags(),
             open_note=open_note,
-            last_result=self.last.compact() if self.last is not None and len(self.last) else "",
+            last_result=self.last.compact(reasons=False)
+            if self.last is not None and len(self.last)
+            else "",
             scoped=scopes,
             memory=agent.memory,
         )
@@ -372,6 +391,13 @@ class VaultSession:
         stop: Callable[[], bool],
     ) -> Turn | None:
         choice = pending.choice
+        if choice.kind == "remote":
+            if value != "go":
+                return Turn("Cancelled: nothing was sent.", summary="Vault: cancelled")
+            self._remote_ok = True
+            return await self._run(
+                agent, pending.plan, pending.message, status, stop, use_best=pending.use_best
+            )
         if choice.kind == "budget":
             if value == "narrow":
                 return Turn(
@@ -516,6 +542,10 @@ class VaultSession:
         *,
         use_best: bool,
     ) -> Turn:
+        notice = self.remote_notice()
+        if notice:  # no note text leaves the computer before the user agrees (§9)
+            choice = Choice(notice, ("Go on", "Cancel"), ("go", "cancel"), "remote")
+            return self._ask(Pending(message, plan, choice, use_best=use_best))
         many = len(plan.steps) > 1
 
         def progress(step: int, stage: str, done: int, total: int) -> None:
