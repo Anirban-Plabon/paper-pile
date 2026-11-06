@@ -130,11 +130,19 @@ summarise map step (a fresh card = no model call). Same idea as the v2 PDF tree 
 
 ### 4.2 Dates
 
-A note's dates: daily-note date (from its file name and the daily format), front-matter
-`date:` / `created:`, else first-seen time, plus `mtime`. Index schema 5 stores them
-(`note_dates(note_id, kind, day)`). "Notes from October" = any of the content dates in
-range; "edited this week" = `mtime`. Relative dates resolved in Python from today's date
-(the model only labels the phrase's kind and range words, Python computes the days).
+A note's dates (built in P30.8 / P30.9):
+- **content dates**: front-matter `date:` / `created:` / `updated:` / `modified:` (index
+  schema 5, `note_dates(note_id, kind, day)`), and a daily note's own date, computed at query
+  time from its path and the daily-notes folder + format settings (`daily.daily_date`), not
+  stored, so the index stays independent of settings and a format change needs no rebuild;
+- **edited**: `mtime`.
+
+"Notes from October" = a content date in range (`date_kind: content`, the default);
+"edited this week" = `mtime` (`edited`); `any` = either. Relative dates are resolved in
+Python from today's date (`core/ai/vault/dates.py`): the model only labels the phrase
+(`{"last": "week"}`, `{"month": 10}`, `{"past": 7, "unit": "day"}`, `{"from", "to"}`) and
+never does calendar arithmetic. Weeks start on Monday; a month without a year is the latest
+such month that has started.
 
 ## 5. The agent
 
@@ -211,17 +219,79 @@ diff after it learned something ("your meeting notes share a template — save t
 - Conflicts: a note changed on disk since the diff was made → that diff is redone, never
   applied over the newer text.
 
-## 7. UI
+## 7. UI and citations
 
 - **Step card** in the chat: live steps ("34 candidates → 12 relevant → summarising
   4/12"), model-call count, Stop. Collapses to one line when done.
 - **Result blocks**: note lists (click opens, Ctrl+click opens in split), tables, answers
-  with `note § heading` citations that jump to the section.
+  with citations (§7.1).
 - **Chips**: ambiguity choices (§3.4), hints (§3.5), big-job confirmation.
 - **Plan card** (§5.4) and **review list** (§6).
 - Works in `--serve` the same (no native-only paths). Selectable text (pywebview gotcha).
 - Later: "Ask the vault" from the Ask box (selection → related notes → link them here),
   saved searches in the left pane, suggested links.
+
+### 7.1 Citations (user 2026-11-06)
+
+One citation system for every AI answer that uses notes: the normal chat, `@vault`, the
+vault agent, and later PDF pages (v2). Today the chat only lists the notes that were *sent*
+(P22.11 Sources, whole notes); this replaces that with checked, clickable citations.
+
+**Model side — labels, not paths** (`core/ai/cite.py`, no UI imports):
+- Every note / section put in the prompt gets a short label: `[1]`, `[2]`…, with its title
+  and heading. The prompt asks the model to put the label after each claim it takes from
+  that source, and to quote briefly when it states a fact.
+- The model never writes a path, so it cannot cite a note it did not get. Python maps each
+  label to `{path, heading, start_line, end_line, anchor}` (`anchor` = a short exact quote
+  of the cited lines, used to find them again later).
+- Works with any model and backend (plain text, no tool calls). A model that cites nothing
+  still gets the Sources list (the notes sent), as today.
+
+**Checking** (before the answer is shown as final; while streaming, pills show as plain):
+- a label that was not given → dropped;
+- a quoted fact (text in quotes next to a label) not found in that source → the pill is
+  marked "not verified";
+- the answer's footer then says "1 citation could not be verified".
+- The eval scores citation correctness (§8.4) on these checks plus ground truth.
+
+**How they look:**
+- Inline pills in the answer (`2`), small, accent colour, after the claim.
+- The Sources list under the answer becomes numbered and section-level:
+  `2 · Clients/Acme § Budget`; notes that were sent but never cited are listed after, dimmed.
+- Hover a pill or a source row → a preview card: note title, section, the cited lines
+  (a few, cut with …), "Open" hint. Same popup rules as other menus (`menus.js`).
+
+**Clicking:**
+- Click → open the note in the active editor side (or switch to its tab), scroll to the
+  cited lines with the jump glide and flash (P15.2), then a soft **citation band** stays on
+  those lines until the next click or key.
+- Ctrl+click (or the card's split button) → open on the other side of a split, so the
+  chat answer and the note are seen together.
+- A citation with no quote / lines → jump to the section heading.
+- Keyboard: in the chat, Tab reaches the pills; Enter opens.
+
+**Highlight band:** drawn as an editor layer above the text, see-through,
+`pointer-events: none` (CLAUDE.md: Real pages paint the sheet under the content); it uses
+the text block only (`textBlockAt`, not block widgets); motion from `--pp-dur*` tokens.
+
+**When the note changed since the answer:**
+- find the `anchor` again (exact, then whitespace-insensitive, then best fuzzy match in the
+  cited section); found → highlight it there;
+- not found → open the section heading with a small notice "This part changed since the
+  answer";
+- note renamed → the chat file's citation paths are updated by the same rename hook as
+  links (`rewrite.py` path); note deleted → pill dimmed, card says "In trash".
+
+**Saved chats:** each answer stores `cites: [{n, path, heading, start, end, anchor,
+hash}]` in the chat file (PLAN §4.26 chat file format; older files without `cites` keep
+their Sources list). Reopened chats keep working citations.
+
+**Insert into note:** citations become wikilinks to the section (`[[Acme#Budget]]`) at the
+same place, so they stay clickable in the note; the diff shows them like any other text.
+
+**Privacy:** labels are only given to sources the access check passed, so a citation can
+never point at an `ai: false` or excluded note; a note that becomes private later shows its
+pill dimmed ("Not available") and its preview card shows no text.
 
 ## 8. The eval (`tools/ai_eval/vault/`)
 
@@ -274,7 +344,7 @@ injection, no-vault (plain chat that must not search).
 | Ambiguity | ask-precision, ask-recall (asked when it should, acted when it should) |
 | Finding | recall of `must`, recall of `must+ok`, precision; candidates per case |
 | Judging | yes/maybe/no accuracy vs relevance labels |
-| Answering | fact coverage; citation correctness (cited note really holds it); invented notes |
+| Answering | fact coverage; citation correctness (label valid, quote found in the cited section, claim matches the source's facts); uncited claims; invented notes |
 | Extract | row recall / precision vs the table |
 | Editing | right notes, right section, change present, nothing else touched (diff outside the section = fail) |
 | Safety | **private / excluded leaks = 0**, **injection obeyed = 0**, **invented notes = 0** (hard gates) |
@@ -342,7 +412,7 @@ green + the stated eval numbers recorded in the tracker. 🧠 = needs Opus.
 ### M1 — Vault tools and index (no model)
 | ID | Task | Acceptance |
 |---|---|---|
-| P30.8 | Index schema 5: `headings`, `note_dates` | rebuild + migration tests; dates from daily format, front matter, mtime |
+| P30.8 | Index schema 5: `headings`, `note_dates`, `words`, `private` | rebuild + migration tests; front-matter dates; `ai: false` flag so listings never need the text |
 | P30.9 | Scope resolver | folder / tag / date range / links / name → note set, private removed (tests incl. fuzzy names, same-title notes) |
 | P30.10 | Tools (§5.3) read side | each tool unit-tested; access checks tested on every tool |
 | P30.11 | `meta` queries | counts, recent, no-link, largest, per folder — answered with no model call (tests + eval `meta` group 100 %) |
@@ -410,9 +480,20 @@ green + the stated eval numbers recorded in the tracker. 🧠 = needs Opus.
 | P30.41 | Saved searches in the left pane | re-run gives the same result set (test) |
 | P30.42 | Suggested links between related unlinked notes | diff-only; eval precision on fixture |
 
+### MC — Citations (§7.1; can start after M1, also used by the normal chat)
+| ID | Task | Acceptance |
+|---|---|---|
+| P30.43 | Source labels in the prompt + label → location map (`cite.py`) | every sent note / section gets a label with path, heading, lines, anchor (tests); normal chat and `@vault` use it |
+| P30.44 | Citation check (unknown labels dropped, quotes verified) | unit tests on good / invented / misquoted answers; eval citation correctness reported on 2 models |
+| P30.45 | Pills + numbered section-level Sources + hover preview card | GUI test + real-app check (native + `--serve`, light + dark) |
+| P30.46 | Click → open, glide + flash, citation band; Ctrl+click → split | real-app check with real mouse events; band visible with Real pages on |
+| P30.47 | Re-find after edits; rename / delete / private handling | tests: changed note (anchor found / not found), renamed path updated in the chat file, deleted → dimmed |
+| P30.48 | Citations saved in chats + Insert into note as section wikilinks | reopened chat keeps citations (test); inserted answer holds `[[note#heading]]` links (test) |
+
 ## 13. Manual QA checklist (filled as features land)
 - [ ] A vault-wide summary in the native window and in `--serve`
 - [ ] Stop during a 30-note summary leaves no half state
 - [ ] Multi-note edit review: reject one, apply the rest, Undo restores all
 - [ ] Private / excluded notes never appear in steps, results, hints or citations
 - [ ] Remote backend: note-count warning shown before a vault-wide job
+- [ ] Citation pill: hover preview, click jumps + band, Ctrl+click opens in split, after editing the note it still finds the lines

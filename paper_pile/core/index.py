@@ -11,6 +11,7 @@ import sqlite3
 import threading
 from collections.abc import Collection
 from dataclasses import dataclass
+from datetime import date, datetime
 from pathlib import Path
 from urllib.parse import unquote
 
@@ -23,16 +24,26 @@ from paper_pile.core.links import (
     resolve_md_link,
     resolve_wikilink,
 )
-from paper_pile.core.parser import LinkRef, front_matter, note_links, note_tags, parse
+from paper_pile.core.parser import (
+    FrontMatter,
+    LinkRef,
+    front_matter,
+    headings,
+    note_links,
+    note_tags,
+    parse,
+)
 from paper_pile.core.tags import norm_tag
 from paper_pile.core.vault import META_DIR, Vault, VaultError
 
 log = logging.getLogger("paper_pile.index")
 
-SCHEMA_VERSION = "4"  # 3: tags; 4: search body without front matter / heading marks
+SCHEMA_VERSION = "5"  # 3: tags; 4: search body without front matter / heading marks;
+# 5: headings, note dates, words, private (the vault agent, PLAN_vault_agent §4.2)
 _SCHEMA = """
 CREATE TABLE notes(id INTEGER PRIMARY KEY, path TEXT UNIQUE NOT NULL, title TEXT NOT NULL,
-                   mtime REAL NOT NULL, hash TEXT NOT NULL);
+                   mtime REAL NOT NULL, hash TEXT NOT NULL, words INTEGER NOT NULL DEFAULT 0,
+                   private INTEGER NOT NULL DEFAULT 0);
 CREATE TABLE links(src_id INTEGER NOT NULL REFERENCES notes(id) ON DELETE CASCADE,
                    dst_raw TEXT NOT NULL, dst_key TEXT NOT NULL, dst_path TEXT, kind TEXT NOT NULL,
                    line INTEGER NOT NULL);
@@ -43,6 +54,12 @@ CREATE VIRTUAL TABLE notes_fts USING fts5(
 CREATE TABLE tags(note_id INTEGER NOT NULL REFERENCES notes(id) ON DELETE CASCADE,
                   tag TEXT NOT NULL, norm TEXT NOT NULL);
 CREATE INDEX tags_norm ON tags(norm);
+CREATE TABLE headings(note_id INTEGER NOT NULL REFERENCES notes(id) ON DELETE CASCADE,
+                      level INTEGER NOT NULL, text TEXT NOT NULL, line INTEGER NOT NULL);
+CREATE INDEX headings_note ON headings(note_id);
+CREATE TABLE note_dates(note_id INTEGER NOT NULL REFERENCES notes(id) ON DELETE CASCADE,
+                        kind TEXT NOT NULL, day TEXT NOT NULL);
+CREATE INDEX note_dates_day ON note_dates(day);
 CREATE TABLE meta(key TEXT PRIMARY KEY, value TEXT NOT NULL);
 """
 _HEADING = re.compile(r"^\s{0,3}#{1,6}\s+(.+?)\s*#*\s*$", re.MULTILINE)
@@ -91,6 +108,35 @@ class _Read:
     body: str = ""
     links: tuple[tuple[str, str, str, int], ...] = ()  # raw, dst_key, kind, line
     tags: tuple[tuple[str, str], ...] = ()  # as written, normalised
+    heads: tuple[tuple[int, str, int], ...] = ()  # level, text, line
+    dates: tuple[tuple[str, str], ...] = ()  # front-matter key, ISO day
+    words: int = 0
+    private: bool = False
+
+
+@dataclass(frozen=True, slots=True)
+class NoteRow:
+    """One note as the index knows it, without its text (the vault agent's listings)."""
+
+    path: str
+    title: str
+    mtime: float
+    words: int
+    private: bool  # front matter ``ai: false``
+
+
+@dataclass(frozen=True, slots=True)
+class HeadingRow:
+    level: int
+    text: str
+    line: int  # 1-based
+
+
+@dataclass(frozen=True, slots=True)
+class DatedNote:
+    path: str
+    kind: str  # the front-matter key (:data:`DATE_KEYS`)
+    day: str  # ISO ``YYYY-MM-DD``
 
 
 @dataclass(frozen=True, slots=True)
@@ -122,6 +168,38 @@ def search_body(text: str, tokens: list[Token]) -> str:
     if tokens and tokens[0].type == "front_matter" and tokens[0].map:
         text = "\n".join(text.split("\n")[tokens[0].map[1] :])
     return _HEADING_MARK.sub("", text)
+
+
+DATE_KEYS = ("date", "created", "updated", "modified")  # front-matter keys read as note dates
+
+
+def _iso_day(value: object) -> str | None:
+    """``YYYY-MM-DD`` from a front-matter value (a YAML date / datetime, or an ISO-like string
+    such as ``2025-10-03`` or ``2025-10-03T09:00``); None when it is not a date."""
+    if isinstance(value, datetime):
+        return value.date().isoformat()
+    if isinstance(value, date):
+        return value.isoformat()
+    if isinstance(value, str):
+        m = re.match(r"\s*(\d{4})-(\d{1,2})-(\d{1,2})", value)
+        if m:
+            try:
+                return date(int(m[1]), int(m[2]), int(m[3])).isoformat()
+            except ValueError:
+                return None
+    return None
+
+
+def note_dates(fm: FrontMatter | None) -> list[tuple[str, str]]:
+    """``(key, ISO day)`` for every date the front matter gives (:data:`DATE_KEYS`)."""
+    if fm is None:
+        return []
+    out = []
+    for key in DATE_KEYS:
+        day = _iso_day(fm.data.get(key))
+        if day:
+            out.append((key, day))
+    return out
 
 
 def _dst_key(ref: LinkRef) -> str:
@@ -341,15 +419,22 @@ class Index:
         if known and known[1] == digest:
             return _Read(rel, mtime, digest)  # same text: only the mtime moves
         tokens = parse(text)  # once: title, links and tags all read it
-        tags = note_tags(text, tokens) if rel.lower().endswith(".md") else []
+        is_md = rel.lower().endswith(".md")
+        tags = note_tags(text, tokens) if is_md else []
+        fm = front_matter(text, tokens) if is_md else None
+        body = search_body(text, tokens)
         return _Read(
             rel,
             mtime,
             digest,
             title=note_title(rel, text, tokens),
-            body=search_body(text, tokens),
+            body=body,
             links=tuple((r.raw, _dst_key(r), r.kind, r.line) for r in note_links(text, tokens)),
             tags=tuple((tag, norm_tag(tag)) for tag in tags),
+            heads=tuple((h.level, h.text, h.line) for h in headings(text, tokens)) if is_md else (),
+            dates=tuple(note_dates(fm)),
+            words=len(_WORD.findall(body)),
+            private=bool(fm and fm.data.get("ai") is False),
         )
 
     def _write(self, read: _Read, current: tuple[float, str] | None) -> None:
@@ -361,8 +446,8 @@ class Index:
         if current:
             self._remove(read.rel)
         cur = self._db.execute(
-            "INSERT INTO notes(path, title, mtime, hash) VALUES(?,?,?,?)",
-            (read.rel, read.title, read.mtime, read.digest),
+            "INSERT INTO notes(path, title, mtime, hash, words, private) VALUES(?,?,?,?,?,?)",
+            (read.rel, read.title, read.mtime, read.digest, read.words, int(read.private)),
         )
         note_id = cur.lastrowid
         self._db.execute(
@@ -377,6 +462,14 @@ class Index:
         self._db.executemany(
             "INSERT INTO tags(note_id, tag, norm) VALUES(?,?,?)",
             [(note_id, tag, norm) for tag, norm in read.tags],
+        )
+        self._db.executemany(
+            "INSERT INTO headings(note_id, level, text, line) VALUES(?,?,?,?)",
+            [(note_id, *h) for h in read.heads],
+        )
+        self._db.executemany(
+            "INSERT INTO note_dates(note_id, kind, day) VALUES(?,?,?)",
+            [(note_id, kind, day) for kind, day in read.dates],
         )
 
     # ---- reading ---------------------------------------------------------------------------
@@ -481,3 +574,73 @@ class Index:
                 log.warning("bad search query %r", query)
                 return []
         return [SearchHit(*r) for r in rows]
+
+    # ---- the vault agent (schema 5) --------------------------------------------------------
+
+    def note_rows(self, paths: Collection[str] | None = None) -> list[NoteRow]:
+        """Every note (or those in ``paths``) without its text, by path."""
+        with self._lock:
+            rows = self._db.execute(
+                "SELECT path, title, mtime, words, private FROM notes ORDER BY path"
+            ).fetchall()
+        want = None if paths is None else set(paths)
+        rows = [r for r in rows if want is None or r[0] in want]
+        return [NoteRow(r[0], r[1], r[2], r[3], bool(r[4])) for r in rows]
+
+    def headings_of(self, rel: str) -> list[HeadingRow]:
+        with self._lock:
+            rows = self._db.execute(
+                "SELECT h.level, h.text, h.line FROM headings h JOIN notes n ON n.id=h.note_id "
+                "WHERE n.path=? ORDER BY h.line",
+                (rel,),
+            ).fetchall()
+        return [HeadingRow(*r) for r in rows]
+
+    def dates_of(self, rel: str) -> list[DatedNote]:
+        with self._lock:
+            rows = self._db.execute(
+                "SELECT n.path, d.kind, d.day FROM note_dates d JOIN notes n ON n.id=d.note_id "
+                "WHERE n.path=? ORDER BY d.rowid",
+                (rel,),
+            ).fetchall()
+        return [DatedNote(*r) for r in rows]
+
+    def dated_notes(self, start: str, end: str) -> list[DatedNote]:
+        """Front-matter dates from ``start`` to ``end`` (ISO days, both included), by day."""
+        with self._lock:
+            rows = self._db.execute(
+                "SELECT n.path, d.kind, d.day FROM note_dates d JOIN notes n ON n.id=d.note_id "
+                "WHERE d.day BETWEEN ? AND ? ORDER BY d.day, n.path",
+                (start, end),
+            ).fetchall()
+        return [DatedNote(*r) for r in rows]
+
+    def tag_pairs(self) -> list[tuple[str, str]]:
+        """``(note path, normalised tag)`` for every tag of every note (callers filter out the
+        notes they may not show before counting)."""
+        with self._lock:
+            rows = self._db.execute(
+                "SELECT DISTINCT n.path, t.norm FROM tags t JOIN notes n ON n.id=t.note_id "
+                "ORDER BY n.path, t.norm"
+            ).fetchall()
+        return [(r[0], r[1]) for r in rows]
+
+    def tagged_paths(self) -> set[str]:
+        with self._lock:
+            rows = self._db.execute(
+                "SELECT DISTINCT n.path FROM tags t JOIN notes n ON n.id=t.note_id"
+            ).fetchall()
+        return {r[0] for r in rows}
+
+    def link_stats(self) -> tuple[dict[str, int], set[str]]:
+        """``(links out per note path, every link key named anywhere)``: enough to tell notes
+        nothing links to (:func:`links.link_keys` of a path vs the keys) without resolving."""
+        with self._lock:
+            out = dict(
+                self._db.execute(
+                    "SELECT n.path, count(l.rowid) FROM notes n LEFT JOIN links l "
+                    "ON l.src_id=n.id GROUP BY n.id"
+                ).fetchall()
+            )
+            keys = {r[0] for r in self._db.execute("SELECT DISTINCT dst_key FROM links")}
+        return out, keys

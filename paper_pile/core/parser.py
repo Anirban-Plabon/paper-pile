@@ -459,10 +459,10 @@ class Heading:
     line: int  # 1-based
 
 
-def headings(text: str) -> list[Heading]:
+def headings(text: str, tokens: list[Token] | None = None) -> list[Heading]:
     """The note's headings, in order (``#`` and underlined; not ``#`` inside code)."""
     found: list[Heading] = []
-    tokens = _PARSER.parse(text)
+    tokens = _PARSER.parse(text) if tokens is None else tokens
     for i, tok in enumerate(tokens):
         if tok.type == "heading_open" and tok.map and i + 1 < len(tokens):
             inline = tokens[i + 1]
