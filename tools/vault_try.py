@@ -25,8 +25,9 @@ from paper_pile.core.ai.access import grant_now
 from paper_pile.core.ai.engine import AiEngine
 from paper_pile.core.ai.vault.candidates import Gatherer
 from paper_pile.core.ai.vault.cards import CardMaker, CardStore, card_search, card_summaries
-from paper_pile.core.ai.vault.find import find_notes
+from paper_pile.core.ai.vault.meta import VaultMeta
 from paper_pile.core.ai.vault.plan import make_plan
+from paper_pile.core.ai.vault.run import VaultAgent, run_plan
 from paper_pile.core.ai.vault.scope import ScopeResolver, describe, note_folders
 from paper_pile.core.ai.vault.tools import VaultTools
 from paper_pile.core.ai.vault.understand import RequestContext, VaultRequest, understand_request
@@ -42,7 +43,13 @@ SAMPLES = [
     "add a Sources section to every note in Research",
     "what is the capital of France",
 ]
-FIND_SAMPLES = ["where are my social business notes?"]
+FIND_SAMPLES = [
+    "where are my social business notes?",
+    "summarise my social business notes",
+    "who lends without collateral in my notes, and to whom?",
+    "list every client and their budget",
+    "how many notes have no tags",
+]
 FOLDERS = ["Clients", "Projects", "Research", "Marketing", "Journal", "Meetings", "Ideas"]
 TAGS = ["client", "idea", "marketing", "todo", "meeting"]
 
@@ -82,26 +89,23 @@ def show_request(found: VaultRequest) -> None:
 
 
 async def find(ai: AiEngine, root: Path, request: str, cards: bool) -> None:
+    """The fast path end to end on the small vault: understand → plan → run."""
     ix = Index(ai.vault)
     ix.sync()
-    source = None
-    summaries = None
+    resolver = ScopeResolver(ix, ai.policy().may_read)
+    tools = VaultTools(ix, resolver, ai.read_note)
+    store = CardStore(root)
+    maker = CardMaker(ai, store, ai.read_note, ix.hashes, ix.title)
     if cards:
-        store = CardStore(root)
-        maker = CardMaker(ai, store, ai.read_note, ix.hashes, ix.title)
         t = time.monotonic()
         made = await maker.ensure(ix.paths())
         print(f"\n  {len(made)} cards in {time.monotonic() - t:.1f} s")
-        for card in made.values():
-            print(f"    {card.path}: {card.summary} [{', '.join(card.terms)}]")
-        source = card_search(store, ix.hashes)
-        summaries = card_summaries(store, ix.hashes)
-    resolver = ScopeResolver(ix, ai.policy().may_read)
-    tools = VaultTools(ix, resolver, ai.read_note)
+    gatherer = Gatherer(tools, card_search(store, ix.hashes), card_summaries(store, ix.hashes))
+    agent = VaultAgent(ai, tools, gatherer, maker, VaultMeta(ix, resolver))
     ctx = RequestContext(
         today=date.today(),
         folders=note_folders(r.path for r in resolver.readable()),
-        tags=sorted({t for _, t in ix.tag_pairs()}),
+        tags=agent.tags(),
     )
     t = time.monotonic()
     found = await understand_request(ai, request, ctx)
@@ -110,21 +114,29 @@ async def find(ai: AiEngine, root: Path, request: str, cards: bool) -> None:
         print("  (no vault request)" if found else "  (no usable answer)")
         return
     show_request(found)
-    plan = make_plan(found, resolver, None)
-    first = plan.steps[0]
+    plan = make_plan(found, resolver, None, request)
+    if plan.choice is not None:
+        print(f"  ASK: {plan.choice.question} {list(plan.choice.options)}")
+        return
     t = time.monotonic()
-
-    def facts(path: str) -> tuple[list[str], list[str]]:
-        return ix.tags_of(path), [h.text for h in ix.headings_of(path)]
-
-    got = await find_notes(
-        ai, Gatherer(tools, source, summaries), first.step.detail or request, first, facts
+    stages: list[str] = []
+    result = await run_plan(
+        agent, plan, request, on_progress=lambda i, s, d, n: stages.append(f"{i}:{s} {d}/{n}")
     )
-    print(f"  found in {time.monotonic() - t:.1f} s, {got.rounds} round(s), {got.total} candidates")
-    print(f"  all terms: {', '.join(got.terms)}")
-    for j in got.judged:
-        print(f"    {j.relevance:5} {j.candidate.path} {sorted(j.candidate.sources)} — {j.reason}")
-    print(got.results.compact())
+    print(f"  ran in {time.monotonic() - t:.1f} s  ({', '.join(stages[-6:])})")
+    if result.choice is not None:
+        print(f"  ASK: {result.choice.question} {list(result.choice.options)}")
+    for k, reply in enumerate(result.replies):
+        print(f"  --- step {k} reply:")
+        print("  " + reply.text.replace("\n", "\n  "))
+        for src in reply.sources:
+            print(f"     {src.label}  ({src.path}:{src.start}-{src.end})")
+        if reply.unverified_note:
+            print(f"     ! {reply.unverified_note}")
+        for note in reply.notices:
+            print(f"     · {note}")
+        if reply.hints:
+            print("     hints: " + " | ".join(h.label for h in reply.hints))
 
 
 async def main(args: argparse.Namespace) -> int:

@@ -12,7 +12,9 @@ Legend: 🧠 = needs Opus · ⬜ todo · 🔄 in progress · ✅ done · ⛔ blo
 - **M2 — Understanding:** built and hand-checked on gemma4 (P30.13–P30.15 🔄: accepted only on
   eval numbers, and the eval is not run yet)
 - **M3 — Find and judge:** built (P30.18–P30.19 ✅; P30.16–P30.17 🔄 until the eval)
-- **Next task:** M4 — read actions on the found notes (P30.20 locate … P30.24 hints)
+- **M4 — Read actions:** built with the fast-path runner and the citation core (P30.20–P30.24,
+  P30.43–P30.44 🔄 until the eval); hand-checked end to end on gemma4
+- **Next task:** M5 — P30.25 JSON-action loop for compare / open-ended steps, P30.26 routing
 - **Waiting on the user:** open questions (PLAN_vault_agent §11) — languages in the test
   vault, background note cards, budgets, model-made hints. Defaults are in §10.
 
@@ -65,17 +67,17 @@ Legend: 🧠 = needs Opus · ⬜ todo · 🔄 in progress · ✅ done · ⛔ blo
 ### M4 — Read actions
 | ID | Task | Status | Notes |
 |---|---|---|---|
-| P30.20 | `locate` | ⬜ | |
-| P30.21 | `answer` with citations | ⬜ | |
-| P30.22 | `summarise` map-reduce | ⬜ | |
-| P30.23 | `extract` tables | ⬜ | |
-| P30.24 | Empty results + hints | ⬜ | |
+| P30.20 | `locate` | 🔄 | 2026-11-06 · `reply.py` `locate()`: sure notes with folder + reason, then "might also be related"; no model call; eval pending |
+| P30.21 | `answer` with citations | 🔄 | 2026-11-06 · `answer.py`: short notes whole, long ones by the found section, 12k-char budget, labelled, streamed, citations checked; gemma4 answered with correct [n]; eval pending |
+| P30.22 | `summarise` map-reduce | 🔄 | 2026-11-06 · `summarise.py`: one note whole; many via note cards (reused, no new calls) + reduce, rounds of 12 keep global labels; gemma4: 4 notes, themed, every point cited; eval pending |
+| P30.23 | `extract` tables | 🔄 | 2026-11-06 · `extract.py`: columns call + rows per note (≤ 30 notes), each row cited; markdown table; gemma4: Client / Budget table right; eval pending |
+| P30.24 | Empty results + hints | 🔄 | 2026-11-06 · `hints.py` (data only): maybes, whole-vault / one-folder scope, nearest real tags + folders when empty, next actions; "No notes found." never invents; eval pending |
 
 ### M5 — Agent loop
 | ID | Task | Status | Notes |
 |---|---|---|---|
 | P30.25 🧠 | JSON-action loop + budgets + Stop | ⬜ | |
-| P30.26 | Fast-path / loop routing | ⬜ | |
+| P30.26 | Fast-path / loop routing | 🔄 | 2026-11-06 · fast-path runner `run.py` built (steps in order, `after` → earlier step's notes, big-job stop, hints); the loop and the routing between them come with P30.25 |
 | P30.27 | Plan card | ⬜ | |
 | P30.28 | Vault memory file | ⬜ | |
 
@@ -112,8 +114,8 @@ Legend: 🧠 = needs Opus · ⬜ todo · 🔄 in progress · ✅ done · ⛔ blo
 ### MC — Citations (can start after M1)
 | ID | Task | Status | Notes |
 |---|---|---|---|
-| P30.43 | Source labels + label → location map | ⬜ | |
-| P30.44 | Citation check | ⬜ | |
+| P30.43 | Source labels + label → location map | 🔄 | 2026-11-06 · `cite.py` `Source` (path, heading, lines, anchor), labels in the prompt as data; used by the vault agent — the normal chat and `@vault` still to switch over |
+| P30.44 | Citation check | 🔄 | 2026-11-06 · unknown labels dropped, quotes (≥ 12 chars) checked against their source, "N citations could not be verified" footer (5 tests); eval number pending |
 | P30.45 | Pills + numbered Sources + preview card | ⬜ | |
 | P30.46 | Click → open, flash, band; Ctrl+click → split | ⬜ | |
 | P30.47 | Re-find after edits; rename / delete / private | ⬜ | |
@@ -140,6 +142,10 @@ Legend: 🧠 = needs Opus · ⬜ todo · 🔄 in progress · ✅ done · ⛔ blo
 | 2026-11-06 | Second search round from the notes judged "yes" (`expand.py`), not a better first prompt | The model's first idea of a topic can be wrong; the user's confirmed notes are better evidence of what their notes call it, and it needs no word lists | claude |
 | 2026-11-06 | The judge sees the note card's summary; a note about one case / application of the subject is "yes" | gemma4 rejected the village-solar social enterprise as "a specific product idea rather than general notes" when it saw only the note's first lines | claude |
 | 2026-11-06 | Cards made lazily per request for now; background making stays open (§11.2) | ~7.5 s per note on gemma4:12b here: a whole vault is a long job to start without the user's choice | claude |
+| 2026-11-06 | Guessed scope dropped in code (`plan.unguessed`): a folder / tag the message never mentions (word stems, 5 letters) does not narrow a step that searches for a topic; a step without terms keeps it; `@folder/` scopes always kept | The prompt rule alone did not hold: gemma4 again put "summarise my social business notes" in Marketing + #marketing and found nothing. A check on folder / tag names, not a list of user phrasings | claude |
+| 2026-11-06 | Fast-path runner (`run.py`) built in M4, ahead of the M5 loop | Every read action needs a runner to be tried end to end; the loop (P30.25) adds open-ended steps on top of it | claude |
+| 2026-11-06 | Citation core (`cite.py`, P30.43–P30.44) built in M4, before the rest of MC | `answer` / `summarise` / `extract` must cite from the start; the UI parts of MC stay later | claude |
+| 2026-11-06 | Summaries of many notes cite note cards (summaries), not note text: their sources have no anchor and open the note's top | The map step reuses cards to save model calls; a quote from a card is verified against the card | claude |
 
 ## Issues log
 | Date | Task | Symptom | Root cause | Fix | Gotcha? |
@@ -152,3 +158,4 @@ Legend: 🧠 = needs Opus · ⬜ todo · 🔄 in progress · ✅ done · ⛔ blo
 - 2026-11-06 · P30.8–P30.12 vault tools and index (M1) · 1604 tests (+61), ruff + mypy clean
 - 2026-11-06 · P30.13–P30.15 understanding + plan built, hand-checked on gemma4:12b (9 requests) · 1625 tests (+21)
 - 2026-11-06 · P30.16–P30.19 candidates, judge, second round, note cards, budgets (M3); hand check on a 9-note trap vault: 5/5 on-topic found (4 yes + 1 maybe), 0 false friends · 1647 tests (+22)
+- 2026-11-06 · P30.20–P30.24 + P30.43–P30.44 locate, answer, summarise, extract, hints, fast-path runner, citations (M4); gemma4 end to end: locate / answer / summarise / extract / meta all right on the trap vault · 1670 tests (+23)

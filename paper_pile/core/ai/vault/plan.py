@@ -6,6 +6,7 @@ question with options. Names that match nothing become notices, never guesses. N
 imports, no model calls.
 """
 
+import re
 from collections.abc import Sequence
 from dataclasses import dataclass, field, replace
 
@@ -93,11 +94,51 @@ def _plan_step(
     return out
 
 
-def make_plan(request: VaultRequest, resolver: ScopeResolver, last: ResultSet | None) -> Plan:
-    """The plan for ``request``. The model's own open question comes first; else the first
-    ambiguous name. Missing names are notices (the step then has fewer notes, maybe none)."""
+_WORDS = re.compile(r"\w+", re.UNICODE)
+STEM = 5  # letters two words must share at the start to count as the same word
+
+
+def _stems(text: str) -> set[str]:
+    return {w.casefold()[:STEM] for w in _WORDS.findall(text) if len(w) >= 3}
+
+
+def mentioned(name: str, message: str) -> bool:
+    """Does ``message`` mention the folder / tag ``name`` — one of its words (≥ 3 letters),
+    compared by their first letters so "client" finds "Clients"?"""
+    return bool(_stems(name.replace("/", " ")) & _stems(message))
+
+
+def unguessed(step: Step, message: str, forced: Sequence[str] = ()) -> Step:
+    """``step`` without the folders and tags the message never mentions, when the step
+    searches for a topic: those are the model's guess where the topic is kept, and a guess
+    must not hide the notes the user wants (gemma4 put "social business" in Marketing). A
+    step with no terms keeps them — they are its only target ("my daily notes" → Journal).
+    ``forced``: folders the message points at with ``@`` (always kept)."""
+    if not step.terms or not message:
+        return step
+    keep_folders = tuple(
+        f for f in step.scope.folders if mentioned(f, message) or f.strip("/") in forced
+    )
+    keep_tags = tuple(t for t in step.scope.tags if mentioned(t, message))
+    if keep_folders == step.scope.folders and keep_tags == step.scope.tags:
+        return step
+    return replace(step, scope=replace(step.scope, folders=keep_folders, tags=keep_tags))
+
+
+def make_plan(
+    request: VaultRequest,
+    resolver: ScopeResolver,
+    last: ResultSet | None,
+    message: str = "",
+    forced: Sequence[str] = (),
+) -> Plan:
+    """The plan for ``request`` (the user's ``message``). The model's own open question
+    comes first; else the first ambiguous name. Missing names are notices (the step then has
+    fewer notes, maybe none). Guessed folders / tags of topic searches are dropped
+    (:func:`unguessed`)."""
     plan = Plan(steps=[])
     for i, step in enumerate(request.steps):
+        step = unguessed(step, message, [f.strip("/") for f in forced])
         plan.steps.append(_plan_step(i, step, resolver, last, plan))
     if request.question:
         opts = request.options[:MAX_CHOICES]

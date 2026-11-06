@@ -189,10 +189,24 @@ the model's open choice first, else the first ambiguous note / folder name with 
 candidates as options; `choose()` narrows that name and resolves the step again. Names that
 match nothing (or only private notes) become notices, never guesses.
 
+**Guessed scope** (`plan.unguessed`): a folder or tag the message never mentions (compared by
+the first 5 letters of its words, so "client" finds `Clients`) is the model's guess where a
+topic is kept; it does not narrow a step that searches for a topic (the whole vault is
+searched). A step without search terms keeps it ("my daily notes" → `Journal`), and
+`@folder/` scopes are always kept. Added because the prompt rule alone did not hold on
+gemma4.
+
 ### 5.2 Fast path vs loop
 
 - Every step whose action is in the fast-path column of §3.2 runs a fixed pipeline
-  (find → judge → read/act). 1 + ⌈candidates/10⌉ + per-note calls.
+  (find → judge → read/act). 1 + ⌈candidates/10⌉ + per-note calls. Built in M4 as
+  `core/ai/vault/run.py` (`VaultAgent`, `run_plan`): steps in order, a step with
+  `depends_on` works on that step's notes, `meta` answered from the index, a big job stops
+  the run with its question (`use_best` goes on), each reply gets its hints. The read
+  actions: `reply.locate` (no model), `answer.py` (found sections under labels, streamed,
+  citations checked), `summarise.py` (one note whole; many via note cards + reduce in
+  rounds of 12 that keep global labels), `extract.py` (a columns call, then rows per note,
+  each row cited).
 - `compare` and open-ended steps run the **loop**: the model gets the tools (§5.3) as a
   JSON action list and answers `{tool, args}` or `{final}`; Python runs the tool, returns a
   compact result; max steps (default 8) and max notes read (default 20) per request; the
