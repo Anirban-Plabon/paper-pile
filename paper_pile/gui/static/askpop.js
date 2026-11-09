@@ -186,10 +186,27 @@
     emitEvent('pp_askpop_close', {});
   }, true);
 
+  // the note editor the user was last in: copy / cut / paste go back to it (below)
+  let lastEditor = null;
+  document.addEventListener('focusin', function (e) {
+    const c = e.target && e.target.closest && e.target.closest('.cm-content');
+    if (c) lastEditor = c;
+  }, true);
+
   // keys in the box: Enter sends (Shift+Enter: new line), Esc closes, the / list moves
   document.addEventListener('keydown', function (e) {
     const area = e.target && e.target.closest && e.target.closest('.pp-askpop textarea');
     if (!area || e.isComposing) return;
+    const k = (e.key || '').toLowerCase();
+    if ((e.ctrlKey || e.metaKey) && !e.altKey && (k === 'c' || k === 'x' || k === 'v')
+        && !area.value && box().classList.contains('pp-askpop-box')) {
+      // nothing typed yet: copy / cut / paste are for the selected text in the note. The note
+      // gets the focus now, before the browser acts, and the box closes; not prevented.
+      const editor = lastEditor && lastEditor.isConnected ? lastEditor : document.querySelector('.pp-editor .cm-content');
+      if (editor && !(window.ppFocusEditor && window.ppFocusEditor(editor))) editor.focus({ preventScroll: true });
+      emitEvent('pp_askpop_close', { key: true });
+      return;
+    }
     const rows = [...document.querySelectorAll('.pp-askpop-cmds .pp-askpop-cmd')];
     const active = rows.findIndex((r) => r.classList.contains('pp-askpop-cmd-active'));
     if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {

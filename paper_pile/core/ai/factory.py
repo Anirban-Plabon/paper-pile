@@ -8,7 +8,7 @@ import asyncio
 import json
 import logging
 import os
-from collections.abc import AsyncIterator, Sequence
+from collections.abc import AsyncIterator, Awaitable, Sequence
 from pathlib import Path
 
 from paper_pile.core.ai.backends import BACKENDS, api_key, settings_for, worth_probing
@@ -117,6 +117,25 @@ def build_provider(
         return AntigravityCliProvider(model=model)
     log.warning("unknown AI provider %r", kind)
     return MissingProvider(f"Unknown AI provider “{kind}” — pick one in Settings → AI.")
+
+
+async def shutdown_providers() -> None:
+    """End what a backend keeps between requests (the app's shutdown, a tool's end): the
+    Antigravity CLI's processes started ahead and the data it kept. Nothing for the others."""
+    import sys
+
+    agy = sys.modules.get("paper_pile.core.ai.antigravity_cli")
+    if agy is not None:
+        await agy.end_session()  # processes started ahead ended, its data wiped
+
+
+async def closing[T](job: Awaitable[T]) -> T:
+    """``job``, then :func:`shutdown_providers` — for a tool's ``asyncio.run``, whose loop
+    ends with it (a process started ahead must not outlive its loop)."""
+    try:
+        return await job
+    finally:
+        await shutdown_providers()
 
 
 async def probe_backends(config: Config) -> dict[str, Health | None]:

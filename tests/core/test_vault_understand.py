@@ -82,7 +82,7 @@ def test_messages_carry_context() -> None:
     assert sys.role == "system" and "needs_vault" in sys.content
     text = user.content
     assert "2026-11-06 (Friday)" in text and "Folders: Clients, Journal" in text
-    assert "#idea" in text and "Open note: Plan" in text and "1. A [a.md]" in text
+    assert "#idea" in text and "Open note (active): Plan" in text and "1. A [a.md]" in text
     assert "the whole vault, folder Clients" in text and text.endswith("Message: where is X")
 
 

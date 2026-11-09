@@ -27,10 +27,10 @@ from paper_pile.core.vault import Vault
     [
         ("ask", "insert", "stream"),
         ("auto", "insert", "stream"),
-        ("readonly", "insert", "refuse"),
+        ("readonly", "insert", "stream"),  # the old read-only reads as review (P31.1)
         ("ask", "replace", "propose"),
         ("auto", "replace", "apply"),
-        ("readonly", "replace", "show"),
+        ("readonly", "replace", "propose"),
     ],
 )
 def test_edit_action_table(mode: str, kind: str, action: str) -> None:
@@ -53,7 +53,7 @@ def test_a_much_shorter_answer_is_never_applied_unseen() -> None:
     old = "a long paragraph of the user's own words that should not vanish"
     assert replacement_action("auto", old, "a long paragraph", "stop") == "propose"
     assert replacement_action("auto", old, old.upper(), "stop") == "apply"
-    assert replacement_action("readonly", old, "short", "stop") == "show"
+    assert replacement_action("ask", old, "short", "stop") == "propose"
 
 
 @pytest.mark.parametrize(

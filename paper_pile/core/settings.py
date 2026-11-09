@@ -39,9 +39,10 @@ MOTIONS = ("off", "fast", "normal", "slow")
 MOTION_LABELS = {"off": "Off", "fast": "Fast", "normal": "Normal", "slow": "Slow"}
 ICON_COLORS = {"default": "Default", "accent": "Accent"}  # value -> shown
 AI_PROVIDERS = {k: b.label for k, b in BACKENDS.items()}  # ai.provider -> shown
-EDIT_MODES = {"ask": "Ask first", "auto": "Apply at once", "readonly": "Read-only"}  # ai.edits
+EDIT_MODES = {"ask": "Review in the note", "auto": "Apply at once"}  # ai.edits (PLAN §4.32)
 EDIT_PLANNING = {"auto": "Auto", "selection": "Selection only"}  # ai.edit_planning
 VAULT_AGENT = {"auto": "Auto", "at": "With @ only", "off": "Off"}  # ai.vault_agent
+REMOTE_AGENT = {"no": "Not allowed", "yes": "Allowed"}  # ai.remote_agent (PLAN §4.32)
 MOTION_FACTORS = {"off": 0.0, "fast": 0.6, "normal": 1.0, "slow": 1.6}  # × every duration
 MODES = ("live", "source")
 PAPER_SIZES = ("A4", "Letter")  # core/printdoc.py PAPERS
@@ -448,7 +449,7 @@ SECTIONS: dict[str, tuple[Setting, ...]] = {
             "AI changes to notes",
             "choice",
             tuple(EDIT_MODES),
-            help="Ask first shows a diff",
+            help="Chat and Ask box: a diff to accept, or applied at once",
             group="Context",
             essential=True,
         ),
@@ -466,6 +467,15 @@ SECTIONS: dict[str, tuple[Setting, ...]] = {
             "choice",
             tuple(VAULT_AGENT),
             help="Auto: the chat looks through your notes when a question needs them",
+            group="Context",
+            essential=True,
+        ),
+        Setting(
+            "ai.remote_agent",
+            "Agent reads and edits your vault on a remote AI",
+            "choice",
+            tuple(REMOTE_AGENT),
+            help="Antigravity CLI, hosted APIs: notes go to that server",
             group="Context",
             essential=True,
         ),

@@ -194,18 +194,35 @@ async def test_an_instruction_in_a_note_never_reaches_the_deciding_call(
 async def test_a_remote_backend_asks_before_any_note_is_sent(
     setup: tuple[AiEngine, FakeProvider, Vault],
 ) -> None:
+    """PLAN §4.32: on a remote AI the agent reads / edits the vault only when allowed —
+    Settings (``ai.remote_agent``), or the chat's question: always, this session, or not."""
     ai, fake, _ = setup
     fake.local = False  # type: ignore[misc]  # e.g. a hosted API or another machine
     first = await ask(ai, "where are my microcredit notes?")
-    assert "not on this computer. Go on?" in first and "Fake AI at fake://local" in first
+    assert first.startswith("The agent may not read or edit your vault on Fake AI")
     assert all("Microcredit for the poor" not in t for _, t in sent(fake))  # only understanding
-    assert [c["label"] for c in ai.turns[-1].vault["chips"]] == ["Go on", "Cancel"]
-    cancelled = await ask(ai, "Cancel")
-    assert cancelled == "Cancelled: nothing was sent."
+    chips = [c["label"] for c in ai.turns[-1].vault["chips"]]
+    assert chips == ["Allow always", "Allow this session", "Don't allow"]
+    refused = await ask(ai, "Don't allow")
+    assert refused == "Not allowed: no note was read or changed."
+    assert all("Microcredit for the poor" not in t for _, t in sent(fake))
     await ask(ai, "where are my microcredit notes?")
-    found = await ask(ai, "Go on")
+    found = await ask(ai, "Allow this session")
     assert found.startswith("Found") and any("Microcredit for the poor" in t for _, t in sent(fake))
-    again = await ask(ai, "where are my microcredit notes?")
-    assert again.startswith("Found")  # agreed once for this chat
     ai.new_chat()
-    assert "Go on?" in await ask(ai, "where are my microcredit notes?")  # a new chat asks again
+    again = await ask(ai, "where are my microcredit notes?")
+    assert again.startswith("Found")  # allowed for this session: a new chat does not ask
+    assert ai.config is not None and ai.config.get("ai.remote_agent") == "no"  # not saved
+
+
+async def test_allow_always_saves_the_default(
+    setup: tuple[AiEngine, FakeProvider, Vault],
+) -> None:
+    ai, fake, _ = setup
+    fake.local = False  # type: ignore[misc]
+    await ask(ai, "where are my microcredit notes?")
+    found = await ask(ai, "Allow always")
+    assert found.startswith("Found")
+    assert ai.config is not None and ai.config.get("ai.remote_agent") == "yes"
+    ai.vault_session()._remote_ok = False  # a new window: the saved default still allows
+    assert (await ask(ai, "where are my microcredit notes?")).startswith("Found")

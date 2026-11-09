@@ -97,6 +97,9 @@ export default {
     async showCited(first, last) {  // a chat citation's lines (citeband.js)
       (await this.ready).showCited(first, last);
     },
+    async flashChanges(docId, ranges) {  // an AI change applied at once (motion.js)
+      return (await this.ready).flashChanges(docId, ranges);
+    },
     async insertAtCursor(text) {
       (await this.ready).insertAtCursor(text);
     },

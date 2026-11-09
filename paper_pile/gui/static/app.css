@@ -42,6 +42,7 @@
   --pp-dur-fast: calc(100ms * var(--pp-motion));  /* hover, fades */
   --pp-dur: calc(160ms * var(--pp-motion));       /* popups, chevrons, slides */
   --pp-dur-flash: calc(900ms * var(--pp-motion)); /* a jump target's highlight fading out */
+  --pp-dur-ai-flash: calc(2200ms * var(--pp-motion)); /* an AI change applied at once (§4.32) */
 }
 /* One shape and one icon style everywhere (tokens above). Quasar's own parts follow too; our
    rules are unlayered, so they win over Quasar's layered CSS. */
@@ -1367,6 +1368,14 @@ body.pp-no-motion .pp-thinking-dot { opacity: .7; }
 /* page view: lines that crossed onto another page get a soft tint that fades */
 @keyframes pp-crossed { from { background-color: rgba(var(--pp-accent-rgb), .16); } to { background-color: rgba(var(--pp-accent-rgb), 0); } }
 .pp-editor .cm-line.pp-page-crossed { animation: pp-crossed var(--pp-dur-flash) ease-out forwards; }
+/* an AI change applied at once (PLAN §4.32): added / changed lines green, a removal a red mark at
+   the left edge, both fading like a code editor's; still (no fade) when motion is off */
+@keyframes pp-ai-add { from { background-color: var(--pp-aidiff-add-bg); } to { background-color: transparent; } }
+@keyframes pp-ai-del { from { box-shadow: inset 3px 0 0 var(--pp-aidiff-del-fg); } to { box-shadow: inset 3px 0 0 transparent; } }
+.pp-editor .cm-line.pp-ai-add { animation: pp-ai-add var(--pp-dur-ai-flash) ease-in forwards; }
+.pp-editor .cm-line.pp-ai-del { animation: pp-ai-del var(--pp-dur-ai-flash) ease-in forwards; }
+.pp-editor .cm-line.pp-ai-add.pp-ai-still { animation: none; background-color: var(--pp-aidiff-add-bg); }
+.pp-editor .cm-line.pp-ai-del.pp-ai-still { animation: none; box-shadow: inset 3px 0 0 var(--pp-aidiff-del-fg); }
 /* a page line / page edge that moved slides from its old place (pageview.js sets --pp-from) */
 @keyframes pp-page-slide { from { transform: translateY(var(--pp-from, 0)); opacity: .4; } }
 .pp-page-moved { animation: pp-page-slide var(--pp-dur) var(--pp-ease); }

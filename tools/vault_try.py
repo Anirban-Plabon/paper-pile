@@ -24,6 +24,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from paper_pile.core.ai.access import grant_now
 from paper_pile.core.ai.context import EditorSnapshot
 from paper_pile.core.ai.engine import AiEngine
+from paper_pile.core.ai.factory import closing
 from paper_pile.core.ai.vault.candidates import Gatherer
 from paper_pile.core.ai.vault.cards import CardMaker, CardStore, card_search, card_summaries
 from paper_pile.core.ai.vault.meta import VaultMeta
@@ -203,4 +204,4 @@ if __name__ == "__main__":
     p.add_argument("--cards", action="store_true", help="with --find: make note cards first")
     p.add_argument("--chat", action="store_true", help="through AiEngine.answer like the chat")
     p.add_argument("requests", nargs="*")
-    raise SystemExit(asyncio.run(main(p.parse_args())))
+    raise SystemExit(asyncio.run(closing(main(p.parse_args()))))

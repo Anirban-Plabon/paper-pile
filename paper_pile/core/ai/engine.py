@@ -631,7 +631,12 @@ class AiEngine:
             current_path=current,
             current_text=snap.text if current else "",
             selection=attached or (snap.selection if current else ""),  # chips: sent on purpose
-            mentions=list(dict.fromkeys([*extract_mentions(question), *notes])),
+            # the other side of a split is on screen too: it goes along like an attached note
+            mentions=list(
+                dict.fromkeys(
+                    [*extract_mentions(question), *notes, *self._other_side(snap, policy)]
+                )
+            ),
             found=found,
             open_tabs=[(p, t) for p, t in snap.tabs if policy.may_send(p, t)],
             include_tabs=include_tabs,
@@ -640,6 +645,13 @@ class AiEngine:
             paths=self.readable_paths(),
             read=self.read_note,
         )
+
+    def _other_side(self, snap: EditorSnapshot, policy: AccessPolicy) -> list[str]:
+        """The note on the other side of a split view, as a name to send along ([] when
+        there is none or the AI may not read it)."""
+        if not snap.other or not policy.may_read(snap.other):
+            return []
+        return [self.link_name(snap.other)]
 
     def vault_search(self, question: str) -> list[tuple[str, str, str]]:
         """``@vault`` / ``@<vault>/`` in a message (``@<vault>/<folder>/``: only that folder;
@@ -831,15 +843,16 @@ class AiEngine:
             for n in extract_mentions(self.strip_vault_tags(question))
             if resolve_wikilink(n, "", paths)
         ]
-        attached = bool(out.attached.strip() or out.notes or mentioned)
         self._require_access()
         turn = await self.vault_session().handle(
             self.strip_vault_tags(question).strip() or question,
             scopes=scopes,
-            attached=attached,
+            attached=bool(out.attached.strip()),  # a selection / file: the chat's own answer
             open_note=self.link_name(snap.path) if snap.path else "",
             on_status=on_status,
             from_note=self._from_note(out, scopes),
+            notes=list(dict.fromkeys([*out.notes, *mentioned])),
+            other_note=self.link_name(snap.other) if snap.other else "",
         )
         if turn is not None:
             reply.text, reply.sources, reply.summary = turn.text, turn.sources, turn.summary

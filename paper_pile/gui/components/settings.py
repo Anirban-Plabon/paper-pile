@@ -28,8 +28,6 @@ from paper_pile.core.ai.backends import hints, status, switch_backend
 from paper_pile.core.ai.install import ai_available, ai_unavailable
 from paper_pile.core.ai.instructions import MAX_TEXT_CHARS
 from paper_pile.core.ai.provider import Health
-from paper_pile.core.ai.vault.memory import MAX_CHARS as MEMORY_MAX_CHARS
-from paper_pile.core.ai.vault.memory import read_memory_file, save_memory
 from paper_pile.core.colors import parse_color
 from paper_pile.core.config import Config, Scope, scope_for
 from paper_pile.core.settings import (
@@ -44,6 +42,7 @@ from paper_pile.core.settings import (
     LANGUAGES,
     MOTION_LABELS,
     PAGE_VIEWS,
+    REMOTE_AGENT,
     SECTIONS,
     VAULT_AGENT,
     Setting,
@@ -67,6 +66,7 @@ from paper_pile.core.vault_folders import (
 )
 from paper_pile.gui.components.ai_access import AccessPanel
 from paper_pile.gui.components.memories import MemoriesPanel
+from paper_pile.gui.components.memory_dialog import open_memory_dialog
 from paper_pile.gui.dialog import Dialog
 from paper_pile.gui.icons import close_button, ico, line_icon
 from paper_pile.gui.tips import tip
@@ -95,6 +95,7 @@ THEME_ICONS = {
     "dark": "moon",
 }
 _SEGMENTED = {
+    "ai.remote_agent",
     "appearance.density",
     "appearance.motion",
     "appearance.icons",
@@ -434,32 +435,9 @@ class SettingsPane:
                 ).classes("pp-set-button")
 
     async def _edit_vault_memory(self) -> None:
-        root = self._vault_root
-        if root is None:
-            return
-        with self._content, Dialog() as dialog, ui.card().classes("pp-dialog pp-instr-dialog"):
-            ui.label("Notes for the AI about this vault").classes("pp-dialog-title")
-            box = ui.textarea(
-                value=read_memory_file(root),
-                placeholder="e.g.\n- Daily notes are in Journal/ as YYYY-MM-DD\n"
-                "- One note per client in Clients/, each with a Budget section",
-            ).props(f"outlined maxlength={MEMORY_MAX_CHARS * 2}")
-            box.classes("pp-instr-big")
-            ui.label(
-                f"The first {MEMORY_MAX_CHARS} characters are sent. Saved in .paper-pile/ai.md."
-            ).classes("pp-muted pp-instr-count")
-            with ui.row().classes("items-center w-full no-wrap"):
-                ui.space()
-                ui.button("Cancel", on_click=dialog.close).props("flat no-caps")
-                save = ui.button("Save", on_click=lambda: dialog.submit(True))
-                save.props("no-caps unelevated")
-        if await dialog:
-            try:
-                save_memory(root, str(box.value or ""))
-                ui.notify("Saved", position="bottom", timeout=1500)
-            except OSError as exc:
-                ui.notify(f"Could not save: {exc}", type="warning", position="bottom")
-        dialog.delete()
+        if self._vault_root is not None:
+            with self._content:
+                open_memory_dialog(self._vault_root)
 
     def _plain_row(self, setting: Setting, current: Any) -> None:
         hint = hints(setting.key, str(self._values()["ai.provider"]), str(current))
@@ -497,6 +475,7 @@ class SettingsPane:
                 "ai.edits": EDIT_MODES,
                 "ai.edit_planning": EDIT_PLANNING,
                 "ai.vault_agent": VAULT_AGENT,
+                "ai.remote_agent": REMOTE_AGENT,
             }.get(setting.key, {})
             self._segmented(
                 [(c, labels.get(c, c) if not icons else "", icons.get(c)) for c in setting.choices],

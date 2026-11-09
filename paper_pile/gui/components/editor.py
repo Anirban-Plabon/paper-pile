@@ -185,6 +185,14 @@ class Editor(
     def stream_end(self, stream_id: int) -> None:
         self.run_method("streamEnd", stream_id)
 
+    async def flash_changes(self, doc_id: int, ranges: list[dict[str, Any]]) -> bool:
+        """Flash the lines of an AI change applied at once (``[{from, to, del}]``, UTF-16
+        offsets of the new text; PLAN §4.32). False when that doc is not on screen."""
+        try:
+            return bool(await self.run_method("flashChanges", doc_id, ranges))
+        except TimeoutError:
+            return False
+
     async def show_proposal(self, doc_id: int, proposal: dict[str, Any] | None) -> bool:
         """Show an AI edit as a diff on doc ``doc_id`` (``{id, hunks: [{id, from, to, insert}]}``,
         UTF-16 offsets), or clear it (None). False when that doc is not on screen."""

@@ -4,16 +4,17 @@ answer turned into the text that replaces the user's.
 Two kinds of change exist. *Inserts* (Summarize, Explain, Outline, Ask…, the chat's
 *Insert into note*) add text at the caret: they stream in and are one undo step, with a
 "before AI" version kept first. *Replacements* (Rewrite, Change tone, an Ask box rewrite,
-the chat's *Apply to note*) change the user's own text: they are shown as a diff, applied at once
-only in *Apply at once* mode, and never made from an answer that did not finish. *Read-only*
-refuses inserts and shows replacements without Accept. No UI imports here.
+the chat's *Apply to note*) change the user's own text: they are shown as a diff in the note
+(*Review in the note*), applied at once only in *Apply at once* mode, and never made from an
+answer that did not finish. The chat's own edits follow the same mode (PLAN §4.32; *Read-only*
+was removed then — a saved ``readonly`` reads as review). No UI imports here.
 """
 
 from typing import Literal
 
 from paper_pile.core.ai.cleanup import clean_reply as clean_reply  # moved there (P26.6)
 
-EditMode = Literal["ask", "auto", "readonly"]
+EditMode = Literal["ask", "auto"]  # ask = Review in the note
 EditKind = Literal["insert", "replace"]
 EditAction = Literal["stream", "propose", "apply", "show", "refuse"]
 
@@ -28,18 +29,16 @@ class EditTooLongError(Exception):
 
 
 def edit_mode(value: object) -> EditMode:
-    """``ai.edits`` as a mode (anything unknown is the safe default, ask)."""
-    if value == "auto" or value == "readonly":
-        return value
-    return "ask"
+    """``ai.edits`` as a mode (anything unknown — the old ``readonly`` too — is the safe
+    default, review)."""
+    return "auto" if value == "auto" else "ask"
 
 
 def edit_action(mode: EditMode, kind: EditKind) -> EditAction:
     """What an AI change of ``kind`` does under ``mode`` (the table in the module docstring)."""
     if kind == "insert":
-        return "refuse" if mode == "readonly" else "stream"
-    replace: dict[EditMode, EditAction] = {"ask": "propose", "auto": "apply", "readonly": "show"}
-    return replace[mode]
+        return "stream"
+    return "apply" if mode == "auto" else "propose"
 
 
 def replacement_action(mode: EditMode, old: str, new: str, finish: str | None) -> EditAction | None:

@@ -3,7 +3,7 @@
 the found notes with chips → a chip clicked → a summary with citation pills → a pill clicked
 opens its note. Native app offscreen on a throwaway vault, isolated settings, a scripted fake
 model, real mouse events over CDP (elementFromPoint checked).
-Usage:  uv run python tools/qa_vault_chat.py [--keep]
+Usage:  uv run python tools/qa_vault_chat.py [--keep] [--auto]   (--auto: Apply at once)
 """
 
 import asyncio
@@ -26,6 +26,7 @@ from qa_editor import Cdp  # noqa: E402
 from paper_pile.core.ai.access import Grant, save_grant  # noqa: E402
 
 PORT = int(os.environ.get("QA_PORT", "9363"))
+MODE = "auto" if "--auto" in sys.argv else "ask"  # ai.edits for the edit checks (PLAN §4.32)
 NOTES = {
     "Research/Yunus.md": "# Yunus\n\nFounder of Grameen Bank.\nMicrocredit for the poor.\n\n## Groups\n\nLoans to groups.\n",
     "Research/Bank.md": "# Bank\n\n## Groups\n\nMicrocredit groups lend to each other.\n",
@@ -254,45 +255,79 @@ async def checks(port: int, vault: Path) -> None:
         split = await wait_for(cdp, "!!document.querySelector('.pp-split-on')", 8)
         check("Ctrl+click on a pill opens split view", split is True, split)
 
-        # the review flow: diffs, Apply all, Undo — clicked chips, files checked on disk
+        # an edit across notes (PLAN §4.32): no gate in the chat — by the edit mode
         bank = vault / "Research" / "Bank.md"
-        before = bank.read_text()
-        await send(cdp, "remove the Groups section from the notes in Research")
-        review = await wait_for(cdp, "qa.last().includes('would change') && qa.last()", 20)
-        check(
-            "an edit is shown for review first",
-            bool(review) and "Nothing is changed yet" in str(review),
-            review,
-        )
-        check("nothing is written before Apply", bank.read_text() == before, bank.read_text())
         yunus = vault / "Research" / "Yunus.md"
-        yunus_before = yunus.read_text()
-        ticks = await cdp.js("qa.all('.pp-vault-tick')")
-        check("a tick per note in the review", isinstance(ticks, list) and len(ticks) == 2, ticks)
-        order = [t.split(". ", 1)[-1] for t in ticks] if isinstance(ticks, list) else []
-        drop = order.index("Yunus") if "Yunus" in order else 1
-        await click_at(cdp, f"qa.rect('.pp-vault-tick', {drop})")  # untick Yunus
-        await asyncio.sleep(0.3)
-        await click_at(cdp, "qa.rect('.pp-vault-apply')")
-        applied = await wait_for(cdp, "qa.last().startsWith('Changed') && qa.last()", 15)
-        await asyncio.sleep(1.5)  # the editor's write lands on disk
+        before, yunus_before = bank.read_text(), yunus.read_text()
+        await send(cdp, "remove the Groups section from the notes in Research")
+        if MODE == "auto":
+            applied = await wait_for(cdp, "qa.last().startsWith('Changed') && qa.last()", 20)
+            await asyncio.sleep(1.5)  # the editor's write lands on disk
+            check(
+                "Apply at once: written without asking",
+                bool(applied)
+                and "Apply all" not in str(applied)
+                and "## Groups" not in bank.read_text()
+                and "## Groups" not in yunus.read_text(),
+                [applied, bank.read_text()],
+            )
+            check(
+                "no chips (no gate, no Undo chip)",
+                not await cdp.js("qa.all('.pp-vault-chip').length"),
+            )
+            flashed = await cdp.js(
+                "document.querySelectorAll('.pp-split .cm-line.pp-ai-add, .pp-split .cm-line.pp-ai-del').length"
+            )
+            check("the open note's changed lines flash", bool(flashed), flashed)
+            await asyncio.sleep(3)
+            gone = await cdp.js(
+                "document.querySelectorAll('.pp-split .cm-line.pp-ai-add, .pp-split .cm-line.pp-ai-del').length"
+            )
+            check("the flash fades away", gone == 0, gone)
+            return
+        shown = await wait_for(cdp, "qa.last().includes('shown in the note') && qa.last()", 20)
         check(
-            "Apply selected changed only the ticked note",
-            bool(applied)
-            and "## Groups" not in bank.read_text()
-            and yunus.read_text() == yunus_before,
-            [applied, bank.read_text(), yunus.read_text()],
+            "Review in the note: the chat says where, no gate",
+            bool(shown)
+            and "Apply all" not in str(shown)
+            and "Nothing is changed" not in str(shown),
+            shown,
         )
-        i = await cdp.js("qa.chip('Undo')")
-        pos = await cdp.js(f"qa.rect('.pp-vault-chip', {i})") if i is not None and i >= 0 else None
-        if pos:
-            await cdp.click(*pos)
-        undone = await wait_for(cdp, "qa.last().startsWith('Put back') && qa.last()", 15)
-        await asyncio.sleep(1.5)  # the editor's write lands on disk
+        check("no chips in the chat", not await cdp.js("qa.all('.pp-vault-chip').length"))
         check(
-            "Undo put the note back",
-            bool(undone) and bank.read_text() == before,
-            [undone, bank.read_text()],
+            "nothing is written before Accept",
+            bank.read_text() == before and yunus.read_text() == yunus_before,
+        )
+        bar = await wait_for(
+            cdp, "document.querySelectorAll('.pp-split .pp-aidiff-bar').length", 10
+        )
+        check("the note on screen shows the diff", bool(bar), bar)
+        name = await cdp.js("qa.all('.pp-tab.pp-tab-active')")
+        first = "Bank" if "Bank" in str(name) else "Yunus"
+        hit = await cdp.js("qa.hit('.pp-split .pp-aidiff-bar .pp-aidiff-accept')")
+        check("Accept all is not covered (elementFromPoint)", hit is True, hit)
+        await click_at(cdp, "qa.rect('.pp-split .pp-aidiff-bar .pp-aidiff-accept')")
+        await asyncio.sleep(1.5)
+        target, other = (bank, yunus) if first == "Bank" else (yunus, bank)
+        other_before = before if other is bank else yunus_before
+        check(
+            "Accept all changed that note only",
+            "## Groups" not in target.read_text() and other.read_text() == other_before,
+            [first, target.read_text(), other.read_text()],
+        )
+        tabs = await cdp.js("qa.all('.pp-tab')")
+        i = next((k for k, t in enumerate(tabs or []) if t.startswith(other.stem)), None)
+        check("the other note waits in its own tab", i is not None, tabs)
+        if i is not None:
+            await click_at(cdp, f"qa.rect('.pp-tab', {i})")
+        bar = await wait_for(
+            cdp, "document.querySelectorAll('.pp-split .pp-aidiff-bar').length", 10
+        )
+        check("its diff shows when its tab is opened", bool(bar), bar)
+        await click_at(cdp, "qa.rect('.pp-split .pp-aidiff-bar .pp-aidiff-reject')")
+        await asyncio.sleep(1.0)
+        check(
+            "Reject all leaves it as it was", other.read_text() == other_before, other.read_text()
         )
 
 
@@ -307,6 +342,9 @@ def main() -> int:
     script.write_text(json.dumps(SCRIPT))
     xdg = work / "xdg"
     save_grant(vault, Grant("2026-11-06T12:00"), xdg / "paper-pile")
+    if MODE == "auto":
+        (xdg / "paper-pile").mkdir(parents=True, exist_ok=True)
+        (xdg / "paper-pile" / "config.toml").write_text('[ai]\nedits = "auto"\n')
     env = {
         **os.environ,
         "QT_QPA_PLATFORM": "offscreen",

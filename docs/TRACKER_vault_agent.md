@@ -29,6 +29,7 @@ Legend: 🧠 = needs Opus · ⬜ todo · 🔄 in progress · ✅ done · ⛔ blo
 - **Round C done** (2026-11-06): citations in the normal chat
 - **Round D done** (2026-11-06): Related notes + Link them here, saved searches; P30.40 left for
   the eval
+- **P30.50 / P30.51** (2026-11-09): the chat edits the attached / open note, on agy too, and "add it to the note" uses the previous answer (user reports)
 - **Next task:** M0 eval when the user says so (it decides every 🔄 above); the user's QA pass
   (P30.38)
   (step card with call count, per-note review list, preview card, citation band, rename of saved
@@ -108,6 +109,8 @@ Legend: 🧠 = needs Opus · ⬜ todo · 🔄 in progress · ✅ done · ⛔ blo
 | P30.31 | Checkpoint + Undo (N notes) | ✅ | 2026-11-06 · texts before kept per change; "Undo" writes them back, a note changed again is left alone; the app's `EditorWriter` keeps a version-history entry first (tests) |
 | P30.32 | `write` a new note | 🔄 | 2026-11-06 · `vault/newnote.py`: summary of the found notes, citations as `[[wikilinks]]`, a new-note diff; written under a free name, never over a note (tests); eval pending |
 | P30.33 | Disk-conflict handling | ✅ | 2026-11-06 · a note changed after its diff is never written; its change is made again and shown for review (test through the chat) |
+| P30.50 | Edit the attached / open note from the chat | ✅ | 2026-11-09 · user: the chat answered "write a good morning note on this note" in the chat and could not edit the note (Antigravity said it had no permission); attached notes went around the agent, which holds the only edit path. Now they reach it; `with_target`; target instruction kept in the request's language (gemma4 had rewritten it in French and added "at the start"). Tests (+2); gemma4: 3 changes → reviews of the right note, question + vault search unchanged; NeoHorse target right |
+| P30.51 | Works on agy; the previous answer as content | ✅ | 2026-11-09 · user screenshots (agy, gemini-3.8-flash-low): "Here is the updated note…" with nothing written, "add in the note" → "What would you like to add?". Root cause: Gemini rejected the understanding schema (`""` in the `meta` enum) → every request fell back to the plain chat. Fixed (`"none"`, also the loop's `query`), schema guard test; `uses_answer` + previous answer to the edit as data; notice skipped for given notes; lone edit question shown plainly; stray Apply all → "no longer open". +4 tests (1745). Real agy replay on a copy of the user's vault: good morning (already there → said so), CMOS paragraph then "add in the note" → diff with the paragraph → applied, todo → added or asked. gemma4: reads "write a paragraph on the history of cmos" as a vault request (No notes found) — intent issue for the eval, not changed by feel |
 
 ### M7 — UI
 | ID | Task | Status | Notes |
@@ -195,13 +198,21 @@ Legend: 🧠 = needs Opus · ⬜ todo · 🔄 in progress · ✅ done · ⛔ blo
 | 2026-11-06 | Saved searches live in the chat's ⋯ menu, not the left pane (plan said the left pane) | They are chat questions: the menu next to where they run, no new pane | claude |
 | 2026-11-06 | A step working on an earlier step's notes takes only its sure ones (all when none are sure) | gemma4 run: a maybe note (a hostile one) became sure in the second step and was offered as a link | claude |
 | 2026-11-06 | Not fixed: gemma4 sometimes adds an "answer" step after a locate that only repeats the question | No general rule without word lists; the eval should measure how often (observed in the Related notes run) | claude |
+| 2026-11-09 | Attached notes (picked or `@note`) no longer keep the agent out; only a selection or a file does. An edit that names no note goes to the attached notes, else the open note (new task P30.50) | User: the chat must be able to edit the note it was given, as the inline popup can. A question about the note still costs one understanding call before the usual answer (~5–10 s on gemma4) | user |
+| 2026-11-09 | Edit target and step `detail` written "in the language of the request", not "the user's language", and the target adds nothing the request does not say | gemma4 read "the user's language" as French and added "at the start of the note" (the line went above the heading) | claude |
+| 2026-11-09 | A previous answer's text never reaches understanding; only the user's message it answered, and a `uses_answer` flag decides; the text goes to the note's edit as data | Prompt-injection rule (§8): model output after reading notes must not steer the deciding call — but "add it to the note" needs memory | claude |
+| 2026-11-09 | No remote notice when every step works only on attached / open notes | The plain chat sends those notes to the same backend without asking; the notice spoke of "up to 60 notes" for a one-note edit and blocked every request until answered | claude |
+| 2026-11-09 | Not changed: gemma4 reading "write a paragraph on X" as a vault request | Intent rules change only with `tools/ai_eval/intent.py` and a fresh held-out set (CLAUDE.md); candidate structural fix to evaluate: a step that finds no notes for an answer / write falls back to the plain chat answer | claude |
+| 2026-11-09 | Remote notice only for steps that look through the vault (search, folder, tag, period, links); the previous answer's notes and named notes count as pointed at | User: "why this?" — the notice blocked "rewrite … both of the notes" after an attached-note edit; those notes had already gone to the same backend | user |
 
 ## Issues log
 | Date | Task | Symptom | Root cause | Fix | Gotcha? |
 |---|---|---|---|---|---|
+| 2026-11-09 | P30.51 | With agy every chat edit came back as plain text ("Here is the updated note…"), nothing written; follow-ups not understood | The understanding schema had `""` in an enum; Gemini answers 400 (`enum[0]: cannot be empty`); the error was only logged and the chat fell back to the plain answer | `"none"` instead of `""`; test over every schema | y |
 | 2026-11-06 | P30.46 | The citation band never appeared in the app (unit tests and the bundle fine) | `run_method("showCited")` calls the Vue component (`pp_editor.js`), which forwards each editor method by name; `showCited` was not forwarded | Forwarder added | y |
 | 2026-11-06 | P30.46 | The band stayed after a click in the note | A `domEventHandlers({mousedown})` in the band's extension never ran: an earlier extension handles the mousedown | Cleared in the StateField from the transaction's user event | n |
 | 2026-11-06 | P30.13 | gemma4 never filled a step's folders / dates although the message named them | The fields were optional in the JSON schema; with schema-constrained output the model skips optional properties | Every field required (empty values allowed), target fields ordered before topic / terms | y |
+| 2026-11-09 | P30.50 | Chat edits on a daily note came back in French, above the heading | Target rule said "in the user's language" (no language given) and the model added a place of its own | Rule: the request's language, nothing added | n |
 
 ## Session log
 - 2026-11-06 · P30.1 plan + tracker written (no code)
@@ -219,3 +230,6 @@ Legend: 🧠 = needs Opus · ⬜ todo · 🔄 in progress · ✅ done · ⛔ blo
 - 2026-11-06 · Round B: memory file in Settings (Edit dialog) + "remember …" in the chat (diff, Save / Cancel) · 1726 tests (+2); gemma4: both phrasings understood
 - 2026-11-06 · Round C: citations in the normal chat (numbered notes, checked, pills) · 1728 tests (+2); gemma4 cited the open note, none on a general question
 - 2026-11-06 · Round D (M9): Related notes + Link them here, saved searches, later steps take only sure notes · 1735 tests; real-app QA 20/20; gemma4 Related notes run
+- 2026-11-09 · P30.50 edit the attached / open note from the chat (attached notes reach the agent, `with_target`, target language rule) · 1735 tests (+2 new, 1 rewritten); gemma4 real run: good-morning / add-a-line / translate → reviews of the right note
+- 2026-11-09 · P30.51 vault agent on agy (schema), previous answer as content, notice skip, lone question · 1745 tests (+4); real agy replay right; gemma4 intent misread logged for the eval
+- 2026-11-09 · remote notice only when the vault is looked through; "Nothing was changed" wording · 1750 tests (+1); agy replay of the user's two messages: no notice, both notes rewritten

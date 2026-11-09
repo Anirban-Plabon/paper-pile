@@ -6,6 +6,7 @@ from pathlib import Path
 
 from nicegui import app, background_tasks, ui
 
+from paper_pile.core.ai.factory import shutdown_providers
 from paper_pile.gui import native_boot
 from paper_pile.gui.files import make_asset_router
 from paper_pile.gui.icons import icons_config_script, make_icon_router
@@ -28,6 +29,7 @@ def _build_pages(host: VaultHost, *, native: bool) -> None:
     app.include_router(make_print_router())  # notes laid out on paper (page view, PDF)
     app.on_startup(host.start_watcher)
     app.on_shutdown(host.stop_watcher)
+    app.on_shutdown(shutdown_providers)  # agy processes started ahead (P28.7)
 
     @ui.page("/")
     def index() -> None:

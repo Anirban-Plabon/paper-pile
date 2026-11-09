@@ -61,7 +61,7 @@ SCHEMA: dict[str, Any] = {
         "dates": _DATES,
         "date_kind": {"type": "string", "enum": ["content", "edited", "any"]},
         "direction": {"type": "string", "enum": ["out", "in"]},
-        "query": {"type": "string", "enum": ["", *QUERIES]},
+        "query": {"type": "string", "enum": ["none", *QUERIES]},  # no "" (Gemini rejects it)
     },
     # every field required (a constrained model skips optional ones — CLAUDE.md gotcha)
     "required": [

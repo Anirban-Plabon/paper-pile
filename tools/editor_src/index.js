@@ -16,7 +16,7 @@ import { editorExtensions } from "./grammar.js";
 import { autoBrackets, autoClose } from "./autoclose.js";
 import { headingFolding } from "./fold.js";
 import { listEditing } from "./listedit.js";
-import { jumpTo, motion } from "./motion.js";
+import { flashChanges, jumpTo, motion } from "./motion.js";
 import { pageDrag } from "./pagedrag.js";
 import { frontMatterEnd, pageView, printLayoutReady } from "./pageview.js";
 import { selectionSync } from "./selectionsync.js";
@@ -57,6 +57,15 @@ function externalUrl(href) {
 // Chat replies are typeset by the same code as the editor's widgets (KaTeX, Mermaid).
 if (typeof window !== "undefined") {
   window.ppTypeset = (el, theme) => typeset(el, theme || (window.ppIsDark ? "dark" : "light"));
+  // Focus the editor that owns `dom` with its selection on screen at once (askpop.js: copy, cut
+  // and paste typed in the Ask box go to the note's selection). A plain DOM focus() restores the
+  // selection a moment later, after the browser has already copied nothing.
+  window.ppFocusEditor = (dom) => {
+    const view = dom && EditorView.findFromDOM(dom);
+    if (!view) return false;
+    view.focus();
+    return true;
+  };
 }
 
 // Marks a change mirrored from the other editor of a split (not the user's, not reported back).
@@ -564,6 +573,12 @@ export function createEditor(
     showProposal(id, proposal) {
       if (id !== docId) return false;
       showProposal(view, proposal ? { ...proposal, docId } : null);
+      return true;
+    },
+    // An AI change applied at once: flash its lines (motion.js) when doc `id` is on screen.
+    flashChanges(id, ranges) {
+      if (id !== docId) return false;
+      flashChanges(view, ranges);
       return true;
     },
     // Where the caret is on screen (client pixels), for the Ask box of the Ask… command.

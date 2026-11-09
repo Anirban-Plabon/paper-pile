@@ -60,6 +60,28 @@ const marksField = StateField.define({
   provide: (f) => EditorView.decorations.from(f, (v) => v.set),
 });
 
+// An AI change applied at once (PLAN §4.32): its added / changed lines flash green and a removal
+// leaves a red mark on the line where it was, fading like a code editor's (AI_FLASH_MS × the
+// speed). With motion off the marks stay still for the same time, so the change is still seen.
+// `ranges`: [{from, to, del}] in UTF-16 offsets of the text after the change.
+const AI_FLASH_MS = 2200;
+export function flashChanges(view, ranges) {
+  const factor = motionFactor();
+  const id = ++seq;
+  const len = view.state.doc.length;
+  const effects = ranges.map((r) => {
+    const from = Math.min(r.from, len);
+    const to = Math.min(Math.max(r.from, r.to - 1), len); // not the line after a trailing newline
+    const cls = r.del ? "pp-ai-del" : "pp-ai-add";
+    return addMarks.of({ from, to, cls: factor === 0 ? `${cls} pp-ai-still` : cls, id });
+  });
+  if (!effects.length) return;
+  view.dispatch({ effects });
+  setTimeout(() => {
+    if (view.dom.isConnected) view.dispatch({ effects: clearMarks.of(id) });
+  }, AI_FLASH_MS * (factor || 1) + 50);
+}
+
 // Mark lines from..to with `cls` for `ms` (× the speed). With motion off: `stillCls` instead,
 // kept until the user's next edit or click/caret move; without `stillCls` nothing is marked.
 export function markLines(view, from, to, { cls, ms = FLASH_MS, style = "", stillCls = "" }) {

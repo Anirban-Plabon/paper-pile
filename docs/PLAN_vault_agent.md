@@ -320,10 +320,31 @@ chat, not a second chat.
   made exactly as before (open note, mentions, tabs, the old `@vault` sections). The chat UI
   did not change: status lines go through the existing `on_status`.
 - **When the agent looks** (`ai.vault_agent`, Settings → AI → "Search the whole vault",
-  essential row): `auto` (default) = messages with no attachment, and any `@vault` /
-  `@folder/` message; `at` = only `@` messages; `off` = never (the old `@vault` search).
-  A selection, a picked note, a file or an `@note` mention in the text is an attachment: the
-  message is about that, so the agent stays out unless an `@` scope is there too.
+  essential row): `auto` (default) = messages with no selection or file attached (picked
+  notes and `@note` mentions included), and any `@vault` / `@folder/` message; `at` = only
+  `@` messages; `off` = never (the old `@vault` search). A selection or a file is the chat's
+  own (its answer can replace the selection), so the agent stays out unless an `@` scope is
+  there too.
+- **Changing the attached / open note** (P30.50, user 2026-11-09): understanding is shown
+  the attached notes' names (never their text). A request to write into, add to, remove from
+  or change a note — the open or an attached one included — is an `edit` step; a question
+  about only that note still needs no vault (the usual answer). An `edit` step that names no
+  note goes to the attached notes, else to the open note when it searches for nothing
+  (`session.with_target`) — it never reaches across the vault by default. The change is the
+  usual M6 review (diff → Apply / Cancel → Undo).
+- **No approval gate in the chat** (PLAN §4.32, P31): the review / apply steps of M6 follow `ai.edits` — written at once, or shown in the notes through the writer's `review`; the chat's Apply all / Cancel review is kept only for a writer that cannot show diffs (tools).
+- **The chat's previous answer** (P30.51, user 2026-11-09: "fails to understand because of bad
+  memory"): understanding is told that a previous plain answer exists and which of the user's
+  messages it answered — never its text (it may come from notes; §8). A step that writes that
+  answer into a note sets `uses_answer`; the answer's text then goes only to each note's edit,
+  marked as data (`edits.with_content`), never to the target call. Our own chip words (Apply
+  all / Cancel / Undo) with nothing open are never a new request.
+- **Remote AI permission** (2026-11-09, PLAN §4.32; replaced the once-per-chat notice and,
+  the same day, its narrowing to searches): `ai.remote_agent` decides whether the agent may
+  read / edit the vault on a remote backend; when not allowed the chat offers *Allow always* /
+  *Allow this session* / *Don't allow*, then the request goes on.
+- **Schemas every backend accepts**: no `""` in an `enum` (Gemini answers 400 — the agent then
+  fell back to the plain chat on every request); `tests/core/test_ai_schemas.py` guards it.
 - **Fallbacks**: the model says the vault is not needed, cannot be asked, or gives no
   usable steps → the usual answer. No index (tests, tools) → the usual answer.
 - **`@folder/`** scopes are put on every step that finds its own notes and has no folder
@@ -614,6 +635,8 @@ green + the stated eval numbers recorded in the tracker. 🧠 = needs Opus.
 | P30.31 | Checkpoint + "Undo this change (N notes)" | restores every note (test); version history entries present |
 | P30.32 | `write` a new note from results | diff first; eval write-new group |
 | P30.33 | Disk-conflict handling | a note changed after the diff → diff redone, never applied over it (test) |
+| P30.50 | Edit the attached / open note from the chat | a change asked about an attached note (or, with none, the open one) is a review of that note only; questions about it keep the usual answer (tests); real model: the review in the request's language |
+| P30.51 | Works on agy; the previous answer as content | understanding and loop schemas accepted by Gemini (test over every schema); "add it to the note" after a plain answer writes that answer (its text never reaches understanding or the target call — test); no remote notice for attached / open notes; one note's edit question shown as a question; real agy: edits applied, follow-up written |
 
 ### M7 — UI
 | ID | Task | Acceptance |

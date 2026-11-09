@@ -23,7 +23,7 @@ from dataclasses import fields, replace
 from datetime import date, datetime
 from typing import Any
 
-from nicegui import ui
+from nicegui import background_tasks, ui
 
 import paper_pile.core.commands_builtin  # noqa: F401  (importing it registers the slash commands)
 from paper_pile.core import assets
@@ -60,6 +60,8 @@ from paper_pile.core.ai.proposals import Edit as ProposedEdit
 from paper_pile.core.ai.proposals import (
     Proposal,
     accept,
+    changed_spans,
+    changes_between,
     propose,
     propose_many,
     reject,
@@ -157,6 +159,7 @@ def _count(n: int, noun: str) -> str:
 
 
 AI_SELECTION_TTL_S = 300.0  # how long a Ctrl+J selection stays usable
+AI_FLASH_LATER_S = 60.0  # an AI change to a closed note flashes when it is opened this soon
 STREAM_FLUSH_S = 0.06  # how often streamed text is written into the editor
 AUTOSAVE_AFTER_CHANGE_S = 0.7  # on top of the editor's own 0.3 s debounce: ~1 s in total
 RETRY_AFTER_FAILURE_S = 5.0
@@ -228,6 +231,9 @@ class EditorPane:
         ] = {}
         self._readonly: dict[int, bool] = {}  # shown read-only (Settings → AI → AI changes)
         self._ai_kept: set[int] = set()  # proposals whose "before AI" version is kept
+        # AI changes applied at once to notes not on screen: flashed when opened soon (§4.32)
+        self._ai_flash_later: dict[str, tuple[float, list[dict[str, Any]]]] = {}
+        self._ai_new_notes: set[str] = set()  # notes the AI made, shown for review (§4.32)
         self._ai_selection: dict[str, Any] | None = None  # set by Ctrl+J in the editor
         self._streams = 0
         self._table_lock = asyncio.Lock()  # table edits apply one after the other
@@ -713,6 +719,7 @@ class EditorPane:
                 self._apply_recovered(existing.id, recovered)
             if activate:
                 self._activate(existing.id)
+                self._flash_soon(path)
             return
         if recovered is None and not skip_recovery:
             entry = self.recovery.get(path)
@@ -742,8 +749,14 @@ class EditorPane:
             self.tabs.set_pinned(tab.id, True)
         if activate:
             self._activate(tab.id)
+            self._flash_soon(path)
         if buffer.dirty:  # restored text: the editor reports no change for it, so schedule a save
             self._schedule_save(AUTOSAVE_AFTER_CHANGE_S)
+
+    def _flash_soon(self, path: str) -> None:
+        """An AI change made while ``path`` was closed: flash it now that it is on screen."""
+        if path in self._ai_flash_later:
+            background_tasks.create(self.flash_if_changed(path), name="pp-ai-flash")
 
     def _shaped_by_template(self, path: str) -> bool:
         """Daily notes look like their template and templates are copied into other notes: neither
@@ -784,6 +797,8 @@ class EditorPane:
         self._editors[0].set_visibility(True)
         self._editor.show_doc(tab_id, self.buffers[tab_id].text, self.buffers[tab_id].path)
         self._shown[self._slot] = tab_id
+        if tab_id in self._proposals:  # e.g. one shown for review while in the background
+            background_tasks.create(self._reshow_proposal(tab_id), name="pp-reshow-proposal")
         if self._split_open:
             self._show_heads()
         self._editor.focus()
@@ -1152,7 +1167,7 @@ class EditorPane:
 
     def ai_readonly(self) -> bool:
         """*Read-only* (Settings → AI): the AI's answers never go into a note."""
-        return self._edit_mode() == "readonly"
+        return False  # Read-only was removed (P31.1); kept for its callers
 
     async def replace_with_answer(self, target: AskTarget, answer: str) -> None:
         """Translate's *Replace* (AI_EDITS §7): the answer in place of the box's text, as a
@@ -1355,7 +1370,11 @@ class EditorPane:
         text = fresh if fresh is not None else self.buffers[self.tabs.active or 0].text
         picked = await self._editor.get_selection()
         tabs = [(b.path, b.text) for b in self.buffers.values()]
-        return EditorSnapshot(path, text, picked[0] if picked else "", tabs)
+        other_id = self._shown[1 - self._slot] if self._split_open else None
+        other = self._tab_path(other_id) if other_id is not None else None
+        return EditorSnapshot(
+            path, text, picked[0] if picked else "", tabs, other if other != path else None
+        )
 
     def insert_text(self, text: str) -> None:
         """Put ``text`` at the caret of the note on screen (replacing a selection)."""
@@ -1878,6 +1897,7 @@ class EditorPane:
                     changes[-1].start + len(changes[-1].insert),
                 )
                 if await self._apply_edit(tab_id, text, edit, move_caret=False):
+                    await self._flash_applied(tab_id, changes)
                     self._toast("Changed by the AI · Ctrl+Z undoes it")
                 return
         if mode == "auto":
@@ -1887,7 +1907,7 @@ class EditorPane:
             self._edit_runs.pop(tab_id, None)
         else:
             self._edit_runs[tab_id] = run
-        self._readonly[tab_id] = mode == "readonly"
+        self._readonly[tab_id] = False
         await self._show_proposal(tab_id, text)
 
     async def _update_from_note(self, tab_id: int, proposal: Proposal, index: int) -> None:
@@ -1948,11 +1968,114 @@ class EditorPane:
                     changes[-1].start + len(changes[-1].insert),
                 )
                 if await self._apply_edit(tab_id, text, edit, move_caret=False):
+                    await self._flash_applied(tab_id, changes)
                     self._toast("Changed by the AI · Ctrl+Z undoes it")
             return
         self._proposals[tab_id] = proposal  # a new proposal replaces the one shown before
         self._readonly[tab_id] = action == "show"
         await self._show_proposal(tab_id, text)
+
+    # ---- AI changes from the chat (PLAN §4.32): applied at once, or shown for review ------------
+
+    async def write_ai(self, path: str, before: str, after: str, reason: str) -> bool:
+        """An AI change applied at once: in an open note one undo step and its lines flash;
+        a closed note is written (and flashes when opened within a minute). A "before AI"
+        version is kept. False when the note is no longer ``before`` (never written over)."""
+        changes = changes_between(before, after)
+        if not changes:
+            return before == after
+        tab = self.tabs.find(path)
+        if tab is not None and tab.id in self.buffers:
+            text = await self._live_text(tab.id)
+            text = (text if text is not None else self.buffers[tab.id].text).replace("\r\n", "\n")
+            if text != before:
+                return False
+            self.keep_version(path, before, reason)
+            edit = TextEdit(
+                tuple(TextChange(c.start, c.end, c.insert) for c in changes), changes[0].start
+            )
+            if not await self._apply_edit(tab.id, before, edit, move_caret=False):
+                return False
+            await self._editor_for(tab.id).flash_changes(tab.id, self._flash_ranges(after, changes))
+        else:
+            try:
+                if self.vault.read_text(path) != before:
+                    return False
+                self.keep_version(path, before, reason)
+                self.vault.write_text(path, after)
+            except VaultError:
+                log.exception("could not write %s", path)
+                return False
+            self._ai_flash_later[path] = (time.monotonic(), self._flash_ranges(after, changes))
+        if self.index is not None:
+            self.index.update_note(path)
+        return True
+
+    @staticmethod
+    def _flash_ranges(after: str, changes: list[Any]) -> list[dict[str, Any]]:
+        """What the editor flashes for ``changes``, in UTF-16 offsets of ``after``."""
+        return [
+            {"from": utf16_index(after, a), "to": utf16_index(after, b), "del": removed}
+            for a, b, removed in changed_spans(changes)
+        ]
+
+    async def _flash_applied(self, tab_id: int, changes: list[Any]) -> None:
+        """An Ask-box edit applied at once flashes like the chat's (PLAN §4.32)."""
+        after = self.buffers[tab_id].text
+        ranges = self._flash_ranges(after, sorted(changes, key=lambda c: c.start))
+        await self._editor_for(tab_id).flash_changes(tab_id, ranges)
+
+    async def flash_if_changed(self, path: str) -> None:
+        """A note the AI changed while it was closed was opened: flash its changed lines once
+        (within :data:`AI_FLASH_LATER_S` of the change)."""
+        entry = self._ai_flash_later.pop(path, None)
+        tab = self.tabs.find(path)
+        if entry is None or tab is None or time.monotonic() - entry[0] > AI_FLASH_LATER_S:
+            return
+        for _ in range(10):  # the editor shows the note a moment after the tab opens
+            if await self._editor_for(tab.id).flash_changes(tab.id, entry[1]):
+                return
+            await asyncio.sleep(0.1)
+
+    async def show_ai_change(
+        self, path: str, proposal: Proposal, *, new: bool = False, activate: bool = True
+    ) -> bool:
+        """An AI change from the chat for review: the note opens with the diff (Accept / Reject,
+        like the Ask box's edits). ``new``: a note the AI made — rejected and empty, it goes to
+        the trash."""
+        await self.open(path, activate=activate)
+        tab = self.tabs.find(path)
+        if tab is None or tab.id not in self.buffers:
+            return False
+        if not activate:  # a tab opened in the background: the tab strip shows it
+            self._refresh()
+            self._notify_tabs()
+        if new:
+            self._ai_new_notes.add(path)
+        self._proposals[tab.id] = proposal
+        self._edit_runs.pop(tab.id, None)
+        self._edit_asks.pop(tab.id, None)
+        self._readonly[tab.id] = False
+        if tab.id == self.tabs.active:
+            text = await self._live_text(tab.id)
+            shown = text if text is not None else self.buffers[tab.id].text
+            await self._show_proposal(tab.id, shown)
+        return True
+
+    def _drop_rejected_new(self, tab_id: int, text: str) -> None:
+        """A note the AI made whose whole diff was rejected (still empty): to the trash."""
+        path = self._tab_path(tab_id)
+        if path is None or path not in self._ai_new_notes or text.strip():
+            return
+        self._ai_new_notes.discard(path)
+        self.close_note(path)
+        try:
+            trashed = self.vault.delete(path)
+        except VaultError:
+            log.exception("could not move %s to the trash", path)
+            return
+        self.bus.publish("vault.deleted", path=path, trashed=trashed)
+        self._toast("The AI's new note was rejected and moved to the trash.")
 
     async def propose_in_note(self, path: str, old: str, new: str) -> None:
         """A chat answer for text of ``path``: open it and show the answer as a diff there."""
@@ -1987,7 +2110,8 @@ class EditorPane:
         action = edit_action(self._edit_mode(), "replace")
         await self.propose_edit(tab_id, text, start, end, insert, action)
 
-    async def _show_proposal(self, tab_id: int, text: str) -> None:
+    async def _show_proposal(self, tab_id: int, text: str) -> bool:
+        """Put tab ``tab_id``'s proposal (or none) on screen; False when its doc is not shown."""
         proposal = self._proposals.get(tab_id)
         payload = None
         if proposal is not None:
@@ -2004,7 +2128,17 @@ class EditorPane:
                     bool(self._readonly.get(tab_id)),
                     again=tab_id in self._edit_asks,  # Try again: there is a request to run
                 )
-        await self._editor_for(tab_id).show_proposal(tab_id, payload)
+        return await self._editor_for(tab_id).show_proposal(tab_id, payload)
+
+    async def _reshow_proposal(self, tab_id: int) -> None:
+        """A tab with a proposal came on screen (one shown for review while it was in the
+        background, PLAN §4.32): show its diff once the editor shows the note."""
+        for _ in range(10):
+            if self.tabs.active != tab_id or tab_id not in self._proposals:
+                return
+            if await self._show_proposal(tab_id, self.buffers[tab_id].text):
+                return
+            await asyncio.sleep(0.1)
 
     async def _on_proposal(self, args: dict[str, Any]) -> None:
         """Accept / Reject (one change, or all) on the diff of an AI edit."""
@@ -2026,6 +2160,8 @@ class EditorPane:
             left = self._proposals.get(tab_id)
         elif args.get("action") == "reject":
             left = reject(proposal, int(hunk) if hunk is not None else None)
+            if left is None:
+                self._drop_rejected_new(tab_id, text)
         else:
             result = accept(proposal, text, {int(hunk)} if hunk is not None else None)
             if result is None:
@@ -2034,6 +2170,8 @@ class EditorPane:
             else:
                 changes, left = result
                 path = self._tab_path(tab_id)
+                if path is not None:
+                    self._ai_new_notes.discard(path)  # accepted: the user's note now
                 if path is not None and proposal.id not in self._ai_kept:  # once per proposal
                     self._ai_kept.add(proposal.id)
                     self.keep_version(path, text, "before AI")

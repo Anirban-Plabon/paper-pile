@@ -255,6 +255,27 @@ def apply_changes(text: str, changes: list[Change]) -> str:
     return text
 
 
+def changes_between(before: str, after: str) -> list[Change]:
+    """The line changes that make ``before`` into ``after`` (sorted, not overlapping): an AI
+    change applied at once goes to the editor as these, one undo step (PLAN §4.32)."""
+    proposal = propose("", before, 0, len(before), after)
+    done = accept(proposal, before) if proposal is not None else None
+    return sorted(done[0], key=lambda c: c.start) if done else []
+
+
+def changed_spans(changes: list[Change]) -> list[tuple[int, int, bool]]:
+    """Where ``changes`` (sorted, in the old text) land in the new text: ``(start, end,
+    removed)`` code-point spans — the inserted text, or for a pure removal the point where it
+    was (``removed`` True). What the editor flashes after an AI change."""
+    out: list[tuple[int, int, bool]] = []
+    shift = 0
+    for c in changes:
+        at = c.start + shift
+        out.append((at, at + len(c.insert), not c.insert))
+        shift += len(c.insert) - (c.end - c.start)
+    return out
+
+
 def word_marks(old: str, new: str) -> tuple[list[tuple[int, int]], list[tuple[int, int]]] | None:
     """The words that differ between ``old`` and ``new`` (code-point ranges in each), for marking
     them inside the diff's lines; None when most words changed (marks would be noise)."""

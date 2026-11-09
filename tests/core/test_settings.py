@@ -337,7 +337,8 @@ def test_ai_edits_setting() -> None:
     from paper_pile.core.settings import ALL, parse_value, sanitized
 
     assert sanitized({})["ai.edits"] == "ask"
-    assert all(parse_value(ALL["ai.edits"], v).ok for v in ("ask", "auto", "readonly"))
+    assert all(parse_value(ALL["ai.edits"], v).ok for v in ("ask", "auto"))
+    assert not parse_value(ALL["ai.edits"], "readonly").ok  # removed (P31.1)
     assert not parse_value(ALL["ai.edits"], "always").ok
 
 

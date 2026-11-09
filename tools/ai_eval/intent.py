@@ -21,6 +21,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from paper_pile.core.ai.engine import AiEngine
+from paper_pile.core.ai.factory import closing
 from paper_pile.core.ai.understand import understand
 from paper_pile.core.config import Config
 from paper_pile.core.vault import Vault
@@ -193,4 +194,4 @@ if __name__ == "__main__":
         "--provider", default="ollama", choices=("ollama", "vllm", "openai", "antigravity")
     )
     parser.add_argument("--host", default="")
-    sys.exit(asyncio.run(main(parser.parse_args())))
+    sys.exit(asyncio.run(closing(main(parser.parse_args()))))

@@ -57,6 +57,7 @@ class EditorSnapshot:
     text: str = ""
     selection: str = ""
     tabs: list[tuple[str, str]] = field(default_factory=list)
+    other: str | None = None  # the note on the other side of a split view (also on screen)
 
 
 class BacklinkSource(Protocol):

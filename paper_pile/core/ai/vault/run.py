@@ -14,7 +14,13 @@ from paper_pile.core.ai.engine import AiEngine
 from paper_pile.core.ai.vault.answer import answer
 from paper_pile.core.ai.vault.candidates import Gatherer
 from paper_pile.core.ai.vault.cards import CardMaker
-from paper_pile.core.ai.vault.edits import NoteWriter, VaultWriter, propose_batch, review_text
+from paper_pile.core.ai.vault.edits import (
+    NoteWriter,
+    Target,
+    VaultWriter,
+    propose_batch,
+    review_text,
+)
 from paper_pile.core.ai.vault.extract import extract
 from paper_pile.core.ai.vault.find import DEFAULT_BUDGETS, Budgets, big_job, find_notes
 from paper_pile.core.ai.vault.hints import hints
@@ -45,6 +51,10 @@ class VaultAgent:
     today: Callable[[], date] = date.today
     memory: str = ""  # the vault memory file (memory.py)
     writer: NoteWriter | None = None  # how notes are read / written for edits (M6)
+    # the notes the user gave (attached, open on screen) and the message's own words: a change
+    # to only those goes straight to the edit pipeline with the user's words (PLAN §4.32)
+    given: frozenset[str] = frozenset()
+    words: str = ""
     link: Callable[[str], str] = lambda p: p.rsplit("/", 1)[-1][:-3]  # path → [[link]] name
 
     def facts(self, path: str) -> tuple[list[str], list[str]]:
@@ -89,13 +99,14 @@ async def _act(
     results: ResultSet,
     on_text: Callable[[str], None] | None,
     progress: Callable[[str, int, int], None],
+    content: str = "",
 ) -> Reply:
     step = planned.step
     words = [w for t in step.terms for w in t.split()]
     if not len(results):
         return Reply("No notes found.", results)
     if step.action in CHANGE_ACTIONS:
-        return await _change(agent, step, request, results, progress)
+        return await _change(agent, step, request, results, progress, content)
     if step.action == "locate":
         return locate(results)
     if step.action == "answer":
@@ -118,8 +129,11 @@ async def _change(
     request: str,
     results: ResultSet,
     progress: Callable[[str, int, int], None],
+    content: str = "",
 ) -> Reply:
-    """Edits across notes / a new note: proposals for review — nothing is written here."""
+    """Edits across notes / a new note: proposals for review — nothing is written here.
+    ``content``: text to write (the chat's previous answer), given to each note's edit as data;
+    the target call never sees it."""
     writer = agent.writer or VaultWriter(agent.engine.vault)
     if step.action == "write":
         folder = step.scope.folders[0] if step.scope.folders else ""
@@ -135,12 +149,17 @@ async def _change(
         )
     else:
         items = results.sure() or results.maybe()
+        # notes the user gave: the user's own words go to the edit pipeline, as the Ask box
+        # does — no target call rewording them (it lost the language and invented places)
+        direct = bool(items) and agent.words and all(i.path in agent.given for i in items)
         batch = await propose_batch(
             agent.engine,
-            request,
+            agent.words if direct else request,
             [(i.path, i.title) for i in items],
             writer,
+            target=Target("change", "", agent.words) if direct else None,
             on_progress=progress,
+            content=content,
         )
     return Reply(review_text(batch), results, review=batch)
 
@@ -168,9 +187,11 @@ async def run_plan(
     use_best: bool = False,
     stop: Callable[[], bool] = lambda: False,
     skip: frozenset[str] = frozenset(),
+    content: str = "",
 ) -> RunResult:
     """Every step of a ready ``plan``. ``use_best``: the user already chose to go on with the
-    best candidates when a step found more than the budget."""
+    best candidates when a step found more than the budget. ``content``: the chat's previous
+    answer, for the change steps that write it into a note (``Step.uses_answer``)."""
     out = RunResult()
     found_by_step: list[ResultSet] = []
     for i, planned in enumerate(plan.steps):
@@ -230,7 +251,10 @@ async def run_plan(
         if ask is not None:
             out.choice = Choice(ask.question, ask.options, ask.values, ask.kind, step=i)
             return out
-        reply = await _act(agent, planned, request, found.results, _text_for(on_text, i), progress)
+        given = content if step.uses_answer else ""
+        reply = await _act(
+            agent, planned, request, found.results, _text_for(on_text, i), progress, given
+        )
         reply.hints = hints(planned, found.results, agent.tools.resolver, agent.tags())
         reply.notices = [*plan.notices, *reply.notices] if i == 0 else reply.notices
         out.replies.append(reply)

@@ -26,6 +26,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from ai_eval.cases import Case, load_cases, run_case, write_vault
 from ai_eval.checks import run_checks
 from paper_pile.core.ai.engine import AiEngine
+from paper_pile.core.ai.factory import closing
 from paper_pile.core.ai.window import WindowCache
 from paper_pile.core.config import Config
 from paper_pile.core.index import Index
@@ -110,4 +111,4 @@ if __name__ == "__main__":
     parser.add_argument("--host", default="", help="server address (default: the provider's)")
     parser.add_argument("--api-key-env", default="", help="variable holding the API key")
     parser.add_argument("--out", default="", help="report folder (default: a scratch folder)")
-    sys.exit(asyncio.run(main(parser.parse_args())))
+    sys.exit(asyncio.run(closing(main(parser.parse_args()))))

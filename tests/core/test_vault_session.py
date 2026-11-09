@@ -3,16 +3,18 @@ agent first and falls back to the usual answer — end to end with a scripted ba
 answers each prompt by its rules."""
 
 import json
+from datetime import date
 from pathlib import Path
 
 import pytest
 
 from paper_pile.core.ai.context import EditorSnapshot
-from paper_pile.core.ai.engine import AiEngine
+from paper_pile.core.ai.engine import AiEngine, Selection
 from paper_pile.core.ai.fake import FakeProvider
 from paper_pile.core.ai.provider import ChatMessage
 from paper_pile.core.ai.vault.plan import Choice
 from paper_pile.core.ai.vault.session import picked_option, question_text, wants_agent
+from paper_pile.core.ai.vault.understand import VaultRequest
 from paper_pile.core.config import Config, scope_for
 from paper_pile.core.index import Index
 from paper_pile.core.vault import Vault
@@ -39,6 +41,9 @@ def step(action: str = "locate", **kw: object) -> dict[str, object]:
     return base
 
 
+TODAY = date(2026, 11, 9)
+
+
 class Backend:
     """Answers by which prompt it is: understanding (``plan`` per message), judge (yes when
     the card mentions microcredit), more terms (none), else the usual chat echo."""
@@ -57,6 +62,20 @@ class Backend:
                 self.plans.get(
                     message, {"needs_vault": False, "steps": [], "question": "", "options": []}
                 )
+            )
+        if system.startswith("A user selected text"):  # attached notes: the Ask box's call
+            self.kinds.append("intent")
+            return json.dumps(
+                {
+                    "want": "answer",
+                    "complete": True,
+                    "question": "",
+                    "options": [],
+                    "reach": "note",
+                    "size": "small",
+                    "adds": False,
+                    "new_form": False,
+                }
             )
         if system.startswith("You decide which of a user's notes"):
             self.kinds.append("judge")
@@ -159,15 +178,43 @@ async def test_not_a_vault_request_gets_the_usual_answer(setup: tuple[AiEngine, 
     assert text == "Usual chat answer." and backend.kinds == ["understand", "chat"]
 
 
-async def test_attached_notes_skip_the_agent(setup: tuple[AiEngine, Backend]) -> None:
+async def test_questions_on_attached_notes_get_the_usual_answer(
+    setup: tuple[AiEngine, Backend],
+) -> None:
+    # attached notes no longer skip the agent (a change to them is its edit, user 2026-11-09):
+    # it reads the request, and a question about the attached note is the chat's as before
     ai, backend = setup
     text, _, _ = await ask(ai, "summarise this", notes=["Pricing.md"])
-    assert text == "Usual chat answer." and "understand" not in backend.kinds
-    await ask(ai, "what does @Pricing say?")  # an @note mention is an attachment too
-    assert "understand" not in backend.kinds
+    assert text == "Usual chat answer." and backend.kinds == ["intent", "chat"]
+    backend.kinds.clear()
+    await ask(ai, "explain this", selections=[Selection("x", "From [[Pricing]]", "Pricing")])
+    assert backend.kinds == ["chat"]  # a selection is the chat's (its answer can replace it)
+    backend.kinds.clear()
     mode(ai, "off")
     await ask(ai, "@vault where is microcredit?")
     assert "understand" not in backend.kinds  # off: the old @vault search, no agent
+
+
+def test_with_target() -> None:
+    from paper_pile.core.ai.vault.session import with_target
+    from paper_pile.core.ai.vault.understand import parse
+
+    def req(**kw: object) -> VaultRequest:
+        found = parse({"needs_vault": True, "steps": [step(**kw)]}, TODAY)
+        assert found is not None
+        return found
+
+    bare = req(action="edit")
+    assert with_target(bare, ["A"], "Open").steps[0].scope.notes == ("A",)
+    assert with_target(bare, [], "Open").steps[0].scope.notes == ("Open",)
+    assert with_target(bare, [], "").steps[0].scope.notes == ()
+    searching = req(action="edit", terms=["microcredit"])  # notes on a topic, not this one
+    assert with_target(searching, [], "Open").steps[0].scope.notes == ()
+    assert with_target(searching, ["A"], "Open").steps[0].scope.notes == ("A",)
+    named = req(action="edit", notes=["B"])
+    assert with_target(named, ["A"], "Open").steps[0].scope.notes == ("B",)
+    asked = req(action="answer")
+    assert with_target(asked, ["A"], "Open").steps[0].scope.notes == ()
 
 
 async def test_at_mode_only_with_scopes(setup: tuple[AiEngine, Backend]) -> None:

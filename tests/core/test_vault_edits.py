@@ -38,6 +38,7 @@ from paper_pile.core.vault import Vault
 
 ACME = "# Acme\n\nIntro.\n\n## Budget\n\n10k\n\n## Contacts\n\nJane\n"
 BETA = "# Beta\n\nNo budget here.\n"
+ACME_CHANGED = "Changed 1 note: [Acme](<pp-note:Clients/Acme.md>)."
 
 
 @pytest.fixture
@@ -192,10 +193,22 @@ def step(action: str, **kw: object) -> dict[str, object]:
     return base
 
 
+SEEN: list[str] = []  # what the understanding call was shown
+
+
 def backend(msgs: list[ChatMessage]) -> str:
     system = msgs[0].content
     if system.startswith("You read a message a user typed"):
+        SEEN.append(msgs[-1].content)
         message = msgs[-1].content.rsplit("Message: ", 1)[-1]
+        if message == "drop the Budget part here":  # the model names no note
+            plan = {
+                "needs_vault": True,
+                "steps": [step("edit", detail=message)],
+                "question": "",
+                "options": [],
+            }
+            return json.dumps(plan)
         if message.startswith("remove the Budget"):
             plan = {
                 "needs_vault": True,
@@ -205,19 +218,70 @@ def backend(msgs: list[ChatMessage]) -> str:
             }
             return json.dumps(plan)
         return json.dumps({"needs_vault": False, "steps": [], "question": "", "options": []})
-    if system.startswith("A user wants the same change made"):
+    if system.startswith("A user selected text"):  # attached notes: the Ask box's call
+        return json.dumps(
+            {
+                "want": "change",
+                "complete": True,
+                "question": "",
+                "options": [],
+                "reach": "note",
+                "size": "medium",
+                "adds": False,
+                "new_form": False,
+            }
+        )
+    if system.startswith("A user wants a change made"):
         return json.dumps(
             {"kind": "remove", "section": "Budget", "instruction": "remove the Budget section"}
         )
     return "Usual chat answer."
 
 
-async def ask(ai: AiEngine, text: str) -> str:
-    out = ai.add_message(text)
+async def ask(
+    ai: AiEngine, text: str, notes: tuple[str, ...] = (), open_path: str | None = None
+) -> str:
+    out = ai.add_message(text, notes=notes)
     reply = ai.start_reply()
-    async for _ in ai.answer(reply, out, EditorSnapshot()):
+    async for _ in ai.answer(reply, out, EditorSnapshot(path=open_path)):
         pass
     return reply.text
+
+
+async def test_change_to_the_attached_or_open_note(
+    vault: Vault, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A change asked about an attached note (or, with none, the open one) is an edit of that
+    note — a review, then Apply (user 2026-11-09: the chat could not edit the note it was
+    given). Attached notes never go through the vault's understanding (rule 9): the Ask box's
+    call decides and the edit pipeline gets the user's words. An edit that names no note
+    never reaches the other notes."""
+    from paper_pile.core.ai.edit_run import EditResult, EditRun
+
+    told: list[str] = []
+
+    async def cut(self: EditRun) -> EditResult:  # the edit pipeline: the Budget section goes
+        told.append(self.instruction)
+        a, b = self.note.index("## Budget"), self.note.index("## Contacts")
+        return EditResult(propose(self.path, self.note, a, b, ""), [])
+
+    monkeypatch.setattr(EditRun, "run", cut)
+    vault.create_note("Clients/Gamma.md", ACME.replace("Acme", "Gamma"))
+    index = Index(vault)
+    index.sync()
+    fake = FakeProvider(delay=0, script=backend)
+    ai = AiEngine(vault, Config(vault=vault.root), index, provider_factory=lambda _c: fake)
+    ai.allow()
+    SEEN.clear()
+    text = await ask(ai, "drop the Budget part here", notes=("Clients/Acme.md",))
+    assert SEEN == []  # attached notes: not the vault's understanding
+    assert told == ["drop the Budget part here"]  # the user's own words
+    assert "1 note would change" in text and "Gamma" not in text
+    assert (await ask(ai, "Apply all")).startswith(ACME_CHANGED)
+    assert "## Budget" not in vault.read_text("Clients/Acme.md")
+    assert "## Budget" in vault.read_text("Clients/Gamma.md")
+    text = await ask(ai, "drop the Budget part here", open_path="Clients/Gamma.md")
+    assert "1 note would change" in text and "Gamma" in text
 
 
 async def test_edit_flow_through_the_chat(vault: Vault) -> None:
@@ -233,7 +297,7 @@ async def test_edit_flow_through_the_chat(vault: Vault) -> None:
     assert other == "Usual chat answer." and vault.read_text("Clients/Acme.md") == ACME
     await ask(ai, "remove the Budget section from my client notes")
     applied = await ask(ai, "Apply all")
-    assert applied.startswith("Changed 1 note: Acme.") and "Undo" in applied
+    assert applied.startswith(ACME_CHANGED) and "Undo" in applied
     assert "## Budget" not in vault.read_text("Clients/Acme.md")
     undone = await ask(ai, "Undo")
     assert undone.startswith("Put back 1 note") and vault.read_text("Clients/Acme.md") == ACME
@@ -274,3 +338,73 @@ async def test_note_changed_after_the_review_gets_a_new_diff(vault: Vault) -> No
     assert vault.read_text("Clients/Acme.md") == typed  # never written over
     await ask(ai, "Apply all")
     assert vault.read_text("Clients/Acme.md") == typed.replace("## Budget\n\n10k\n\n", "")
+
+
+def test_one_note_whose_edit_asks_shows_the_question() -> None:
+    batch = EditBatch("add todo", Target("add", "", "add a todo"))
+    batch.failed.append(("Day", "What should the to-do say?"))
+    batch.asked.append(("What should the to-do say?", "Buy milk", "Call the bank"))
+    text = review_text(batch)
+    assert text.startswith("What should the to-do say?\n1. Buy milk\n2. Call the bank")
+    assert "would change" not in text and "Nothing is changed yet" in text
+
+
+async def test_the_previous_answer_reaches_the_edit_as_data_not_the_target(vault: Vault) -> None:
+    """ "Add that to the note" after a plain answer: the understanding call learns only that an
+    answer exists (and which message it answered); its text goes to the note's edit, marked as
+    data, and never to the call that decides what to do nor to the target call."""
+    prompts: list[tuple[str, str]] = []
+    paragraph = "CMOS was invented in 1963 at Fairchild."
+
+    def script(msgs: list[ChatMessage]) -> str:
+        system, user = msgs[0].content, msgs[-1].content
+        if system.startswith("You read a message a user typed"):
+            prompts.append(("understand", user))
+            message = user.rsplit("Message: ", 1)[-1]
+            if message == "add it to the note":
+                plan = {
+                    "needs_vault": True,
+                    "steps": [step("edit", uses_answer=True, detail="add the previous answer")],
+                    "question": "",
+                    "options": [],
+                }
+                return json.dumps(plan)
+            return json.dumps({"needs_vault": False, "steps": [], "question": "", "options": []})
+        if system.startswith("A user wants a change made"):
+            prompts.append(("target", user))
+            return json.dumps({"kind": "add", "section": "", "instruction": "add it"})
+        if "data to put into the note" in user or "data to put into the note" in system:
+            prompts.append(("edit", system + user))
+        if system.startswith("You answer") or "cmos" in user.lower() and "Message:" not in user:
+            return paragraph
+        return "Usual chat answer."
+
+    index = Index(vault)
+    index.sync()
+    fake = FakeProvider(delay=0, script=script)
+    ai = AiEngine(vault, Config(vault=vault.root), index, provider_factory=lambda _c: fake)
+    ai.allow()
+    seen: list[str] = []
+
+    async def fake_run(self: object) -> object:  # the edit pipeline: record its instruction
+        seen.append(self.instruction)  # type: ignore[attr-defined]
+        raise ProviderError("stop here")
+
+    import paper_pile.core.ai.edit_run as er
+
+    orig = er.EditRun.run
+    er.EditRun.run = fake_run  # type: ignore[method-assign]
+    try:
+        out = ai.add_message("write a paragraph on cmos")
+        reply = ai.start_reply()
+        async for _ in ai.answer(reply, out, EditorSnapshot()):
+            pass
+        reply.text = paragraph  # whatever the chat answered
+        await ask(ai, "add it to the note", open_path="Clients/Acme.md")
+    finally:
+        er.EditRun.run = orig  # type: ignore[method-assign]
+    understood = [u for k, u in prompts if k == "understand"][-1]
+    assert "write a paragraph on cmos" in understood  # the message it answered: the user's
+    assert paragraph not in understood  # never the answer's text
+    assert all(paragraph not in u for k, u in prompts if k == "target")
+    assert seen and paragraph in seen[0] and "not instructions" in seen[0]
