@@ -1,4 +1,5 @@
-// Drag a note from the file tree or from a tab onto an editor (EditorPane._on_note_drop).
+// Drag a note from the file tree or from a tab onto an editor (EditorPane._on_note_drop), or onto
+// the AI chat, which attaches it (EditorPane._on_chat_drop; user 2026-11-09).
 // Capture only: which note, which side; the drop is taken before CodeMirror sees it (it would
 // insert the path as text). Split: the side under the pointer. One editor: its right half
 // means "open in a split", the rest "open here".
@@ -6,7 +7,7 @@
   let note = null; // {path} from a tree row, {doc} from a tab
   let lit = null;
   const unlight = () => {
-    if (lit) lit.classList.remove('pp-drop-here', 'pp-drop-split');
+    if (lit) lit.classList.remove('pp-drop-here', 'pp-drop-split', 'pp-drop-chat');
     lit = null;
   };
 
@@ -19,6 +20,8 @@
 
   function zone(e) {
     if (!note || !e.target.closest) return null;
+    const chat = e.target.closest('.pp-chat');
+    if (chat) return { el: chat, cls: 'pp-drop-chat', chat: true };
     const area = e.target.closest('.pp-editor-area');
     if (!area) return null;
     const split = area.querySelector('.pp-split.pp-split-on');
@@ -54,7 +57,8 @@
     if (!z) return;
     e.preventDefault();
     e.stopPropagation();
-    emitEvent('pp_note_drop', Object.assign({ slot: z.slot, split: z.split }, what));
+    if (z.chat) emitEvent('pp_chat_note_drop', what);
+    else emitEvent('pp_note_drop', Object.assign({ slot: z.slot, split: z.split }, what));
   }, true);
 
   document.addEventListener('dragend', () => { note = null; unlight(); }, true);

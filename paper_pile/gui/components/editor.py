@@ -40,6 +40,7 @@ class Editor(
         on_slash_query: Handler | None = None,
         on_slash_run: Handler | None = None,
         on_table_op: Handler | None = None,
+        on_table_widths: Handler | None = None,
         on_image_saved: Handler | None = None,
         on_image_error: Handler | None = None,
         on_image_resize: Handler | None = None,
@@ -95,6 +96,8 @@ class Editor(
             self.on("slash_run", on_slash_run)
         if on_table_op:
             self.on("table_op", on_table_op)
+        if on_table_widths:  # a table column was resized (tablewidget.js)
+            self.on("table_widths", on_table_widths)
         if on_image_saved:
             self.on("image_saved", on_image_saved)
         if on_image_error:
@@ -247,6 +250,10 @@ class Editor(
     def set_known_notes(self, names: list[str]) -> None:
         """Names wikilinks may use for existing notes; other links get the "missing" look."""
         self.run_method("setKnownNotes", names)
+
+    def set_table_widths(self, widths: dict[str, dict[str, list[int]]]) -> None:
+        """Every stored table column width of the vault (``core/table_widths.py``)."""
+        self.run_method("setTableWidths", widths)
 
     def goto_line(self, line: int) -> None:
         """Put the caret on a 1-based line of the shown note and scroll it to the top."""

@@ -728,6 +728,15 @@ User: "there is a approval gate in the chat, which is not a good approach … au
 - **The chat's direct notes** (user 2026-11-09: "the chat will have direct access to open note/notes (in case two notes in the split view). if notes attached … agent should have the understanding what to do"): the notes attached to a message and the notes open on screen — the active note and the other side of a split view (`EditorSnapshot.other`) — are what a message is about when it names no other notes. The plain chat sends both split sides; the agent is told both. A change goes to every attached note, else to the active open note; *which* of them is never asked (`session.no_target_question` drops such a question). A change to only those notes goes straight to the edit pipeline with the user's own words, as the Ask box does (no target call). They need no remote permission — only notes beyond them do. **A message with attached notes** (no `@vault`) never goes through the vault's understanding: the Ask box's understanding call (`understand.py`, measured on paraphrases) decides answer → the plain chat with the notes, or change → the edit pipeline on every attached note; only an open choice of *content* is asked (chips), never which note (gemma4 had searched the vault for "write a short paragraph on cmos in" with two notes attached).
 - Core stays UI-free: the vault agent hands its changes to the app's writer (`NoteWriter`: `write`, `create`, and `review` for the diff views); a writer without `review` (tools, tests) keeps the old chat review.
 
+### 4.33 Chat, popup, scrolling and table polish (user request 2026-11-09, P32)
+- **Chat box:** no divider under the attached chips; chip corners go with the card's but softer (`--pp-chat-r` 24 px, `--pp-chip-r` = it − 14 px = 10 px; user: "adjustable, not exact"). A paste into the chat box of ≥ 10 lines or ≥ 1000 characters (`engine.PASTE_CHIP_LINES` / `_CHARS`) becomes a **`Pasted: [40 lines]`** chip (a `Selection` of kind `Pasted`, no note) instead of text in the box; a click unfolds it like a selection chip. **Drag a note** from the file tree or from a tab onto the chat → attached like the + menu's notes (`static/notedrop.js`, dashed accent frame while over the chat, gone on drop; folders are not attached).
+- **Model picker:** the same box, rows (36 px, 13 px text, muted detail line) and check mark as the other menus — no row icons, no heading (user). It closes in the page on a pick (`auto-close`) and pops with `pp-pop` / `--pp-dur`; the chevron turns on the menu's own before-show / before-hide in the page, so both move together.
+- **Scrollbars:** the note and the chat log: a 6 px thumb with rounded (not pill) corners that grows to 10 px while hovered or dragged (a fixed 10 px gutter, so grabbing it never reflows the note). The bar is half the pane's height, centred: each end of the track is a step button a quarter of the pane long (`--pp-sb-end`, set per scroller by `static/scrollbars.js` with a ResizeObserver) with a short limit line at its inner edge; other scrollers stay thin.
+- **Scrolling:** the native window turns on QtWebEngine's scroll animator (`ScrollAnimatorEnabled`, off by default): a wheel notch or PageDown glides over frames at the display's refresh rate instead of jumping in one frame. Touchpad scrolling was never animated.
+- **Ask popup:** the text and caret start after the ↳, which dissolves once writing starts (the text keeps its place); the "/" command list is exactly as wide as the box (box ≈ 253 px, popup 325 px: 15 % narrower than the first P32 size).
+- **Tables:** + row sits under the table, exactly as wide as it, its + in the middle (a 2 × 2 grid with + column; neither covers a cell). **A block of cells:** drag from one cell into another, or Shift+click, selects the rectangle; then Copy puts a table on the clipboard — `text/html` a `<table>` and `text/plain` a markdown table, the block's first row as header — so it pastes as a table in a note (a pasted table always gets its own lines: `_insert_block`), in other markdown apps and in spreadsheets; Cut / Delete / Backspace empty the cells; Paste writes copied cells (a markdown table or tab-separated rows, read in Python: `paste` op) from its top-left cell (also into a cell being typed in); Shift+arrows resize the block, Esc / arrows leave it; the markdown change is the `cells` op in `core/tables.py` (clipped at the table's edges, never grows the table). **Column widths:** drag any cell's side border (col-resize cursor within 5 px); widths are view state kept per note in `.paper-pile/table_widths.json` (`core/table_widths.py`, keyed by the header cells, follow renames, dropped on delete), never in the markdown.
+- **Tab strip +:** its hover box starts 2 px after the last tab's side line and ends 2 px above the strip's bottom edge (user). A cell being typed in no longer widens its column (`input.size = 1`; it grew 90 → 195 px on every click).
+
 ## 5. Data formats
 
 **SQLite schema (`.paper-pile/index.db`)** — cache only:
@@ -761,6 +770,8 @@ meta(key TEXT PK, value TEXT)   -- schema_version
                                "allow_paths": ["/home/u/code/project"], "exclude": ["private", "*.draft.md"]}}}
 ```
 `granted: null` = revoked (file types and exclusions kept for the next Allow). This file — not the settings — decides what the AI may read.
+
+**table_widths.json** (`.paper-pile/table_widths.json`, `core/table_widths.py`, P32): dragged table column widths, view state only (losing it loses nothing but widths): `{"notes/a.md": {"Name|Value|Note": [120, 80, 240]}}` — per note, keyed by the header cells joined with `|`, CSS px clamped to 40–4000; read tolerantly, written atomically; renames move entries, deletes drop them.
 
 **history.db** (`.paper-pile/history.db`, `core/history.py`): versions of notes (§4.18), including "before AI" ones; a cache-like store the app can lose without losing notes.
 
@@ -1030,6 +1041,18 @@ Order: security first (P23.1–P23.7), then context (P23.8–P23.12), failures (
 | P28.7 | agy started ahead | the next agy waits per command line and answers the next request (tests); a dead waiting one replaced; unused ones' conversation copies deleted; ended on shutdown / idle / over the cap; real agy: text answer faster, no copies left |
 | P28.8 | agy in its own home, wiped after the session | agy sees the app's HOME, never the user's (test); session end wipes all but program files, not while another app process uses it, leftovers wiped at start, never the real home (tests); model list kept 10 min (test); real agy: no new entry in `~/.gemini`; old entries removed by `tools/agy_forget_app.py` |
 | P28.6 | Settings follow the backend (user 2026-10-31) | switching keeps / restores each backend's address, model, key variable; Provider list shows each backend's status (hosted API never probed unasked); hints and key row per backend; model list = current backend's; no control overflows its box (tests + real app) |
+
+### P32 — Chat, popup, scrolling and table polish (user request 2026-11-09, §4.33)
+| ID | Task | Acceptance |
+|---|---|---|
+| P32.1 | Chat chips + paste chip | no divider; pill chips; a big paste → `Pasted: [n lines]` chip (test + real app) |
+| P32.2 | Model picker like the other menus | same box / rows / icons / check as the + menu (real app screenshot) |
+| P32.3 | Wider note + chat scrollbars | 14 px gutter, 8 px thumb on `.cm-scroller` and `.pp-chat-log` (measured) |
+| P32.4 | Drag notes into the chat | tree row and tab dropped on the chat → attached (real drag over CDP) |
+| P32.5 | Smooth wheel scrolling | scroll animator on in the native window; a scroll glides over frames (measured) |
+| P32.6 | Tab strip + alignment | + button 2 px after the last tab (measured) |
+| P32.7 | Tables: + row, cell blocks, column widths | + row under the table at its width; block select / copy / cut / delete / paste; widths dragged and kept per note (tests + real mouse) |
+| P32.8 | Ask popup caret + width | caret after ↳; command list as wide as the box (measured) |
 
 ### P31 — One edit mode for every AI change (user request 2026-11-09, §4.32)
 | ID | Task | Acceptance |

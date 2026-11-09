@@ -10,11 +10,13 @@ import { syntaxTree } from "@codemirror/language";
 import { Prec } from "@codemirror/state";
 import { WidgetType, keymap } from "@codemirror/view";
 import { renderInline } from "./widgets.js";
-import { rtOf } from "./context.js";
+import { rtOf, editorContext, measureAgain } from "./context.js";
 
 const IDLE_COMMIT_MS = 600;
 const FOCUS_RETRY_MS = 1500;
 const LOCAL_ROW_GRACE_MS = 4000; // how long an optimistic new row may wait for Python's edit
+const EDGE_PX = 5; // how near a cell's side border the pointer resizes its column
+const MIN_COL_PX = 40; // narrowest column a drag makes (core/table_widths.py MIN_WIDTH)
 
 const runtime = { pending: null };
 
@@ -149,13 +151,18 @@ export class TableWidget extends WidgetType {
     addCol.innerHTML = plus;
     addCol.dataset.tip = "Add column";
     addCol.type = "button";
+    // a 2 × 2 grid: the table, + column at its right (as tall as the table), + row under it (as
+    // wide as the table), so neither covers a cell (user 2026-11-09)
     const grid = el("div", "pp-table-grid");
-    grid.append(table, addCol);
-    wrap.replaceChildren(grid, addRow);
+    grid.append(table, addCol, addRow);
+    wrap.replaceChildren(grid);
+    const widths = storedWidths(wrap._view, rows[0].map((c) => c.value), cols);
+    if (widths) applyWidths(table, widths);
     wrap._cells = cells;
     wrap._addRow = addRow;
     wrap._addCol = addCol;
     wrap._model = { rows: rows.length, cols };
+    wrap._sel = null;
     addRow.addEventListener("mousedown", (e) => {
       e.preventDefault();
       commitActive(wrap);
@@ -189,12 +196,39 @@ export class TableWidget extends WidgetType {
   }
 
   wire(wrap) {
+    wrap.tabIndex = -1; // focused while a block of cells is selected: it takes the keys then
+    wrap.addEventListener("mousemove", (e) => {
+      if (!wrap._resizing) wrap.classList.toggle("pp-table-colresize", edgeAt(wrap, e) !== null);
+    });
     wrap.addEventListener("mousedown", (e) => {
+      const edge = e.button === 0 ? edgeAt(wrap, e) : null;
+      if (edge !== null) {
+        e.preventDefault();
+        startResize(wrap, edge, e.clientX);
+        return;
+      }
       const td = e.target.closest && e.target.closest("td, th");
       if (!td || !wrap.contains(td)) return;
+      if (e.button === 0 && e.shiftKey) {
+        // Shift+click: the block from the cell being typed in (or the block's corner) to here
+        e.preventDefault();
+        const from = wrap._active || (wrap._sel && wrap._cells[wrap._sel.r0]?.[wrap._sel.c0]) || td;
+        selectBlock(wrap, from._r, from._c, td._r, td._c);
+        return;
+      }
+      if (e.button === 0) startDrag(wrap, td);
       if (td._input && e.button === 0) return; // let the caret move inside the input
       e.preventDefault(); // also for the right button: the browser would move the document caret here
-      if (e.button === 0) startEdit(wrap, td);
+      if (e.button !== 0) return;
+      clearBlock(wrap);
+      startEdit(wrap, td);
+    });
+    wrap.addEventListener("keydown", (e) => onBlockKey(e, wrap));
+    wrap.addEventListener("copy", (e) => copyBlock(e, wrap, false));
+    wrap.addEventListener("cut", (e) => copyBlock(e, wrap, true));
+    wrap.addEventListener("paste", (e) => pasteCells(e, wrap));
+    wrap.addEventListener("focusout", (e) => {
+      if (!wrap.contains(e.relatedTarget)) clearBlock(wrap);
     });
     wrap.addEventListener("contextmenu", (e) => {
       const td = e.target.closest && e.target.closest("td, th");
@@ -218,6 +252,7 @@ function startEdit(wrap, td) {
   if (td._input) return;
   const input = el("input", "pp-table-input");
   input.type = "text";
+  input.size = 1; // its default ~20-character width would widen the column (cells jumped on click)
   input.spellcheck = false;
   input.value = td._value;
   input._original = td._value;
@@ -519,3 +554,248 @@ export const tableKeys = Prec.high(
     { key: "ArrowUp", run: (view) => enterTable(view, -1) },
   ]),
 );
+
+// ---- a block of cells (user 2026-11-09: partial selection) ------------------------------------
+// Drag from one cell to another, or Shift+click, selects the rectangle between them. While a
+// block is selected the table itself has the focus: Copy gives its values as tab-separated rows
+// (what spreadsheets paste), Cut and Delete / Backspace empty the cells, Paste writes copied rows
+// from its top-left cell, Shift+arrows grow or shrink it, Esc or an arrow leaves it. What the
+// markdown becomes is decided in Python (`cells` in core/tables.py).
+
+function selectBlock(wrap, r0, c0, r1, c1) {
+  const R = wrap._cells.length;
+  const C = wrap._cells[0].length;
+  const clamp = (v, n) => Math.max(0, Math.min(n - 1, v));
+  wrap._sel = { r0: clamp(r0, R), c0: clamp(c0, C), r1: clamp(r1, R), c1: clamp(c1, C) };
+  // the table takes the focus first: the cell's input then blurs (it commits and ends itself)
+  // with focus inside the table, so the block is not dropped as "focus left the table"
+  if (document.activeElement !== wrap) wrap.focus({ preventScroll: true });
+  const td = wrap._active;
+  if (td) {
+    commit(wrap, td);
+    endEdit(wrap, td);
+  }
+  paintBlock(wrap);
+}
+
+function blockBox(sel) {
+  return {
+    top: Math.min(sel.r0, sel.r1),
+    bottom: Math.max(sel.r0, sel.r1),
+    left: Math.min(sel.c0, sel.c1),
+    right: Math.max(sel.c0, sel.c1),
+  };
+}
+
+function paintBlock(wrap) {
+  const box = wrap._sel && blockBox(wrap._sel);
+  wrap._cells.forEach((line, r) =>
+    line.forEach((td, c) => {
+      const on = !!box && r >= box.top && r <= box.bottom && c >= box.left && c <= box.right;
+      td.classList.toggle("pp-tsel", on);
+      td.classList.toggle("pp-tsel-top", on && r === box.top);
+      td.classList.toggle("pp-tsel-bottom", on && r === box.bottom);
+      td.classList.toggle("pp-tsel-left", on && c === box.left);
+      td.classList.toggle("pp-tsel-right", on && c === box.right);
+    }),
+  );
+  wrap.classList.toggle("pp-table-block", !!box);
+}
+
+function clearBlock(wrap) {
+  if (!wrap._sel) return;
+  wrap._sel = null;
+  paintBlock(wrap);
+}
+
+function blockValues(wrap) {
+  const b = blockBox(wrap._sel);
+  const out = [];
+  for (let r = b.top; r <= b.bottom; r++) {
+    const line = [];
+    for (let c = b.left; c <= b.right; c++) line.push(wrap._cells[r][c]._value ?? "");
+    out.push(line);
+  }
+  return out;
+}
+
+// write `values` (rows of strings) from (row, col): shown at once, then confirmed by Python
+function writeCells(wrap, row, col, values) {
+  values.forEach((line, i) =>
+    line.forEach((value, j) => {
+      const td = wrap._cells[row + i]?.[col + j];
+      if (!td || td._input) return;
+      td._value = value;
+      td._stale = true;
+      td.replaceChildren(document.createTextNode(value));
+    }),
+  );
+  sendOp(wrap, { op: "cells", row, col, values });
+}
+
+function clearCells(wrap) {
+  const b = blockBox(wrap._sel);
+  const empty = blockValues(wrap).map((line) => line.map(() => ""));
+  writeCells(wrap, b.top, b.left, empty);
+}
+
+// The copied block is a table wherever it is pasted: text/html holds a <table> (Smart Paste turns
+// it into a markdown table in a note; spreadsheets and rich editors take it as cells) and
+// text/plain a markdown table (other markdown apps, Smart Paste off). The block's first row is the
+// header. Pasted back into a table, Python reads it as cells again (`paste`, core/tables.py).
+const escHtml = (v) => v.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+const escCell = (v) => v.replace(/\|/g, "\\|").replace(/[\t\n]/g, " ");
+
+function blockHtml(rows) {
+  const line = (cells, tag) => `<tr>${cells.map((v) => `<${tag}>${escHtml(v)}</${tag}>`).join("")}</tr>`;
+  const [head, ...body] = rows;
+  return `<table><thead>${line(head, "th")}</thead><tbody>${body.map((r) => line(r, "td")).join("")}</tbody></table>`;
+}
+
+function blockMarkdown(rows) {
+  const line = (cells) => `| ${cells.map(escCell).join(" | ")} |`;
+  const [head, ...body] = rows;
+  return [line(head), `|${head.map(() => " --- ").join("|")}|`, ...body.map(line)].join("\n");
+}
+
+function copyBlock(e, wrap, cut) {
+  if (!wrap._sel) return; // text copied inside a cell's input: the browser's own copy
+  e.preventDefault();
+  e.stopPropagation();
+  const rows = blockValues(wrap);
+  e.clipboardData.setData("text/html", blockHtml(rows));
+  e.clipboardData.setData("text/plain", blockMarkdown(rows) + "\n");
+  if (cut) clearCells(wrap);
+}
+
+function pasteCells(e, wrap) {
+  const text = e.clipboardData && e.clipboardData.getData("text/plain");
+  if (!text) return;
+  const td = wrap._sel ? null : e.target.closest && e.target.closest("td, th");
+  // into a cell being typed in, only several cells' worth is ours; one value is a plain paste
+  if (!wrap._sel && (!td || !/[\t\n]/.test(text.replace(/\r?\n$/, "")))) return;
+  e.preventDefault();
+  e.stopPropagation();
+  let at;
+  if (wrap._sel) {
+    const b = blockBox(wrap._sel);
+    at = { row: b.top, col: b.left };
+  } else {
+    at = { row: td._r, col: td._c };
+    td.querySelector("input")?.blur();
+  }
+  // Python reads the cells (a markdown table or tab-separated rows) and writes them
+  sendOp(wrap, { op: "paste", row: at.row, col: at.col, text });
+}
+
+function onBlockKey(e, wrap) {
+  if (!wrap._sel || e.target !== wrap) return;
+  const sel = wrap._sel;
+  const arrows = { ArrowUp: [-1, 0], ArrowDown: [1, 0], ArrowLeft: [0, -1], ArrowRight: [0, 1] };
+  e.stopPropagation();
+  if (e.key === "Escape") {
+    e.preventDefault();
+    clearBlock(wrap);
+    focusCell(wrap, sel.r0, sel.c0);
+  } else if (e.key === "Delete" || e.key === "Backspace") {
+    e.preventDefault();
+    clearCells(wrap);
+  } else if (arrows[e.key] && e.shiftKey) {
+    e.preventDefault();
+    const [dr, dc] = arrows[e.key];
+    selectBlock(wrap, sel.r0, sel.c0, sel.r1 + dr, sel.c1 + dc);
+  } else if (arrows[e.key] || e.key === "Enter" || e.key === "Tab") {
+    e.preventDefault();
+    clearBlock(wrap);
+    focusCell(wrap, sel.r1, sel.c1);
+  } else if ((e.ctrlKey || e.metaKey) && (e.key === "z" || e.key === "y" || e.key === "Z")) {
+    e.preventDefault();
+    const view = wrap._view;
+    clearBlock(wrap);
+    view.focus();
+    (e.key === "y" || e.shiftKey ? redo : undo)(view);
+  }
+}
+
+// a drag that starts in a cell and moves into another selects the block between them
+function startDrag(wrap, from) {
+  const move = (e) => {
+    if (!(e.buttons & 1)) return up();
+    const hit = document.elementFromPoint(e.clientX, e.clientY);
+    const td = hit && hit.closest && hit.closest("td, th");
+    if (!td || !wrap.contains(td) || td._r === undefined) return;
+    if (td === from && !wrap._sel) return; // still inside the first cell: its own text selection
+    e.preventDefault();
+    window.getSelection()?.removeAllRanges();
+    if (!wrap._sel || wrap._sel.r1 !== td._r || wrap._sel.c1 !== td._c) selectBlock(wrap, from._r, from._c, td._r, td._c);
+  };
+  const up = () => {
+    document.removeEventListener("mousemove", move, true);
+    document.removeEventListener("mouseup", up, true);
+  };
+  document.addEventListener("mousemove", move, true);
+  document.addEventListener("mouseup", up, true);
+}
+
+// ---- column widths (user 2026-11-09) -----------------------------------------------------------
+// Drag any cell's side border. Widths are view state, never in the markdown: Python keeps them
+// per note in .paper-pile/table_widths.json (core/table_widths.py), keyed by the header cells,
+// and sends them all once (`setTableWidths`).
+
+const widthKey = (header) => header.map((h) => h.trim()).join("|");
+
+function storedWidths(view, header, cols) {
+  const path = view ? rtOf(view.state).notePath : "";
+  const w = editorContext.tableWidths?.[path]?.[widthKey(header)];
+  return Array.isArray(w) && w.length === cols ? w : null;
+}
+
+function applyWidths(table, widths) {
+  let group = table.querySelector("colgroup");
+  if (!group) group = table.insertBefore(el("colgroup"), table.firstChild);
+  group.replaceChildren(...widths.map((w) => Object.assign(el("col"), { style: `width: ${w}px` })));
+  table.style.width = `${widths.reduce((a, b) => a + b, 0)}px`;
+  table.classList.add("pp-table-sized");
+}
+
+// the column whose right border is under the pointer, or null
+function edgeAt(wrap, e) {
+  const td = e.target.closest && e.target.closest("td, th");
+  if (!td || !wrap.contains(td) || td._c === undefined) return null;
+  const box = td.getBoundingClientRect();
+  if (e.clientX >= box.right - EDGE_PX) return td._c;
+  if (e.clientX <= box.left + EDGE_PX && td._c > 0) return td._c - 1;
+  return null;
+}
+
+function startResize(wrap, col, x0) {
+  const table = wrap.querySelector("table");
+  const widths = (wrap._cells[0] || []).map((th) => th.getBoundingClientRect().width);
+  const w0 = widths[col];
+  commitActive(wrap);
+  wrap._resizing = true;
+  wrap.classList.add("pp-table-colresize");
+  document.body.classList.add("pp-colresizing");
+  applyWidths(table, widths);
+  const move = (e) => {
+    widths[col] = Math.max(MIN_COL_PX, w0 + e.clientX - x0);
+    applyWidths(table, widths);
+  };
+  const up = () => {
+    document.removeEventListener("mousemove", move, true);
+    document.removeEventListener("mouseup", up, true);
+    wrap._resizing = false;
+    document.body.classList.remove("pp-colresizing");
+    const view = wrap._view;
+    if (!view) return;
+    const rt = rtOf(view.state);
+    const key = widthKey(wrap._cells[0].map((th) => th._value ?? ""));
+    const rounded = widths.map((w) => Math.round(w));
+    editorContext.tableWidths = editorContext.tableWidths || {};
+    (editorContext.tableWidths[rt.notePath] ??= {})[key] = rounded;
+    rt.emit("table_widths", { path: rt.notePath, key, widths: rounded });
+    measureAgain(view); // rows may wrap to more lines now
+  };
+  document.addEventListener("mousemove", move, true);
+  document.addEventListener("mouseup", up, true);
+}

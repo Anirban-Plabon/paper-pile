@@ -612,6 +612,11 @@ export function createEditor(
       editorContext.known = new Set(names);
       view.dispatch({ effects: refreshEffect.of(null) });
     },
+    // Every stored table column width of the vault (core/table_widths.py); used by tables drawn
+    // from now on (tables on screen keep theirs).
+    setTableWidths(map) {
+      editorContext.tableWidths = map || {};
+    },
     // Put the caret on 1-based `line`, glide it to the top of the view and flash it (motion.js).
     // Focus first: the caret position (status bar, outline) is only reported while focused.
     gotoLine(line) {

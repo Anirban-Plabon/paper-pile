@@ -47,7 +47,14 @@ from paper_pile.core.ai.commands import (
 )
 from paper_pile.core.ai.context import EditorSnapshot, source_view
 from paper_pile.core.ai.edit_run import Again, EditEnd
-from paper_pile.core.ai.engine import AiEngine, Outgoing, Selection
+from paper_pile.core.ai.engine import (
+    PASTE_CHIP_CHARS,
+    PASTE_CHIP_LINES,
+    PASTED,
+    AiEngine,
+    Outgoing,
+    Selection,
+)
 from paper_pile.core.ai.options import Option, suggest_options
 from paper_pile.core.ai.prompts import load_prompts, prompts_file, selection_kind, suggestions
 from paper_pile.core.ai.provider import Health, ProviderError, ProviderUnavailableError
@@ -153,7 +160,10 @@ class _CommandCard:
 
 
 def _chip_text(note: str, kind: str, size: str) -> str:
-    """An attached selection's chip: ``From <note>: [Selected text · 3 lines]`` (HTML)."""
+    """An attached selection's chip: ``From <note>: [Selected text · 3 lines]`` (HTML); a large
+    paste: ``Pasted: [40 lines]``."""
+    if kind == PASTED:
+        return html.escape(f"{PASTED}: [{size}]")
     text = html.escape(f"[{kind} · {size}]")
     if not note:
         return text
@@ -272,6 +282,10 @@ class ChatPane:
                             .props("borderless dense autogrow input-style='max-height: 220px'")
                             .classes("pp-chat-input")
                         )
+                        self._input.props(  # chat.js: a paste this big becomes a chip
+                            f"data-pp-paste-lines={PASTE_CHIP_LINES} "
+                            f"data-pp-paste-chars={PASTE_CHIP_CHARS}"
+                        )
                         self._input.on_value_change(lambda e: self._input_changed(e.value or ""))
                         self._model_button()
                         self._send = ui.button(
@@ -291,6 +305,7 @@ class ChatPane:
         ui.on("pp_chat_send", lambda _e: self._enter_pressed())
         ui.on("pp_chat_pick", lambda e: self._picked(dict(e.args)))
         ui.on("pp_chip_close", lambda _e: self._close_chip())
+        ui.on("pp_chat_paste", lambda e: self.set_pasted(str(dict(e.args).get("text", ""))))
         ui.on("pp_open_url", lambda e: self._open_url(e.args))
         ui.on("pp_cite", lambda e: self._open_cite(dict(e.args)))  # a citation pill (chat.js)
         ui.on("pp_note", lambda e: self._open_named(dict(e.args)))  # a note named in a list
@@ -350,19 +365,22 @@ class ChatPane:
         with self._model:
             self._model_label = ui.label("").classes("pp-chat-model-name")
             self._model_chev = line_icon("chevron-down", "s").classes("pp-chat-model-chev")
+            # auto-close: a click on a model closes the menu in the page, no round trip; it pops
+            # by CSS (pp-pop, --pp-dur), in step with the chevron
             self._model_menu = ui.menu().props(
-                'anchor="top right" self="bottom right" :offset="[0, 8]"'
+                'anchor="top right" self="bottom right" :offset="[0, 8]" auto-close '
+                "transition-show=none transition-hide=none transition-duration=0"
             )
             self._model_menu.classes("pp-model-menu")
         self._model_menu.on("before-show", lambda _e: self._build_model_menu())
-        for event, open_ in (("show", True), ("hide", False)):
-            self._model_menu.on(event, lambda _e, o=open_: self._model_open(o))
-
-    def _model_open(self, is_open: bool) -> None:
-        self._model.classes(  # the chevron turns by CSS
-            add="pp-chat-model-open" if is_open else "",
-            remove="" if is_open else "pp-chat-model-open",
-        )
+        # the chevron turns as the menu starts to open / close (user 2026-11-09: it lagged the
+        # menu by a round trip); a data attribute, since Python rewrites the class list
+        button = f"document.getElementById('c{self._model.id}')"
+        for event, flag in (("before-show", "1"), ("before-hide", "")):
+            self._model_menu.on(
+                event,
+                js_handler=f"() => {{ const b = {button}; if (b) b.dataset.ppOpen = '{flag}'; }}",
+            )
 
     def _show_model(self) -> None:
         current = self.ai.model()
@@ -385,10 +403,9 @@ class ChatPane:
                         if detail:
                             ui.label(detail).classes("pp-model-detail")
                     if model == current:
-                        line_icon("check", "s").classes("pp-model-check pp-check")
+                        line_icon("check", "s").classes("pp-model-check pp-menu-check pp-check")
 
     def _model_changed(self, value: str | None) -> None:
-        self._model_menu.close()
         if not value or self.config is None or value == self.config.get("ai.model"):
             return
         self.config.set("ai.model", value, "global")
@@ -1074,6 +1091,16 @@ class ChatPane:
         if picked not in self._selections:
             self._selections.append(picked)
             self._render_selections()
+
+    def set_pasted(self, text: str) -> None:
+        """A large paste into the box (chat.js): a ``Pasted: [n lines]`` chip, like a selection."""
+        if not text.strip():
+            return
+        picked = self.ai.pasted(text)
+        if picked not in self._selections:
+            self._selections.append(picked)
+            self._render_selections()
+        self.focus_input()
 
     def set_block(self, kind: str, lang: str, text: str, path: str) -> None:
         """Attach a code / math / diagram block (its copy button) like a selection."""

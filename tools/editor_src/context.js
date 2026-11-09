@@ -11,7 +11,9 @@ export const rtOf = (state) => state.facet(runtimeFacet);
 
 // Shared by every editor on the page. `known`: normalised names of the notes wikilinks can point
 // at (Python's `link_keys`), or null while unknown; used only to style links to missing notes.
-export const editorContext = { known: null };
+// `tableWidths`: column widths the user dragged, {notePath: {headerKey: [px, ...]}}
+// (core/table_widths.py; tablewidget.js).
+export const editorContext = { known: null, tableWidths: null };
 
 // Same rule as Python's `links.norm_name`, minus slashes at the ends.
 export const normNote = (name) => name.trim().toLowerCase().replace(/\.(md|txt)$/, "").replace(/^\/+|\/+$/g, "");

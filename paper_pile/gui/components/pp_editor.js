@@ -91,6 +91,9 @@ export default {
     async setKnownNotes(names) {
       (await this.ready).setKnownNotes(names);
     },
+    async setTableWidths(map) {  // stored table column widths (tablewidget.js)
+      (await this.ready).setTableWidths(map);
+    },
     async gotoLine(line) {
       (await this.ready).gotoLine(line);
     },

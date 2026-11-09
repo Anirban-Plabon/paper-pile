@@ -125,7 +125,7 @@ class Selection:
     text: str
     label: str  # "From [[a]]" (or "Selected text" without a note)
     note: str = ""  # the note it came from
-    kind: str = "Selected text"  # or "Code block", "Math block", "Diagram"
+    kind: str = "Selected text"  # or "Code block", "Math block", "Diagram", "Pasted"
     detail: str = ""  # replaces the size when set (a block's text includes its fences)
 
     def size(self) -> str:
@@ -137,6 +137,12 @@ class Selection:
     def preview(self, limit: int = 300) -> str:
         t = self.text.strip()
         return t if len(t) <= limit else t[:limit] + "…"
+
+
+PASTED = "Pasted"  # a Selection's kind for a large paste into the chat box
+# A paste into the chat box this big becomes a chip instead of text in the box (user 2026-11-09)
+PASTE_CHIP_LINES = 10
+PASTE_CHIP_CHARS = 1000
 
 
 @dataclass(frozen=True, slots=True)
@@ -537,6 +543,10 @@ class AiEngine:
     def selection(self, text: str, path: str) -> Selection:
         name = self.link_name(path)
         return Selection(text, f"From [[{name}]]" if name else "Selected text", name)
+
+    def pasted(self, text: str) -> Selection:
+        """A large paste into the chat box, attached like a selection without a note."""
+        return Selection(text, "Pasted text", "", PASTED)
 
     def block(self, kind: str, lang: str, text: str, path: str) -> Selection:
         """A code / math / diagram block attached like a selection (with its fences)."""

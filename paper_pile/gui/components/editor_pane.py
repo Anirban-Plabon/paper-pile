@@ -128,7 +128,8 @@ from paper_pile.core.settings import PAGE_VIEWS, get_nested, sanitized
 from paper_pile.core.snippets import Snippet, link_snippet
 from paper_pile.core.spacing import spaced_block
 from paper_pile.core.stats import word_count
-from paper_pile.core.tables import apply_op, table_extent
+from paper_pile.core.table_widths import TableWidths
+from paper_pile.core.tables import apply_op, parse_table, table_extent
 from paper_pile.core.tabs import TabList
 from paper_pile.core.templates import render_template
 from paper_pile.core.textpos import codepoint_index, utf16_index
@@ -237,6 +238,7 @@ class EditorPane:
         self._ai_selection: dict[str, Any] | None = None  # set by Ctrl+J in the editor
         self._streams = 0
         self._table_lock = asyncio.Lock()  # table edits apply one after the other
+        self._table_widths = TableWidths(vault.root)  # dragged column widths (view state)
         self._insert_lock = asyncio.Lock()  # inserted blocks (images, embeds) too
         self._awaiting_recovery: set[str] = set()  # notes with crash text not decided on yet
         self._on_command_used = on_command_used
@@ -329,6 +331,7 @@ class EditorPane:
                         with pane:
                             self._note_head(slot)
                             self._editors.append(self._make_editor(slot).classes("pp-fill"))
+                            self._editors[-1].set_table_widths(self._table_widths.all())
                 self._side.set_visibility(False)
                 self._editor = self._editors[0]
                 self._editor.set_visibility(False)
@@ -339,9 +342,12 @@ class EditorPane:
             self.ask_popup = AskPopup(self)  # the Ask box under a selection (PLAN §4.27)
         self.bus.subscribe("tree.open", lambda path: self._spawn(self.open(path)))
         ui.on("pp_note_drop", lambda e: self._spawn(self._on_note_drop(e.args)))
+        ui.on("pp_chat_note_drop", lambda e: self._on_chat_drop(dict(e.args)))
         self.bus.subscribe("vault.created", lambda path: self._reindex_soon())
         self.bus.subscribe("vault.renamed", self._renamed_in_app)
         self.bus.subscribe("vault.deleted", lambda path, **_: self._on_deleted(path))
+        self.bus.subscribe("vault.renamed", self._table_widths_renamed)
+        self.bus.subscribe("vault.deleted", lambda path, **_: self._table_widths.deleted(path))
         self.bus.subscribe("note.pin", lambda path, on: self._spawn(self.set_pinned(path, on)))
         ui.context.client.on_disconnect(self._on_disconnect)
 
@@ -357,6 +363,7 @@ class EditorPane:
             on_slash_query=lambda e: self._on_slash_query(e.args),
             on_slash_run=lambda e: self._spawn(self._on_slash_run(e.args)),
             on_table_op=lambda e: self._spawn(self._on_table_op(e.args)),
+            on_table_widths=lambda e: self._on_table_widths(dict(e.args)),
             on_paste=lambda e: self._on_paste(e.args),
             on_proposal=lambda e: self._spawn(self._on_proposal(e.args)),
             on_selection_popup=lambda e: self.ask_popup.on_selection(e.args),
@@ -558,14 +565,25 @@ class EditorPane:
         elif tab is not None:
             self._activate(tab_id)
 
-    async def _on_note_drop(self, args: dict[str, Any]) -> None:
-        """A note dragged from the file tree or a tab onto an editor (``static/notedrop.js``):
-        open it on that side; dropped on the right half of a single editor: in a split."""
+    def _drop_path(self, args: dict[str, Any]) -> str:
+        """The note a drag carried (``static/notedrop.js``): a tree row's path or a tab's note."""
         path = str(args.get("path") or "")
         if not path and args.get("doc") is not None:
             tab = next((t for t in self.tabs.tabs if str(t.id) == str(args["doc"])), None)
             path = tab.path if tab else ""
-        if not path or not is_note_name(path) or not self.vault.exists(path):
+        return path if path and is_note_name(path) and self.vault.exists(path) else ""
+
+    def _on_chat_drop(self, args: dict[str, Any]) -> None:
+        """A note dragged from the file tree or a tab onto the AI chat: attach it."""
+        path = self._drop_path(args)
+        if path:
+            self._add_note_to_chat(path)
+
+    async def _on_note_drop(self, args: dict[str, Any]) -> None:
+        """A note dragged from the file tree or a tab onto an editor (``static/notedrop.js``):
+        open it on that side; dropped on the right half of a single editor: in a split."""
+        path = self._drop_path(args)
+        if not path:
             return
         if self._split_open:
             await self._show_in(1 if int(args.get("slot", 0)) == 1 else 0, path)
@@ -1344,7 +1362,11 @@ class EditorPane:
         self._dump_paste(html, text)
         enabled = bool(self._config.get("paste.smart_paste", True)) if self._config else True
         converted = smart_paste(html, text) if enabled else text
-        if converted:
+        if converted and parse_table(converted.strip("\n")) is not None:
+            # a table (copied cells, user 2026-11-09) is a block: its own lines, or pasted after
+            # text on a line it would be read as more of that paragraph
+            self._spawn(self._insert_block(converted.strip("\n")))
+        elif converted:
             self._editor.insert_at_cursor(converted)
 
     def _dump_paste(self, html: str, text: str) -> None:
@@ -1451,6 +1473,18 @@ class EditorPane:
                 return
             edit = TextEdit((TextChange(start, end, result.text),), start)
             await self._apply_edit(tab_id, text, edit, move_caret=False)
+
+    def _on_table_widths(self, args: dict[str, Any]) -> None:
+        """A table column was resized (``tablewidget.js``): remember it for that note."""
+        path, key = str(args.get("path") or ""), args.get("key")
+        if path and isinstance(key, str):
+            self._table_widths.set(path, key, args.get("widths"))
+
+    def _table_widths_renamed(self, old: str, new: str) -> None:
+        """A note or folder moved: its tables keep their widths under the new path."""
+        if self._table_widths.renamed(old, new):
+            for editor in self._editors:
+                editor.set_table_widths(self._table_widths.all())
 
     # ---- AI commands (slash menu, selection) ---------------------------------------------
 

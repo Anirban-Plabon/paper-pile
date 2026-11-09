@@ -6,6 +6,7 @@
 Legend: 🧠 = needs Opus (see PLAN §6 model guidance) · ⬜ todo · 🔄 in progress · ✅ done · ⛔ blocked · ⏭️ skipped/deferred
 
 ## Current focus
+- **Phase:** P32 — Chat, popup, scrolling and table polish (user request 2026-11-09, PLAN §4.33): P32.1–P32.8 done, second round from the user's review done (P32.9); smooth-scroll feel on the 165 Hz panel for the user to confirm
 - **Phase:** P31 — One edit mode for every AI change (user request 2026-11-09, PLAN §4.32): no approval gate in the chat; chat and popup follow *Review in the note* / *Apply at once*; P31.1–P31.4 done; P31.5 (grouped AI changes tab) next; until then several notes in review open as tabs with their diffs
 - **Next phase:** P30 — Vault agent (user request 2026-11-06): own plan `docs/PLAN_vault_agent.md` and tracker `docs/TRACKER_vault_agent.md`; P30.1 (plan) done, next P30.2 (eval test vault)
 - **Phase:** P29 — Understanding a typed request + small AI fixes (user request 2026-10-31, PLAN §4.31): P29.1–P29.7 done (P29.6 Ask box frame, P29.7 note header only ⋯: 2026-11-04)
@@ -329,6 +330,19 @@ Legend: 🧠 = needs Opus (see PLAN §6 model guidance) · ⬜ todo · 🔄 in p
 | P27.2 | No "token repeat limit reached" on edits | ✅ | `GenerationOptions.repeat_penalty` (1.1 on text answers, none on JSON), `RepeatLoopError`, `EditRun._ask` retries once at 0.7; 4 tests; eval case 17 added. Eval gemma4:12b ×2: 26/28 before → 27/30 after (06 fails before and after; 17 1/2: one run echoed the paragraph unchanged — not a loop, see Open issues) |
 | P27.3 | Fixed blocks change when asked | ✅ | `unlock_asked` + `FIXED_KIND_WORDS` (edit_run.py), `GuardContext.convert` skips G5 / G6; 7 tests; eval case 18 (ASCII diagram → mermaid) gemma4:12b 3/3 in 2 calls, case 10 3/3. Repro on the user's note with NeoHorse-1:9B: before "cut off or empty", after one change replacing exactly the code block |
 
+### P32 — Chat, popup, scrolling and table polish (user request 2026-11-09)
+| ID | Task | Status | Notes |
+|---|---|---|---|
+| P32.1 | Chat chips + paste chip | ✅ | 2026-11-09 · divider removed, chips 13 px radius (concentric with the 24 px card); `AiEngine.pasted` + `chat.js` paste listener (limits from Python via `data-pp-paste-*`); `tests/gui/test_chat_paste_chip.py`; real app: chip "Pasted: [40 lines]", box stays empty |
+| P32.2 | Model picker like the other menus | ✅ | 2026-11-09 · `.pp-model-*` restyled to the + menu's metrics, `cpu` icon per row, *Model* heading; screenshot checked |
+| P32.3 | Wider note + chat scrollbars | ✅ | 2026-11-09 · `scrollbar-width: auto` on those two (Chromium 140 ignores `::-webkit-scrollbar` while `scrollbar-width` is set) + 14 px webkit bar; measured gutter 14 px |
+| P32.4 | Drag notes into the chat | ✅ | 2026-11-09 · `notedrop.js` chat zone → `pp_chat_note_drop` → `EditorPane._on_chat_drop` (shared `_drop_path` with the editor drop); CDP drags: tree row → chip "other", tab → chip "qa" |
+| P32.5 | Smooth wheel scrolling | ✅ | 2026-11-09 · `native_boot._smooth_scrolling`: `ScrollAnimatorEnabled` per view. Offscreen PageDown: before 262 px in 1 frame; after 10 frames (79 → 262 px). Feel on the 165 Hz panel: user to confirm |
+| P32.6 | Tab strip + alignment | ✅ | 2026-11-09 · user: "2px after the last note tab vertical line" → `margin-left: 2px`; then "make both 2px" → also 2 px above the strip's bottom edge (`top: 1px`); measured 2 / 2 px |
+| P32.9 | Round 2 from the user's review | ✅ | 2026-11-09 · block copy = HTML + markdown table (pastes as a table; a pasted table gets its own lines via `_insert_block`), `paste` op reads markdown / TSV (2 tests); drop frame now removed (`unlight` missed `pp-drop-chat`); model menu: no icons / heading, `auto-close`, chevron by before-show / before-hide in the page; thumb 10 → 20 px on hover; popup 15 % narrower (253 / 325 px), ↳ fades on typing; chip radius token `--pp-chip-r` 10 px; found while testing: a cell's input widened its column 90 → 195 px (`size = 1`) |
+| P32.7 | Tables: + row, cell blocks, column widths | ✅ | 2026-11-09 · grid layout; `cells` op (`core/tables.py`); `core/table_widths.py` + `setTableWidths` / `table_widths` event; `tests/core/test_table_widths.py` (9). Real mouse: drag + Shift+click blocks, Delete, Ctrl+Z, copy "a\t1\nb\t2", paste clipped at the edge, edge drag 90 → 170 px saved |
+| P32.8 | Ask popup caret + width | ✅ | 2026-11-09 · textarea padding-left 20 px past the ↳ (hidden with a command chip); popup 372 px; cmds `calc(100% - 52px)` → 298 = card 298 px |
+
 ### P31 — One edit mode for every AI change (user request 2026-11-09)
 | ID | Task | Status | Notes |
 |---|---|---|---|
@@ -412,6 +426,11 @@ Legend: 🧠 = needs Opus (see PLAN §6 model guidance) · ⬜ todo · 🔄 in p
 <!-- YYYY-MM-DD · decision · reason · (who: user / claude) -->
 | Date | Decision | Reason | By |
 |---|---|---|---|
+| 2026-11-09 | A copied block of table cells is written in JS as a markdown table + an HTML table (copy must fill the clipboard synchronously, no round trip); reading pasted cells stays in Python (`paste` op) | User: "if I copy a table or a partial table after paste it should look like a table. its just plain text" | claude |
+| 2026-11-09 | Table column widths are view state in `.paper-pile/table_widths.json` (per note, keyed by the header cells), never in the markdown | User asked for column resizing; asked "how much cache will this save? if too much leave it" — ~50–100 bytes per resized table, so kept | user |
+| 2026-11-09 | Native window: QtWebEngine `ScrollAnimatorEnabled` on | User: scrolling "not feel like smoothness like in higher refresh rate"; QtWebEngine leaves the scroll animator off, so a wheel notch jumped in one frame (measured) | claude |
+| 2026-11-09 | Big chat pastes (≥ 10 lines or ≥ 1000 chars) become a `Pasted: [n lines]` chip (a `Selection` of kind `Pasted`) | User: "large scale pasted should be look like Pasted:[]"; limits picked (Claude-like), constants in `core/ai/engine.py` | user |
+| 2026-11-09 | Table block edits go through one `cells` op (clear = empty values, paste = copied rows), clipped at the table's edges | Keeps rule 6 (Python decides the markdown) with one op for Cut / Delete / Paste | claude |
 | 2026-11-09 | Attached and open notes (both split sides) are the chat's direct notes: no target question, the user's words straight to the edit pipeline, no remote permission; CLAUDE.md architecture rule 9 (the harness must generalize) | User: "the agent show option there which is not necessary … is the harness become too strict that it losing its generalizability?" then "make sure the chat will have direct access to open note/notes … harness should be generalizable (add a rule)". Structure the app knows replaces a model question and a model call | user |
 | 2026-11-09 | Setting `ai.remote_agent` (Not allowed / Allowed, global): the vault agent on a remote AI reads / edits only when allowed; else the chat offers Allow always (saves the default) / Allow this session (until the window closes) / Don't allow. Replaces the "Go on?" notice | User: "add a setting … agent will view/edit your vault. is not permitted just show in chat agent unable to edit … 3 option like approved and persist in default, approved for this session and not approved" | user |
 | 2026-11-09 | No approval gate in the chat: every AI change follows `ai.edits` — *Review in the note* (inline diff; several notes in one grouped AI changes tab) or *Apply at once* (written, changed lines flash and fade); *Read-only* removed; new notes and the memory file follow the mode (new phase P31, PLAN §4.32) | User: "there is a approval gate in the chat, which is not a good approach … no approval gate in chat"; answers: reuse the setting with 2 modes; group tab for many notes; auto "but interactive" with a git-like effect that dissolves; links in chat; both other gates follow | user |
@@ -670,6 +689,7 @@ Legend: 🧠 = needs Opus (see PLAN §6 model guidance) · ⬜ todo · 🔄 in p
 <!-- YYYY-MM-DD · task · symptom → root cause → fix · (gotcha added? y/n) -->
 | Date | Task | Symptom | Root cause | Fix | Gotcha? |
 |---|---|---|---|---|---|
+| 2026-11-09 | P32.7 | Shift+click on a table cell selected the wrong block | A cell being typed in holds an `<input>` with the default ~20-char width, which widened its column (90 → 195 px), so the cell under the pointer had moved | `input.size = 1` + `min-width: 0`; found by tracing `mousedown` targets over CDP | n |
 | 2026-11-09 | P29.15 | With AI on, Ctrl+C / Ctrl+X / Ctrl+V on a selection did nothing (or pasted into the Ask box) | The Ask box takes the focus as soon as it opens under a settled selection; only Backspace / Delete were passed to the note. First fix (DOM `focus()` on `.cm-content`) still copied nothing: CodeMirror restores its DOM selection a moment after a plain focus, after the browser has copied | the box hands the keys to the note with CodeMirror's `view.focus()` (exposed as `window.ppFocusEditor`), which puts the selection on screen at once | y |
 | 2026-11-09 | P28.8 | 11,000 agy log files (165 MB) in `~/.gemini`, one every 30 s, workspace = the folder the app was started in | The chat's health check (every 30 s) ran `agy models` each time — a whole agy start with the real HOME and the app's working folder | model list kept 10 min; `agy models` runs in the app's folder with its own HOME | n |
 | 2026-11-09 | P28.7 | "Event loop is closed" from a subprocess transport after the stop test, only when other tests ran after it | `chat()` yields from an inner async generator; `aclose()` of the outer one does not close the inner one, so its `finally` (stop agy) waited for garbage collection — a stopped answer left agy running | `contextlib.aclosing(...)` around the inner generator; the test checks the process is gone | y |
@@ -1002,3 +1022,7 @@ Legend: 🧠 = needs Opus (see PLAN §6 model guidance) · ⬜ todo · 🔄 in p
 - 2026-11-09 · `ai.remote_agent` permission + 3-option chat question (replaces the remote notice) · 1751 tests
 - 2026-11-09 · P31.7 the chat's direct notes (attached / open / split) + CLAUDE.md rule 9 · 1754 tests (+3); real agy replay right
 - 2026-11-09 · P29.15 copy / cut / paste on a selection while the Ask box is open · 1754 tests; real-app check 5/5
+- 2026-11-09 · P32.1–P32.5, P32.7, P32.8 chat chips / paste chip, model picker, scrollbars, drag notes to chat, smooth scrolling, table + row / cell blocks / column widths, Ask popup caret + width · 1765 tests (+11); P32.6 waits for a screenshot
+- 2026-11-09 · P32.6, P32.9 user's second review: table copy as a table, drop frame, model menu, scrollbar hover width, tab +, popup width / ↳ fade, chip radius; table input no longer widens its column · 1767 tests (+2)
+- 2026-11-09 · P32.3 scrollbar round 3 (user): thumb 8 → 16 px on hover / drag, rounded corners, limit bars at both ends (scrollbar buttons drawn as 2 px lines), track 4 px shorter at each end · measured gutter 16 px
+- 2026-11-09 · P32.3 scrollbar round 4 (user): thumb 6 → 10 px on hover / drag; bar half the pane's height, centred (`static/scrollbars.js` sets `--pp-sb-end` = ¼ of the scroller) with the limit lines at its ends · measured: gutter 10 px, ends 169 px of a 677 px note pane

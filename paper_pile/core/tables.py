@@ -214,6 +214,45 @@ def _op_cell(t: Table, op: dict[str, Any]) -> tuple[int, int] | None:
     return row, col
 
 
+def _op_cells(t: Table, op: dict[str, Any]) -> tuple[int, int] | None:
+    """A block of cells at once (a selected block cleared, or a copied block pasted): ``values``
+    is a list of rows written from (``row``, ``col``) on; what falls outside the table is left
+    out (the table never grows here)."""
+    row, col, values = _int(op, "row"), _int(op, "col"), op.get("values")
+    if row is None or col is None or not isinstance(values, list):
+        return None
+    if not (0 <= row <= len(t.rows) and 0 <= col < t.columns):
+        return None
+    grid = t.grid()
+    for r, line in enumerate(values):
+        if not isinstance(line, list) or row + r >= len(grid):
+            break
+        for c, value in enumerate(line):
+            if col + c >= t.columns or not isinstance(value, str):
+                continue
+            grid[row + r][col + c] = " ".join(value.splitlines()).strip()
+    return row, col
+
+
+def pasted_cells(text: str) -> list[list[str]]:
+    """Copied cells as rows of values: a markdown table (what a copied block of cells holds,
+    header row included) or tab-separated lines (from a spreadsheet)."""
+    table = parse_table(text.strip("\n"))
+    if table is not None:
+        return [list(row) for row in table.grid()]
+    lines = text.replace("\r\n", "\n").replace("\r", "\n").rstrip("\n").split("\n")
+    return [line.split("\t") for line in lines]
+
+
+def _op_paste(t: Table, op: dict[str, Any]) -> tuple[int, int] | None:
+    """Copied cells (``text``: a markdown table or tab-separated rows) written from (``row``,
+    ``col``) on, clipped at the table's edges."""
+    text = op.get("text")
+    if not isinstance(text, str) or not text.strip():
+        return None
+    return _op_cells(t, {"row": op.get("row"), "col": op.get("col"), "values": pasted_cells(text)})
+
+
 def _op_insert_row(t: Table, op: dict[str, Any]) -> tuple[int, int] | None:
     at = _int(op, "at")  # body row index in the grid (1 = first body row) the new row takes
     if at is None or not 1 <= at <= len(t.rows) + 1:
@@ -269,6 +308,8 @@ def _op_align(t: Table, op: dict[str, Any]) -> tuple[int, int] | None:
 
 _OPS = {
     "cell": _op_cell,
+    "cells": _op_cells,
+    "paste": _op_paste,
     "insert_row": _op_insert_row,
     "delete_row": _op_delete_row,
     "move_row": _op_move_row,

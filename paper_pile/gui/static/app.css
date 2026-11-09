@@ -353,6 +353,9 @@ body.pp-page-dragging, body.pp-page-dragging * { cursor: row-resize !important; 
 .pp-split-pane.pp-drop-here::after, .pp-editor-area.pp-drop-here::after, .pp-editor-area.pp-drop-split::after { content: ""; position: absolute; top: 0; bottom: 0; z-index: 20; pointer-events: none; background: rgba(var(--pp-accent-rgb), .1); border: 2px solid rgba(var(--pp-accent-rgb), .55); border-radius: var(--pp-r-ctrl); }
 .pp-split-pane.pp-drop-here::after, .pp-editor-area.pp-drop-here::after { left: 0; right: 0; }
 .pp-editor-area.pp-drop-split::after { left: 50%; right: 0; }
+/* a note dragged over the AI chat: dropped, it is attached (notedrop.js) */
+.pp-chat { position: relative; }
+.pp-chat.pp-drop-chat::after { content: ""; position: absolute; inset: 4px; z-index: 20; pointer-events: none; background: rgba(var(--pp-accent-rgb), .08); border: 2px dashed rgba(var(--pp-accent-rgb), .55); border-radius: var(--pp-r-popup); }
 .pp-rtab-active { background: var(--pp-bg); color: var(--pp-fg); box-shadow: inset 0 2px 0 var(--pp-accent); }
 .pp-tab > * { pointer-events: none; }
 .pp-rtab > * { pointer-events: none; }
@@ -512,16 +515,32 @@ body.pp-page-dragging, body.pp-page-dragging * { cursor: row-resize !important; 
 
 /* editable tables (P4.4) */
 .pp-table-edit { position: relative; overflow: visible; cursor: default; }
-.pp-table-grid { display: flex; align-items: stretch; width: fit-content; max-width: 100%; }
+/* table | + column, then + row under the table (tablewidget.js; user 2026-11-09) */
+.pp-table-grid { display: grid; grid-template-columns: auto 16px; column-gap: 4px; row-gap: 4px; width: fit-content; max-width: 100%; }
 .pp-table-grid table { min-width: 0; }
 .pp-table-edit th, .pp-table-edit td { min-width: 90px; cursor: text; }
-.pp-table-input { width: 100%; box-sizing: border-box; padding: 0; margin: 0; border: none; outline: none; background: transparent; font: inherit; color: inherit; text-align: inherit; }
+.pp-table-input { width: 100%; min-width: 0; box-sizing: border-box; padding: 0; margin: 0; border: none; outline: none; background: transparent; font: inherit; color: inherit; text-align: inherit; }
 .pp-table-edit td:has(.pp-table-input), .pp-table-edit th:has(.pp-table-input) { outline: 2px solid var(--pp-accent); outline-offset: -2px; background: rgba(var(--pp-accent-rgb), .06); }
 .pp-table-add { border: 1px dashed var(--pp-border); background: transparent; color: var(--pp-muted); border-radius: var(--pp-r-sm); cursor: pointer; opacity: 0; transition: opacity var(--pp-dur-fast); font: inherit; line-height: 1; padding: 0; display: inline-flex; align-items: center; justify-content: center; }
 .pp-table-edit:hover .pp-table-add, .pp-table-edit:focus-within .pp-table-add { opacity: .8; }
 .pp-table-add:hover { opacity: 1 !important; background: rgba(var(--pp-accent-rgb), .12); color: var(--pp-accent); }
-.pp-table-addrow { display: block; width: 100%; max-width: 320px; height: 16px; margin-top: 3px; }
-.pp-table-addcol { width: 16px; margin-left: 3px; flex: none; }
+/* + row: under the table, exactly as wide as it, its + in the middle (as + column's is) */
+.pp-table-addrow { grid-column: 1; height: 16px; width: 100%; }
+.pp-table-addcol { grid-column: 2; grid-row: 1; width: 16px; }
+.pp-table-add svg { flex: none; }
+/* a dragged column width (core/table_widths.py): fixed layout, long words wrap in the cell */
+.pp-table table.pp-table-sized { table-layout: fixed; }
+.pp-table-edit .pp-table-sized th, .pp-table-edit .pp-table-sized td { min-width: 0; overflow-wrap: anywhere; }
+.pp-table-colresize, .pp-table-colresize td, .pp-table-colresize th, .pp-colresizing, .pp-colresizing * { cursor: col-resize !important; }
+.pp-colresizing { user-select: none; }
+/* a selected block of cells: tinted, one accent frame around the whole block */
+.pp-table-edit:focus { outline: none; }
+.pp-table-edit .pp-tsel { --t: 0px; --b: 0px; --l: 0px; --r: 0px; background: rgba(var(--pp-accent-rgb), .14); box-shadow: inset 0 var(--t) 0 rgb(var(--pp-accent-rgb)), inset 0 calc(-1 * var(--b)) 0 rgb(var(--pp-accent-rgb)), inset var(--l) 0 0 rgb(var(--pp-accent-rgb)), inset calc(-1 * var(--r)) 0 0 rgb(var(--pp-accent-rgb)); }
+.pp-table-edit .pp-tsel-top { --t: 2px; }
+.pp-table-edit .pp-tsel-bottom { --b: 2px; }
+.pp-table-edit .pp-tsel-left { --l: 2px; }
+.pp-table-edit .pp-tsel-right { --r: 2px; }
+.pp-table-block, .pp-table-block * { user-select: none; }
 .pp-tmenu { position: fixed; z-index: 4000; min-width: 190px; padding: 4px; background: var(--pp-bg); color: var(--pp-fg); border: 1px solid var(--pp-border); border-radius: var(--pp-r-popup); box-shadow: 0 6px 20px rgba(0, 0, 0, .18); font-family: Roboto, system-ui, sans-serif; font-size: 13px; }
 .pp-tmenu-item { padding: 5px 10px; border-radius: var(--pp-r-ctrl); cursor: pointer; }
 .pp-tmenu-item:hover { background: rgba(var(--pp-accent-rgb), .14); }
@@ -666,10 +685,14 @@ body.pp-page-dragging, body.pp-page-dragging * { cursor: row-resize !important; 
 .pp-chat-add-notes { gap: 0; }
 .pp-chat-soon-badge { flex: none; padding: 1px 6px; border-radius: 999px; font-size: 10px; background: rgba(127, 127, 127, .16); color: var(--pp-muted); }
 .pp-chat-menu .pp-chat-access { padding: 4px 12px 2px; font-size: 11px; max-width: 260px; }
-.pp-chat-strip { width: 100%; gap: 4px; padding: 4px 6px 6px; border-bottom: 1px solid var(--pp-border); }
+/* no divider under the chips (user 2026-11-09: looked unprofessional) */
+.pp-chat-strip { width: 100%; gap: 4px; padding: 4px 6px 2px; }
 .pp-chat-refs, .pp-chat-chips { display: contents; }
-/* attached things (user 2026-11-06: a softer rectangle, a little taller, so its × has room) */
-.pp-chat-ref { gap: 4px; min-height: 26px; padding: 3px 3px 3px 9px; max-width: 100%; background: rgba(127, 127, 127, .14); border-radius: 6px; font-size: 12px; }
+/* attached things: corners that go with the card's (user 2026-11-09: "adjustable to the chat box
+   curvature, not exact") — the card's radius less its inset, softened: 24 − 14 = 10 px. Change
+   --pp-chat-r and the chips follow; --pp-chip-r alone tunes them. */
+:root { --pp-chat-r: 24px; --pp-chip-r: calc(var(--pp-chat-r) - 14px); }
+.pp-chat-ref { gap: 4px; min-height: 26px; padding: 3px 4px 3px 10px; max-width: 100%; background: rgba(127, 127, 127, .14); border-radius: var(--pp-chip-r); font-size: 12px; }
 .pp-chat-ref .q-btn { width: 20px; height: 20px; min-width: 20px; min-height: 0; padding: 0; flex: none; }
 .pp-chat-chip-text { cursor: pointer; flex: 1 1 auto; gap: 0; }
 .pp-chat-ref-note { color: rgb(var(--pp-accent-rgb)); font-weight: 500; }
@@ -932,17 +955,19 @@ body.body--dark .pp-instr-box textarea { color-scheme: dark; }  /* the corner gr
 /* model picker: a pill button and a roomy menu above it (name, details, check) */
 .pp-chat-model.q-btn { flex: none; max-width: 160px; height: 34px; min-height: 0; padding: 0 12px; border-radius: 17px; font-size: 13.5px; font-weight: 400; color: var(--pp-fg); }
 .pp-chat-model.q-btn .q-btn__content { gap: 8px; flex-wrap: nowrap; }
-.pp-chat-model.q-btn:hover, .pp-chat-model-open.q-btn { background: rgba(127, 127, 127, .14); }
+.pp-chat-model.q-btn:hover, .pp-chat-model[data-pp-open="1"].q-btn { background: rgba(127, 127, 127, .14); }
 .pp-chat-model-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .pp-chat-model-chev { font-size: var(--pp-icon-s); }
-.pp-model-menu { min-width: 260px; max-width: 340px; padding: 8px 0; background: var(--pp-bg); color: var(--pp-fg); border: 1px solid var(--pp-border); border-radius: var(--pp-r-popup); box-shadow: 0 8px 28px rgba(0, 0, 0, .18); }
-.pp-model-item.q-item { min-height: 0; padding: 9px 20px; gap: 16px; align-items: center; }
-.pp-model-item.q-item:hover { background: rgba(127, 127, 127, .10); }
-.pp-model-text { flex: 1 1 auto; min-width: 0; gap: 2px; }
-.pp-model-name { font-size: 14px; }
-.pp-model-detail { font-size: 12.5px; color: var(--pp-muted); }
-.pp-model-check { flex: none; font-size: var(--pp-icon-s); color: var(--pp-fg); }
-.pp-model-empty { padding: 9px 20px; color: var(--pp-muted); }
+/* the model picker looks like the app's other menus (the + menu): same box, rows, icons, check
+   (user 2026-11-09: it did not follow the app's standard) */
+.pp-model-menu { min-width: 240px; max-width: 300px; padding: 4px; background: var(--pp-bg); color: var(--pp-fg); border: 1px solid var(--pp-border); border-radius: var(--pp-r-popup); box-shadow: 0 8px 28px rgba(0, 0, 0, .2); }
+.pp-model-item.q-item { min-height: 36px; padding: 5px 12px; gap: 10px; align-items: center; border-radius: var(--pp-r-ctrl); font-size: 13px; }
+.pp-model-text { flex: 1 1 auto; min-width: 0; gap: 0; }
+.pp-model-name, .pp-model-detail { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pp-model-name { font-size: 13px; line-height: 18px; }
+.pp-model-detail { font-size: 11px; line-height: 15px; color: var(--pp-muted); }
+.pp-model-check { flex: none; font-size: var(--pp-icon-s); }
+.pp-model-empty { padding: 8px 12px; font-size: 13px; color: var(--pp-muted); }
 
 /* Settings: narrow pane. Below 560 px the section list folds to icons; below ~440 px of content
    each row puts its control under the text. */
@@ -1034,7 +1059,7 @@ body.body--dark { --pp-tip-bg: #e6e8eb; --pp-tip-fg: #1f2328; }
 
 /* Icon buttons: a rounded rectangle on hover, like every other hover */
 .pp-icon-btn.q-btn { border-radius: var(--pp-r-ctrl); }
-.pp-chat-ref .q-btn, .pp-chat-chip .q-btn { border-radius: 4px; }
+.pp-chat-ref .q-btn, .pp-chat-chip .q-btn { border-radius: calc(var(--pp-chip-r) - 3px); }
 .pp-chat-model-chev { flex: none; }
 .pp-chat-model-name { min-width: 0; }
 
@@ -1044,6 +1069,21 @@ body.body--dark { --pp-tip-bg: #e6e8eb; --pp-tip-fg: #1f2328; }
 ::-webkit-scrollbar-thumb { background: rgba(127, 127, 127, .35); border-radius: 8px; border: 2px solid transparent; background-clip: content-box; }
 ::-webkit-scrollbar-thumb:hover { background-color: rgba(127, 127, 127, .55); }
 ::-webkit-scrollbar-track, ::-webkit-scrollbar-corner { background: transparent; }
+/* The note and the chat (user 2026-11-09): a 6 px thumb with rounded (not pill) corners that grows
+   to 10 px while the mouse is on it or drags it; the 10 px gutter never changes, so grabbing the
+   bar never reflows the note. The bar is half the pane's height, centred: each end of the track is
+   a step button --pp-sb-end long (a quarter of the pane, static/scrollbars.js) with a short limit
+   line at its inner edge; the thumb's size stays proportional to the content within that half.
+   Chromium uses the ::-webkit-scrollbar rules only when scrollbar-width / -color are left at auto. */
+.pp-editor .cm-scroller, .pp-chat-log { scrollbar-width: auto; scrollbar-color: auto; }
+.pp-editor .cm-scroller::-webkit-scrollbar, .pp-chat-log::-webkit-scrollbar { width: 10px; height: 10px; }
+.pp-editor .cm-scroller::-webkit-scrollbar-thumb, .pp-chat-log::-webkit-scrollbar-thumb { background-color: rgba(127, 127, 127, .32); border: 2px solid transparent; border-radius: 5px; background-clip: padding-box; min-height: 24px; }
+.pp-editor .cm-scroller::-webkit-scrollbar-thumb:hover, .pp-chat-log::-webkit-scrollbar-thumb:hover { background-color: rgba(127, 127, 127, .5); border-width: 0; border-radius: 3px; }
+.pp-editor .cm-scroller::-webkit-scrollbar-thumb:active, .pp-chat-log::-webkit-scrollbar-thumb:active { background-color: rgba(127, 127, 127, .65); border-width: 0; border-radius: 3px; }
+.pp-editor .cm-scroller::-webkit-scrollbar-track, .pp-chat-log::-webkit-scrollbar-track { margin: 3px 0; }
+.pp-editor .cm-scroller::-webkit-scrollbar-button, .pp-chat-log::-webkit-scrollbar-button { display: none; }
+.pp-editor .cm-scroller::-webkit-scrollbar-button:vertical:start:decrement, .pp-chat-log::-webkit-scrollbar-button:vertical:start:decrement { display: block; height: var(--pp-sb-end, 8px); background: linear-gradient(rgba(127, 127, 127, .45), rgba(127, 127, 127, .45)) center bottom / 8px 2px no-repeat; }
+.pp-editor .cm-scroller::-webkit-scrollbar-button:vertical:end:increment, .pp-chat-log::-webkit-scrollbar-button:vertical:end:increment { display: block; height: var(--pp-sb-end, 8px); background: linear-gradient(rgba(127, 127, 127, .45), rgba(127, 127, 127, .45)) center top / 8px 2px no-repeat; }
 
 /* Fields follow the theme (Quasar's own field colours are for its light theme) */
 .q-field__native, .q-field__input, .q-field__prefix, .q-field__suffix, .q-select__dropdown-icon, .q-field__marginal { color: var(--pp-fg); }
@@ -1064,7 +1104,7 @@ body.body--dark { --pp-tip-bg: #e6e8eb; --pp-tip-fg: #1f2328; }
 
 /* Composer: send sits concentric in the card's rounded corner at any height
    (gap 6 px padding + 1 px border on both sides; radius = 17 px circle + 7 px) */
-.pp-chat-card { border-radius: 24px; }
+.pp-chat-card { border-radius: var(--pp-chat-r); }
 .pp-chat-row { padding: 0; }
 /* The buttons never move: bottom-aligned in the one-row and the two-row layout alike, so growing
    text (or switching layouts) only moves the top of the card. */
@@ -1344,7 +1384,8 @@ body.pp-no-motion *, body.pp-no-motion *::before, body.pp-no-motion *::after { t
 .pp-chev, .pp-chat-model-chev { transition: transform var(--pp-dur) var(--pp-ease); }
 .pp-outline-open .pp-outline-head .pp-chev { transform: rotate(90deg); }
 .pp-backlinks-head .pp-chev.pp-open { transform: rotate(-90deg); }
-.pp-chat-model-open .pp-chat-model-chev { transform: rotate(180deg); }
+.pp-chat-model[data-pp-open="1"] .pp-chat-model-chev { transform: rotate(180deg); }
+.pp-model-menu { animation: pp-pop var(--pp-dur) var(--pp-ease); transform-origin: bottom right; }
 /* hover backgrounds fade instead of flickering when the mouse sweeps a list */
 .pp-tree-row, .pp-tab, .pp-rtab, .pp-icon-btn.q-btn, .pp-ctx-item.q-btn, .pp-note-menu-item, .pp-picker-row, .pp-set-navitem, .pp-seg-item { transition: background-color var(--pp-dur-fast) ease, color var(--pp-dur-fast) ease, box-shadow var(--pp-dur-fast) ease; }
 .pp-tab-close, .pp-rtab-close, .pp-fold { transition: opacity var(--pp-dur-fast) ease, background-color var(--pp-dur-fast) ease; }
@@ -1499,7 +1540,9 @@ body.body--dark { --pp-set-box-bg: rgba(255, 255, 255, .035); }
 .pp-tabstrip > .pp-tabs-arrow.pp-tabs-arrow-after { padding-top: 0; }
 /* no divider between the last tab and + (+ has its own hover box) */
 .pp-tabstrip > .pp-tab-new.q-btn::after { display: none; }
-.pp-tabstrip > .pp-tab-new.q-btn { margin-left: 4px; margin-top: var(--pp-tab-drop); }
+/* + 2 px after the last tab's side line and 2 px above the strip's bottom edge (user 2026-11-09);
+   `top` moves it 1 px lower than the centred buttons (a margin in a centred row moves by half) */
+.pp-tabstrip > .pp-tab-new.q-btn { margin-left: 2px; margin-top: var(--pp-tab-drop); top: 1px; }
 .pp-left-top > * { margin-top: calc(var(--pp-tab-drop) + 1px); }  /* its row's bottom line is a border: 1 px less room */
 /* the window buttons are the strip's buttons: 30 × 30, 4 px apart */
 .pp-wincontrols { gap: 4px; }
@@ -1595,7 +1638,7 @@ body.body--dark .pp-aidiff-chip-warn { color: #e3b341; }
    the composer's card with Move to chat beside it (box), grown into a small floating chat (chat),
    or dissolved while the AI rewrites the text (gone). askpop.js sets left / top; it lives in
    <body> (ui.teleport). */
-.pp-askpop { --pp-askpop-tint: var(--pp-bg); --pp-askpop-line: var(--pp-border); --pp-askpop-full: 480px; position: fixed; z-index: 3000; left: 0; top: 0; width: min(342px, calc(100vw - 12px)); padding: 10px; border: 1px solid transparent; display: flex; flex-direction: column; gap: 6px; font-family: Roboto, -apple-system, "Helvetica Neue", Helvetica, Arial, sans-serif; color: var(--pp-fg); }
+.pp-askpop { --pp-askpop-tint: var(--pp-bg); --pp-askpop-line: var(--pp-border); --pp-askpop-full: 480px; position: fixed; z-index: 3000; left: 0; top: 0; width: min(325px, calc(100vw - 12px)); padding: 10px; border: 1px solid transparent; display: flex; flex-direction: column; gap: 6px; font-family: Roboto, -apple-system, "Helvetica Neue", Helvetica, Arial, sans-serif; color: var(--pp-fg); }
 /* the small box: its card + Move to chat as wide as the editor's / menu (320 px, user 2026-11-06) */
 .pp-askpop-box { animation: pp-pop var(--pp-dur) var(--pp-ease); }
 .pp-askpop-bottom { width: 100%; flex: none; gap: 6px; }
@@ -1625,14 +1668,22 @@ body.body--dark .pp-aidiff-chip-warn { color: #e3b341; }
    a placeholder; the placeholder is one space so :placeholder-shown tells an empty box) */
 .pp-askpop-row > .pp-askpop-hint { grid-area: input; align-self: start; gap: 6px; padding: 7px 6px; font-size: 13.5px; line-height: 20px; color: var(--pp-muted); pointer-events: none; white-space: nowrap; overflow: hidden; min-width: 0; }
 .pp-askpop-hint .q-label, .pp-askpop-hint > div { overflow: hidden; text-overflow: ellipsis; }
-.pp-askpop-row:not(:has(textarea:placeholder-shown)) > .pp-askpop-hint { visibility: hidden; }
+/* the text (and caret) start after the ↳ (user 2026-11-09: the caret sat before the arrow); the
+   hint's words go once something is typed */
+.pp-askpop-row:not(:has(textarea:placeholder-shown)) > .pp-askpop-hint > :not(.pp-askpop-hint-icon) { visibility: hidden; }
+/* … and the ↳ dissolves once writing starts (user 2026-11-09); the text keeps its place */
+.pp-askpop-hint-icon { transition: opacity var(--pp-dur) var(--pp-ease); }
+.pp-askpop-row:not(:has(textarea:placeholder-shown)) > .pp-askpop-hint .pp-askpop-hint-icon { opacity: 0; }
+.pp-askpop-input .q-field__native { padding-left: 20px; }
+.pp-askpop-row:has(.pp-askpop-chip:not(.hidden)) > .pp-askpop-hint .pp-askpop-hint-icon { visibility: hidden; }
+.pp-askpop-row:has(.pp-askpop-chip:not(.hidden)) .pp-askpop-input .q-field__native { padding-left: 0; }
 .pp-askpop .pp-chat-multi .pp-askpop-hint { padding-left: 8px; }
 /* growing into the mini chat: its size is known (fixed height), so the frame is drawn at once and
    uncovered from the small box's footprint (clip-path, no layout change), away from the selection */
 .pp-askpop-chat[data-pp-side="down"] { animation: pp-askpop-grow-down calc(var(--pp-dur) * 1.6) var(--pp-ease); }
 .pp-askpop-chat[data-pp-side="up"] { animation: pp-askpop-grow-up calc(var(--pp-dur) * 1.6) var(--pp-ease); }
-@keyframes pp-askpop-grow-down { from { clip-path: inset(0 calc(100% - 342px) calc(100% - 66px) 0 round 24px); } to { clip-path: inset(0 0 0 0 round var(--pp-r-popup)); } }
-@keyframes pp-askpop-grow-up { from { clip-path: inset(calc(100% - 66px) calc(100% - 342px) 0 0 round 24px); } to { clip-path: inset(0 0 0 0 round var(--pp-r-popup)); } }
+@keyframes pp-askpop-grow-down { from { clip-path: inset(0 calc(100% - 325px) calc(100% - 66px) 0 round 24px); } to { clip-path: inset(0 0 0 0 round var(--pp-r-popup)); } }
+@keyframes pp-askpop-grow-up { from { clip-path: inset(calc(100% - 66px) calc(100% - 325px) 0 0 round 24px); } to { clip-path: inset(0 0 0 0 round var(--pp-r-popup)); } }
 .pp-askpop-msg-cmd { margin-right: 6px; font-weight: 600; color: var(--pp-accent); }
 /* askpop.js picks the side once (data-pp-side = down / up; an attribute, since Python rewrites
    the class list) and holds the box by its edge next to the selection. The mini chat has one
@@ -1650,11 +1701,13 @@ body.body--dark .pp-aidiff-chip-warn { color: #e3b341; }
 .pp-askpop-chat .pp-askpop-cmds { max-height: min(300px, calc(100% - 110px)); }
 .pp-askpop-cmd-title, .pp-chat-cmd > .q-label, .pp-chat-cmd > div { white-space: nowrap; }
 /* no room on the growing side: the list over the selection instead, out of the box's flow */
-.pp-askpop-cmds[data-pp-flip] { position: absolute; left: 0; }
+.pp-askpop-cmds[data-pp-flip] { position: absolute; left: 10px; width: calc(100% - 72px); }
 .pp-askpop[data-pp-side="down"] .pp-askpop-cmds[data-pp-flip] { bottom: calc(100% + 6px); }
 .pp-askpop[data-pp-side="up"] .pp-askpop-cmds[data-pp-flip] { top: calc(100% + 6px); }
 /* the / list: as wide as the card (not under Move to chat) */
-.pp-askpop-cmds { flex: none; width: max-content; min-width: 280px; max-width: 100%; gap: 0; padding: 4px; max-height: 300px; overflow-y: auto; border: 1px solid var(--pp-askpop-line); border-radius: var(--pp-r-popup); background: var(--pp-askpop-tint); box-shadow: 0 4px 16px rgba(0, 0, 0, .12); }
+/* as wide as the Ask box itself (its card: the row minus Move to chat, 46 px + 6 px gap); box and list
+   253 px (user 2026-11-09: 15 % narrower than 298) */
+.pp-askpop-cmds { flex: none; width: calc(100% - 52px); min-width: 0; max-width: none; gap: 0; padding: 4px; max-height: 300px; overflow-y: auto; border: 1px solid var(--pp-askpop-line); border-radius: var(--pp-r-popup); background: var(--pp-askpop-tint); box-shadow: 0 4px 16px rgba(0, 0, 0, .12); }
 .pp-askpop-cmd { width: 100%; flex-wrap: nowrap; gap: 10px; padding: 7px 12px; border-radius: var(--pp-r-ctrl); cursor: pointer; font-size: 13.5px; }
 .pp-askpop-cmd:hover, .pp-askpop-cmd-active { background: rgba(var(--pp-accent-rgb), .12); }
 .pp-askpop-cmd-sub { margin-left: auto; padding-left: 12px; min-width: 0; font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }

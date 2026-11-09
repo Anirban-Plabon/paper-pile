@@ -204,3 +204,16 @@ document.addEventListener('click', function (e) {
   const path = decodeURIComponent(link.getAttribute('href').slice('pp-note:'.length));
   emitEvent('pp_note', { path: path, split: e.ctrlKey || e.metaKey });
 }, true);
+// A large paste into the chat box becomes a chip ("Pasted: [40 lines]", chat.py) instead of filling
+// the box. The limits come from Python (data-pp-paste-lines / -chars on the field).
+document.addEventListener('paste', function (e) {
+  const area = e.target && e.target.closest && e.target.closest('.pp-chat-input textarea');
+  if (!area || area.closest('.pp-askpop')) return;
+  const field = area.closest('.pp-chat-input');
+  const text = e.clipboardData && e.clipboardData.getData('text/plain');
+  if (!field || !text) return;
+  const lines = text.replace(/\s+$/, '').split('\n').length;
+  if (lines < +field.dataset.ppPasteLines && text.length < +field.dataset.ppPasteChars) return;
+  e.preventDefault();
+  emitEvent('pp_chat_paste', { text: text });
+}, true);

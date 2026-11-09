@@ -124,6 +124,7 @@ def _install_window_state() -> None:
                 handle = view.windowHandle()
                 if handle is None:
                     continue
+                _smooth_scrolling(view)
                 handle.windowStateChanged.connect(lambda _s, v=view: self._tell(v))
                 view.webview.page().loadFinished.connect(lambda _ok, v=view: self._tell(v))
                 self._tell(view)
@@ -146,6 +147,17 @@ def _install_window_state() -> None:
         watcher.hook.emit()
 
     threading.Thread(target=start, daemon=True).start()
+
+
+def _smooth_scrolling(view: Any) -> None:
+    """Animated wheel scrolling (user 2026-11-09: scrolling did not feel like the screen's high
+    refresh rate). QtWebEngine leaves Chromium's scroll animator off, so each wheel notch jumped
+    ~100 px in one frame; with it on, a notch glides over several frames at the display's rate.
+    A touchpad (pixel deltas) is never animated either way."""
+    from qtpy.QtWebEngineCore import QWebEngineSettings
+
+    attr = QWebEngineSettings.WebAttribute.ScrollAnimatorEnabled
+    view.webview.page().settings().setAttribute(attr, True)
 
 
 def print_to_pdf(url: str, path: str, paper: str, done: Callable[[bool], None]) -> None:
