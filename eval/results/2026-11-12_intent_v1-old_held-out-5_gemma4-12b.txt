@@ -1,0 +1,14 @@
+PASS answer 'summarise the three options' → answer
+PASS answer 'explain the difference between the last two' → answer
+FAIL answer 'detail the reasoning behind this' → change
+PASS answer 'tell me what each option costs' → answer
+PASS answer 'rank these by complexity' → answer
+PASS answer 'describe the audience this targets' → answer
+PASS change 'develop the bare metal part further' → change
+PASS change 'flesh out each bullet' → change
+PASS change 'work some history of virtualization into this' → change
+PASS change 'now as a haiku' → change
+PASS change-open 'give it another voice' → change-open ['Make it more professional and formal.', 'Make it more casual and conversational.', 'Make it more technical and detailed.']
+PASS change-open 'lay it out differently' → change-open ['as a table', 'as a descriptive paragraph', 'as a comparison list with more detail']
+FAIL change-open 'into a different language please' → change
+old rules held-out-5 11/13

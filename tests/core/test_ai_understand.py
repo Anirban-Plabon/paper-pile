@@ -17,7 +17,8 @@ TEXT = "We compare three options for hosting."
 
 def answer(**kw: object) -> dict[str, object]:
     base: dict[str, object] = {
-        "want": "change", "complete": True, "question": "", "options": [],
+        "result": "the_text_itself", "want": "change", "complete": True, "question": "",
+        "options": [],
         "reach": "selection", "size": "medium", "adds": False, "new_form": False,
     }  # fmt: skip
     return {**base, **kw}
@@ -48,6 +49,16 @@ def test_an_answer_is_always_complete_and_nonsense_is_none() -> None:
     assert parse(None) is None and parse({"want": "maybe"}) is None
     odd = parse(answer(reach="everywhere", size="huge"))
     assert odd is not None and (odd.reach, odd.size) == ("selection", "medium")
+
+
+def test_a_change_needs_the_result_to_be_the_text_itself() -> None:
+    # an information request worded as a command ("describe …"): the model said "change" but
+    # its result is information about the text — the note must stay as it is (user 2026-11-11)
+    for result in ("information_about_it", None, "nonsense"):
+        found = parse({**answer(), "result": result})
+        assert found is not None and found.want == "answer" and found.complete
+    found = parse(answer(want="answer"))  # an answer stays an answer whatever the result says
+    assert found is not None and found.want == "answer"
 
 
 def test_reach_and_new_form_become_the_pipeline_intent() -> None:

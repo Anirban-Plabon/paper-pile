@@ -221,6 +221,7 @@ def backend(msgs: list[ChatMessage]) -> str:
     if system.startswith("A user selected text"):  # attached notes: the Ask box's call
         return json.dumps(
             {
+                "result": "the_text_itself",
                 "want": "change",
                 "complete": True,
                 "question": "",

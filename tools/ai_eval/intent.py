@@ -132,9 +132,47 @@ HELD_OUT_3: list[tuple[str, str, str]] = [
     (A, LIST, "which would you choose?"),
     (A, PARA, "what's a better word for 'layer' here?"),
 ]
-REPORTED: list[tuple[str, str, str]] = [  # what users typed (2026-10-31): not in the score
-    (C, PARA, "Elaborate this"),
-    (CO, PARA, "change the tone"),
+# written 2026-11-11 before the "told vs written" change (user: asked to describe, it edited):
+# requests that ask to be told about the text in imperative form, next to imperative changes
+# that write about the same subject into the note
+HELD_OUT_4: list[tuple[str, str, str]] = [
+    (A, PARA, "describe the trade-offs"),
+    (A, LIST, "walk me through these"),
+    (A, PARA, "outline the argument"),
+    (A, PARA, "break this down for me"),
+    (A, LIST, "compare the first two"),
+    (A, PARA, "analyse this"),
+    (A, PARA, "list the claims made here"),
+    (A, PARA, "describe what a VM is"),
+    (A, LIST, "characterize each option"),
+    (A, PARA, "point out the assumptions"),
+    (C, PARA, "add a description of each option"),
+    (C, PARA, "describe the VM option in more detail here"),
+    (C, LIST, "give each item a one-line explanation"),
+    (C, PARA, "work in a comparison of costs"),
+    (C, PARA, "continue this paragraph"),
+    (C, PARA, "add a sentence explaining what bare metal means"),
+]
+# written 2026-11-11 after held-out-4 judged a first "result" version, before the second
+HELD_OUT_5: list[tuple[str, str, str]] = [
+    (A, PARA, "summarise the three options"),
+    (A, LIST, "explain the difference between the last two"),
+    (A, PARA, "detail the reasoning behind this"),
+    (A, PARA, "tell me what each option costs"),
+    (A, LIST, "rank these by complexity"),
+    (A, PARA, "describe the audience this targets"),
+    (C, PARA, "develop the bare metal part further"),
+    (C, LIST, "flesh out each bullet"),
+    (C, PARA, "work some history of virtualization into this"),
+    (C, PARA, "now as a haiku"),
+    (CO, PARA, "give it another voice"),
+    (CO, LIST, "lay it out differently"),
+    (CO, PARA, "into a different language please"),
+]
+REPORTED: list[tuple[str, str, str]] = [  # what users typed: not in the score
+    (C, PARA, "Elaborate this"),  # 2026-10-31
+    (CO, PARA, "change the tone"),  # 2026-10-31
+    (A, PARA, "describe this"),  # 2026-11-11
 ]
 
 
@@ -165,6 +203,8 @@ async def main(args: argparse.Namespace) -> int:
         ("held-out", HELD_OUT),
         ("held-out-2", HELD_OUT_2),
         ("held-out-3", HELD_OUT_3),
+        ("held-out-4", HELD_OUT_4),
+        ("held-out-5", HELD_OUT_5),
         ("reported", REPORTED),
     ):
         print(f"--- {label}")

@@ -86,6 +86,7 @@ def script(msgs: list[ChatMessage]) -> str:
     if system.startswith("A user selected text"):  # the Ask box's understanding
         return json.dumps(
             {
+                "result": "the_text_itself",
                 "want": "change",
                 "complete": True,
                 "question": "",

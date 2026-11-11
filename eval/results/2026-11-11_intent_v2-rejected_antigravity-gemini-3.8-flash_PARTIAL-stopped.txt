@@ -1,0 +1,12 @@
+--- eval
+PASS  change      'could you flesh this out a bit'                 → change  (20.7 s)
+PASS  change      'go deeper on this point'                        → change  (23.7 s)
+FAIL  change      'say more here'                                  → change-open ['Add the pros and cons of each hosting option', 'Explain the technical differences and architecture of each', 'Describe typical use cases for each option']  (28.1 s)
+PASS  change      'tighten this up'                                → change  (20.3 s)
+PASS  change      'this is too wordy'                              → change  (50.8 s)
+PASS  change      'fix the typos'                                  → change  (12.2 s)
+PASS  change      'bullet points please'                           → change  (13.4 s)
+PASS  change      'put this into Spanish'                          → change  (62.7 s)
+PASS  change      'this should be a table'                         → change  (20.5 s)
+FAIL  change      'add an example after the second sentence'       → change-open ['Add an example of a Docker container', 'Add an example of a virtual machine', 'Add an example of bare metal hosting']  (56.4 s)
+PASS  change      'use active voice'                               → change  (97.9 s)

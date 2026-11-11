@@ -23,10 +23,16 @@ log = logging.getLogger("paper_pile.ai.understand")
 Want = Literal["change", "answer"]
 SELECTION_CHARS = 1500  # of the selected text shown with the request
 MAX_OPTIONS = 4
+# what the request asks to get back: the selected text itself made different, or something told
+# about it. Decided first; a change needs both fields to agree (a wrong edit costs the user an
+# undo, a wrong answer costs nothing — it can still be put into the note).
+TEXT_ITSELF, ABOUT_TEXT = "the_text_itself", "information_about_it"
+RESULTS = (TEXT_ITSELF, ABOUT_TEXT)
 
 SCHEMA: dict[str, Any] = {
     "type": "object",
-    "properties": {
+    "properties": {  # in the order the model decides them: what the result is, then the rest
+        "result": {"type": "string", "enum": list(RESULTS)},
         "want": {"type": "string", "enum": ["change", "answer"]},
         "complete": {"type": "boolean"},
         "question": {"type": "string", "maxLength": 90},
@@ -40,21 +46,38 @@ SCHEMA: dict[str, Any] = {
         "adds": {"type": "boolean"},
         "new_form": {"type": "boolean"},
     },
-    "required": ["want", "complete", "question", "options", "reach", "size", "adds", "new_form"],
+    "required": [
+        "result",
+        "want",
+        "complete",
+        "question",
+        "options",
+        "reach",
+        "size",
+        "adds",
+        "new_form",
+    ],
 }
 
 RULES = """\
 A user selected text in a markdown note and typed a request about it. Work out what they mean.
 
-want:
+result — what the reply to the request would be:
+- "the_text_itself": a new version of the selected text, to stand in its place in the note.
+- "information_about_it": something told to the user about the text, or about a thing it \
+names, while the text stays as it is.
+Decide by the reply, not by the wording: a command can ask to be told something, and a \
+question can ask for a change.
+
+want ("change" exactly when result is "the_text_itself"):
 - "change": the user wants the selected text itself to end up different in the note — any \
 rewording, more or fewer words, more depth or detail on what it says, another tone, style, \
 language or format, something added into it, corrected, restructured or removed. The text is \
-the user's own writing: an instruction to do something with it or to write more about its \
-subject is a change, even when it is one word.
+the user's own writing: an instruction to write more of it, or to work more into it, is a \
+change, even when it is one word.
 - "answer": the user wants something told or shown to them while the note stays as it is — \
 a question (what, why, is it, does it…), or a request to explain, summarize, judge or check \
-it for them to read.
+it for them to read, also when worded as a command.
 
 complete (only for "change"; true for "answer"):
 - true when the request says what the result should be, or when there is one obvious way to \
@@ -108,7 +131,11 @@ def parse(data: dict[str, Any] | None) -> Understood | None:
     without options to offer is acted on as it is (asking with nothing to pick helps no one)."""
     if not data or data.get("want") not in ("change", "answer"):
         return None
-    want: Want = data["want"]
+    # a change only when the result is the text itself too: when the two disagree, the model
+    # was unsure, and an answer leaves the note as it is (CLAUDE.md rule 9: a structural rule)
+    want: Want = (
+        "change" if data["want"] == "change" and data.get("result") == TEXT_ITSELF else "answer"
+    )
     options = tuple(
         dict.fromkeys(str(o).strip() for o in data.get("options") or [] if str(o).strip())
     )[:MAX_OPTIONS]

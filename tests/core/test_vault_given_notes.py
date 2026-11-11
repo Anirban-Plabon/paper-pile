@@ -69,6 +69,7 @@ class Script:
             self.kinds.append("intent")
             return json.dumps(
                 {
+                    "result": "the_text_itself",
                     "want": "change",
                     "complete": True,
                     "question": "",
