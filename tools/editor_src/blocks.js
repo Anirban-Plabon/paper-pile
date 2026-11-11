@@ -6,6 +6,7 @@ import { Facet, StateEffect, StateField } from "@codemirror/state";
 import { Decoration, EditorView, WidgetType } from "@codemirror/view";
 import katex from "katex";
 import { copyButton } from "./blockactions.js";
+import { alignedWidget, isAlignChange } from "./align.js";
 import { measureAgain, rtOf } from "./context.js";
 import { EmbedWidget } from "./embedwidget.js";
 import { TablePreview, TableWidget } from "./tablewidget.js";
@@ -301,8 +302,10 @@ const dragTracking = EditorView.domEventHandlers({
 function visible(items, state) {
   const out = [];
   for (const { from, to, widget, editing } of items) {
-    if (!reveals(state, from, to)) out.push(Decoration.replace({ widget, block: true }).range(from, to));
-    else if (editing) out.push(Decoration.widget({ widget: editing, block: true, side: -1 }).range(from));
+    // each drawn with its block's alignment (align.js; front matter keeps its own layout)
+    const own = widget instanceof FrontMatterWidget ? widget : alignedWidget(state, from, widget);
+    if (!reveals(state, from, to)) out.push(Decoration.replace({ widget: own, block: true }).range(from, to));
+    else if (editing) out.push(Decoration.widget({ widget: alignedWidget(state, from, editing), block: true, side: -1 }).range(from));
   }
   return Decoration.set(out, true);
 }
@@ -315,6 +318,7 @@ const blockField = StateField.define({
     if (tr.docChanged || tr.reconfigured || syntaxTree(tr.startState) !== syntaxTree(tr.state)) {
       return derive(candidates(tr.state), tr.state);
     }
+    if (isAlignChange(tr)) return { items: value.items, set: visible(value.items, tr.state) };
     const held = tr.state.field(dragField, false);
     const released = tr.startState.field(dragField, false) && !held;
     if (held) return value;

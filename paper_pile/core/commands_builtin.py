@@ -15,6 +15,7 @@ from paper_pile.core.commands import (
     Insert,
     OpenPicker,
     ReplaceLinePrefix,
+    SetAlign,
     StreamInsert,
     command,
 )
@@ -356,3 +357,40 @@ def rewrite_note() -> StreamInsert:
 )
 def ai_ask(ctx: CommandContext) -> Action:
     return StreamInsert("", source="auto", ask=True)
+
+
+# ---- alignment (PLAN §4.34): the caret's block / the selected blocks first, then the note
+
+ALIGN = "Align"
+ALIGN_ICONS = {
+    "left": "text-align-start",
+    "center": "text-align-center",
+    "right": "text-align-end",
+    "justify": "text-align-justify",
+}
+
+
+def _align(scope: str, align: str) -> None:
+    block = scope == "block"
+    title = ("Align " if block else "Align note ") + align
+    if align == "justify":
+        title = "Justify" if block else "Justify note"
+    subtitle = "This block or the selected blocks" if block else "The whole note"
+    where = ("block", "paragraph") if block else ("note", "page")
+    aliases = ("align", "alignment", align, *where)
+
+    @command(
+        f"align-{align}" if block else f"align-note-{align}",
+        title,
+        group=ALIGN,
+        icon=ALIGN_ICONS[align],
+        subtitle=subtitle,
+        aliases=aliases,
+    )
+    def run(ctx: CommandContext) -> Action:
+        return SetAlign("block" if block else "note", align)
+
+
+for _scope in ("block", "note"):
+    for _a in ALIGN_ICONS:
+        _align(_scope, _a)

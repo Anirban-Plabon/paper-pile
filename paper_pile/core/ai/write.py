@@ -86,6 +86,45 @@ def _change(
     return PlannedChange(start, end, new, edit.why, edit.outside, tuple(issues))
 
 
+@dataclass(frozen=True)
+class LiveChange:
+    """A change shown while the AI writes it (user 2026-11-10): ``start``..``end`` of the note
+    is what it replaces (red), ``text`` the new text so far (green); ``after``: an insertion at
+    a line's end, shown under that line (else above the line at ``start``); ``writing``: the
+    one being written now (the AI chip sits under it)."""
+
+    start: int
+    end: int
+    text: str = ""
+    after: bool = False
+    writing: bool = False
+
+
+def live_change(
+    note: str, start: int, end: int, text: str = "", writing: bool = False
+) -> LiveChange:
+    """A :class:`LiveChange` over ``note[start:end]``; an insertion at a line's end shows under
+    that line. The text loses the blank lines around it (they only separate blocks)."""
+    after = start == end and start > 0 and (start == len(note) or note[start] == "\n")
+    return LiveChange(start, end, text.strip("\n"), after, writing)
+
+
+def live_span(edit: PlannedEdit, blocks: Sequence[Block]) -> tuple[int, int]:
+    """Where ``edit`` goes in the note, before its text is known: the part it replaces (a
+    change or a delete), or the point a new text goes (before or after its anchor block)."""
+    part = _span(edit, blocks)
+    first, last = part[0], part[-1]
+    if edit.action in ("change", "delete"):
+        return first.start, last.end
+    return (first.start, first.start) if edit.action == "add_before" else (first.end, first.end)
+
+
+def live_text(job: "WriteJob", partial: str) -> str:
+    """The model's answer so far as it will read in the note: the fixed blocks it already
+    passed (``⟦KEEP n⟧`` lines) put back."""
+    return unmask(partial, job.kept)[0] if job.kept else partial
+
+
 def write_job(
     edit: PlannedEdit,
     blocks: Sequence[Block],

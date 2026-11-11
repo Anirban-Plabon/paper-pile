@@ -23,7 +23,7 @@ log = logging.getLogger("paper_pile.commands")
 RECENT_LIMIT = 5
 RECENT_GROUP = "Recent"
 # The order groups appear in; a group not listed here comes after these, in registration order.
-GROUP_ORDER = ("Basic blocks", "Code & math", "Diagrams", "Media", "Links", "Insert", "AI")
+GROUP_ORDER = ("Basic blocks", "Code & math", "Diagrams", "Media", "Links", "Insert", "Align", "AI")
 
 
 # ---- actions: what the editor is asked to do -----------------------------------------------
@@ -88,7 +88,18 @@ class StreamInsert:
     lead: str = ""
 
 
-Action = Insert | ReplaceLinePrefix | ReplaceSelection | OpenNote | OpenPicker | StreamInsert
+@dataclass(frozen=True, slots=True)
+class SetAlign:
+    """Align text (PLAN §4.34): ``block`` = the block at the caret or every block the selection
+    touches, ``note`` = the whole note. View state, not a text edit (``core/alignment.py``)."""
+
+    scope: Literal["block", "note"]
+    align: str
+
+
+Action = (
+    Insert | ReplaceLinePrefix | ReplaceSelection | OpenNote | OpenPicker | StreamInsert | SetAlign
+)
 
 
 @dataclass(frozen=True, slots=True)

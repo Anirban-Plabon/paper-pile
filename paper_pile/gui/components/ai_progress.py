@@ -3,6 +3,10 @@ the chat box at the bottom of the window — the AI icon in a circle, what the A
 the chat's stop circle, rippling while the AI works; that circle is the Stop button (as the
 chat's send button is while it answers). Replaces Quasar's notification with a spinner.
 
+``follow`` (a job started from the Ask box, user 2026-11-10): the Ask box turns into the chip —
+it starts where the box was and goes to the note's AI spot under the text being written, and
+down with it as the text streams in (``static/askpop.js``, ``tools/editor_src/aispot.js``).
+
 Used like that notification: ``message`` can be changed while it runs, :meth:`dismiss` removes
 it. ``on_stop`` runs only when the user presses Stop (never on :meth:`dismiss`).
 """
@@ -17,10 +21,12 @@ from paper_pile.gui.tips import tip
 
 
 class AiProgress:
-    def __init__(self, message: str, on_stop: Callable[[], None]) -> None:
+    def __init__(self, message: str, on_stop: Callable[[], None], *, follow: bool = False) -> None:
         self._on_stop = on_stop
         with ui.row().classes("pp-aiprog pp-aiprog-chip items-center no-wrap") as root:
             self._root = root
+            if follow:
+                root.classes("pp-aiprog-follow")
             with ui.element("div").classes("pp-aiprog-ai"):
                 line_icon(CHAT_ICON)
             self._label = ui.label(message).classes("pp-aiprog-text")

@@ -6,19 +6,30 @@
 // An edit of several places (PLAN §4.29) shows each change's reason, an "outside selection" chip
 // and the checks' warnings, marks the words that changed, and the bar jumps between changes
 // (‹ ›) and lists notes ("Similar text in …", "Maybe also update …" with Update).
+// A live proposal (`live: true`, user 2026-11-10) is a change while the AI writes it: the same
+// red and green, no buttons and no bar, its new text replaced as it arrives (setLiveText keeps
+// the positions, which follow typing), and the AI chip's spot (aispot.js) under the hunk being
+// written. The real proposal (or nothing) replaces it when the AI is done.
 import { StateEffect, StateField } from "@codemirror/state";
 import { Decoration, EditorView, WidgetType, showPanel } from "@codemirror/view";
 import { rtOf } from "./context.js";
 import { bandLayer } from "./aiband.js";
+import { keepSpotInView, spotWidget } from "./aispot.js";
 
 // {id, docId, readonly, notes: [{i, message, update}],
 //  hunks: [{id, from, to, insert, reason, outside, issues: [{severity, message}], marksOld, marksNew}]}
 const setProposal = StateEffect.define();
+const setLiveText = StateEffect.define(); // [text of hunk 0, text of hunk 1, …]
 
 export const proposalField = StateField.define({
   create: () => null,
   update(value, tr) {
-    for (const e of tr.effects) if (e.is(setProposal)) value = e.value;
+    for (const e of tr.effects) {
+      if (e.is(setProposal)) value = e.value;
+      else if (e.is(setLiveText) && value && value.live) {
+        value = { ...value, hunks: value.hunks.map((h, i) => (i < e.value.length ? { ...h, insert: e.value[i] } : h)) };
+      }
+    }
     if (value && tr.docChanged) {
       const hunks = value.hunks.map((h) => ({
         ...h,
@@ -30,7 +41,7 @@ export const proposalField = StateField.define({
     }
     return value;
   },
-  provide: (f) => showPanel.from(f, (p) => (p ? barPanel : null)),
+  provide: (f) => showPanel.from(f, (p) => (p && !p.live ? barPanel : null)),
 });
 
 const report = (view, action, hunk = null, note = null) => {
@@ -77,18 +88,30 @@ const button = (label, cls, onClick) => {
 };
 
 class AddedLines extends WidgetType {
-  constructor(hunk, readonly) {
+  constructor(hunk, readonly, live = false) {
     super();
     this.hunk = hunk;
     this.readonly = readonly;
+    this.live = live;
   }
   eq(other) {
-    return other.hunk.id === this.hunk.id && other.hunk.insert === this.hunk.insert && other.readonly === this.readonly;
+    return other.hunk.id === this.hunk.id && other.hunk.insert === this.hunk.insert && other.readonly === this.readonly && other.live === this.live && !!other.hunk.writing === !!this.hunk.writing;
   }
   toDOM(view) {
     const h = this.hunk;
     const box = document.createElement("div");
     box.className = "pp-aidiff-block";
+    if (this.live) {  // being written: the lines only, the newest one with a caret
+      box.classList.add("pp-aidiff-live");
+      const text = h.insert.replace(/\n$/, "");
+      if (text) for (const line of text.split("\n")) box.appendChild(addedLine(line, 0, []));
+      if (h.writing) {
+        const caret = document.createElement("span");
+        caret.className = "pp-aidiff-caret";
+        (box.lastElementChild || box.appendChild(addedLine("", 0, []))).appendChild(caret);
+      }
+      return box;
+    }
     if (h.reason) {
       const why = document.createElement("div");
       why.className = "pp-aidiff-why";
@@ -140,10 +163,19 @@ export const proposalDecorations = EditorView.decorations.compute([proposalField
   if (!p) return Decoration.none;
   const doc = state.doc;
   const out = [];
-  for (const h of p.hunks) {
+  const live = !!p.live;
+  // the AI chip's spot: under the hunk being written (else the last one)
+  const spotAt = live ? Math.max(p.hunks.findIndex((h) => h.writing), p.hunks.length - 1) : -1;
+  p.hunks.forEach((h, i) => {
     const from = Math.min(h.from, doc.length);
     const to = Math.min(h.to, doc.length);
-    if (to > from) {
+    const added = new AddedLines({ ...h, writing: live && i === spotAt && h.writing }, !!p.readonly, live);
+    const spot = (pos, side) => { if (i === spotAt) out.push(Decoration.widget({ widget: spotWidget, block: true, side }).range(pos)); };
+    if (live && to === from && h.after) {  // new text at a line's end: under that line
+      const at = doc.lineAt(from).to;
+      out.push(Decoration.widget({ widget: added, block: true, side: 1 }).range(at));
+      spot(at, 2);
+    } else if (to > from) {
       const first = doc.lineAt(from).number;
       const last = doc.lineAt(Math.max(from, to - 1)).number;
       for (let n = first; n <= last; n++) out.push(lineDel.range(doc.line(n).from));
@@ -151,12 +183,14 @@ export const proposalDecorations = EditorView.decorations.compute([proposalField
         if (b > a && a >= from && b <= to) out.push(wordDel.range(a, b));
       }
       const after = to >= doc.length ? doc.length : doc.lineAt(to - 1).to;
-      out.push(Decoration.widget({ widget: new AddedLines(h, !!p.readonly), block: true, side: 1 }).range(after));
+      out.push(Decoration.widget({ widget: added, block: true, side: 1 }).range(after));
+      spot(after, 2);
     } else {
       const at = doc.lineAt(from).from;
-      out.push(Decoration.widget({ widget: new AddedLines(h, !!p.readonly), block: true, side: -1 }).range(at));
+      out.push(Decoration.widget({ widget: added, block: true, side: -2 }).range(at));
+      spot(at, -1);
     }
-  }
+  });
   return Decoration.set(out, true);
 });
 
@@ -219,10 +253,28 @@ function barPanel(view) {
 
 // Python shows (or replaces) the proposal for doc `docId`, or clears it (null). A selection goes:
 // the diff is the only highlight.
+// a live proposal's new texts, by hunk (positions stay where typing moved them)
+export function showLiveText(view, texts) {
+  const p = view.state.field(proposalField);
+  if (!p || !p.live) return false;
+  view.dispatch({ effects: setLiveText.of(texts) });
+  keepLiveInView(view);
+  return true;
+}
+
+// the hunk being written (and its chip) stays on screen
+function keepLiveInView(view) {
+  const p = view.state.field(proposalField);
+  if (!p || !p.live || !p.hunks.length) return;
+  const h = p.hunks.find((x) => x.writing) || p.hunks[p.hunks.length - 1];
+  keepSpotInView(view, h.to);
+}
+
 export function showProposal(view, proposal) {
   const sel = view.state.selection.main;
   const collapse = proposal && !sel.empty ? { selection: { anchor: sel.head } } : {};
   view.dispatch({ effects: setProposal.of(proposal), ...collapse });
+  if (proposal && proposal.live) keepLiveInView(view);
 }
 
 // the lines a change removes: a red band behind them, also over rendered blocks (code, images…)

@@ -11,7 +11,7 @@ import { Decoration, ViewPlugin } from "@codemirror/view";
 import { editorContext, normNote, rtOf } from "./context.js";
 import { pageViewFacet } from "./pageview.js";
 import { parseWikilink } from "./wikilink.js";
-import { activeLines, refreshEffect, touches } from "./reveal.js";
+import { activeLines, isHoldChange, refreshEffect, touches } from "./reveal.js";
 import { CodeCopyWidget } from "./blockactions.js";
 import { FoldToggle, foldEffects, foldState } from "./fold.js";
 import { BulletWidget, CalloutLabelWidget, CheckboxWidget, HrWidget, ImageWidget, MathWidget, PageBreakWidget } from "./widgets.js";
@@ -435,7 +435,7 @@ export const livePreview = ViewPlugin.fromClass(
     }
     update(u) {
       const refresh = u.transactions.some((tr) =>
-        tr.effects.some((e) => e.is(refreshEffect) || e.is(foldEffects.foldEffect) || e.is(foldEffects.unfoldEffect)),
+        isHoldChange(tr) || tr.effects.some((e) => e.is(refreshEffect) || e.is(foldEffects.foldEffect) || e.is(foldEffects.unfoldEffect)),
       );
       if (refresh || u.docChanged || u.startState.facet(pageViewFacet) !== u.state.facet(pageViewFacet) || u.selectionSet || u.viewportChanged || syntaxTree(u.startState) !== syntaxTree(u.state)) {
         this.decorations = build(u.view);

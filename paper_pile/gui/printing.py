@@ -9,6 +9,7 @@ token gate like everything else.
 import secrets
 from collections import OrderedDict
 from collections.abc import Callable
+from typing import Any
 
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import HTMLResponse
@@ -72,7 +73,14 @@ def _embedder(vault: Vault, note: str) -> Callable[[str, str], EmbedHtml]:
     return show
 
 
-def build_print_page(vault: Vault, config: Config | None, note: str, text: str, title: str) -> str:
+def build_print_page(
+    vault: Vault,
+    config: Config | None,
+    note: str,
+    text: str,
+    title: str,
+    align: tuple[dict[str, Any] | None, str] | None = None,
+) -> str:
     """The print page of ``note`` holding ``text`` (the live text, not necessarily saved)."""
     assets = PrintAssets(
         katex_css=f"{STATIC_URL}/vendor/katex/katex.min.css",
@@ -87,4 +95,5 @@ def build_print_page(vault: Vault, config: Config | None, note: str, text: str, 
         style=print_style(config),
         assets=assets,
         embedder=_embedder(vault, note),
+        align=align,  # the note's alignment, as in the editor (PLAN §4.34)
     )

@@ -41,6 +41,7 @@ class Editor(
         on_slash_run: Handler | None = None,
         on_table_op: Handler | None = None,
         on_table_widths: Handler | None = None,
+        on_align_blocks: Handler | None = None,
         on_image_saved: Handler | None = None,
         on_image_error: Handler | None = None,
         on_image_resize: Handler | None = None,
@@ -98,6 +99,8 @@ class Editor(
             self.on("table_op", on_table_op)
         if on_table_widths:  # a table column was resized (tablewidget.js)
             self.on("table_widths", on_table_widths)
+        if on_align_blocks:  # the note's block alignments changed (align.js)
+            self.on("align_blocks", on_align_blocks)
         if on_image_saved:
             self.on("image_saved", on_image_saved)
         if on_image_error:
@@ -170,11 +173,12 @@ class Editor(
         except TimeoutError:
             return False
 
-    async def stream_begin(self, stream_id: int, pos: int) -> None:
+    async def stream_begin(self, stream_id: int, pos: int, chip: bool = False) -> None:
         """Start typing an AI answer at JavaScript offset ``pos`` of the note on screen. Returns
-        once the editor has set it up, so a following :meth:`stream_append` finds it."""
+        once the editor has set it up, so a following :meth:`stream_append` finds it. ``chip``:
+        the AI chip goes down with the text (a job from the Ask box)."""
         try:
-            await self.run_method("streamBegin", stream_id, pos)
+            await self.run_method("streamBegin", stream_id, pos, chip)
         except TimeoutError:
             return
 
@@ -193,6 +197,13 @@ class Editor(
         offsets of the new text; PLAN §4.32). False when that doc is not on screen."""
         try:
             return bool(await self.run_method("flashChanges", doc_id, ranges))
+        except TimeoutError:
+            return False
+
+    async def show_live_text(self, doc_id: int, texts: list[str]) -> bool:
+        """The new texts (one per hunk) of the live proposal shown on doc ``doc_id``."""
+        try:
+            return bool(await self.run_method("showLiveText", doc_id, texts))
         except TimeoutError:
             return False
 
@@ -254,6 +265,15 @@ class Editor(
     def set_table_widths(self, widths: dict[str, dict[str, list[int]]]) -> None:
         """Every stored table column width of the vault (``core/table_widths.py``)."""
         self.run_method("setTableWidths", widths)
+
+    def set_alignment(self, aligns: dict[str, Any], blocks: bool = False) -> None:
+        """Every note's and block's alignment (``core/alignment.py``); ``blocks``: also reload the
+        blocks of the note on screen."""
+        self.run_method("setAlignment", aligns, blocks)
+
+    def align_blocks(self, align: str | None, start: int, end: int) -> None:
+        """Align the blocks touching ``start..end`` (UTF-16 offsets of the note on screen)."""
+        self.run_method("alignBlocks", align, start, end)
 
     def goto_line(self, line: int) -> None:
         """Put the caret on a 1-based line of the shown note and scroll it to the top."""

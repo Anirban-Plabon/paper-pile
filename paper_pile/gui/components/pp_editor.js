@@ -57,8 +57,8 @@ export default {
     async applyChanges(docId, changes, expected, cursor) {
       return (await this.ready).applyChanges(docId, changes, expected, cursor ?? null);
     },
-    async streamBegin(id, pos) {
-      (await this.ready).streamBegin(id, pos);
+    async streamBegin(id, pos, chip) {
+      (await this.ready).streamBegin(id, pos, !!chip);
       return true;
     },
     async streamAppend(id, text) {
@@ -69,6 +69,9 @@ export default {
     },
     async showProposal(docId, proposal) {
       return (await this.ready).showProposal(docId, proposal);
+    },
+    async showLiveText(docId, texts) {
+      return (await this.ready).showLiveText(docId, texts);
     },
     async caretRect() {
       return (await this.ready).caretRect();
@@ -93,6 +96,12 @@ export default {
     },
     async setTableWidths(map) {  // stored table column widths (tablewidget.js)
       (await this.ready).setTableWidths(map);
+    },
+    async setAlignment(map, blocks) {  // note and block alignment (align.js)
+      (await this.ready).setAlignment(map, blocks);
+    },
+    async alignBlocks(align, from, to) {
+      (await this.ready).alignBlocks(align, from, to);
     },
     async gotoLine(line) {
       (await this.ready).gotoLine(line);

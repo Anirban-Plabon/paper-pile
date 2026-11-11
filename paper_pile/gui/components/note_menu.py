@@ -35,6 +35,46 @@ class NoteActions:
     export_markdown: Action
     export_html: Action
     export_pdf: Action
+    # the whole note's alignment (PLAN §4.34): set one / read the current one
+    align_note: Callable[[str], Any]
+    note_align: Callable[[], str]
+
+
+# (alignment, icon, name) of the four choices, in the order shown
+ALIGN_CHOICES = (
+    ("left", "text-align-start", "Left"),
+    ("center", "text-align-center", "Center"),
+    ("right", "text-align-end", "Right"),
+    ("justify", "text-align-justify", "Justify"),
+)
+
+
+class AlignRow:
+    """A menu row "Align note" with four buttons, the current alignment marked. Clicking one
+    keeps the menu open, so the change can be seen and changed again."""
+
+    def __init__(self, current: Callable[[], str], pick: Callable[[str], Any]) -> None:
+        self._current = current
+        self._buttons: dict[str, ui.button] = {}
+        with ui.element("div").classes("pp-note-menu-item pp-align-row"):
+            line_icon("text-align-start").classes("pp-note-menu-icon")
+            ui.label("Align note").classes("pp-note-menu-label")
+            with ui.element("div").classes("pp-align-seg"):
+                for align, icon, name in ALIGN_CHOICES:
+
+                    def choose(a: str = align) -> None:
+                        pick(a)
+                        self.refresh(a)
+
+                    self._buttons[align] = icon_button(icon, choose, name, size="m").mark(
+                        f"Align note {align}"
+                    )
+
+    def refresh(self, current: str | None = None) -> None:
+        """Mark the note's alignment (call before the menu shows)."""
+        now = current or self._current()
+        for align, button in self._buttons.items():
+            button.classes(add="pp-on") if align == now else button.classes(remove="pp-on")
 
 
 class NoteMenu:
@@ -68,6 +108,8 @@ class NoteMenu:
             self._pin_label = self._item("pin", "Pin note", a.pin)
             self._item("folder-input", "Move to…", a.move)
             self._item("merge", "Merge into…", a.merge)
+            align = AlignRow(a.note_align, a.align_note)
+            menu.on("before-show", lambda: align.refresh())
             self._ai_parts.append(ui.separator())
             self._ai_parts.append(ui.label("AI").classes("pp-note-menu-group"))
             for icon, label, action in (

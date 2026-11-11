@@ -35,7 +35,7 @@ from paper_pile.core.parser import render_chat_html
 from paper_pile.gui.components.ai_access import confirm_access
 from paper_pile.gui.components.chat import RENDER_EVERY_S, THINKING, show_stop
 from paper_pile.gui.components.options_box import OptionsBox
-from paper_pile.gui.icons import ico, line_icon
+from paper_pile.gui.icons import ico, line_icon, set_icon
 from paper_pile.gui.tips import tip
 
 if TYPE_CHECKING:
@@ -43,6 +43,7 @@ if TYPE_CHECKING:
 
 log = logging.getLogger("paper_pile.gui.ask_popup")
 
+CHAT_ICON = {True: "message-square-share-up", False: "message-square-share-down"}
 PLACEHOLDER = "Ask, / a command"  # after an Enter key icon (the box's hint, not a placeholder)
 CARET_PLACEHOLDER = "What should it write?"
 Mode = Literal["closed", "box", "chat", "gone"]  # gone: dissolved while a rewrite runs
@@ -163,8 +164,11 @@ class AskPopup:
                         icon=ico("arrow-up"), on_click=self._send_or_stop, color=None
                     )
                     self._send.props("round unelevated dense").classes("pp-chat-send")
-                # a chat bubble with an arrow (the app's own icon, tools/editor_src/build_icons.mjs)
-                chat = ui.button(icon=ico("message-square-arrow-right"), color=None)
+                # chat bubble + arrow (own icons, tools/editor_src/build_icons.mjs):
+                # up while the box holds a conversation, down while it holds only the selection
+                chat = ui.button(icon=ico(CHAT_ICON[False]), color=None)
+                self._chat_btn = chat
+                self._chat_icon = False
                 chat.on("click", self._move_to_chat)
                 chat.props("round flat dense").classes("pp-askpop-to-chat")
                 tip(chat, "Move to chat")
@@ -180,6 +184,11 @@ class AskPopup:
 
     def _js(self, code: str) -> None:
         self._client.run_javascript(code)
+
+    def _handoff(self) -> None:
+        """The box turns into the AI chip of the job it starts (user 2026-11-10): the page keeps
+        where the box's card was, for the chip to start from (static/askpop.js)."""
+        self._js("window.ppAskHandoff && window.ppAskHandoff()")
 
     # ---- opening and closing --------------------------------------------------------------
 
@@ -251,6 +260,7 @@ class AskPopup:
             self._caret.set_result(None)
         self._target = None
         self._entries = []
+        self._sync_chat_icon()
         self._answering = None
         self._log.clear()
         self._input.set_value("")
@@ -296,6 +306,7 @@ class AskPopup:
         text = (self._input.value or "").strip()
         if self._caret is not None:  # Ask… at the caret: hand the question over
             if text and not self._caret.done():
+                self._handoff()
                 self._caret.set_result(text)
                 self.close()
                 self._pane.focus_note()  # the answer is written there
@@ -393,6 +404,13 @@ class AskPopup:
         else:  # Translate: shown here; the user pushes it into the note (AI_EDITS §7)
             self._start(self._ask(cmd.instruction(extra), extra, title, translate=True))
 
+    def _sync_chat_icon(self) -> None:
+        """The move-to-chat button shows whether a conversation or only the selection moves."""
+        has_chat = bool(self._entries)
+        if has_chat != getattr(self, "_chat_icon", None) and hasattr(self, "_chat_btn"):
+            self._chat_icon = has_chat
+            set_icon(self._chat_btn, CHAT_ICON[has_chat])
+
     def _move_to_chat(self) -> None:
         """*Move to chat*: the selection goes to the chat box; once the box holds answers, the
         whole conversation moves to the chat (and is saved there). From Ask… at the caret: the
@@ -458,6 +476,7 @@ class AskPopup:
         if target is None:
             return
         self._rewriting = True
+        self._handoff()
         self._set_mode("gone")
         self._pane.focus_note()
         self._pane.mark_ask_target(target, busy=True)  # the text pulses until it is replaced
@@ -502,6 +521,7 @@ class AskPopup:
                 again=asked,
             )
         self._entries.append(reply)
+        self._sync_chat_icon()
         self._render_log()
 
     def _act(self, entry: _Entry, action: Action) -> None:
@@ -537,6 +557,7 @@ class AskPopup:
         """The mini chat back at ``target`` (where the box was), starting with ``first``."""
         self._target = target
         self._entries = [first]
+        self._sync_chat_icon()
         self._answering = None
         if not target.whole:  # a tint over the whole note would say nothing
             self._pane.mark_ask_target(target)
@@ -549,6 +570,7 @@ class AskPopup:
         target = self._target
         if target is None:
             return
+        self._handoff()
         self.close()
         self._quiet_until = time.monotonic() + QUIET_S
         self._pane.focus_note()
@@ -587,6 +609,7 @@ class AskPopup:
         self._entries.append(_Entry("user", "", "", cmd.title))
         reply = _Entry("assistant", "", command_id=cmd.id)
         self._entries.append(reply)
+        self._sync_chat_icon()
         self._set_mode("chat")
         self._streaming = True
         self._render_log()
@@ -644,6 +667,7 @@ class AskPopup:
         self._entries.append(_Entry("user", task, shown, command))
         reply = _Entry("assistant", "", translate=translate)
         self._entries.append(reply)
+        self._sync_chat_icon()
         self._set_mode("chat")
         self._streaming = True
         body = self._render_log()

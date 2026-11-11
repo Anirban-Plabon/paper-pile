@@ -232,3 +232,78 @@
     e.stopPropagation();
   }, true);
 })();
+
+// The AI chip of a job started from the Ask box (user 2026-11-10; gui/components/ai_progress.py
+// `follow`): the box turns into the chip — the chip starts where the box's card was and slides to
+// the note's AI spot (an empty block under the text being written, tools/editor_src/aispot.js),
+// then goes down with it as the text streams in. Kept inside the note's visible part, so Stop is
+// always reachable. Until a spot exists (reading a long note first) it stays where the box was.
+// State lives in inline styles / data attributes: Python rewrites the chip's class list.
+(function () {
+  const HANDOFF_MS = 4000; // a chip appearing later than this after the box went: no slide
+  const PAD = 4;
+  let handoff = null; // {left, top, at}
+
+  window.ppAskHandoff = function () {
+    const card = document.querySelector('.pp-askpop .pp-askpop-card');
+    if (!card || card.getClientRects().length === 0) return;
+    const r = card.getBoundingClientRect();
+    handoff = { left: r.left, top: r.top, at: performance.now() };
+  };
+
+  function target(chip) {
+    const spot = [...document.querySelectorAll('.pp-aichip-spot')].find((s) => s.getClientRects().length);
+    const h = chip.offsetHeight;
+    if (!spot) return handoff ? { x: handoff.left, y: handoff.top, scroller: null } : null;
+    const r = spot.getBoundingClientRect();
+    const scroller = spot.closest('.cm-scroller');
+    const box = scroller ? scroller.getBoundingClientRect() : { top: 0, bottom: window.innerHeight };
+    const y = r.top + Math.max(0, (r.height - h) / 2);
+    return {
+      x: r.left,
+      y: Math.max(box.top + PAD, Math.min(y, box.bottom - h - PAD)),
+      scroller,
+    };
+  }
+
+  let running = false;
+  function follow() {
+    const chips = [...document.querySelectorAll('.pp-aiprog-follow')];
+    if (!chips.length) { running = false; return; }
+    for (const chip of chips) {
+      const t = target(chip);
+      if (!t) { // nowhere to go (no box, no spot): the chip's usual place at the bottom
+        if (!chip.dataset.ppPlaced) { chip.dataset.ppPlaced = '1'; chip.dataset.ppFree = '1'; }
+        continue;
+      }
+      if (chip.dataset.ppFree) continue;
+      const scrollTop = t.scroller ? t.scroller.scrollTop : 0;
+      const to = `translate(${Math.round(t.x)}px, ${Math.round(t.y)}px)`;
+      if (!chip.dataset.ppPlaced) {
+        chip.dataset.ppPlaced = '1';
+        const fresh = handoff && performance.now() - handoff.at < HANDOFF_MS;
+        if (fresh) { // from the box's place, then a slide to the spot
+          chip.style.transition = 'none';
+          chip.style.transform = `translate(${Math.round(handoff.left)}px, ${Math.round(handoff.top)}px)`;
+          chip.getBoundingClientRect();
+        }
+        chip.style.transition = '';
+        chip.style.visibility = 'visible';
+        handoff = null;
+      } else if (+chip.dataset.ppScroll !== scrollTop) {
+        chip.style.transition = 'none'; // the note scrolled: stay on the text, no lag
+      } else if (chip.style.transition === 'none') {
+        chip.style.transition = '';
+      }
+      chip.dataset.ppScroll = String(scrollTop);
+      if (chip.style.transform !== to) chip.style.transform = to;
+    }
+    requestAnimationFrame(follow);
+  }
+  window.ppEachFrame(function () {
+    if (!running && document.querySelector('.pp-aiprog-follow')) {
+      running = true;
+      requestAnimationFrame(follow);
+    }
+  });
+})();

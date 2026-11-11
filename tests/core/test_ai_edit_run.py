@@ -411,3 +411,32 @@ async def test_a_long_rewrite_goes_part_by_part(tmp_path: Path) -> None:
     assert len(result.proposal.regions) == len(parts)
     done = accept(result.proposal, note)
     assert done is not None and "word" not in apply_changes(note, done[0]).split("# Long")[1]
+
+
+async def test_the_change_is_shown_while_it_is_written(tmp_path: Path) -> None:
+    """user 2026-11-10: the replaced text (red) at once, the new text growing under it (green)."""
+    from paper_pile.core.ai.write import LiveChange
+
+    ai, _ = make(tmp_path, ["The backups run every night. See [[Ops]]."])
+    seen: list[list[LiveChange]] = []
+    run = run_on(ai, sel(BACKUPS), "fix grammar")
+    run.on_live = lambda: seen.append(list(run.live))
+    result = await run.run()
+    start, end = sel(BACKUPS)
+    first = seen[0][0]  # before any model call: the selection, nothing written yet
+    assert (first.start, first.end, first.text, first.writing) == (start, end, "", True)
+    texts = [s[0].text for s in seen if s and s[0].writing]
+    assert any(0 < len(t) < len(texts[-1]) for t in texts)  # it grew piece by piece
+    assert texts[-1] == "The backups run every night. See [[Ops]]."
+    (done,) = seen[-1]  # finished: the change as it will be proposed
+    assert not done.writing and done.text == result.changes[0].new
+
+
+def test_an_insertion_at_a_line_end_shows_under_that_line() -> None:
+    from paper_pile.core.ai.write import live_change
+
+    note = "one\ntwo\n"
+    assert live_change(note, 3, 3, "\n\nnew").after and live_change(note, 3, 3).text == ""
+    assert live_change(note, 3, 3, "\n\nnew").text == "new"
+    assert not live_change(note, 4, 4, "x").after  # a line's start: above that line
+    assert not live_change(note, 0, 3, "x").after  # a replacement

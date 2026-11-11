@@ -238,6 +238,7 @@ class ChatPane:
         self._preview: ui.column
         self._card: ui.column
         self._plus: ui.button
+        self._plus_menu: ui.menu
         self._upload: ui.upload
         self._client: Client
 
@@ -248,7 +249,11 @@ class ChatPane:
         with ui.column().classes("pp-pane pp-chat"):
             with ui.row().classes("pp-chat-head items-center no-wrap"):
                 self._title = ui.label("").classes("pp-chat-title")
-                self._menu_button()
+                # in one box, like the open vault / palette / settings buttons (user 2026-11-10)
+                with ui.element("div").classes("pp-seg pp-tools pp-tools-row pp-chat-tools"):
+                    self._new_button = icon_button("square-pen", self.new_chat, "New chat", "m")
+                    self._new_button.classes("pp-chat-new-btn")
+                    self._menu_button()
             self._banner = ui.row().classes("pp-chat-banner items-center no-wrap")
             with self._banner:
                 self._banner_text = ui.label("").classes("pp-chat-banner-text")
@@ -305,6 +310,9 @@ class ChatPane:
         ui.on("pp_chat_send", lambda _e: self._enter_pressed())
         ui.on("pp_chat_pick", lambda e: self._picked(dict(e.args)))
         ui.on("pp_chip_close", lambda _e: self._close_chip())
+        # a click in the chat box closes the + menu (Quasar counts the box, its target, as
+        # inside it; chat.js)
+        ui.on("pp_chat_plus_close", lambda _e: self._plus_menu.close())
         ui.on("pp_chat_paste", lambda e: self.set_pasted(str(dict(e.args).get("text", ""))))
         ui.on("pp_open_url", lambda e: self._open_url(e.args))
         ui.on("pp_cite", lambda e: self._open_cite(dict(e.args)))  # a citation pill (chat.js)
@@ -429,7 +437,7 @@ class ChatPane:
     # ---- the ⋮ menu: new chat, saved chats, AI settings ----------------------------------
 
     def _menu_button(self) -> None:
-        button = icon_button("ellipsis-vertical", lambda: None, "Chats and settings")
+        button = icon_button("ellipsis-vertical", lambda: None, "Chats and settings", "m")
         button.classes("pp-chat-more-btn")
         with button:
             menu = ui.menu().props('anchor="bottom right" self="top right" :offset="[0, 6]"')
@@ -579,7 +587,14 @@ class ChatPane:
 
     # ---- the message log -----------------------------------------------------------------
 
+    def _sync_new_button(self) -> None:
+        """New chat is hidden while the chat on screen is already a new one (user 2026-11-11)."""
+        empty = not self.ai.turns and self._command_card is None
+        if empty == self._new_button.visible:
+            self._new_button.set_visibility(not empty)
+
     def _render_log(self) -> None:
+        self._sync_new_button()
         self._title.set_text(self.ai.title or "New chat")
         self._log.clear()
         with self._log:
@@ -599,6 +614,7 @@ class ChatPane:
         most most of the pane); under it Copy, Edit (the last one) and its time. An answer:
         the text; under it its info (:meth:`_reply_meta`) and Copy / Insert into note /
         Answer again. The bubbles tell who wrote what (no names)."""
+        self._sync_new_button()  # a first message: the chat is no longer new
         if turn.role == "user":
             with ui.column().classes("pp-msg pp-msg-user"):
                 for quote in turn.quotes:
@@ -932,7 +948,13 @@ class ChatPane:
                 )
             for path in self._notes:
                 name = path.rsplit("/", 1)[-1].rsplit(".", 1)[0]
-                self._ref_chip("file-text", name, lambda p=path: self._remove_note(p), path)
+                self._ref_chip(
+                    "file-text",
+                    name,
+                    lambda p=path: self._remove_note(p),
+                    path,
+                    lambda p=path: self._open_note(p),  # the note as a tab (user 2026-11-10)
+                )
             for ref in self._files:
                 label = f"{ref.name} · {ref.size()}"
                 self._ref_chip("paperclip", label, lambda r=ref: self._remove_file(r))
@@ -967,11 +989,22 @@ class ChatPane:
         self._input.set_value(prompt)
         self.focus_input()
 
-    def _ref_chip(self, icon: str, label: str, remove: Callable[[], None], tip: str = "") -> None:
+    def _ref_chip(
+        self,
+        icon: str,
+        label: str,
+        remove: Callable[[], None],
+        tip: str = "",
+        on_open: Callable[[], None] | None = None,
+    ) -> None:
         row = ui.row().classes("pp-chat-ref items-center no-wrap")
         with row:
             line_icon(icon).classes("pp-chat-ref-icon")
-            ui.label(label).classes("pp-chat-ref-text" + (" pp-chat-ref-note" if tip else ""))
+            text = ui.label(label).classes(
+                "pp-chat-ref-text" + (" pp-chat-ref-note" if tip else "")
+            )
+            if on_open is not None:
+                text.classes("pp-chat-ref-open").on("click", lambda _e=None: on_open())
             ui.button(icon=ico("x"), on_click=lambda _e=None: remove()).props(
                 "flat dense size=xs"
             ).classes("pp-i-s")
@@ -985,15 +1018,23 @@ class ChatPane:
         self._plus.classes("pp-chat-plus")
         with self._plus:
             # anchored to the whole card, so it opens above the text and not over it
+            # pops by CSS (pp-pop, --pp-dur) as the + turns into × (user 2026-11-10: the icon
+            # changed on Quasar's show / hide, after the menu's own animation)
             menu = ui.menu().props(
                 f'no-parent-event target="#c{self._card.id}" anchor="top left" '
-                'self="bottom left" :offset="[0, 8]"'
+                'self="bottom left" :offset="[0, 8]" '
+                "transition-show=none transition-hide=none transition-duration=0"
             )
-            menu.classes("pp-chat-menu")
+            menu.classes("pp-chat-menu pp-chat-plus-menu")
+        self._plus_menu = menu
         self._plus.on_click(menu.toggle)  # only a click on the button opens it, never the card
         menu.on("before-show", lambda _e: self._build_menu(menu))
-        menu.on("show", lambda _e: set_icon(self._plus, "x"))
-        menu.on("hide", lambda _e: set_icon(self._plus, "plus"))
+        button = f"document.getElementById('c{self._plus.id}')"
+        for event, flag in (("before-show", "1"), ("before-hide", "")):
+            menu.on(
+                event,
+                js_handler=f"() => {{ const b = {button}; if (b) b.dataset.ppOpen = '{flag}'; }}",
+            )
 
     def _build_menu(self, menu: ui.menu) -> None:
         """The ``+`` menu (user 2026-11-06: smaller): a search bar on top, under it 5 notes —

@@ -13,6 +13,7 @@ import mimetypes
 from html import escape
 from pathlib import Path
 
+from paper_pile.core.alignment import ALIGN_CSS, Entry, align_tokens
 from paper_pile.core.assets import sniff_image
 from paper_pile.core.parser import image_spans, render_html
 from paper_pile.core.rewrite import Edit, apply_edits, locate_spans, scan_destination
@@ -78,11 +79,20 @@ hr { border: none; border-top: 1px solid var(--border); margin: 2em 0; }
 """
 
 
-def export_html(vault: Vault, note: str, text: str, title: str) -> str:
-    body = render_html(inline_images(vault, note, text))
+def export_html(
+    vault: Vault,
+    note: str,
+    text: str,
+    title: str,
+    align: tuple[Entry | None, str] | None = None,
+) -> str:
+    """``align``: the note's stored alignment and the setting's default (PLAN §4.34)."""
+    lines = text.split("\n")  # the keys come from the note's own lines (images get inlined)
+    mark = (lambda tokens: align_tokens(tokens, lines, *align)) if align is not None else None
+    body = render_html(inline_images(vault, note, text), mark)
     return (
         '<!doctype html>\n<html>\n<head>\n<meta charset="utf-8">\n'
         '<meta name="viewport" content="width=device-width, initial-scale=1">\n'
-        f"<title>{escape(title)}</title>\n<style>{_STYLE}</style>\n</head>\n"
+        f"<title>{escape(title)}</title>\n<style>{_STYLE}{ALIGN_CSS}</style>\n</head>\n"
         f"<body>\n<main>\n{body}</main>\n</body>\n</html>\n"
     )

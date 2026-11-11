@@ -44,7 +44,11 @@ async def test_every_item_runs_its_action(user: User) -> None:
 
     @ui.page("/")
     def page() -> None:
-        actions = NoteActions(**{k: (lambda k=k: called.append(k)) for k in LABELS})
+        actions = NoteActions(
+            **{k: (lambda k=k: called.append(k)) for k in LABELS},
+            align_note=lambda a: called.append(f"align {a}"),
+            note_align=lambda: "left",
+        )
         menu = NoteMenu(actions)
         menu.build()
         menu.update(has_note=True, split_open=False, page_view=False)
@@ -54,6 +58,9 @@ async def test_every_item_runs_its_action(user: User) -> None:
     for key, label in LABELS.items():
         user.find(marker=label).click()
         assert called[-1] == key
+    user.find(marker="Align note center").click()  # the whole note's alignment (PLAN §4.34)
+    assert called[-1] == "align center"
+    assert "pp-on" in next(iter(user.find(marker="Align note center").elements)).classes
     before = len(called)
     user.find(marker="Open in default app").click()  # shown, not implemented
     assert len(called) == before
@@ -83,6 +90,9 @@ class StubPane:
 
     def toast(self, message: str, *, error: bool = False) -> None:
         self.toasts.append(message)
+
+    def export_align(self, path: str) -> tuple[dict[str, Any] | None, str]:
+        return None, "left"
 
 
 async def test_export_markdown_downloads_one_self_contained_file(

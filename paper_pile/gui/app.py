@@ -44,7 +44,6 @@ def _build_pages(host: VaultHost, *, native: bool) -> None:
         ui.add_head_html(f'<script src="{static_url("split.js")}" defer></script>')
         ui.add_head_html(f'<script src="{static_url("notedrop.js")}" defer></script>')
         ui.add_head_html(f'<script src="{static_url("panes.js")}" defer></script>')
-        ui.add_head_html(f'<script src="{static_url("scrollbars.js")}" defer></script>')
         ui.add_head_html(f'<script src="{static_url("chat.js")}" defer></script>')
         ui.add_head_html(f'<script src="{static_url("askpop.js")}" defer></script>')
         ui.add_head_html(f'<script src="{static_url("marks.js")}" defer></script>')
@@ -82,6 +81,8 @@ def run_native(vault: Path) -> None:
     app.add_middleware(ImagePolicy)
     _build_pages(VaultHost(vault), native=True)
     app.native.window_args["easy_drag"] = False  # we drag only from the top rows (window.js)
+    # see-through window: the page rounds its own corners while not maximized (app.css)
+    app.native.window_args["transparent"] = True
     app.native.start_args["func"] = native_boot.install  # compositor-driven move/resize
     ui.run(
         native=True,

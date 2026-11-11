@@ -30,6 +30,7 @@ from markdown_it.renderer import RendererProtocol
 from markdown_it.token import Token
 from markdown_it.utils import EnvType, OptionsDict
 
+from paper_pile.core.alignment import ALIGN_CSS, Entry, align_tokens
 from paper_pile.core.parser import make_parser
 
 
@@ -98,7 +99,9 @@ def _render_math_block(
 ) -> str:
     tok = tokens[idx]
     line = tok.map[0] + 1 if tok.map else 0
-    return f'<div class="math block" data-line="{line}">{escapeHtml(tok.content.strip())}</div>\n'
+    extra = f" {escapeHtml(str(tok.attrGet('class')))}" if tok.attrGet("class") else ""
+    body = escapeHtml(tok.content.strip())
+    return f'<div class="math block{extra}" data-line="{line}">{body}</div>\n'
 
 
 _PARSER = make_parser()
@@ -229,10 +232,18 @@ def _spacers(tokens: list[Token], lines: list[str]) -> list[Token]:
     return out
 
 
-def render_print_body(text: str, note: str, embedder: Embedder | None = None) -> str:
-    """The note's blocks as HTML with source lines (no page around them)."""
+def render_print_body(
+    text: str,
+    note: str,
+    embedder: Embedder | None = None,
+    align: tuple[Entry | None, str] | None = None,
+) -> str:
+    """The note's blocks as HTML with source lines (no page around them). ``align``: the
+    note's stored alignment and the setting's default (PLAN §4.34)."""
     env: dict[str, object] = {}
     tokens = _PARSER.parse(text, env)
+    if align is not None:
+        align_tokens(tokens, text.split("\n"), *align)
     _mark_lines(tokens)
     _callouts(tokens)
     _images(tokens, note)
@@ -260,15 +271,16 @@ def print_page(
     style: PrintStyle,
     assets: PrintAssets,
     embedder: Embedder | None = None,
+    align: tuple[Entry | None, str] | None = None,
 ) -> str:
     """The whole page: the note's blocks in ``#pp-source``, which the script moves onto sheets."""
-    body = render_print_body(text, note, embedder)
+    body = render_print_body(text, note, embedder, align)
     return (
         '<!doctype html>\n<html>\n<head>\n<meta charset="utf-8">\n'
         f"<title>{escape(title)}</title>\n"
         f'<link rel="stylesheet" href="{escape(assets.katex_css)}">\n'
         f'<link rel="stylesheet" href="{escape(assets.print_css)}">\n'
-        f"<style>{_sheet_css(paper(paper_name), style)}</style>\n"
+        f"<style>{_sheet_css(paper(paper_name), style)}{ALIGN_CSS}</style>\n"
         f'<script type="module" src="{escape(assets.script)}"></script>\n'
         '</head>\n<body class="pp-print">\n'
         f'<main id="pp-source">\n{body}</main>\n</body>\n</html>\n'

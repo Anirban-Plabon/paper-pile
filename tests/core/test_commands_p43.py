@@ -119,7 +119,16 @@ def test_template_only_when_a_templates_folder_is_set(tmp_path: Path) -> None:
 
 def test_every_phase1_group_is_present_in_order() -> None:
     names = [g.name for g in REGISTRY.search("")]
-    assert names == ["Basic blocks", "Code & math", "Diagrams", "Media", "Links", "Insert", "AI"]
+    assert names == [
+        "Basic blocks",
+        "Code & math",
+        "Diagrams",
+        "Media",
+        "Links",
+        "Insert",
+        "Align",
+        "AI",
+    ]
     ids = {c.id for c in REGISTRY.all()}
     assert {
         "callout",
@@ -304,3 +313,16 @@ def test_switcher_lists_recent_notes_first_and_searches_with_a_query() -> None:
     assert switcher_notes("", paths, recent) == ["c.md", "dir/Idea.md", "a.md", "b.md"]
     assert switcher_notes("idea", paths, recent)[0] == "dir/Idea.md"
     assert switcher_notes("zzz", paths, recent) == []
+
+
+def test_align_commands_block_first_then_note() -> None:
+    """PLAN §4.34: the Align group lists the block entries before the whole-note ones."""
+    from paper_pile.core.commands import SetAlign
+
+    group = next(g for g in REGISTRY.search("align") if g.name == "Align")
+    ids = [c.id for c in group.commands]
+    assert ids[:4] == ["align-left", "align-center", "align-right", "align-justify"]
+    assert ids[4:] == [f"align-note-{a}" for a in ("left", "center", "right", "justify")]
+    ctx = CommandContext("a.md", "x", 0)
+    assert REGISTRY.run("align-center", ctx) == SetAlign("block", "center")
+    assert REGISTRY.run("align-note-justify", ctx) == SetAlign("note", "justify")

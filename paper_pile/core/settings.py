@@ -322,6 +322,14 @@ SECTIONS: dict[str, tuple[Setting, ...]] = {
             essential=True,
         ),
         Setting(
+            "editor.align",
+            "Text alignment",
+            "choice",
+            ("left", "center", "right", "justify"),
+            help="All notes; a note or block can override it",
+            group="Layout",
+        ),
+        Setting(
             "editor.line_numbers",
             "Show line numbers",
             "bool",

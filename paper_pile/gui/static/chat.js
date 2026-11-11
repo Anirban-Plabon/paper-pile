@@ -64,6 +64,13 @@ window.ppChatJump = function (id, where) {
   }, true);
   setInterval(function () { document.querySelectorAll('.pp-chat-log').forEach(update); }, 400);
 })();
+// A click in the chat box (not on the + itself) closes the + menu: the menu is anchored to the
+// box, and Quasar counts its target as inside it, so it stayed open (user 2026-11-10).
+document.addEventListener('mousedown', function (e) {
+  const card = e.target && e.target.closest && e.target.closest('.pp-chat-card');
+  if (!card || e.target.closest('.pp-chat-plus')) return;
+  if (card.querySelector('.pp-chat-plus[data-pp-open="1"]')) emitEvent('pp_chat_plus_close', {});
+}, true);
 // A click anywhere outside the attached-selection chips folds the open one.
 document.addEventListener('mousedown', function (e) {
   if (e.target && e.target.closest && e.target.closest('.pp-chat-chips, .pp-chat-preview')) return;

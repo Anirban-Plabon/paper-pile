@@ -77,9 +77,16 @@ def make_parser(*, breaks: bool = True) -> MarkdownIt:
     md.add_render_rule("wikilink", _render_wikilink)
     md.add_render_rule("hashtag", _render_hashtag)
     md.add_render_rule("page_break", _render_page_break)
+    md.add_render_rule("math_block", _render_math_block)  # keeps a block's class (alignment)
     # let a `$$` block start right after a paragraph line (the plugin's own registration cannot)
     md.block.ruler.at("math_block", _interrupting_math_block(), {"alt": _PARAGRAPH_LIKE})
     return md
+
+
+def _render_math_block(self: Any, tokens: Sequence[Token], idx: int, options: Any, env: Any) -> str:
+    tok = tokens[idx]
+    extra = f" {escapeHtml(str(tok.attrGet('class')))}" if tok.attrGet("class") else ""
+    return f'<div class="math block{extra}">\n{escapeHtml(tok.content.strip())}\n</div>\n'
 
 
 def _wikilink_rule(state: StateInline, silent: bool) -> bool:
@@ -272,9 +279,15 @@ def _interrupting_math_block() -> Callable[[StateBlock, int, int, bool], bool]:
 _PARSER = make_parser()
 
 
-def render_html(text: str) -> str:
-    """Render a note's markdown to HTML (front matter is dropped, math is left as spans)."""
-    return str(_PARSER.render(text))
+def render_html(text: str, align: Callable[[list[Token]], None] | None = None) -> str:
+    """Render a note's markdown to HTML (front matter is dropped, math is left as spans).
+    ``align`` may mark the parsed blocks first (``core/alignment.py``, PLAN §4.34)."""
+    if align is None:
+        return str(_PARSER.render(text))
+    env: dict[str, Any] = {}
+    tokens = _PARSER.parse(text, env)
+    align(tokens)
+    return str(_PARSER.renderer.render(tokens, _PARSER.options, env))
 
 
 def local_image(src: str) -> bool:

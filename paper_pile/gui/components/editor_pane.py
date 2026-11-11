@@ -69,6 +69,7 @@ from paper_pile.core.ai.proposals import (
 )
 from paper_pile.core.ai.provider import ProviderError
 from paper_pile.core.ai.selection_ask import BOX_AI_COMMANDS, AskTurn
+from paper_pile.core.alignment import Alignment
 from paper_pile.core.buffer import NoteBuffer, Outcome, content_hash, find_recoverable
 from paper_pile.core.command_actions import (
     TextChange,
@@ -83,6 +84,7 @@ from paper_pile.core.commands import (
     Insert,
     OpenNote,
     OpenPicker,
+    SetAlign,
     StreamInsert,
     UnknownCommandError,
     groups_json,
@@ -144,11 +146,12 @@ from paper_pile.gui.components.ai_progress import AiProgress
 from paper_pile.gui.components.ask_popup import AskPopup, AskTarget
 from paper_pile.gui.components.backlinks import BacklinkItem, BacklinksPane
 from paper_pile.gui.components.editor import Editor, Mode
+from paper_pile.gui.components.live_edit import LiveEdit
 from paper_pile.gui.components.note_actions import note_actions, pick_split_note
 from paper_pile.gui.components.note_head import NoteHead
 from paper_pile.gui.components.note_menu import NoteActions, NoteMenu
 from paper_pile.gui.components.proposal_view import proposal_payload
-from paper_pile.gui.components.tabs import SplitTabs, TabBar, TabMenuItem
+from paper_pile.gui.components.tabs import AlignItem, SplitTabs, TabBar, TabMenuItem
 from paper_pile.gui.dialog import Dialog
 from paper_pile.gui.theme import editor_options
 
@@ -239,6 +242,7 @@ class EditorPane:
         self._streams = 0
         self._table_lock = asyncio.Lock()  # table edits apply one after the other
         self._table_widths = TableWidths(vault.root)  # dragged column widths (view state)
+        self._alignment = Alignment(vault.root)  # note / block alignment (view state, §4.34)
         self._insert_lock = asyncio.Lock()  # inserted blocks (images, embeds) too
         self._awaiting_recovery: set[str] = set()  # notes with crash text not decided on yet
         self._on_command_used = on_command_used
@@ -332,6 +336,7 @@ class EditorPane:
                             self._note_head(slot)
                             self._editors.append(self._make_editor(slot).classes("pp-fill"))
                             self._editors[-1].set_table_widths(self._table_widths.all())
+                            self._editors[-1].set_alignment(self._alignment.all())
                 self._side.set_visibility(False)
                 self._editor = self._editors[0]
                 self._editor.set_visibility(False)
@@ -348,6 +353,8 @@ class EditorPane:
         self.bus.subscribe("vault.deleted", lambda path, **_: self._on_deleted(path))
         self.bus.subscribe("vault.renamed", self._table_widths_renamed)
         self.bus.subscribe("vault.deleted", lambda path, **_: self._table_widths.deleted(path))
+        self.bus.subscribe("vault.renamed", self._alignment_renamed)
+        self.bus.subscribe("vault.deleted", lambda path, **_: self._alignment.deleted(path))
         self.bus.subscribe("note.pin", lambda path, on: self._spawn(self.set_pinned(path, on)))
         ui.context.client.on_disconnect(self._on_disconnect)
 
@@ -364,6 +371,7 @@ class EditorPane:
             on_slash_run=lambda e: self._spawn(self._on_slash_run(e.args)),
             on_table_op=lambda e: self._spawn(self._on_table_op(e.args)),
             on_table_widths=lambda e: self._on_table_widths(dict(e.args)),
+            on_align_blocks=lambda e: self._on_align_blocks(dict(e.args)),
             on_paste=lambda e: self._on_paste(e.args),
             on_proposal=lambda e: self._spawn(self._on_proposal(e.args)),
             on_selection_popup=lambda e: self.ask_popup.on_selection(e.args),
@@ -449,10 +457,10 @@ class EditorPane:
     def _side_actions(self, slot: int) -> NoteActions:
         """The note actions for one side's buttons: the side becomes the active one first."""
 
-        def on_side(action: Callable[[], Any]) -> Callable[[], Any]:
-            def run() -> Any:
+        def on_side(action: Callable[..., Any]) -> Callable[..., Any]:
+            def run(*args: Any) -> Any:
                 self._focused(slot)
-                return action()
+                return action(*args)
 
             return run
 
@@ -869,7 +877,12 @@ class EditorPane:
         if tab is None or is_plain_text(tab.path):
             return  # a hidden editor, or a note that is not markdown: no pages
         html = printing.build_print_page(
-            self.vault, self._config, tab.path, str(args.get("text", "")), note_name(tab.path)
+            self.vault,
+            self._config,
+            tab.path,
+            str(args.get("text", "")),
+            note_name(tab.path),
+            self.export_align(tab.path),
         )
         self._editors[slot].print_layout_ready(int(args.get("seq", 0)), printing.store(html))
 
@@ -1059,6 +1072,12 @@ class EditorPane:
             self._open_picker(action, path)
         elif isinstance(action, StreamInsert):
             await self._run_stream(action, tab_id, text, start, end, selection)
+        elif isinstance(action, SetAlign) and action.scope == "note":
+            self.set_note_align(path, action.align)
+        elif isinstance(action, SetAlign):  # the selected blocks, else the block at the caret
+            a, b = selection or (start, start)
+            after = self.buffers[tab_id].text  # the /query is gone; it was after the selection
+            self._editor.align_blocks(action.align, utf16_index(after, a), utf16_index(after, b))
 
     def _ask_box_on(self) -> bool:
         """The Ask box is on (AI on and Settings → AI → Ask box under a selection)."""
@@ -1118,7 +1137,9 @@ class EditorPane:
             self._toast("The text changed; select it again.", error=True)
             return
         text, start, end = found
-        await self._write_at_point(target.tab_id, text, (start, end), cmd.id, words, target.whole)
+        await self._write_at_point(
+            target.tab_id, text, (start, end), cmd.id, words, target.whole, follow=True
+        )
 
     async def _write_at_point(
         self,
@@ -1128,6 +1149,8 @@ class EditorPane:
         command_id: str,
         words: str = "",
         whole: bool = False,
+        *,
+        follow: bool = False,
     ) -> None:
         """An answer command's text after the block that holds the selection (never inside a
         list or table), or at the end of the note (AI_EDITS §6.1); a note when the section has
@@ -1143,16 +1166,17 @@ class EditorPane:
         target = text[selection[0] : selection[1]]
         given = None
         if estimate_tokens(target) > chunk_tokens(await ai.window()):
-            given = await self._read_long(ai, cmd, path, text, target)
+            given = await self._read_long(ai, cmd, path, text, target, follow=follow)
             if given is None:
                 return
         at = point.offset
         await self._run_stream(
-            cmd.spec(words), tab_id, text, at, at, selection, point=point, given=given
-        )
+            cmd.spec(words), tab_id, text, at, at, selection, point=point, given=given,
+            follow=follow,
+        )  # fmt: skip
 
     async def _read_long(
-        self, ai: AiEngine, cmd: AiCommand, path: str, text: str, target: str
+        self, ai: AiEngine, cmd: AiCommand, path: str, text: str, target: str, follow: bool = False
     ) -> str | None:
         """The map step for a long text (``core/ai/longtext.py``), with "Reading…" and Stop;
         None when it was stopped, refused or failed (said in a toast)."""
@@ -1168,7 +1192,7 @@ class EditorPane:
                 task.cancel()
 
         with self._host:
-            note = AiProgress("Reading…", stop)  # the chip shows the AI icon
+            note = AiProgress("Reading…", stop, follow=follow)  # the chip shows the AI icon
         try:
             ai.require_note(path, text)
             return await condensed(ai, cmd, target)
@@ -1480,6 +1504,40 @@ class EditorPane:
         if path and isinstance(key, str):
             self._table_widths.set(path, key, args.get("widths"))
 
+    # ---- alignment (PLAN §4.34; core/alignment.py, align.js) -------------------------------
+
+    def note_align(self, path: str) -> str:
+        """The whole note's alignment: its own, else the Settings default."""
+        own = self._alignment.note(path)
+        return own or str(sanitized(self._config.values if self._config else {})["editor.align"])
+
+    def export_align(self, path: str) -> tuple[dict[str, Any] | None, str]:
+        """What exports need to align the note like the editor: its stored entry and the
+        Settings default."""
+        default = str(sanitized(self._config.values if self._config else {})["editor.align"])
+        return self._alignment.all().get(path), default
+
+    def set_note_align(self, path: str, align: str) -> None:
+        """Align the whole note (⋯ menu, a tab's menu, the slash menu)."""
+        if self._alignment.set_note(path, align):
+            for editor in self._editors:
+                editor.set_alignment(self._alignment.all())
+
+    def _on_align_blocks(self, args: dict[str, Any]) -> None:
+        """The editor made the note's block keys again (a block was aligned, or edited)."""
+        path = str(args.get("path") or "")
+        if not path or not self._alignment.set_blocks(path, args.get("blocks")):
+            return
+        shown = [self._tab_path(t) for t in self._shown] if self._split_open else []
+        if shown.count(path) == 2:  # the same note on both sides: the other side follows
+            for editor in self._editors:
+                editor.set_alignment(self._alignment.all(), blocks=True)
+
+    def _alignment_renamed(self, old: str, new: str) -> None:
+        if self._alignment.renamed(old, new):
+            for editor in self._editors:
+                editor.set_alignment(self._alignment.all())
+
     def _table_widths_renamed(self, old: str, new: str) -> None:
         """A note or folder moved: its tables keep their widths under the new path."""
         if self._table_widths.renamed(old, new):
@@ -1627,8 +1685,10 @@ class EditorPane:
         apply_now: bool = False,
         point: AnswerPoint | None = None,
         given: str | None = None,
+        follow: bool = False,
     ) -> None:
         """Run an AI command: ask the model and write its answer into the note as it arrives.
+        ``follow``: started from the Ask box — its chip goes down with the text being written.
         ``apply_now``: a replacement that would be a diff to accept is applied (the Ask box).
         ``point``: where an answer command's text goes (``anchor`` = its offset) — its lead,
         heading floor and the list marker to avoid (AI_EDITS §6.1). ``given``: the text the
@@ -1673,8 +1733,9 @@ class EditorPane:
             if not finished and task is not None:
                 task.cancel()
 
+        follow = follow or spec.ask  # Ask… at the caret: the question was asked in the Ask box
         with self._host:
-            note = AiProgress("Writing…", stop)
+            note = AiProgress("Writing…", stop, follow=follow)
         collected = ""
         pending = ""
         finish: list[str] = []
@@ -1687,7 +1748,7 @@ class EditorPane:
         editor = self._editor  # the answer goes where it was asked for, even if focus moves
         try:
             if live:
-                await editor.stream_begin(stream_id, utf16_index(body_text, anchor))
+                await editor.stream_begin(stream_id, utf16_index(body_text, anchor), follow)
                 if lead and not await editor.stream_append(stream_id, lead):
                     return
             # text for the note: a thinking model's reasoning would only delay it (never shown)
@@ -1784,6 +1845,7 @@ class EditorPane:
             smaller=how == "smaller",
             anyway=how == "anyway",
             intent=intent,
+            follow=True,
         )
 
     async def edit_in_note(
@@ -1839,13 +1901,16 @@ class EditorPane:
         smaller: bool = False,
         anyway: bool = False,
         intent: Intent | None = None,
+        follow: bool = False,
     ) -> EditEnd:
         """A change command (Rewrite, Change tone, a free "rewrite …") on the selection, or on
         the whole note: planned, written and checked by :class:`EditRun`, then shown as one
         diff (applied at once only in *Apply at once* mode and when nothing needs a look).
         ``options``: a messy task may come back as clearer requests instead (PLAN §4.28).
         ``report``: the caller shows every ending but the diff (the Ask box: options, a
-        question, why nothing changed — with Try again); else they are toasts here."""
+        question, why nothing changed — with Try again); else they are toasts here. ``follow``:
+        started from the Ask box — the change shows in the note while it is written (red, then
+        green as it arrives) with the chip under it (user 2026-11-10)."""
         ai, path = self._engine, self._tab_path(tab_id)
         if ai is None or path is None:
             self._toast("AI is not available.", error=True)
@@ -1865,7 +1930,8 @@ class EditorPane:
                 task.cancel()
 
         with self._host:
-            note = AiProgress("Thinking…", stop)
+            note = AiProgress("Thinking…", stop, follow=follow)
+        live = LiveEdit(self._editor_for(tab_id), tab_id, text, STREAM_FLUSH_S) if follow else None
         run = EditRun(
             ai,
             path=path,
@@ -1881,7 +1947,10 @@ class EditorPane:
             anyway=anyway,
             intent=intent,
             on_progress=lambda message: setattr(note, "message", message),
+            on_live=None if live is None else lambda: live.changed(run.live),
         )
+        if live is not None:
+            live.start()
         try:
             result = await run.run()
         except asyncio.CancelledError:
@@ -1894,6 +1963,8 @@ class EditorPane:
             return failure_end(exc)
         finally:
             stopped = True  # a late dismiss must not cancel what follows
+            if live is not None:
+                await live.stop()
             note.dismiss()
         end = edit_end(result)
         if report and end.kind != "proposal":
@@ -2997,6 +3068,7 @@ class EditorPane:
             ("folder-input", "Move to…", a.move),
             ("merge", "Merge into…", a.merge),
             ("history", "Version history", a.history),
+            AlignItem(lambda: self.note_align(path), lambda al: self.set_note_align(path, al)),
             None,
             ("link", "Copy path", a.copy_path),
             ("locate", "Show in file tree", lambda: self.bus.publish("note.reveal", path=path)),

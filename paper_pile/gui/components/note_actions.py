@@ -68,7 +68,14 @@ def note_actions(pane: "EditorPane", note: Callable[[], str | None] | None = Non
         export_markdown=with_note(lambda p: _export(pane, p, "md")),
         export_html=with_note(lambda p: _export(pane, p, "html")),
         export_pdf=with_note(lambda p: _export_pdf(pane, p)),
+        align_note=lambda align: _align(pane, current(), align),
+        note_align=lambda: pane.note_align(current() or ""),
     )
+
+
+def _align(pane: "EditorPane", path: str | None, align: str) -> None:
+    if path is not None:
+        pane.set_note_align(path, align)
 
 
 def related_prompt(pane: "EditorPane", path: str) -> str:
@@ -272,7 +279,9 @@ async def _export(pane: "EditorPane", path: str, kind: str) -> None:
         if kind == "md":
             content, filename = export_markdown(pane.vault, path, text), f"{name}.md"
         else:
-            content, filename = export_html(pane.vault, path, text, name), f"{name}.html"
+            align = pane.export_align(path)  # aligned like in the editor (PLAN §4.34)
+            content = export_html(pane.vault, path, text, name, align)
+            filename = f"{name}.html"
     except (VaultError, OSError) as exc:
         pane.toast(f"Could not export: {exc}", error=True)
         return
@@ -313,7 +322,9 @@ async def _export_pdf(pane: "EditorPane", path: str) -> None:
     await pane.save_now()
     name = note_name(path)
     try:
-        html = build_print_page(pane.vault, pane.config, path, pane.note_text(path), name)
+        html = build_print_page(
+            pane.vault, pane.config, path, pane.note_text(path), name, pane.export_align(path)
+        )
     except (VaultError, OSError) as exc:
         pane.toast(f"Could not export: {exc}", error=True)
         return

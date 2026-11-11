@@ -15,6 +15,7 @@ from paper_pile.core.commands import (
     OpenPicker,
     ReplaceLinePrefix,
     ReplaceSelection,
+    SetAlign,
     StreamInsert,
 )
 
@@ -71,7 +72,7 @@ def resolve(action: Action, text: str, start: int, end: int) -> TextEdit | None:
         return _replace_line_prefix(
             action.prefix, text, start, end, action.blank_after, action.blank_before
         )
-    if isinstance(action, OpenNote | OpenPicker | StreamInsert):
+    if isinstance(action, OpenNote | OpenPicker | StreamInsert | SetAlign):
         return None
     raise TypeError(f"unknown action: {action!r}")
 

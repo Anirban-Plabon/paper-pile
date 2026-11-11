@@ -13,7 +13,9 @@ export const rtOf = (state) => state.facet(runtimeFacet);
 // at (Python's `link_keys`), or null while unknown; used only to style links to missing notes.
 // `tableWidths`: column widths the user dragged, {notePath: {headerKey: [px, ...]}}
 // (core/table_widths.py; tablewidget.js).
-export const editorContext = { known: null, tableWidths: null };
+// `align`: alignment of notes and blocks, {notePath: {note?, blocks?: {key: align}}}
+// (core/alignment.py; align.js).
+export const editorContext = { known: null, tableWidths: null, align: null };
 
 // Same rule as Python's `links.norm_name`, minus slashes at the ends.
 export const normNote = (name) => name.trim().toLowerCase().replace(/\.(md|txt)$/, "").replace(/^\/+|\/+$/g, "");

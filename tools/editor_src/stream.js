@@ -1,10 +1,13 @@
 // Text that arrives piece by piece (AI answers) is typed at a position that follows the document:
 // if the user edits above it, the position moves with them. A stream belongs to one open note;
-// switching notes stops it (append returns false).
+// switching notes stops it (append returns false). A stream with `chip` (started from the Ask
+// box) keeps the AI chip's spot (aispot.js) under the line being written.
 import { isolateHistory } from "@codemirror/commands";
 import { StateEffect, StateField } from "@codemirror/state";
+import { Decoration, EditorView } from "@codemirror/view";
+import { keepSpotInView, spotWidget } from "./aispot.js";
 
-const begin = StateEffect.define(); // {id, pos, docId}
+const begin = StateEffect.define(); // {id, pos, docId, chip}
 const end = StateEffect.define(); // id
 
 export const streamField = StateField.define({
@@ -12,7 +15,7 @@ export const streamField = StateField.define({
   update(map, tr) {
     let out = map;
     for (const e of tr.effects) {
-      if (e.is(begin)) out = new Map(out).set(e.value.id, { pos: e.value.pos, docId: e.value.docId, started: false });
+      if (e.is(begin)) out = new Map(out).set(e.value.id, { pos: e.value.pos, docId: e.value.docId, chip: !!e.value.chip, started: false });
       else if (e.is(end)) {
         out = new Map(out);
         out.delete(e.value);
@@ -23,10 +26,20 @@ export const streamField = StateField.define({
     }
     return out;
   },
+  provide: (f) =>
+    EditorView.decorations.compute([f], (state) => {
+      const spots = [];
+      for (const s of state.field(f).values()) {
+        if (!s.chip) continue;
+        const at = state.doc.lineAt(Math.min(s.pos, state.doc.length)).to;
+        spots.push(Decoration.widget({ widget: spotWidget, block: true, side: 3 }).range(at));
+      }
+      return spots.length ? Decoration.set(spots, true) : Decoration.none;
+    }),
 });
 
-export function streamBegin(view, id, pos, docId) {
-  view.dispatch({ effects: begin.of({ id, pos: Math.min(pos, view.state.doc.length), docId }) });
+export function streamBegin(view, id, pos, docId, chip = false) {
+  view.dispatch({ effects: begin.of({ id, pos: Math.min(pos, view.state.doc.length), docId, chip }) });
 }
 
 // false: the stream is gone (another note is on screen, or it ended)
@@ -42,6 +55,7 @@ export function streamAppend(view, id, text, docId) {
     scrollIntoView: true,
     annotations: first ? isolateHistory.of("before") : [],
   });
+  if (s.chip) keepSpotInView(view); // the line and the chip under it, not just the line
   return true;
 }
 

@@ -39,6 +39,7 @@ DEFAULTS: dict[str, Any] = {
         "word_wrap": True,
         "line_numbers": False,
         "readable_width": False,
+        "align": "left",  # left | center | right | justify (PLAN §4.34)
         "highlight_line": False,
         "word_count": True,
         "tab_size": 4,

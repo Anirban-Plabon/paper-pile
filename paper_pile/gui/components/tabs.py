@@ -24,6 +24,7 @@ from typing import Any
 from nicegui import background_tasks, ui
 
 from paper_pile.core.tabs import TabList
+from paper_pile.gui.components.note_menu import AlignRow
 from paper_pile.gui.icons import icon_button, line_icon
 from paper_pile.gui.tips import tip
 
@@ -38,7 +39,17 @@ class SplitTabs:
 
 
 # a tab menu entry: (icon, label, action — may return an awaitable); None draws a divider
-TabMenuItem = tuple[str, str, Callable[[], Any]] | None
+
+
+@dataclass(frozen=True, slots=True)
+class AlignItem:
+    """A tab menu's "Align note" row (four buttons; PLAN §4.34)."""
+
+    current: Callable[[], str]
+    pick: Callable[[str], Any]
+
+
+TabMenuItem = tuple[str, str, Callable[[], Any]] | AlignItem | None
 
 
 def _run(action: Callable[[], Any]) -> None:
@@ -121,8 +132,7 @@ class TabBar:
         self._fill_list(split)
         self.set_unsaved(unsaved)
         self._bar.client.run_javascript(  # explicit client: we are often outside a page context
-            "document.querySelector('.pp-tab-active')"
-            "?.scrollIntoView({block: 'nearest', inline: 'nearest'})"
+            "window.ppRevealTabs && window.ppRevealTabs()"
         )
 
     def _chip(self, tab_id: int, path: str, side: int, split: SplitTabs | None) -> None:
@@ -156,10 +166,14 @@ class TabBar:
                 close.on("click.stop", lambda _e, i=tab_id: self._on_close(i))
             items = self._menu(tab_id, path)
             if items:
-                with ui.context_menu().classes("pp-note-menu"):
+                with ui.context_menu().classes("pp-note-menu") as menu:
                     for item in items:
                         if item is None:
                             ui.separator()
+                            continue
+                        if isinstance(item, AlignItem):
+                            row = AlignRow(item.current, item.pick)
+                            menu.on("before-show", lambda _e=None, r=row: r.refresh())
                             continue
                         icon, label, action = item
                         with ui.menu_item(on_click=lambda _e=None, a=action: _run(a)).classes(

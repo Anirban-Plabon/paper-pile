@@ -58,6 +58,7 @@ EDITOR_OPTION_KEYS = frozenset(
         "editor.word_wrap",
         "editor.line_numbers",
         "editor.readable_width",
+        "editor.align",
         "editor.highlight_line",
         "editor.tab_size",
         "editor.spell_check",
@@ -77,6 +78,7 @@ def editor_options(config: Config | None) -> dict[str, Any]:
         "wordWrap": v["editor.word_wrap"],
         "lineNumbers": v["editor.line_numbers"],
         "readableWidth": v["editor.readable_width"],
+        "align": v["editor.align"],  # every note's default alignment (PLAN §4.34)
         "highlightLine": v["editor.highlight_line"],
         "tabSize": v["editor.tab_size"],
         "spellCheck": v["editor.spell_check"],

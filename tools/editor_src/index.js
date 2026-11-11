@@ -9,7 +9,7 @@ import { EditorView, drawSelection, dropCursor, highlightActiveLine, keymap, lin
 import { classHighlighter, tags as t } from "@lezer/highlight";
 import { blocks, themeFacet } from "./blocks.js";
 import { livePreview } from "./livepreview.js";
-import { refreshEffect } from "./reveal.js";
+import { refreshEffect, revealHold } from "./reveal.js";
 import { codeLanguages } from "./codelang.js";
 import { editorContext, runtimeFacet } from "./context.js";
 import { editorExtensions } from "./grammar.js";
@@ -23,11 +23,13 @@ import { selectionSync } from "./selectionsync.js";
 import { closeSlash, setSlashResults, slashExtension } from "./slash.js";
 import { focusTableCell, tableKeys } from "./tablewidget.js";
 import { streamAppend, streamBegin, streamEnd, streamField } from "./stream.js";
-import { proposalExtension, showProposal } from "./proposal.js";
+import { proposalExtension, showLiveText, showProposal } from "./proposal.js";
 import { askAbout, markTarget, selectPopup, settlePopup } from "./selectpopup.js";
 import { selectionBand } from "./selectionband.js";
 import { citeBand, showCiteBand } from "./citeband.js";
 import { typeset } from "./typeset.js";
+import { alignment, defaultAlign, loadAlign, setBlockAlign } from "./align.js";
+import { noteZoom, resetZoom } from "./zoom.js";
 
 const CHANGE_DEBOUNCE_MS = 300;
 const RAW_PASTE_WINDOW_MS = 600;
@@ -118,6 +120,7 @@ export function createEditor(
     o.lineNumbers ? lineNumbers({ formatNumber: (n, state) => shownLine(state, n) }) : [],
     o.highlightLine ? highlightActiveLine() : [],
     o.readableWidth ? EditorView.editorAttributes.of({ class: "pp-readable" }) : [],
+    defaultAlign.of(o.align || "left"),
     EditorState.tabSize.of(o.tabSize),
     indentUnit.of(" ".repeat(o.tabSize)),
     EditorView.contentAttributes.of({ spellcheck: o.spellCheck ? "true" : "false", lang: o.lang || "en" }),
@@ -125,7 +128,7 @@ export function createEditor(
     o.pageView ? pageView({ style: o.pageStyle, paper: o.paper, textWidthMm: o.textWidthMm, paperHeightMm: o.paperHeightMm, marginMm: o.marginMm }) : [],
   ];
   const themeSlot = new Compartment();
-  const modeExt = (m) => (m === "live" ? [livePreview, blocks, tableKeys] : []);
+  const modeExt = (m) => (m === "live" ? [alignment, revealHold, livePreview, blocks, tableKeys] : []);
   parent.classList.toggle("pp-dark", theme === "dark");
   let timer = null;
   let rawUntil = 0;
@@ -256,6 +259,7 @@ export function createEditor(
       highlightSelectionMatches(),
       pageDrag,
       motion,
+      noteZoom, // Ctrl + wheel (zoom.js)
       runtimeFacet.of(rt),
       // the user is in this editor now (Python makes its note the active one)
       EditorView.domEventHandlers({ focus: () => { emit("focus", { docId }); return false; } }),
@@ -282,6 +286,7 @@ export function createEditor(
             return true;
           },
         },
+        { key: "Mod-0", run: resetZoom }, // the note's zoom back to 100 % (zoom.js)
         ...defaultKeymap,
         ...historyKeymap,
         ...searchKeymap,
@@ -463,6 +468,7 @@ export function createEditor(
           optionsSlot.reconfigure(optionsExt(currentOptions)),
         ];
         if (!plainDocs.has(id)) effects.push(modeSlot.reconfigure(modeExt(currentMode)));
+        effects.push(loadAlign.of({ blocks: false })); // the note's alignment may have changed meanwhile
         state = state.update({ effects }).state;
       } else {
         state = makeState(text, id);
@@ -558,8 +564,8 @@ export function createEditor(
       return true;
     },
     // An AI answer typed into the note at `pos` as it arrives (see stream.js).
-    streamBegin(id, pos) {
-      streamBegin(view, id, pos, docId);
+    streamBegin(id, pos, chip) {
+      streamBegin(view, id, pos, docId, !!chip);
     },
     streamAppend(id, text) {
       return streamAppend(view, id, text, docId);
@@ -574,6 +580,10 @@ export function createEditor(
       if (id !== docId) return false;
       showProposal(view, proposal ? { ...proposal, docId } : null);
       return true;
+    },
+    // A live proposal's new texts as they arrive (one per hunk; see proposal.js).
+    showLiveText(id, texts) {
+      return id === docId && showLiveText(view, texts);
     },
     // An AI change applied at once: flash its lines (motion.js) when doc `id` is on screen.
     flashChanges(id, ranges) {
@@ -616,6 +626,17 @@ export function createEditor(
     // from now on (tables on screen keep theirs).
     setTableWidths(map) {
       editorContext.tableWidths = map || {};
+    },
+    // Every note's and block's alignment (core/alignment.py). `blocks`: also reload the blocks of
+    // the note on screen (another editor or a rename changed them), else only the note's own.
+    setAlignment(map, blocks = false) {
+      editorContext.align = map || {};
+      view.dispatch({ effects: loadAlign.of({ blocks }) });
+    },
+    // Align the blocks touching from..to (a slash command; `align` null = the note's alignment).
+    alignBlocks(align, from, to) {
+      // its own undo step (align.js), not joined with the removed /query before it
+      view.dispatch({ effects: setBlockAlign.of({ ranges: [{ from, to }], align }), annotations: isolateHistory.of("full") });
     },
     // Put the caret on 1-based `line`, glide it to the top of the view and flash it (motion.js).
     // Focus first: the caret position (status bar, outline) is only reported while focused.

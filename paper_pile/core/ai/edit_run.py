@@ -10,8 +10,9 @@ is safe:
 4. already-there checks in the note and the vault; 5. "maybe also update" suggestions;
 6. one proposal with a region per place.
 
-Progress goes to ``on_progress``; Stop (cancelling the task) or a failure keeps what was
-finished — :meth:`EditRun.result` builds the proposal from it. No UI imports.
+Progress goes to ``on_progress``; ``on_live`` is told whenever :attr:`EditRun.live` (the changes
+as they are being written, for the note to show) changed. Stop (cancelling the task) or a failure
+keeps what was finished — :meth:`EditRun.result` builds the proposal from it. No UI imports.
 """
 
 import logging
@@ -50,10 +51,14 @@ from paper_pile.core.ai.proposals import Edit, Proposal, propose_many
 from paper_pile.core.ai.provider import ChatMessage, ProviderError, RepeatLoopError
 from paper_pile.core.ai.write import (
     WRITE_RULES,
+    LiveChange,
     PlannedChange,
     WriteJob,
     delete_change,
     fit_answer,
+    live_change,
+    live_span,
+    live_text,
     write_job,
 )
 from paper_pile.core.index import query_words
@@ -156,6 +161,7 @@ class EditRun:
         anyway: bool = False,
         intent: Intent | None = None,
         on_progress: Callable[[str], None] | None = None,
+        on_live: Callable[[], None] | None = None,
     ) -> None:
         self.engine = engine
         self.path = path
@@ -174,6 +180,8 @@ class EditRun:
             self.instruction = f"{self.instruction}. {SMALLER}"
             self.intent = replace(self.intent, size=_SMALLER_SIZE[self.intent.size])
         self.on_progress = on_progress or (lambda _s: None)
+        self.on_live = on_live
+        self.live: list[LiveChange] = []  # finished changes + the one being written
         all_blocks = block_map(note)
         if selection is not None and note[selection[0] : selection[1]].strip():
             self.blocks, self.targets = selection_blocks(all_blocks, *sorted(selection))
@@ -198,6 +206,10 @@ class EditRun:
 
     async def run(self) -> EditResult:
         self.engine.require_note(self.path, self.note)
+        if self.targets:  # what the change is about, at once (red) — before the plan arrives
+            ids = set(self.targets)
+            span = [b for b in self.blocks if b.id in ids]
+            self._show_live(live_change(self.note, span[0].start, span[-1].end, writing=True))
         self._window = await self.engine.window()
         plan = await self._plan()
         if plan.options and not plan.edits:
@@ -319,14 +331,25 @@ class EditRun:
             for edit in edits:
                 if edit.action == "delete":
                     self.changes.append(delete_change(edit, self.blocks, self.note))
+                    self._show_live(None)
                     continue
                 self.on_progress("Writing…")  # one word per step (the progress chip)
                 change = await self._write_one(edit, earlier)
                 if change is not None:
                     self.changes.append(change)
                     earlier.append(change.new.strip())
+                self._show_live(None)
         except ProviderError as exc:  # what was finished stays
             self.error = str(exc)
+            self._show_live(None)
+
+    def _show_live(self, current: LiveChange | None) -> None:
+        """The finished changes, and ``current`` (being written) after them, for ``on_live``."""
+        if self.on_live is None:
+            return
+        done = [live_change(self.note, c.start, c.end, c.new) for c in self.changes]
+        self.live = [*done, current] if current is not None else done
+        self.on_live()
 
     async def _write_one(self, edit: PlannedEdit, earlier: Sequence[str]) -> PlannedChange | None:
         job = write_job(edit, self.blocks, self.note, self.instruction, earlier)
@@ -334,8 +357,14 @@ class EditRun:
         ctx = self._guard_context(edit, job)
         issues: list[Issue] = []
         change: PlannedChange | None = None
+        start, end = live_span(edit, self.blocks)
         for attempt in range(2):
-            answer, finished = await self._ask(messages, job)
+            self._show_live(live_change(self.note, start, end, writing=True))  # a retry: anew
+
+            def arrived(so_far: str, start: int = start, end: int = end) -> None:
+                self._show_live(live_change(self.note, start, end, live_text(job, so_far), True))
+
+            answer, finished = await self._ask(messages, job, arrived)
             if not finished or not answer.strip():
                 self.dropped.append(_dropped(edit, "the answer was cut off or empty"))
                 return None
@@ -398,34 +427,45 @@ class EditRun:
             return reply_room(estimate_tokens(job.old))
         return min(ADD_ANSWER, ADD_ANSWER_MAX)
 
-    async def _ask(self, messages: list[ChatMessage], job: WriteJob) -> tuple[str, bool]:
+    async def _ask(
+        self,
+        messages: list[ChatMessage],
+        job: WriteJob,
+        arrived: Callable[[str], None] | None = None,
+    ) -> tuple[str, bool]:
         chosen = self.engine.setting("ai.temperature", 0.8)
         temperature = min(
             float(chosen) if isinstance(chosen, int | float) else 0.8, WRITE_TEMPERATURE
         )
         try:
-            return await self._write(messages, job, temperature)
+            return await self._write(messages, job, temperature, arrived)
         except RepeatLoopError:  # stuck repeating itself: once more, with more variety
             log.info("the model looped; asking again at %.1f", LOOP_TEMPERATURE)
-            return await self._write(messages, job, max(temperature, LOOP_TEMPERATURE))
+            return await self._write(messages, job, max(temperature, LOOP_TEMPERATURE), arrived)
 
     async def _write(
-        self, messages: list[ChatMessage], job: WriteJob, temperature: float
+        self,
+        messages: list[ChatMessage],
+        job: WriteJob,
+        temperature: float,
+        arrived: Callable[[str], None] | None = None,
     ) -> tuple[str, bool]:
+        """One write call; ``arrived`` gets the answer so far after every piece."""
         finish: list[str] = []
         self.calls += 1
-        parts = [
-            piece
-            async for piece in self.engine.stream(
-                messages,
-                self._window,
-                on_finish=finish.append,
-                think=False,
-                temperature=temperature,
-                max_answer=self._room(job),
-            )
-        ]
-        return "".join(parts), finish == [FINISHED]
+        answer = ""
+        async for piece in self.engine.stream(
+            messages,
+            self._window,
+            on_finish=finish.append,
+            think=False,
+            temperature=temperature,
+            max_answer=self._room(job),
+        ):
+            answer += piece
+            if arrived is not None:
+                arrived(answer)
+        return answer, finish == [FINISHED]
 
     def _guard_context(self, edit: PlannedEdit, job: WriteJob) -> GuardContext:
         ids = [b.id for b in self.blocks]

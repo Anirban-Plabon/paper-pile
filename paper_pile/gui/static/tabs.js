@@ -5,9 +5,43 @@
   const barOf = (el) => (el && el.closest ? el.closest('.pp-tabbar') : null);
   let dragId = null;
   let overEl = null;
+  // One accent bar for the whole page, centred on the divider line between two tabs.
+  let marker = null;
+  let markKey = null;
+  const showMarker = (tab, after) => {
+    if (!marker) {
+      marker = document.createElement('div');
+      marker.className = 'pp-tab-marker';
+      document.body.appendChild(marker);
+      marker.addEventListener('animationend', () => marker.classList.remove('pp-jump'));
+    }
+    const key = tab.dataset.doc + (after ? '>' : '<');
+    if (key === markKey) return;
+    // "after this tab" and "before the next one" are the same gap: same key, no jump
+    const next = after ? tab.nextElementSibling : null;
+    const gapKey = next && next.classList.contains('pp-tab') ? next.dataset.doc + '<' : key;
+    if (gapKey === markKey) return;
+    markKey = gapKey;
+    const r = tab.getBoundingClientRect();
+    const line = getComputedStyle(tab, '::after');
+    const top = parseFloat(line.top) || 10, bottom = parseFloat(line.bottom) || 9;
+    const fresh = !marker.classList.contains('pp-on');
+    if (fresh) marker.style.transition = 'none';
+    marker.style.left = `${(after ? r.right : r.left) - 1.5}px`;  // centre on the 1 px divider
+    marker.style.top = `${r.top + top - 2}px`;
+    marker.style.height = `${r.height - top - bottom + 4}px`;
+    if (fresh) { void marker.offsetWidth; marker.style.transition = ''; }
+    marker.classList.add('pp-on');
+    marker.classList.remove('pp-jump');
+    void marker.offsetWidth;  // restart the bounce
+    marker.classList.add('pp-jump');
+  };
   const clearOver = () => {
-    if (overEl) overEl.classList.remove('pp-tab-drop-before', 'pp-tab-drop-after');
     overEl = null;
+  };
+  const hideMarker = () => {
+    markKey = null;
+    if (marker) marker.classList.remove('pp-on', 'pp-jump');
   };
 
   document.addEventListener('dragstart', (e) => {
@@ -22,14 +56,19 @@
     const tab = tabOf(e.target);
     clearOver();
     if (!tab) {
-      if (barOf(e.target)) e.preventDefault(); // empty part of the bar = "move to the end"
+      const bar = barOf(e.target);
+      if (bar) { // empty part of the bar = "move to the end"
+        e.preventDefault();
+        const tabs = bar.querySelectorAll('.pp-tab');
+        if (tabs.length) showMarker(tabs[tabs.length - 1], true);
+      } else hideMarker();
       return;
     }
     e.preventDefault();
     e.dataTransfer.dropEffect = 'move';
     const r = tab.getBoundingClientRect();
     overEl = tab;
-    tab.classList.add(e.clientX > r.left + r.width / 2 ? 'pp-tab-drop-after' : 'pp-tab-drop-before');
+    showMarker(tab, e.clientX > r.left + r.width / 2);
   });
   document.addEventListener('drop', (e) => {
     if (dragId === null) return;
@@ -37,6 +76,7 @@
     dragId = null;
     const tab = tabOf(e.target);
     clearOver();
+    hideMarker();
     if (tab) {
       const r = tab.getBoundingClientRect();
       e.preventDefault();
@@ -48,7 +88,7 @@
       emitEvent('pp_tab_move', { src: src, dst: tabs[tabs.length - 1].dataset.doc, after: true });
     }
   });
-  document.addEventListener('dragend', () => { dragId = null; clearOver(); });
+  document.addEventListener('dragend', () => { dragId = null; clearOver(); hideMarker(); });
 })();
 
 // Right pane tabs (paper_pile/gui/components/right_pane.py): when the titles do not all fit,
@@ -222,7 +262,37 @@
     });
     strip.classList.toggle('pp-tabs-overflow', any);
   }
-  const sizes = new ResizeObserver(function (entries) { entries.forEach(function (e) { update(e.target); }); });
+  // Bring each row's active tab fully into view (tabs.py calls it after every redraw). Not
+  // scrollIntoView: that stops at the tab's box, so its corner ramps (outside the box) and the
+  // edge fade cut the tab, and it may scroll the page too. The tab keeps FADE px clear of a cut
+  // edge; Vue draws the new tabs after this call arrives, so it waits for the next frame.
+  const FADE = 28; // keep in sync with the fade in .pp-tabbar[data-pp-cut] (app.css)
+  function reveal(bar) {
+    const tab = bar.querySelector(':scope > :is(.pp-tab-active, .pp-tab-shown)');
+    if (!tab || bar.scrollWidth <= bar.clientWidth + 1) return;
+    const scroll = bar.classList.contains('pp-tabs-scroll');
+    const lead = scroll ? AREA : 0;
+    const tail = scroll ? endArea(bar) : 0;
+    const origin = bar.getBoundingClientRect().left - bar.scrollLeft;
+    const r = tab.getBoundingClientRect();
+    const left = r.left - origin - lead - FADE;
+    const right = r.right - origin - (bar.clientWidth - tail) + FADE;
+    let to = bar.scrollLeft;
+    if (left < to) to = left; else if (right > to) to = right;
+    to = Math.max(0, Math.min(to, bar.scrollWidth - bar.clientWidth));
+    if (Math.abs(to - bar.scrollLeft) > 0.5) bar.scrollLeft = to;
+  }
+  window.ppRevealTabs = function () {
+    requestAnimationFrame(function () {
+      document.querySelectorAll('.pp-tabstrip > .pp-tabbar').forEach(function (bar) {
+        if (bar.offsetParent === null) return;
+        update(bar); // arrows / padding first: they decide the room
+        reveal(bar);
+        update(bar);
+      });
+    });
+  };
+  const sizes = new ResizeObserver(function (entries) { entries.forEach(function (e) { update(e.target); reveal(e.target); }); });
   const watched = new WeakSet();
   function watch() {
     document.querySelectorAll('.pp-tabstrip > .pp-tabbar').forEach(function (bar) {

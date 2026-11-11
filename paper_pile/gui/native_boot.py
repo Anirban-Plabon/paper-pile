@@ -58,8 +58,9 @@ def _describe(view: object) -> str:
         if screen is not None and g is not None
         else "no screen"
     )
+    states = f" (window {int(handle.windowStates().value)})" if handle is not None else ""
     return (
-        f"maximized={v.isMaximized()} fullscreen={v.isFullScreen()} "
+        f"maximized={v.isMaximized()}{states} fullscreen={v.isFullScreen()} "
         f"pos {v.x()},{v.y()} size {v.width()}x{v.height()} "
         f"zoom {v.webview.zoomFactor():.2f}; {where}"
     )
@@ -125,13 +126,20 @@ def _install_window_state() -> None:
                 if handle is None:
                     continue
                 _smooth_scrolling(view)
-                handle.windowStateChanged.connect(lambda _s, v=view: self._tell(v))
+                handle.windowStateChanged.connect(lambda _s, v=view: self._changed(v))
                 view.webview.page().loadFinished.connect(lambda _ok, v=view: self._tell(v))
                 self._tell(view)
 
+        def _changed(self, view: BrowserView) -> None:
+            _sync_widget_state(view)
+            self._tell(view)
+
         @staticmethod
         def _tell(view: BrowserView) -> None:
-            on = "true" if view.isMaximized() or view.isFullScreen() else "false"
+            handle = view.windowHandle()
+            states = handle.windowStates() if handle is not None else view.windowState()
+            full = QtCore.Qt.WindowState.WindowMaximized | QtCore.Qt.WindowState.WindowFullScreen
+            on = "true" if states & full else "false"
             log.debug("window state: %s", _describe(view))
             view.webview.page().runJavaScript(
                 f"document.body && document.body.classList.toggle('pp-maximized', {on})"
@@ -147,6 +155,21 @@ def _install_window_state() -> None:
         watcher.hook.emit()
 
     threading.Thread(target=start, daemon=True).start()
+
+
+def _sync_widget_state(view: Any) -> None:
+    """Give the widget the window's real state (user 2026-11-10: "maximized, then restore: the
+    window freezes"). When the compositor itself un-maximizes the window (GNOME, a maximized window
+    dragged off the top), Qt updates the QWindow but the QWidget keeps "maximized": the page then
+    believes it is maximized (resize edges off, the button's restore does nothing, since pywebview
+    sets the widget's state and the window is already normal) and the window looks frozen."""
+    handle = view.windowHandle()
+    if handle is None:
+        return
+    real = handle.windowStates()
+    if view.windowState() != real:
+        log.debug("widget state %s -> window's %s", view.windowState(), real)
+        view.setWindowState(real)
 
 
 def _smooth_scrolling(view: Any) -> None:

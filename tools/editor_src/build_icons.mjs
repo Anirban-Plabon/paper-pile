@@ -16,6 +16,12 @@ const own = {
   // "move to chat" (the Ask box, PLAN §4.27): Lucide's message-square with an arrow pointing right
   "message-square-arrow-right":
     '<path d="M22 17a2 2 0 0 1-2 2H6.828a2 2 0 0 0-1.414.586l-2.202 2.202A.71.71 0 0 1 2 21.286V5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2z" /><path d="M7 11h9" /><path d="m13 8 3 3-3 3" />',
+  // the Ask box's "move to chat" (user's own drawings): up = the box already holds a conversation,
+  // down = it holds only the selection
+  "message-square-share-up":
+    '<path d="M12 3H4a2 2 0 0 0-2 2v16.286a.71.71 0 0 0 1.212.502l2.202-2.202A2 2 0 0 1 6.828 19H20a2 2 0 0 0 2-2v-4" /><path d="M16 3h6v6" /><path d="m16 9 6-6" />',
+  "message-square-share-down":
+    '<path d="M12 19H6.828a2 2 0 0 0-1.414.586l-2.202 2.202A.71.71 0 0 1 2 21.286V5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v4" /><path d="M22 13v6h-6" /><path d="m16 13 5.793 5.793" />',
 };
 for (const [name, inner] of Object.entries(own)) {
   if (name in icons) throw new Error(`own icon ${name} shadows a Lucide icon`);
