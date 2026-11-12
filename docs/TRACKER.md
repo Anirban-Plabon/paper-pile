@@ -1069,3 +1069,4 @@ Legend: 🧠 = needs Opus (see PLAN §6 model guidance) · ⬜ todo · 🔄 in p
 - 2026-11-11 · P33.6 alignment kept in HTML / PDF export and page view · real app checked offscreen
 - 2026-11-12 · P29.16 Ask box: commands that ask to be told something ("describe this") answer more often (Gemini held-out-4 9 → 11/16; gemma4 unchanged within noise); eval logs saved in `eval/results/`; 1781 tests · still open for Gemini
 - 2026-11-12 · P29.16 intent eval on ornith-1.5:9b (old rules + v3): v3 worse there (enum first value + tied fields); logs in `eval/results/`, Open issue updated
+- 2026-11-12 · P29.16 intent eval on lfm3:latest and NeoHorse-1:9B (old rules + v3): v3 better on held-out-4 for both (lfm3 5 → 8, NeoHorse 7 → 13/16), lfm3 eval 16 → 24; NeoHorse worse on choice-open requests (7 → 3/8); table of all five models in `eval/results/README.md`

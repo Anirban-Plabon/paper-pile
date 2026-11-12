@@ -55,3 +55,37 @@ every request, even "is this too long?". v3's rule "want: change exactly when re
 itself" then copies that into `want`, so the two fields are not independent votes and the
 agreement guard never fires. Next version: the safe value first in the enum, and no rule that ties
 `want` to `result` (TRACKER Open issues).
+
+## 2026-11-12 · intent on lfm3:latest (1.1 GB) and NeoHorse-1:9B (Ollama)
+
+| Set | lfm3 old | lfm3 v3 | NeoHorse old | NeoHorse v3 |
+|---|---|---|---|---|
+| eval (40) | 16 (change 11, open 3, answer 2) | 24 (9, 5, 10) | 32 (15, 7, 10) | 31 (18, 3, 10) |
+| held-out (20) | 8 | 12 | 16 | 15 |
+| held-out-2 (15) | 6 | 10 | 13 | 10 |
+| held-out-3 (12) | 7 | 8 | 11 | 6 |
+| held-out-4 (16) | 5 | 8 | 7 | 13 |
+| held-out-5 (13) | 6 | 9 | 9 | 8 |
+| reported (3) | 2 | 3 | 2 | 1 |
+| time / request | ~1.1 s | ~1.5 s | ~3.6 s | ~3.5 s |
+
+- **lfm3:** v3 is better on every set (eval 16 → 24, held-out-4 5 → 8/16). With the old rules it
+  answers only 2 of 12 questions; the `result` field fixes that.
+- **NeoHorse:** held-out-4, the class of this fix, rises 7 → 13/16, but it loses ground on
+  requests that leave a choice open (open 7 → 3/8; held-out-3 11 → 6/12; held-out-2 13 → 10/15):
+  it acts on "change the tone" instead of asking which. Eval total 32 → 31.
+- A first run used the name `lfm3:1.7b`, which is not installed (0/40 in 0 s, "no answer");
+  it is not kept. The model is `lfm3:latest`.
+
+## All models, v1 old → v3 (eval 40 / held-out-4 16)
+
+| Model | eval | held-out-4 |
+|---|---|---|
+| gemma4:12b | 38 → 38 | 16 → 16 |
+| Gemini 3.8 flash (Antigravity) | 37 → 38 | 9 → 11 |
+| NeoHorse-1:9B | 32 → 31 | 7 → 13 |
+| lfm3 | 16 → 24 | 5 → 8 |
+| ornith-1.5:9b | 28 → 25 | 10 → 4 |
+
+v3 helps four of five models on the "describe…" class and hurts ornith. NeoHorse also loses on
+choice-open requests, and ornith on those and on questions.
