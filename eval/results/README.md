@@ -35,3 +35,23 @@ Gemini = `gemini-3.8-flash-medium` through the Antigravity CLI.
   Gemini still edits on 5 of 16 held-out-4 cases: "describe the trade-offs", "outline the
   argument", "break this down", "characterize each option" and "continue this paragraph"
   (asked for a choice). Not fixed yet (TRACKER Open issues).
+
+## 2026-11-12 · intent on ornith-1.5:9b (Ollama, third model)
+
+| Set | v1 old | v3 |
+|---|---|---|
+| eval (40) | 28 (change 10, open 8, answer 10) | 25 (change 17, open 1, answer 7) |
+| held-out (20) | 13 | 10 |
+| held-out-2 (15) | 8 | 10 |
+| held-out-3 (12) | 9 | 8 |
+| held-out-4 (16) | 10 | 4 |
+| held-out-5 (13) | 6 | 5 |
+| reported (3) | 1 | 2 |
+| time / request | ~1.5 s | ~1.5 s |
+
+v3 makes ornith worse, on the class it was meant to fix.
+Cause (raw JSON probe): ornith answers `result: "the_text_itself"`, the enum's first value, for
+every request, even "is this too long?". v3's rule "want: change exactly when result is the text
+itself" then copies that into `want`, so the two fields are not independent votes and the
+agreement guard never fires. Next version: the safe value first in the enum, and no rule that ties
+`want` to `result` (TRACKER Open issues).
