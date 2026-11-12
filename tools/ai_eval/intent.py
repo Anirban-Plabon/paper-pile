@@ -169,6 +169,26 @@ HELD_OUT_5: list[tuple[str, str, str]] = [
     (CO, LIST, "lay it out differently"),
     (CO, PARA, "into a different language please"),
 ]
+# written 2026-11-12 before v4 (safe value first, independent fields): every group, so a gain
+# on one class cannot hide a loss on another
+HELD_OUT_6: list[tuple[str, str, str]] = [
+    (A, PARA, "how does a VM differ from a container?"),
+    (A, LIST, "is anything wrong here?"),
+    (A, PARA, "sum this up in a line for me"),
+    (A, PARA, "explain why bare metal has no layer"),
+    (A, LIST, "give me the pros and cons of each"),
+    (A, PARA, "interpret this for a beginner"),
+    (A, PARA, "assess how convincing this is"),
+    (C, PARA, "trim this down"),
+    (C, LIST, "number these"),
+    (C, PARA, "add a line about Kubernetes at the end"),
+    (C, PARA, "go into more depth on containers"),
+    (C, PARA, "make it friendlier"),
+    (C, TYPOS, "correct this"),
+    (CO, PARA, "switch the language"),
+    (CO, PARA, "rewrite it in another style"),
+    (CO, LIST, "put it in some other shape"),
+]
 REPORTED: list[tuple[str, str, str]] = [  # what users typed: not in the score
     (C, PARA, "Elaborate this"),  # 2026-10-31
     (CO, PARA, "change the tone"),  # 2026-10-31
@@ -205,6 +225,7 @@ async def main(args: argparse.Namespace) -> int:
         ("held-out-3", HELD_OUT_3),
         ("held-out-4", HELD_OUT_4),
         ("held-out-5", HELD_OUT_5),
+        ("held-out-6", HELD_OUT_6),
         ("reported", REPORTED),
     ):
         print(f"--- {label}")

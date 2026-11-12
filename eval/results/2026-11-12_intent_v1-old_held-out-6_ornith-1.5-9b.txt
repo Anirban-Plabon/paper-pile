@@ -1,0 +1,20 @@
+--- held-out-6
+PASS  answer      'how does a VM differ from a container?'         → answer  (16.3 s)
+PASS  answer      'is anything wrong here?'                        → answer  (1.2 s)
+PASS  answer      'sum this up in a line for me'                   → answer  (2.7 s)
+PASS  answer      'explain why bare metal has no layer'            → answer  (1.2 s)
+FAIL  answer      'give me the pros and cons of each'              → change-open ['Add a pros and cons list for Docker, VM, and bare metal right after my', 'Explain the pros and cons of Docker, VM, and bare metal to me without', 'Rewrite my into a comparison table with pros and cons columns']  (3.0 s)
+FAIL  answer      'interpret this for a beginner'                  → change-open ['Add a beginner-friendly explanation of the differences between Docker,', 'VM, and bare metal hosting to the selected text.', 'Rewrite the selected text to explain the differences between Docker,']  (2.5 s)
+PASS  answer      'assess how convincing this is'                  → answer  (1.2 s)
+PASS  change      'trim this down'                                 → change  (1.2 s)
+PASS  change      'number these'                                   → change  (1.4 s)
+FAIL  change      'add a line about Kubernetes at the end'         → change-open ['Add a line about Kubernetes at the end of the selected text', 'Add a line about Kubernetes at the end that describes it as a way to *']  (2.1 s)
+PASS  change      'go into more depth on containers'               → change  (2.6 s)
+FAIL  change      'make it friendlier'                             → change-open ['Rewrite the sentence in a warm, encouraging tone', 'Rewrite the sentence in a casual, conversational tone', 'Rewrite the sentence in a light, upbeat tone']  (1.8 s)
+PASS  change      'correct this'                                   → change  (1.2 s)
+FAIL  change-open 'switch the language'                            → change  (1.2 s)
+PASS  change-open 'rewrite it in another style'                    → change-open ['Rewrite the selected text in a formal, technical style.', 'Rewrite the selected text in a casual, conversational style.', 'Rewrite the selected text in a humorous, witty style.']  (2.4 s)
+PASS  change-open 'put it in some other shape'                     → change-open ['Change the selection into a numbered list instead of a bulleted one', 'Change the selection into a table with columns for the technology and,', 'Change the selection into a short paragraph describing each option']  (2.4 s)
+---
+held-out-6  11/16
+eval total  0/0  (45 s)

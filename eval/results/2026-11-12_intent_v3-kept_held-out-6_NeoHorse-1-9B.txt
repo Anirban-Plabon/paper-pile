@@ -1,0 +1,20 @@
+--- held-out-6
+PASS  answer      'how does a VM differ from a container?'         → answer  (17.9 s)
+PASS  answer      'is anything wrong here?'                        → answer  (1.4 s)
+FAIL  answer      'sum this up in a line for me'                   → change  (1.4 s)
+PASS  answer      'explain why bare metal has no layer'            → answer  (1.4 s)
+FAIL  answer      'give me the pros and cons of each'              → change-open ['Rewrite the selected text into a comparison table with pros and cons,', 'Rewrite the selected text into a bulleted list with pros and cons,', 'Rewrite the selected text into a paragraph-style comparison with pros,']  (3.0 s)
+PASS  answer      'interpret this for a beginner'                  → answer  (1.4 s)
+PASS  answer      'assess how convincing this is'                  → answer  (1.4 s)
+PASS  change      'trim this down'                                 → change  (1.4 s)
+PASS  change      'number these'                                   → change  (1.4 s)
+PASS  change      'add a line about Kubernetes at the end'         → change  (1.4 s)
+PASS  change      'go into more depth on containers'               → change  (1.4 s)
+PASS  change      'make it friendlier'                             → change  (1.4 s)
+PASS  change      'correct this'                                   → change  (1.4 s)
+FAIL  change-open 'switch the language'                            → change  (1.4 s)
+FAIL  change-open 'rewrite it in another style'                    → change  (1.4 s)
+PASS  change-open 'put it in some other shape'                     → change-open ['Rewrite the text as a numbered list with brief explanations for each.', "Rewrite the text as a comparison table with columns for 'Technology',"]  (2.7 s)
+---
+held-out-6  12/16
+eval total  0/0  (42 s)

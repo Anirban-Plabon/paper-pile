@@ -89,3 +89,23 @@ agreement guard never fires. Next version: the safe value first in the enum, and
 
 v3 helps four of five models on the "describe…" class and hurts ornith. NeoHorse also loses on
 choice-open requests, and ornith on those and on questions.
+
+## 2026-11-12 · v4 (rejected): safe value first in every enum, `result` and `want` independent
+
+held-out-6 (16, every group) written before v4. v1 / v3 were run on held-out-6 alone.
+
+| Model | v4 eval (40) | v4 change / open / answer | held-out-6 v1 | v3 | v4 |
+|---|---|---|---|---|---|
+| gemma4:12b | 37 | 20 / 5 / 12 | 14 | 13 | 14 |
+| ornith-1.5:9b | 27 | 14 / 3 / 10 | 11 | 8 | 11 |
+| NeoHorse-1:9B | 21 | 8 / 1 / 12 | 14 | 12 | 10 |
+| lfm3:latest | 12 | 0 / 0 / 12 | 8 | 9 | 7 |
+
+- Putting "answer" first flips which way small models fail: lfm3 never edits (0/20 changes,
+  not even "fix the typos"), NeoHorse edits on 8/20. Small models do not decide here; they take
+  the first value. Antigravity not run (rejected on the local models first).
+- On the fresh, balanced held-out-6 the **old rules (v1) are best or within one case on all
+  four local models**; v3's gain is the "describe…" class (held-out-4), mostly on Gemini.
+- Conclusion: changing the order or tying of fields does not make the one call easier for small
+  models. The next step is to make the call itself smaller (fewer fields, shorter rules), with a
+  fresh held-out-7.

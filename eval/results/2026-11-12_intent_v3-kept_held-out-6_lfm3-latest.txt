@@ -1,0 +1,20 @@
+--- held-out-6
+FAIL  answer      'how does a VM differ from a container?'         → change  (11.2 s)
+PASS  answer      'is anything wrong here?'                        → answer  (0.7 s)
+FAIL  answer      'sum this up in a line for me'                   → change  (0.7 s)
+FAIL  answer      'explain why bare metal has no layer'            → change-open ['Bare metal hardware consists of physical components like processors,内存', "It lacks virtualization layers because it doesn't run software on top", "There are no layers because it's just raw hardware without abstraction"]  (0.8 s)
+FAIL  answer      'give me the pros and cons of each'              → change  (0.5 s)
+PASS  answer      'interpret this for a beginner'                  → answer  (1.0 s)
+PASS  answer      'assess how convincing this is'                  → answer  (1.0 s)
+PASS  change      'trim this down'                                 → change  (0.7 s)
+FAIL  change      'number these'                                   → change-open ['1. Docker\n2. VM\n3. Bare metal', '1. VM\n2. Docker\n3. Bare metal', '1. Bare metal\n2. Docker\n3. VM']  (0.8 s)
+FAIL  change      'add a line about Kubernetes at the end'         → change-open ['Include a sentence mentioning Kubernetes after the original text.', 'Append a brief sentence noting that Kubernetes manages containers like', "Insert 'Kubernetes' right before the closing brackets."]  (0.8 s)
+PASS  change      'go into more depth on containers'               → change  (0.5 s)
+PASS  change      'make it friendlier'                             → change  (0.8 s)
+FAIL  change      'correct this'                                   → change-open ['The backups run every night and are stored on the NAS.', 'Backups run every night and are stored on the NAS.', 'Every night, backups are run and stored on the NAS.']  (0.9 s)
+PASS  change-open 'switch the language'                            → change-open ['English (as selected)', 'Spanish', 'French']  (0.6 s)
+PASS  change-open 'rewrite it in another style'                    → change-open ['Use plain English and simpler phrasing.', 'Make it more technical and detailed.', 'Turn it into a bullet-point list.']  (0.7 s)
+PASS  change-open 'put it in some other shape'                     → change-open ['as a bulleted list', 'as a table', 'as a numbered list']  (0.7 s)
+---
+held-out-6  9/16
+eval total  0/0  (22 s)

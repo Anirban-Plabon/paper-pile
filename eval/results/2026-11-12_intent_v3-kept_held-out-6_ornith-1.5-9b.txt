@@ -1,0 +1,20 @@
+--- held-out-6
+FAIL  answer      'how does a VM differ from a container?'         → change  (15.9 s)
+PASS  answer      'is anything wrong here?'                        → answer  (1.2 s)
+FAIL  answer      'sum this up in a line for me'                   → change  (1.4 s)
+FAIL  answer      'explain why bare metal has no layer'            → change  (1.1 s)
+FAIL  answer      'give me the pros and cons of each'              → change-open ['Pros and cons as a bulleted list', 'Pros and cons as a comparison table', 'Pros and cons as short paragraphs']  (1.7 s)
+PASS  answer      'interpret this for a beginner'                  → answer  (1.4 s)
+PASS  answer      'assess how convincing this is'                  → answer  (1.1 s)
+PASS  change      'trim this down'                                 → change  (1.1 s)
+PASS  change      'number these'                                   → change  (1.4 s)
+PASS  change      'add a line about Kubernetes at the end'         → change  (1.4 s)
+FAIL  change      'go into more depth on containers'               → change-open ['Explain how Docker containers work and why they are lightweight', 'Compare containers to VMs and bare metal in more detail', 'Describe the trade-offs of using containers for hosting']  (2.0 s)
+PASS  change      'make it friendlier'                             → change  (1.1 s)
+PASS  change      'correct this'                                   → change  (1.4 s)
+FAIL  change-open 'switch the language'                            → change  (1.2 s)
+FAIL  change-open 'rewrite it in another style'                    → change  (1.2 s)
+FAIL  change-open 'put it in some other shape'                     → change  (1.3 s)
+---
+held-out-6  8/16
+eval total  0/0  (36 s)

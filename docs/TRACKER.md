@@ -446,6 +446,8 @@ Legend: 🧠 = needs Opus (see PLAN §6 model guidance) · ⬜ todo · 🔄 in p
 <!-- YYYY-MM-DD · decision · reason · (who: user / claude) -->
 | Date | Decision | Reason | By |
 |---|---|---|---|
+| 2026-11-12 | Keep the one understanding call; never go back to the binary edit/answer router (`ask_route.route`). Fix by making the call lighter for small models | user: "we should not go there again … for the small models this is a huge task" | user |
+| 2026-11-12 | v4 of `understand.py` (safe value first, independent fields) rejected: lfm3 then never edits (0/20), NeoHorse 8/20; small models take the first enum value. On the fresh held-out-6 the old rules are best or within one case on all four local models (`eval/results/`) | measured | claude |
 | 2026-11-12 | Ask box understanding (`understand.py`): a `result` field (the text itself / information about it) decided before `want`; a change needs both to agree, else the request is answered. No new model call (one field in the same JSON). v2 (field listing change kinds + "either reading → information") rejected: gemma4 eval 38 → 35 and choice-open requests acted on | user: "describe" edited the note; measured on gemma4 + Gemini (`eval/results/`) | claude |
 | 2026-11-11 | Alignment (note / block / all notes) kept as view state in `.paper-pile/alignment.json` like table widths, not in the markdown; left/center/right/justify; slash *Align* group with block entries first, then note; Ctrl+wheel zooms only the note on screen, not saved | User answers (side file like widths; justify included; block first; zoom per note, session only) | user |
 | 2026-11-11 | New chat button hidden, not greyed out, while the chat on screen is already new | User: "while already new note new note icon will not be visible" | user |
@@ -1070,3 +1072,4 @@ Legend: 🧠 = needs Opus (see PLAN §6 model guidance) · ⬜ todo · 🔄 in p
 - 2026-11-12 · P29.16 Ask box: commands that ask to be told something ("describe this") answer more often (Gemini held-out-4 9 → 11/16; gemma4 unchanged within noise); eval logs saved in `eval/results/`; 1781 tests · still open for Gemini
 - 2026-11-12 · P29.16 intent eval on ornith-1.5:9b (old rules + v3): v3 worse there (enum first value + tied fields); logs in `eval/results/`, Open issue updated
 - 2026-11-12 · P29.16 intent eval on lfm3:latest and NeoHorse-1:9B (old rules + v3): v3 better on held-out-4 for both (lfm3 5 → 8, NeoHorse 7 → 13/16), lfm3 eval 16 → 24; NeoHorse worse on choice-open requests (7 → 3/8); table of all five models in `eval/results/README.md`
+- 2026-11-12 · P29.16 v4 tried and rejected (enum order only flips small models' failure); held-out-6 added; v1 best or tied on it locally; code stays v3; next: a smaller call

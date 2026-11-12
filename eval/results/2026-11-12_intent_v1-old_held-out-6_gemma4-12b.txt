@@ -1,0 +1,20 @@
+--- held-out-6
+PASS  answer      'how does a VM differ from a container?'         → answer  (21.5 s)
+PASS  answer      'is anything wrong here?'                        → answer  (2.7 s)
+PASS  answer      'sum this up in a line for me'                   → answer  (2.8 s)
+PASS  answer      'explain why bare metal has no layer'            → answer  (2.8 s)
+PASS  answer      'give me the pros and cons of each'              → answer  (2.7 s)
+PASS  answer      'interpret this for a beginner'                  → answer  (2.7 s)
+PASS  answer      'assess how convincing this is'                  → answer  (2.8 s)
+PASS  change      'trim this down'                                 → change  (2.7 s)
+PASS  change      'number these'                                   → change  (2.7 s)
+PASS  change      'add a line about Kubernetes at the end'         → change  (2.8 s)
+PASS  change      'go into more depth on containers'               → change  (2.8 s)
+PASS  change      'make it friendlier'                             → change  (2.7 s)
+PASS  change      'correct this'                                   → change  (2.7 s)
+FAIL  change-open 'switch the language'                            → change  (2.7 s)
+PASS  change-open 'rewrite it in another style'                    → change-open ['professional and formal', 'casual and conversational', 'concise and technical']  (4.5 s)
+FAIL  change-open 'put it in some other shape'                     → change  (2.8 s)
+---
+held-out-6  14/16
+eval total  0/0  (65 s)

@@ -1,0 +1,20 @@
+--- held-out-6
+PASS  answer      'how does a VM differ from a container?'         → answer  (17.3 s)
+PASS  answer      'is anything wrong here?'                        → answer  (1.2 s)
+PASS  answer      'sum this up in a line for me'                   → answer  (1.2 s)
+PASS  answer      'explain why bare metal has no layer'            → answer  (1.2 s)
+FAIL  answer      'give me the pros and cons of each'              → change-open ['Add a pros/cons list for Docker, VM, and Bare metal, keeping the three', 'Add a pros/cons list for Docker and VM only, and remove Bare metal', 'Add a pros/cons list for all three, but rewrite the original lines as']  (3.1 s)
+FAIL  answer      'interpret this for a beginner'                  → change  (1.2 s)
+PASS  answer      'assess how convincing this is'                  → answer  (1.2 s)
+PASS  change      'trim this down'                                 → change  (1.2 s)
+PASS  change      'number these'                                   → change  (1.2 s)
+PASS  change      'add a line about Kubernetes at the end'         → change  (1.2 s)
+PASS  change      'go into more depth on containers'               → change  (1.8 s)
+PASS  change      'make it friendlier'                             → change  (1.2 s)
+PASS  change      'correct this'                                   → change  (1.2 s)
+PASS  change-open 'switch the language'                            → change-open ['Translate the selected text into Spanish.', 'Translate the selected text into French.', 'Translate the selected text into German.']  (2.1 s)
+PASS  change-open 'rewrite it in another style'                    → change-open ['Rewrite the text in a more formal, academic tone.', 'Rewrite the text in a casual, conversational tone.', 'Rewrite the text as a bulleted list comparing the three options.']  (2.5 s)
+PASS  change-open 'put it in some other shape'                     → change-open ['Convert the three lines into a numbered list with brief explanations.', "Convert the three lines into a comparison table with columns for 'Type", 'Convert the three lines into a definition list (term + description).']  (2.7 s)
+---
+held-out-6  14/16
+eval total  0/0  (41 s)
