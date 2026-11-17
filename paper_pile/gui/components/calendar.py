@@ -1,8 +1,10 @@
 """The Calendar tab: a month grid; a click opens (or creates) that day's daily note.
 
 Monday-first with ISO week numbers. A filled dot under a day means its note exists, a hollow one
-that the note still has unchecked tasks. The day of the note on screen is highlighted and today's
-number uses the theme colour. What a day's note is called, where it lives and what it starts
+that the note still has unchecked tasks. The day of the note on screen is highlighted and today
+sits in a rounded box. Under the month, *This week*: a card per daily note of today's week
+(and always today's), with its first words; a click opens that day. What a day's note is
+called, where it lives and what it starts
 from are Settings (General > Daily notes); the rules are in :mod:`paper_pile.core.daily`.
 """
 
@@ -19,6 +21,7 @@ from paper_pile.core.daily import (
     month_grid,
     month_name,
     shift_month,
+    week_of,
 )
 from paper_pile.core.vault import Vault
 from paper_pile.gui.icons import line_icon
@@ -45,7 +48,7 @@ class CalendarPane:
         t = today()
         self.year, self.month = t.year, t.month
         self._body: ui.column
-        self._marks_cache: dict[str, tuple[float, bool]] = {}  # daily note → mtime, open tasks
+        self._marks_cache: dict[str, tuple[float, bool, str]] = {}  # note → mtime, tasks, preview
         self._drawn: object = None  # what the grid shows now; refresh() skips an equal one
 
     def build(self) -> None:
@@ -77,7 +80,9 @@ class CalendarPane:
         folder, fmt = self._settings()
         today = self._today()
         weeks = month_grid(self.year, self.month, today)
+        this_week = week_of(today)
         days = [d.date for w in weeks for d in w.days]
+        days += [d for d in this_week if d not in days]
         marks = day_marks(self.vault, folder, fmt, days, self._marks_cache)
         active = self._active_path()
         selected = next((d for d in days if active == daily_relpath(d, folder, fmt)), None)
@@ -95,8 +100,8 @@ class CalendarPane:
                 prev = line_icon("chevron-left", "s").classes("pp-cal-nav")
                 prev.on("click", lambda _e: self._step(-1))
                 prev.props('data-tip="Previous month"')
-                today = ui.label("TODAY").classes("pp-cal-today-btn")
-                today.on("click", lambda _e: self._go_today())
+                go_today = ui.label("TODAY").classes("pp-cal-today-btn")
+                go_today.on("click", lambda _e: self._go_today())
                 nxt = line_icon("chevron-right", "s").classes("pp-cal-nav")
                 nxt.on("click", lambda _e: self._step(1))
                 nxt.props('data-tip="Next month"')
@@ -108,6 +113,7 @@ class CalendarPane:
                     ui.label(str(week.number)).classes("pp-cal-wk")
                     for day in week.days:
                         self._day(day.date, day.in_month, day.is_today, marks, active, folder, fmt)
+            self._week(this_week, today, marks, active, folder, fmt)
             note = f"in {folder}" if folder else "in the vault's top folder"
             with ui.row().classes("pp-cal-foot items-center no-wrap"):
                 ui.label(f"Daily notes go {note}, named {fmt}.").classes("pp-muted")
@@ -131,3 +137,30 @@ class CalendarPane:
                     ui.element("span").classes("pp-cal-dot")
                     if mark.open_tasks:
                         ui.element("span").classes("pp-cal-dot pp-cal-dot-open")
+
+    def _week(self, week: list[date], today: date, marks, active, folder, fmt) -> None:  # type: ignore[no-untyped-def]
+        """This week's daily notes as cards (today's always, made on click if missing)."""
+        shown = [d for d in week if d in marks or d == today]
+        with ui.column().classes("pp-cal-week"):
+            ui.label("This week").classes("pp-cal-week-head")
+            for d in shown:
+                card = ui.element("div").classes("pp-cal-card")
+                if d == today:
+                    card.classes("pp-cal-card-today")
+                if active is not None and active == daily_relpath(d, folder, fmt):
+                    card.classes("pp-cal-card-sel")
+                card.on("click", lambda _e, day=d: self._open_day(day))
+                mark = marks.get(d)
+                with card:
+                    with ui.row().classes("pp-cal-card-top items-baseline no-wrap"):
+                        ui.label(d.strftime("%a")).classes("pp-cal-card-day")
+                        ui.label(f"{d.day} {month_name(d.month)}").classes("pp-cal-card-date")
+                        if d == today:
+                            ui.label("Today").classes("pp-cal-card-badge")
+                    if mark is None:
+                        text, empty = "No note yet. Click to start today's.", True
+                    else:
+                        text, empty = mark.preview or "Empty note", not mark.preview
+                    label = ui.label(text).classes("pp-cal-card-text")
+                    if empty:
+                        label.classes("pp-cal-card-empty")

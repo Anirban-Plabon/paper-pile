@@ -193,10 +193,58 @@ def month_name(month: int) -> str:
     return calendar.month_abbr[month]
 
 
+def week_of(day: date) -> list[date]:
+    """The Monday-first week (seven days) that holds ``day``."""
+    monday = day - timedelta(days=day.weekday())
+    return [monday + timedelta(days=i) for i in range(7)]
+
+
+_PREVIEW_MAX = 200
+_SKIP_LINE = re.compile(  # headings, fences, rules, table borders
+    r"^\s*(?:#{1,6}(?:\s|$)|```|~~~|[-*_](?:\s*[-*_]){2,}\s*$|\|?[\s:|-]+\|[\s:|-]*$)"
+)
+_LINE_MARK = re.compile(r"^[ \t>]*(?:[-*+]|\d+[.)])?[ \t]*(?:\[[ xX]\][ \t]*)?")
+_IMAGE = re.compile(r"!\[[^\]]*\]\([^)]*\)|!\[\[[^\]]*\]\]")
+_WIKI = re.compile(r"\[\[([^\]|#]*)(?:#[^\]|]*)?(?:\|([^\]]*))?\]\]")
+_LINK = re.compile(r"\[([^\]]*)\]\([^)]*\)")
+_HTML = re.compile(r"<[^>]+>")
+_EMPHASIS = re.compile(r"(\*\*|__|==|~~|[*_`])")
+
+
+def note_preview(text: str, limit: int = _PREVIEW_MAX) -> str:
+    """A note's first words as plain text, for a card (the calendar's week): front matter,
+    headings (a daily note's title and its template's sections), rules, fences and table
+    borders left out; list / quote / task marks and markdown syntax removed. Lines of one
+    paragraph are joined by spaces, separate blocks and list items by " · ". At most ``limit``
+    characters ("" for a note with nothing but those)."""
+    body = _FRONT_MATTER.sub("", text, count=1)
+    out = ""
+    new_block = False
+    for line in body.splitlines():
+        if not line.strip() or _SKIP_LINE.match(line):
+            new_block = True
+            continue
+        mark = _LINE_MARK.match(line)
+        if mark is not None and mark.group().strip():  # a list item / quote / task
+            new_block = True
+        line = _IMAGE.sub("", line[mark.end() if mark else 0 :])
+        line = _WIKI.sub(lambda m: m.group(2) or m.group(1), line)
+        line = _EMPHASIS.sub("", _HTML.sub("", _LINK.sub(r"\1", line)))
+        line = re.sub(r"\s+", " ", line.replace("|", " ")).strip()
+        if not line:
+            continue
+        out = line if not out else out + (" · " if new_block else " ") + line
+        new_block = False
+        if len(out) >= limit:
+            break
+    return out if len(out) <= limit else out[: limit - 1].rstrip() + "…"
+
+
 @dataclass(frozen=True, slots=True)
 class Marks:
     exists: bool = False
     open_tasks: bool = False
+    preview: str = ""  # the note's first words (note_preview)
 
 
 def day_marks(
@@ -204,13 +252,14 @@ def day_marks(
     folder: str,
     fmt: str,
     days: Iterable[date],
-    cache: dict[str, tuple[float, bool]] | None = None,
+    cache: dict[str, tuple[float, bool, str]] | None = None,
 ) -> dict[date, Marks]:
-    """Which of ``days`` have a daily note, and whether it still has unchecked tasks.
+    """Which of ``days`` have a daily note, whether it still has unchecked tasks, and its
+    first words (the week's cards).
 
     Each folder is listed once and only existing notes are read (the calendar asks on every
-    tab switch, ~42 days); ``cache`` (path → mtime, open tasks) spares re-reading notes that
-    did not change since the last call.
+    tab switch, ~42 days); ``cache`` (path → mtime, open tasks, preview) spares re-reading
+    notes that did not change since the last call.
     """
     by_folder: dict[str, list[tuple[date, str]]] = {}
     for day in days:
@@ -233,14 +282,16 @@ def day_marks(
                 mtime = entry.stat().st_mtime
                 hit = cache.get(path) if cache is not None and not entry.is_symlink() else None
                 if hit is not None and hit[0] == mtime:
-                    open_tasks = hit[1]
+                    open_tasks, preview = hit[1], hit[2]
                 else:
-                    open_tasks = bool(_OPEN_TASK.search(vault.read_text(path)))
+                    text = vault.read_text(path)
+                    open_tasks = bool(_OPEN_TASK.search(text))
+                    preview = note_preview(text)
                     if cache is not None:
-                        cache[path] = (mtime, open_tasks)
+                        cache[path] = (mtime, open_tasks, preview)
             except (OSError, NotFoundError, VaultError):
                 continue
-            out[day] = Marks(True, open_tasks)
+            out[day] = Marks(True, open_tasks, preview)
     return out
 
 

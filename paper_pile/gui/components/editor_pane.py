@@ -196,6 +196,7 @@ class EditorPane:
         ),
         block_to_chat: Callable[[str, str, str, str], None] = lambda kind, lang, text, path: None,
         on_toggle_pane: Callable[[str], None] = lambda pane: None,
+        on_reopen_tab: Callable[[str], None] = lambda name: None,
         on_outline: Callable[[], None] = lambda: None,
         on_history: Callable[[str], Any] = lambda path: None,
         on_settings_changed: Callable[[set[str]], None] = lambda keys: None,
@@ -254,6 +255,7 @@ class EditorPane:
         self._shown_line = 1  # the line number the user sees (counted after the properties)
         self._block_to_chat = block_to_chat
         self._on_toggle_pane = on_toggle_pane
+        self._on_reopen_tab = on_reopen_tab  # a closed right-pane tab's button in the strip
         self.show_outline = on_outline  # the ⋯ menu's Outline (the layout owns the tab)
         self.show_history = on_history  # the ⋯ menu's Version history (a popup)
         self._on_settings_changed = on_settings_changed
@@ -300,6 +302,10 @@ class EditorPane:
         """The centre of the editor area shown while no note is open (the start actions)."""
         return self._empty
 
+    def set_reopen(self, names: list[str]) -> None:
+        """The closed right-pane tabs whose buttons the tab strip shows."""
+        self._tabbar.set_reopen(names)
+
     @property
     def pane_toggles(self) -> dict[str, ui.button]:
         """The left/right collapse buttons that live at the ends of the tab strip."""
@@ -318,6 +324,7 @@ class EditorPane:
                 on_toggle_pane=self._on_toggle_pane,
                 on_activate_side=self._activate_side,
                 on_new=lambda: self.bus.publish("note.new", folder=""),
+                on_reopen=self._on_reopen_tab,
             )
             self._tabbar.build()
             self.note_actions = note_actions(self)  # also the command palette's
@@ -325,11 +332,13 @@ class EditorPane:
             self._banner.set_visibility(False)
             with ui.element("div").classes("pp-editor-area"):
                 self._empty = ui.column().classes("pp-empty")
+                panes: list[ui.element] = []  # the editor columns (each gets its backlinks list)
                 with ui.element("div").classes("pp-split") as self._split_box:
                     for slot in (0, 1):
                         if slot == 1:  # dragged by static/split.js; double-click: half and half
                             ui.element("div").classes("pp-split-handle")
                         pane = ui.element("div").classes("pp-split-pane")
+                        panes.append(pane)
                         if slot == 1:
                             self._side = pane
                         with pane:
@@ -341,7 +350,7 @@ class EditorPane:
                 self._editor = self._editors[0]
                 self._editor.set_visibility(False)
             self._backlinks = BacklinksPane(self._open_backlink)
-            self._backlinks.build()
+            self._backlinks.build(panes)
         self._host = ui.element("div").classes("pp-host")  # dialogs + toasts; takes no space
         with self._host:
             self.ask_popup = AskPopup(self)  # the Ask box under a selection (PLAN §4.27)

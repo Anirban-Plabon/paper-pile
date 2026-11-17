@@ -3,8 +3,10 @@ link. The toggle sits in the footer bar (left; the status bar fills its right si
 list opens above that bar, so the bar's top edge stays level with the profile row's.
 
 While the editor is split, each side has its own toggle and list (the right one starts at the
-split divider, like the tab row); each side opens and closes on its own (user, 2026-11-04) —
-a closed side keeps its place in the row, empty.
+split divider, like the tab row); each side opens and closes on its own (user, 2026-11-04).
+Each list lives at the bottom of its own editor column (``hosts``), so opening one side's list
+leaves the other side's note as tall as it was (user 2026-11-18: one click looked like both
+lists opened).
 It only displays what :mod:`paper_pile.core.index` found."""
 
 from collections.abc import Callable
@@ -47,21 +49,21 @@ class BacklinksPane:
         self._sides: list[_Side] = []
         self._bodies: list[ui.column] = []
         self._root: ui.element
-        self._lists: ui.row
         self.status_host: ui.element  # the footer's right side (filled by the layout)
 
-    def build(self) -> None:
+    def build(self, hosts: list[ui.element]) -> None:
+        """``hosts``: the two editor columns (left / only, right); each gets its side's list."""
+        for host in hosts:
+            with host:
+                self._bodies.append(ui.column().classes("pp-backlinks-body"))
         self._root = ui.column().classes("pp-backlinks")
-        with self._root:
-            with ui.row().classes("pp-backlinks-lists no-wrap") as self._lists:
-                self._bodies = [ui.column().classes("pp-backlinks-body") for _ in range(2)]
-            with ui.row().classes("pp-footer items-center no-wrap"):
-                with ui.row().classes("pp-backlinks-side no-wrap items-center"):
-                    self._sides.append(_Side(lambda: self.toggle(0)))
-                with ui.row().classes("pp-backlinks-side no-wrap items-center"):
-                    self._sides.append(_Side(lambda: self.toggle(1)))
-                ui.space()
-                self.status_host = ui.element("div").classes("pp-footer-status")
+        with self._root, ui.row().classes("pp-footer items-center no-wrap"):
+            with ui.row().classes("pp-backlinks-side no-wrap items-center"):
+                self._sides.append(_Side(lambda: self.toggle(0)))
+            with ui.row().classes("pp-backlinks-side no-wrap items-center"):
+                self._sides.append(_Side(lambda: self.toggle(1)))
+            ui.space()
+            self.status_host = ui.element("div").classes("pp-footer-status")
         self._sides[1].head.set_visibility(False)
         self.set_items([])
 
@@ -69,9 +71,6 @@ class BacklinksPane:
         """Open or close one side's list (``side`` 1: the split's right note)."""
         self._open[side] = not self._open[side]
         self._render(side)
-
-    def _any_open(self) -> bool:
-        return self._open[0] or (self._split and self._open[1])
 
     def set_items(self, items: list[BacklinkItem], right: list[BacklinkItem] | None = None) -> None:
         """The left (or only) note's backlinks; ``right``: the split's right note's (``None``:
@@ -84,8 +83,6 @@ class BacklinksPane:
             else:
                 self._root.classes(remove="pp-backlinks-split")
             self._sides[1].head.set_visibility(split)
-            self._bodies[1].set_visibility(split)
-            self._lists.set_visibility(self._any_open())
         for side, side_items in enumerate((items, right or [])):
             if side_items != self._sides[side].items:
                 self._sides[side].items = side_items
@@ -98,8 +95,7 @@ class BacklinksPane:
         side.title.set_text(f"Backlinks ({count})" if count else "Backlinks")
         is_open = self._open[index]
         side.icon.classes(add="pp-open" if is_open else "", remove="" if is_open else "pp-open")
-        body.set_visibility(index == 0 or self._split)  # closed: its place stays, empty
-        self._lists.set_visibility(self._any_open())
+        body.set_visibility(is_open)
         body.clear()
         if not is_open:
             return

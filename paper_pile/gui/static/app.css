@@ -137,10 +137,11 @@ html, body { overflow: hidden; }
 .pp-pane-title { font-size: 11px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--pp-muted); }
 .pp-muted { color: var(--pp-muted); font-size: 12px; }
 /* Start actions in the middle of the editor area while no note is open */
-.pp-empty { position: absolute; inset: 0; z-index: 1; margin: auto; width: max-content; height: max-content; gap: 8px; align-items: stretch; flex-wrap: nowrap; }
-.pp-start-btn.q-btn { min-width: 168px; min-height: 36px; padding: 0 14px; border: 1px solid var(--pp-border); border-radius: var(--pp-r-ctrl); color: var(--pp-fg); font-size: 13px; font-weight: 400; }
+.pp-empty { position: absolute; inset: 0; z-index: 1; margin: auto; width: max-content; height: max-content; gap: 10px; align-items: stretch; flex-wrap: nowrap; }
+/* a bit bigger (user 2026-11-18): 168 × 36 → 232 × 44 */
+.pp-start-btn.q-btn { min-width: 232px; min-height: 44px; padding: 0 16px; border: 1px solid var(--pp-border); border-radius: var(--pp-r-ctrl); color: var(--pp-fg); font-size: 14px; font-weight: 400; }
 .pp-start-btn.q-btn:hover { background: rgba(127, 127, 127, .12); }
-.pp-start-btn .q-btn__content { flex-wrap: nowrap; justify-content: flex-start; gap: 8px; width: 100%; }
+.pp-start-btn .q-btn__content { flex-wrap: nowrap; justify-content: flex-start; gap: 10px; width: 100%; }
 .pp-start-btn .q-icon { color: var(--pp-muted); }
 .pp-start-keys { margin-left: auto; padding: 1px 7px; border-radius: 6px; background: rgba(127, 127, 127, .16); color: var(--pp-muted); font-size: 12px; }
 .pp-statusbar { height: 100%; padding: 0; gap: 10px; flex-shrink: 0; }
@@ -187,7 +188,7 @@ body:not(.pp-native) .pp-wincontrols, body:not(.pp-native) .pp-resize { display:
 body.pp-native #app > .q-layout { background: var(--pp-bg); }
 body.pp-native:not(.pp-maximized) #app > .q-layout { clip-path: inset(0 round var(--pp-r-window)); }
 body.pp-native:not(.pp-maximized)::after { content: ""; position: fixed; inset: 0; z-index: 9000; pointer-events: none; border: 1px solid rgba(127, 127, 127, .35); border-radius: var(--pp-r-window); }
-body.pp-native:not(.pp-right-open) .pp-tabstrip { padding-right: 108px; }  /* the window buttons: 4 + 3 × 30 + 2 × 4 + 6 */
+body.pp-native:not(.pp-right-open) .pp-tabstrip { padding-right: 105px; }  /* the window buttons: 4 + 3 × 30 + 2 × 4 + 3; the pane toggle then stands 4 px before them, their own gap (user 2026-11-18) */
 body.pp-native.pp-right-open .pp-rtabbar { padding-right: 108px; }
 .pp-files-search { width: calc(100% - 12px); margin: 6px 6px 2px; flex: none; font-size: 13px; }
 .pp-tree-sub { margin-left: auto; padding-left: 8px; overflow: hidden; text-overflow: ellipsis; font-size: 11px; pointer-events: none; }
@@ -934,7 +935,6 @@ body.body--dark .pp-instr-box textarea { color-scheme: dark; }  /* the corner gr
 .pp-cal-day:hover { background: rgba(127, 127, 127, .14); }
 .pp-cal-num { font-size: 12.5px; line-height: 1.2; }
 .pp-cal-out .pp-cal-num { opacity: .35; }
-.pp-cal-today .pp-cal-num { color: var(--pp-accent); font-weight: 700; }
 .pp-cal-sel, .pp-cal-sel:hover { background: var(--pp-accent); }
 .pp-cal-sel .pp-cal-num { color: var(--pp-on-accent); font-weight: 600; }
 .pp-cal-sel .pp-cal-dot { background: rgba(255, 255, 255, .85); }
@@ -945,6 +945,25 @@ body.body--dark .pp-instr-box textarea { color-scheme: dark; }  /* the corner gr
 .pp-cal-foot { width: 100%; gap: 6px; margin-top: 6px; padding-top: 8px; border-top: 1px solid var(--pp-border); font-size: 11px; flex-wrap: wrap; }
 .pp-cal-link { color: var(--pp-accent); cursor: pointer; }
 .pp-cal-link:hover { text-decoration: underline; }
+/* today: a rounded box around its number, not a coloured number (user 2026-11-18) */
+.pp-cal-today { box-shadow: inset 0 0 0 1.5px var(--pp-accent); }
+.pp-cal-today .pp-cal-num { color: var(--pp-fg); font-weight: 600; }
+.pp-cal-today.pp-cal-sel .pp-cal-num { color: var(--pp-on-accent); }
+/* This week (user 2026-11-18): one rounded card per daily note of today's week — weekday in the
+   accent, date, the note's first two lines; today's card is accent-tinted */
+.pp-cal-week { width: 100%; gap: 6px; margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--pp-border); flex-wrap: nowrap; }
+.pp-cal-week-head { font-size: 10px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: var(--pp-muted); padding: 0 2px 2px; }
+.pp-cal-card { width: 100%; display: flex; flex-direction: column; gap: 3px; padding: 8px 12px 9px; border: 1px solid var(--pp-border); border-radius: var(--pp-r-ctrl); background: var(--pp-bg); cursor: pointer; user-select: none; transition: background-color var(--pp-dur-fast) ease, border-color var(--pp-dur-fast) ease; }
+.pp-cal-card > * { pointer-events: none; }
+.pp-cal-card:hover { border-color: rgba(var(--pp-accent-rgb), .55); }
+.pp-cal-card-top { gap: 8px; min-width: 0; }
+.pp-cal-card-day { font-size: 13px; font-weight: 700; color: var(--pp-accent); }
+.pp-cal-card-date { font-size: 12px; color: var(--pp-muted); }
+.pp-cal-card-badge { margin-left: auto; font-size: 10px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--pp-on-accent); background: var(--pp-accent); border-radius: 999px; padding: 1px 7px; }
+.pp-cal-card-text { font-size: 12.5px; line-height: 1.45; color: var(--pp-fg); opacity: .85; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; overflow: hidden; overflow-wrap: anywhere; }
+.pp-cal-card-empty { color: var(--pp-muted); font-style: italic; }
+.pp-cal-card-today { background: rgba(var(--pp-accent-rgb), .10); border-color: rgba(var(--pp-accent-rgb), .55); }
+.pp-cal-card-sel { box-shadow: inset 3px 0 0 var(--pp-accent); }
 
 /* message action icons: small and muted, like every other icon */
 .pp-msg-actions .q-btn { color: var(--pp-muted); }
@@ -1038,11 +1057,9 @@ body.body--dark .pp-instr-box textarea { color-scheme: dark; }  /* the corner gr
 .pp-footer .pp-backlinks-head:hover { background: rgba(127, 127, 127, .12); }
 .pp-footer-status { display: flex; align-items: center; height: 100%; font-size: 12px; }
 .pp-backlinks { border-top: none !important; }
-.pp-backlinks-lists { width: 100%; gap: 0; border-top: 1px solid var(--pp-border); padding-top: 4px; }
-.pp-backlinks-lists > .pp-backlinks-body { flex: 1 1 0; min-width: 0; }
+/* each side's list sits at the bottom of its own editor column (backlinks.py) */
+.pp-split-pane > .pp-backlinks-body { flex: none; border-top: 1px solid var(--pp-border); padding-top: 4px; }
 /* split: each side's toggle and list start where its editor starts (the divider) */
-.pp-backlinks-split .pp-backlinks-lists > .pp-backlinks-body:first-child { flex: 0 0 var(--pp-split-left, 50%); }
-.pp-backlinks-split .pp-backlinks-lists > .pp-backlinks-body + .pp-backlinks-body { border-left: 1px solid var(--pp-border); }
 .pp-backlinks-side { gap: 0; flex: none; min-width: 0; }
 .pp-backlinks-split .pp-footer > .pp-backlinks-side:first-child { flex: 0 0 calc(var(--pp-split-left, 50%) - 16px); }
 .pp-host { position: absolute; width: 0; height: 0; overflow: visible; }
@@ -1055,6 +1072,11 @@ body.body--dark .pp-instr-box textarea { color-scheme: dark; }  /* the corner gr
 /* Every hover highlight is a rounded shape (--pp-r-ctrl), inset from the edges. Tabs keep their
    square tab shape for the active one; their hover is an inset rounded shape behind the text. */
 .pp-tree-row { margin: 0 6px; border-radius: var(--pp-r-ctrl); }
+/* the open note's box and the hover box (user 2026-11-18: "too rounded, takes more room than it
+   deserves"): 1 px of the row's height above and below stays clear (a transparent border, the
+   background drawn inside it), 4 px from the pane's sides, smaller corners; the row's height
+   and hit area are unchanged */
+.pp-tree-row { margin: 0 4px; border-radius: 5px; border-top: 1px solid transparent; border-bottom: 1px solid transparent; background-clip: padding-box; }
 .pp-backlink { margin: 0 6px; width: calc(100% - 12px); border-radius: var(--pp-r-ctrl); padding-left: 22px; }
 .pp-chat-mention { border-radius: var(--pp-r-ctrl); }
 .pp-tab, .pp-rtab { isolation: isolate; }
@@ -1564,7 +1586,15 @@ body.body--dark { --pp-set-box-bg: rgba(255, 255, 255, .035); }
 /* + 2 px after the last tab's side line and 2 px above the strip's bottom edge (user 2026-11-09);
    `top` moves it 1 px lower than the centred buttons (a margin in a centred row moves by half) */
 .pp-tabstrip > .pp-tab-new.q-btn { margin-left: 3px; margin-top: var(--pp-tab-drop); top: 0; }
-.pp-left-top > * { margin-top: calc(var(--pp-tab-drop) + 1px); }  /* its row's bottom line is a border: 1 px less room */
+.pp-left-top > * { margin-top: calc(var(--pp-tab-drop) + 1px); }
+/* the folded tree's open button stands exactly where the pane's close button was (user 2026-11-18:
+   "not aligned"): 4 px from the left edge, the same drop as the left header (its row has a border too) */
+.pp-ribbon-top { justify-content: flex-start; padding-left: 4px; }
+.pp-ribbon-top > * { margin-top: calc(var(--pp-tab-drop) + 1px); }
+/* closed AI chat / Calendar (user 2026-11-18): their buttons in one rounded box beside the pane
+   toggle, on the bar's centre line like the other buttons; inner buttons get no drop of their own */
+.pp-tabstrip > .pp-reopen { flex: none; margin: var(--pp-tab-drop) 0 0 4px; padding: 2px; gap: 2px; }
+.pp-tabstrip > .pp-reopen > .pp-icon-btn.q-btn { margin: 0; width: 28px; height: 26px !important; min-width: 28px; }  /* its row's bottom line is a border: 1 px less room */
 /* the window buttons are the strip's buttons: 30 × 30, 4 px apart */
 .pp-wincontrols { gap: 4px; }
 .pp-wincontrols .pp-icon-btn.q-btn { width: 30px; height: 30px; min-width: 0; min-height: 0; }
@@ -1765,9 +1795,9 @@ body.body--dark .pp-aidiff-chip-warn { color: #e3b341; }
 .pp-aiprog-ai { flex: none; width: 34px; height: 34px; border-radius: 50%; display: flex; align-items: center; justify-content: center; background: rgba(127, 127, 127, .14); color: var(--pp-fg); }
 .pp-aiprog-text { padding-right: 4px; }
 .pp-aiprog-dot { position: relative; flex: none; width: 34px; height: 34px; }
-.pp-aiprog-dot::before, .pp-aiprog-dot::after { content: ""; position: absolute; inset: 0; border-radius: 50%; background: rgba(var(--pp-accent-rgb), .45); animation: pp-ripple calc(1600ms * var(--pp-motion)) cubic-bezier(.2, .6, .4, 1) infinite; opacity: 0; pointer-events: none; }
-.pp-aiprog-dot::after { animation-delay: calc(800ms * var(--pp-motion)); }
-.pp-aiprog-stopping .pp-aiprog-dot::before, .pp-aiprog-stopping .pp-aiprog-dot::after { animation: none; }
+/* while the AI works: the chat's Stop glow inside the circle (user 2026-11-18: not the ripple) */
+.pp-aiprog-dot::before { content: ""; position: absolute; inset: 0; z-index: 2; border-radius: 50%; pointer-events: none; background: radial-gradient(circle, rgba(var(--pp-accent-rgb), .6) 0%, rgba(var(--pp-accent-rgb), .25) 55%, rgba(var(--pp-accent-rgb), 0) 75%); opacity: 0; animation: pp-glow calc(6.1s * var(--pp-motion)) ease-in-out infinite; }
+.pp-aiprog-stopping .pp-aiprog-dot::before { animation: none; opacity: 0; }
 .pp-aiprog-stop.q-btn { position: relative; z-index: 1; width: 34px; height: 34px; min-width: 34px; min-height: 0; padding: 0; font-size: var(--pp-icon-m); background: rgba(var(--pp-accent-rgb), .35); color: var(--pp-fg); transition: background var(--pp-dur-fast), color var(--pp-dur-fast); }
 .pp-aiprog-stop.q-btn:hover { background: var(--pp-accent); color: var(--pp-on-accent); }
 .pp-aiprog-stop.q-btn .q-icon { font-size: var(--pp-icon-s); }

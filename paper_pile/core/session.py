@@ -84,6 +84,9 @@ def save_last_vault(vault: Path, state_dir: Path | None = None) -> None:
         log.warning("could not remember last vault", exc_info=True)
 
 
+CLOSABLE_TABS = ("chat", "calendar")  # the right pane's feature tabs (closed: a button)
+
+
 @dataclass
 class SessionState:
     tabs: list[str] = field(default_factory=list)
@@ -96,6 +99,7 @@ class SessionState:
     outline_open: bool = False  # the Outline section under the file tree
     outline_height: int = OUTLINE_HEIGHT
     pinned: list[str] = field(default_factory=list)  # pinned notes, in tab order
+    closed_tabs: list[str] = field(default_factory=list)  # right pane tabs closed by ×
 
 
 def renamed(paths: list[str], old: str, new: str) -> list[str]:
@@ -147,6 +151,9 @@ def load_session(vault: Path) -> SessionState:
     pinned = data.get("pinned")
     if isinstance(pinned, list):
         state.pinned = list(dict.fromkeys(p for p in pinned if isinstance(p, str)))
+    closed = data.get("closed_tabs")
+    if isinstance(closed, list):
+        state.closed_tabs = [c for c in CLOSABLE_TABS if c in closed]
     return state
 
 
@@ -164,6 +171,7 @@ def save_session(vault: Path, state: SessionState) -> None:
         "outline_open": state.outline_open,
         "outline_height": state.outline_height,
         "pinned": state.pinned,
+        "closed_tabs": state.closed_tabs,
     }
     try:
         path.parent.mkdir(exist_ok=True)

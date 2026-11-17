@@ -59,6 +59,7 @@ def test_session_round_trip(tmp_path: Path) -> None:
         outline_open=True,
         outline_height=300,
         pinned=["d/b.md"],
+        closed_tabs=["calendar"],
     )
     save_session(tmp_path, state)
     assert (tmp_path / ".paper-pile" / "session.json").is_file()
@@ -138,3 +139,11 @@ def test_renamed_follows_notes_and_folders() -> None:
     paths = ["a.md", "d/b.md", "d/e/c.md", "dd/x.md"]
     assert renamed(paths, "a.md", "z.md") == ["z.md", "d/b.md", "d/e/c.md", "dd/x.md"]
     assert renamed(paths, "d", "f/d") == ["a.md", "f/d/b.md", "f/d/e/c.md", "dd/x.md"]
+
+
+def test_closed_tabs_keep_only_known_tabs(tmp_path: Path) -> None:
+    (tmp_path / ".paper-pile").mkdir()
+    (tmp_path / ".paper-pile" / "session.json").write_text(
+        json.dumps({"closed_tabs": ["calendar", "settings", 3, "chat", "calendar"]})
+    )
+    assert load_session(tmp_path).closed_tabs == ["chat", "calendar"]

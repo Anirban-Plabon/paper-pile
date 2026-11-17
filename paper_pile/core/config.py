@@ -57,8 +57,8 @@ DEFAULTS: dict[str, Any] = {
         "templates_folder": ".template",
         "daily_notes_folder": ".daily-notes",
         "images_folder": ".image",
-        "show_templates": True,
-        "show_daily_notes": True,
+        "show_templates": False,  # off by default: Settings shows them (user 2026-11-18)
+        "show_daily_notes": False,
         "daily_notes_format": "YYYY-MM-DD",
         "daily_notes_template": "",
     },

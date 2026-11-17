@@ -2,11 +2,15 @@
 are open) over the active view. AI chat and Calendar are listed only while their
 feature is on (``features``); with neither on and nothing else open the pane has nothing to show.
 
+AI chat and Calendar have a × too (user 2026-11-18): a closed one leaves the strip and comes
+back from its button beside the pane's toggle in the editor's tab strip (``closed_tabs``), or
+from anything that shows it (``show``).
+
 Settings is a tab, not a dialog: it opens here, can be closed with its cross like an editor tab,
 and keeps the chat (and its attachments) alive underneath. Icons are Font Awesome (vendored).
 """
 
-from collections.abc import Callable
+from collections.abc import Callable, Iterable
 
 from nicegui import ui
 
@@ -17,6 +21,7 @@ CALENDAR_ICON = "calendar"
 SETTINGS_ICON = "settings"  # a line icon (gui/icons.py); Font Awesome Free has no outline gear
 TAG_ICON = "hash"
 CLOSE_ICON = "x"
+FEATURE_TABS = ("chat", "calendar")  # = core.session.CLOSABLE_TABS
 
 
 class RightPane:
@@ -27,8 +32,12 @@ class RightPane:
         on_show_calendar: Callable[[], None] = lambda: None,
         features: Callable[[], set[str]] = lambda: {"chat", "calendar"},
         on_empty: Callable[[], None] = lambda: None,
+        closed: Iterable[str] = (),
+        on_closed: Callable[[list[str]], None] = lambda names: None,
     ) -> None:
         self._features = features
+        self._closed = set(closed)  # feature tabs closed by their × ("chat", "calendar")
+        self._on_closed = on_closed  # the closed set changed (saved; reopen buttons redrawn)
         self._on_empty = on_empty  # the last tab went away: the pane has nothing to show
         self._open_settings_into = on_open_settings
         self._on_wide = on_wide
@@ -62,7 +71,7 @@ class RightPane:
 
     def tabs(self) -> list[str]:
         """The tabs on the strip now, left to right."""
-        names = [n for n in ("chat", "calendar") if n in self._features()]
+        names = [n for n in FEATURE_TABS if n in self._features() and n not in self._closed]
         if self._settings_open:
             names.append("settings")
         if self._tag:
@@ -72,9 +81,18 @@ class RightPane:
     def has_tabs(self) -> bool:
         return bool(self.tabs())
 
+    def closed_tabs(self) -> list[str]:
+        """The feature tabs that are on but closed by their × (each gets a reopen button)."""
+        return [n for n in FEATURE_TABS if n in self._features() and n in self._closed]
+
     def show(self, name: str) -> None:
+        """Make ``name`` the shown tab (a closed feature tab comes back)."""
+        reopened = name in self._closed
+        self._closed.discard(name)
         self._active = name
         self._render()
+        if reopened:
+            self._on_closed(sorted(self._closed))
         if self._active == "calendar":
             self._on_show_calendar()
 
@@ -129,15 +147,21 @@ class RightPane:
         with self._bar:
             for name in tabs:
                 if name == "chat":
-                    self._tab("chat", "AI chat", CHAT_ICON, closable=False)
+                    self._tab("chat", "AI chat", CHAT_ICON, closable=True)
                 elif name == "calendar":
-                    self._tab("calendar", "Calendar", CALENDAR_ICON, closable=False)
+                    self._tab("calendar", "Calendar", CALENDAR_ICON, closable=True)
                 elif name == "settings":
                     self._tab("settings", "Settings", SETTINGS_ICON, closable=True)
                 else:
                     self._tab("tag", self._tag, TAG_ICON, closable=True)
 
     def _close(self, name: str) -> None:
+        if name in FEATURE_TABS:
+            self._closed.add(name)
+            with self._bar:  # the × is in the strip, which is redrawn
+                self._render()
+            self._on_closed(sorted(self._closed))
+            return
         (self.close_tag if name == "tag" else self.close_settings)()
 
     def _tab(self, name: str, title: str, icon: str, *, closable: bool) -> None:

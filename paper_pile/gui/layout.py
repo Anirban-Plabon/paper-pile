@@ -69,7 +69,7 @@ from paper_pile.gui.window import WindowChrome
 log = logging.getLogger("paper_pile.layout")
 
 # (min, max) pane width in px while open. Dragging stops at the limits.
-WIDTH_LIMITS = {"left": (180, 480), "right": (280, 640)}
+WIDTH_LIMITS = {"left": (180, 480), "right": (280, 960)}  # right: wider chat (user 2026-11-18)
 SETTINGS_LIMITS = (460, 960)  # the right pane while it shows Settings (its nav folds below 560)
 SETTINGS_OPEN_MIN = 640  # Settings always opens unfolded; dragging narrower folds it
 SAVE_DELAY_S = 0.4
@@ -251,7 +251,7 @@ class MainLayout:
         """A slim icon column at the left edge while the file tree is folded away."""
         self._ribbon = ui.column().classes("pp-ribbon items-center")
         with self._ribbon:
-            with ui.row().classes("pp-ribbon-top pp-dragzone items-center justify-center"):
+            with ui.row().classes("pp-ribbon-top pp-dragzone items-center"):
                 icon_button(
                     "panel-left-open",
                     lambda: self.toggle("left"),
@@ -355,11 +355,21 @@ class MainLayout:
             self.tree.reveal(path)
 
     def show_calendar(self) -> None:
-        if self.right is None or "calendar" not in self.right.tabs():
+        if self.right is None or "calendar" not in self._right_features():
             return
+        self.right.show("calendar")  # first: a closed Calendar tab comes back, the pane has a tab
         if not self.state.panes_open["right"]:
             self.toggle("right")
-        self.right.show("calendar")
+
+    def _reopen_right_tab(self, name: str) -> None:
+        """A closed right-pane tab's button (tab strip) was clicked."""
+        (self._open_chat if name == "chat" else self.show_calendar)()
+
+    def _right_tabs_closed(self, names: list[str]) -> None:
+        """AI chat / Calendar closed by its × or opened again: remember it, show the buttons."""
+        self.state.closed_tabs = names
+        self._save_soon()
+        self._sync_toggles()
 
     def _recent_renamed(self, old: str, new: str) -> None:
         self.state.recent_notes = renamed(self.state.recent_notes, old, new)
@@ -484,6 +494,7 @@ class MainLayout:
         ai = self.ai_on()
         if self.right is not None:
             self.right.refresh()  # folds the pane if nothing is left to show (_right_emptied)
+            self._sync_toggles()  # the reopen buttons of closed tabs follow the features
         if self._status is not None:
             self._status.show_ai(ai)
         if self.editor_pane is not None:
@@ -574,7 +585,7 @@ class MainLayout:
     def _tree_daily(self) -> tuple[str, str] | None:
         """The daily-notes folder and date format, for the tree's date order (None: hidden)."""
         folder = str(self.config.get("vault.daily_notes_folder", "")).strip("/")
-        if not folder or not self.config.get("vault.show_daily_notes", True):
+        if not folder or not self.config.get("vault.show_daily_notes", False):
             return None
         return folder, str(self.config.get("vault.daily_notes_format", DEFAULT_FORMAT))
 
@@ -688,6 +699,8 @@ class MainLayout:
             self._refresh_calendar,
             features=self._right_features,
             on_empty=self._right_emptied,
+            closed=self.state.closed_tabs,
+            on_closed=self._right_tabs_closed,
         )
         self.right.build()
         with self.right.chat_host:
@@ -770,6 +783,7 @@ class MainLayout:
             on_stats=self._set_stats,
             block_to_chat=self._chat_block,
             on_toggle_pane=self.toggle,
+            on_reopen_tab=self._reopen_right_tab,
             on_outline=self.toggle_outline,
             on_history=self.open_history,
             pinned=self.state.pinned,
@@ -836,10 +850,10 @@ class MainLayout:
         self.right.open_tag(tag.lstrip("#"))  # the tab's icon is already a #
 
     def _open_chat(self) -> None:
+        if self.right is not None:
+            self.right.show("chat")  # first: a closed chat tab comes back, the pane has a tab
         if not self.state.panes_open["right"]:
             self.toggle("right")
-        if self.right is not None:
-            self.right.show("chat")
 
     def _on_command_used(self, command_id: str) -> None:
         self.state.recent_commands = push_recent(self.state.recent_commands, command_id)
@@ -1011,6 +1025,8 @@ class MainLayout:
             set_icon(button, f"panel-{pane}-{'close' if is_open else 'open'}")
             tip(button, f"{'Hide' if is_open else 'Show'} {name} (Ctrl+L)")
             button.set_visibility(is_open or bool(tabs))
+        if self.right is not None:
+            self.editor_pane.set_reopen(self.right.closed_tabs())
 
     def _dragged_shut(self, pane: str) -> None:
         """The pane's edge was dragged on past its narrowest width (``static/panes.js``). Not

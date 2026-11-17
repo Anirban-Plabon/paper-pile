@@ -28,6 +28,9 @@ from paper_pile.gui.components.note_menu import AlignRow
 from paper_pile.gui.icons import icon_button, line_icon
 from paper_pile.gui.tips import tip
 
+# closed right-pane tabs: (name, icon, label) of each reopen button in the strip
+REOPEN_TABS = (("chat", "sparkles", "AI chat"), ("calendar", "calendar", "Calendar"))
+
 
 @dataclass(frozen=True, slots=True)
 class SplitTabs:
@@ -70,6 +73,7 @@ class TabBar:
         on_toggle_pane: Callable[[str], None] = lambda pane: None,
         on_activate_side: Callable[[int, int], None] | None = None,
         on_new: Callable[[], None] = lambda: None,
+        on_reopen: Callable[[str], None] = lambda name: None,
     ) -> None:
         self._tabs = tabs
         self._on_activate = on_activate
@@ -79,6 +83,9 @@ class TabBar:
         self._on_toggle_pane = on_toggle_pane
         self._on_activate_side = on_activate_side  # (tab id, side) while split
         self._on_new = on_new  # the + after the tabs: a new note in the vault's top folder
+        self._on_reopen = on_reopen  # a closed right-pane tab's button ("chat" / "calendar")
+        self._reopen: ui.element
+        self._reopen_buttons: dict[str, ui.button] = {}
         self._strip: ui.row
         self._right: ui.element
         self.toggles: dict[str, ui.button] = {}
@@ -102,6 +109,14 @@ class TabBar:
                 self._list_menu = ui.menu().classes("pp-note-menu pp-tabs-list-menu")
                 self._list_menu.props("anchor='bottom right' self='top right'")
             tip(list_button, "All open tabs")
+            # AI chat / Calendar closed by their ×: a button each, in one rounded box beside
+            # the pane's toggle (user 2026-11-18)
+            with ui.element("div").classes("pp-seg pp-tools pp-reopen") as self._reopen:
+                for name, icon, label in REOPEN_TABS:
+                    self._reopen_buttons[name] = icon_button(
+                        icon, lambda n=name: self._on_reopen(n), f"Open {label}", size="m"
+                    )
+            self.set_reopen([])
             self.toggles["right"] = icon_button(
                 "panel-right-close",
                 lambda: self._on_toggle_pane("right"),
@@ -109,6 +124,12 @@ class TabBar:
                 size="m",  # 16 px like every icon of the top bar
             )
         ui.on("pp_tab_move", lambda e: self._moved(e.args))
+
+    def set_reopen(self, names: list[str]) -> None:
+        """Show the buttons of the closed right-pane tabs ``names`` (none: no box)."""
+        for name, button in self._reopen_buttons.items():
+            button.set_visibility(name in names)
+        self._reopen.set_visibility(bool(names))
 
     def render(self, unsaved: dict[int, bool], split: SplitTabs | None = None) -> None:
         """Rebuild the bar from the tab list (call after open/close/move/rename/activate)."""

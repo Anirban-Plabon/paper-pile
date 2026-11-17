@@ -6,6 +6,7 @@
 Legend: 🧠 = needs Opus (see PLAN §6 model guidance) · ⬜ todo · 🔄 in progress · ✅ done · ⛔ blocked · ⏭️ skipped/deferred
 
 ## Current focus
+- **Phase:** P34 — Calendar week, side-pane buttons and small UI fixes (user request 2026-11-18, PLAN §4.35): P34.1–P34.9 done; for the user to try
 - **Phase:** P33 — Text alignment and per-note zoom (user request 2026-11-11, PLAN §4.34): P33.1–P33.4 done; for the user to try
 - **Phase:** P32 — Chat, popup, scrolling and table polish (user request 2026-11-09, PLAN §4.33): P32.1–P32.8 done, second round from the user's review done (P32.9), P32.10–P32.16 done (2026-11-10: tabs, window, scrollbar ends, chat header / + menu, the Ask box turning into a chip that follows streamed text, streaming rewrites); smooth-scroll feel on the 165 Hz panel for the user to confirm
 - **Phase:** P31 — One edit mode for every AI change (user request 2026-11-09, PLAN §4.32): no approval gate in the chat; chat and popup follow *Review in the note* / *Apply at once*; P31.1–P31.4 done; P31.5 (grouped AI changes tab) next; until then several notes in review open as tabs with their diffs
@@ -334,6 +335,19 @@ Legend: 🧠 = needs Opus (see PLAN §6 model guidance) · ⬜ todo · 🔄 in p
 | P27.2 | No "token repeat limit reached" on edits | ✅ | `GenerationOptions.repeat_penalty` (1.1 on text answers, none on JSON), `RepeatLoopError`, `EditRun._ask` retries once at 0.7; 4 tests; eval case 17 added. Eval gemma4:12b ×2: 26/28 before → 27/30 after (06 fails before and after; 17 1/2: one run echoed the paragraph unchanged — not a loop, see Open issues) |
 | P27.3 | Fixed blocks change when asked | ✅ | `unlock_asked` + `FIXED_KIND_WORDS` (edit_run.py), `GuardContext.convert` skips G5 / G6; 7 tests; eval case 18 (ASCII diagram → mermaid) gemma4:12b 3/3 in 2 calls, case 10 3/3. Repro on the user's note with NeoHorse-1:9B: before "cut off or empty", after one change replacing exactly the code block |
 
+### P34 — Calendar week, side-pane buttons and small UI fixes (user request 2026-11-18)
+| ID | Task | Status | Notes |
+|---|---|---|---|
+| P34.1 | Calendar: today box + This week cards | ✅ | 2026-11-18 · `daily.week_of`, `note_preview` (blocks / list items joined by " · "), `Marks.preview` (cache now mtime, tasks, preview); `calendar.py` `_week`. Real app (offscreen, scratch vault): today outlined, 3 cards with 2-line previews, today tinted + badge; 4 new tests in `tests/core/test_daily.py` |
+| P34.2 | × on AI chat / Calendar + reopen buttons | ✅ | 2026-11-18 · `RightPane(closed, on_closed)`, `closed_tabs()`; `TabBar.set_reopen` (`pp-reopen` box before the right toggle); `SessionState.closed_tabs` (+ test). Real clicks: × chat → its button; × calendar → pane folds, toggle hidden, two buttons 4 px before the window buttons; chat button → pane opens on AI chat; session `["calendar"]` |
+| P34.3 | Pane toggles aligned | ✅ | 2026-11-18 · measured before: tree close button x 4 / y 10, ribbon open button x 5 / y 9.5; folded right toggle 7 px from the window buttons. After: ribbon button at the tree's (left-aligned, +1 px drop like `.pp-left-top`), strip padding 108 → 105 px (4 px gap) |
+| P34.4 | Wider AI chat | ✅ | 2026-11-18 · `WIDTH_LIMITS["right"]` 640 → 960 |
+| P34.5 | Bigger start cards | ✅ | 2026-11-18 · 232 × 44 px, 14 px text (measured 231 × 44) |
+| P34.6 | AI chip glow | ✅ | 2026-11-18 · `.pp-aiprog-dot::before` = the chat Stop's radial glow, `pp-glow`; ripple `::after` gone (computed `animationName` = pp-glow, screenshot) |
+| P34.7 | Tree row boxes | ✅ | 2026-11-18 · transparent 1 px top/bottom border + `background-clip: padding-box`, margin 0 4px, radius 5 px; row height / hit area unchanged |
+| P34.8 | Daily notes / templates hidden by default | ✅ | 2026-11-18 · `config.DEFAULTS` `vault.show_*` False. The user's own config sets both `true` explicitly, so their app keeps showing them until switched off |
+| P34.9 | Split backlinks per column | ✅ | 2026-11-18 · reproduced: opening the left list put a full-width row over both editors (right editor 727 → 698 px). `BacklinksPane.build(hosts)`: each list at the bottom of its `pp-split-pane`. After: left list open, right editor still 727 px |
+
 ### P32 — Chat, popup, scrolling and table polish (user request 2026-11-09)
 | ID | Task | Status | Notes |
 |---|---|---|---|
@@ -446,6 +460,10 @@ Legend: 🧠 = needs Opus (see PLAN §6 model guidance) · ⬜ todo · 🔄 in p
 <!-- YYYY-MM-DD · decision · reason · (who: user / claude) -->
 | Date | Decision | Reason | By |
 |---|---|---|---|
+| 2026-11-18 | P34: week cards show today's week (each existing daily note + today's always), not the browsed month's or the open note's week; a missing today is a card that creates it | user: "opened daily note of the current week"; today's card always there to start the day | claude |
+| 2026-11-18 | Closed AI chat / Calendar tabs are kept in the session (`closed_tabs`), not only for the run | a tab closed by its × should stay closed after a restart, like the panes' open state | claude |
+| 2026-11-18 | Daily notes / templates hidden in the tree by default (was shown) | user: "keep daily note and template folder by default off, need to open it in setting" | user |
+| 2026-11-18 | Backlinks lists moved into each split column (supersedes "a closed side's place left empty", 2026-11-04) | user: in split view one click opened both boxes — the shared row shrank both editors | user |
 | 2026-11-12 | Keep the one understanding call; never go back to the binary edit/answer router (`ask_route.route`). Fix by making the call lighter for small models | user: "we should not go there again … for the small models this is a huge task" | user |
 | 2026-11-12 | v4 of `understand.py` (safe value first, independent fields) rejected: lfm3 then never edits (0/20), NeoHorse 8/20; small models take the first enum value. On the fresh held-out-6 the old rules are best or within one case on all four local models (`eval/results/`) | measured | claude |
 | 2026-11-12 | Ask box understanding (`understand.py`): a `result` field (the text itself / information about it) decided before `want`; a change needs both to agree, else the request is answered. No new model call (one field in the same JSON). v2 (field listing change kinds + "either reading → information") rejected: gemma4 eval 38 → 35 and choice-open requests acted on | user: "describe" edited the note; measured on gemma4 + Gemini (`eval/results/`) | claude |
@@ -1074,3 +1092,4 @@ Legend: 🧠 = needs Opus (see PLAN §6 model guidance) · ⬜ todo · 🔄 in p
 - 2026-11-12 · P29.16 intent eval on lfm3:latest and NeoHorse-1:9B (old rules + v3): v3 better on held-out-4 for both (lfm3 5 → 8, NeoHorse 7 → 13/16), lfm3 eval 16 → 24; NeoHorse worse on choice-open requests (7 → 3/8); table of all five models in `eval/results/README.md`
 - 2026-11-12 · P29.16 v4 tried and rejected (enum order only flips small models' failure); held-out-6 added; v1 best or tied on it locally; code stays v3; next: a smaller call
 - 2026-11-12 · Eval report `eval/reports/2026-11-12_ai-eval-report.md` (user: description, datasets, evaluator strategies, settings, results): all evals (intent, edit, unit mode, planned vault-agent eval — found not built, P30.2–P30.7), error-type tables for 5 models × 4 versions, findings F1–F8, next steps
+- 2026-11-18 · P34.1–P34.9: calendar today box + This week cards, × on AI chat / Calendar with reopen buttons, pane toggles aligned, chat to 960 px, bigger start cards, AI chip glow, slimmer tree boxes, daily notes / templates hidden by default, split backlinks per column; 1784 tests

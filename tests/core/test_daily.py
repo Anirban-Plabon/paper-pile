@@ -11,7 +11,9 @@ from paper_pile.core.daily import (
     format_problem,
     month_grid,
     new_daily_text,
+    note_preview,
     shift_month,
+    week_of,
 )
 from paper_pile.core.templates import render_template
 from paper_pile.core.vault import Vault
@@ -94,7 +96,7 @@ def test_day_marks_cache_rereads_only_changed_notes(tmp_path, monkeypatch) -> No
     vault = Vault(tmp_path)
     vault.create_note("Daily/2026-10-01.md", "- [ ] open\n")
     days = [date(2026, 10, i) for i in range(1, 4)]
-    cache: dict[str, tuple[float, bool]] = {}
+    cache: dict[str, tuple[float, bool, str]] = {}
     assert day_marks(vault, "Daily", "YYYY-MM-DD", days, cache)[days[0]].open_tasks
     reads: list[str] = []
     read = vault.read_text
@@ -264,3 +266,30 @@ def test_synced_formats_history_round_trips(tmp_path: Path) -> None:
     assert synced_formats(tmp_path) == ["YYYY.MM.DD"]
     (tmp_path / ".paper-pile" / "daily.json").write_text("not json")
     assert synced_formats(tmp_path) == []
+
+
+def test_week_of_is_monday_first() -> None:
+    week = week_of(D)  # a Thursday
+    assert week[0] == date(2026, 9, 28) and week[-1] == date(2026, 10, 4) and len(week) == 7
+    assert week_of(date(2026, 9, 28)) == week  # a Monday is its own week's first day
+
+
+def test_note_preview_plain_text_without_titles_and_markup() -> None:
+    text = (
+        "---\ntitle: x\n---\n# 2026-10-01\n\n## Tasks\n- [ ] call **Ann** about [[Plan|the plan]]\n"
+        "> a [link](http://x) and `code`\n---\n| a | b |\n|---|---|\n![img](p.png)\n"
+    )
+    assert note_preview(text) == "call Ann about the plan · a link and code · a b"
+    assert note_preview("one line\nsame paragraph\n\nnext\n- [x] gym\n") == (
+        "one line same paragraph · next · gym"
+    )
+    assert note_preview("# Only a title\n\n## Notes\n") == ""
+    long = note_preview("word " * 100, limit=20)
+    assert len(long) <= 20 and long.endswith("…")
+
+
+def test_day_marks_carry_the_preview(tmp_path) -> None:
+    vault = Vault(tmp_path)
+    vault.create_note("Daily/2026-10-01.md", "# 2026-10-01\nWent *well*.\n")
+    marks = day_marks(vault, "Daily", "YYYY-MM-DD", [date(2026, 10, 1)])
+    assert marks[date(2026, 10, 1)].preview == "Went well."
