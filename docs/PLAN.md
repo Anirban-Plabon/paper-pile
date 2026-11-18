@@ -729,13 +729,13 @@ User: "there is a approval gate in the chat, which is not a good approach … au
 - Core stays UI-free: the vault agent hands its changes to the app's writer (`NoteWriter`: `write`, `create`, and `review` for the diff views); a writer without `review` (tools, tests) keeps the old chat review.
 
 ### 4.35 Calendar week, side-pane buttons and small UI fixes (user request 2026-11-18, P34)
-- **Calendar:** today is a rounded box (accent outline) around its number, not a coloured number; the note on screen stays the filled accent day. Under the month, **This week**: a rounded card per daily note of today's (Monday-first) week, plus today's card always — weekday (accent, bold), date, then the note's first two lines (`daily.note_preview`: front matter, headings, rules, fences and table borders left out, markdown removed, list items / blocks joined by " · "; clamped to 2 lines). Today's card is accent-tinted with a *Today* badge; a missing today says "No note yet". A click opens (or creates) that day's note. Previews come with `day_marks` (same mtime cache).
+- **Calendar:** every day is a fixed 34 px box (it never widens with the pane); today = that box in the accent tint, the open note's day = an accent outline (2nd round, user 2026-11-18). Under the month, **This week**: a rounded card per daily note of today's (Monday-first) week, plus today's card always — weekday (accent, bold), date, then the note's first two lines (`daily.note_preview`: front matter, headings, rules, fences and table borders left out, markdown removed, list items / blocks joined by " · "; clamped to 2 lines). Cards are a flat accent tint without outline or shadow; today's is a stronger tint with a *Today* badge and the open note's card is outlined; a missing today says "No note yet". A click opens (or creates) that day's note. Previews come with `day_marks` (same mtime cache).
 - **AI chat and Calendar tabs have a ×** (user). A closed one leaves the right pane's strip; its button (sparkles / calendar) appears in one rounded box (`pp-seg pp-tools`) beside the right pane's toggle in the editor's tab strip; a click (or anything that shows the tab: Ask AI, Add to chat, a daily-note command) brings the tab back and opens the pane. With both closed (and no Settings / #tag tab) the pane folds and its toggle hides. Kept in the session (`closed_tabs`).
-- **Pane toggles:** the folded tree's open button (ribbon) stands exactly where the tree's close button was (4 px from the edge, same drop); the right pane's toggle, while the pane is folded, stands 4 px before the window buttons (their own gap).
+- **Pane toggles:** the folded tree's open button (ribbon) stands exactly where the tree's close button was (both 5 px from the edge, centred on the ribbon's tools, same drop); the reopen box is as tall as the toggle (28 px), 4 px before it; the right pane's open tab has the open note tab's padding (× 7 px from its edge); the right pane's toggle, while the pane is folded, stands 4 px before the window buttons (their own gap).
 - **AI chat wider:** the right pane can be dragged to 960 px (was 640).
-- **Start cards** (no note open): 232 × 44 px, 14 px text (were 168 × 36, 13 px).
-- **AI chip:** while the AI works the Stop button glows inside its circle like the chat's Stop (`pp-glow`), no ripple rings.
-- **File tree rows:** the open note's box and the hover box keep 1 px of the row clear above and below, 4 px from the pane's sides, 5 px corners (were full height, 6 px, 8 px).
+- **Start cards** (no note open): 232 × 44 px, 14 px text (were 168 × 36, 13 px); the key chip sits 9 px from the card's right edge, as from its top and bottom.
+- **AI chip:** while the AI works the Stop button glows inside its circle like the chat's Stop (`pp-glow`), no ripple rings. While the AI writes, the newest text stays above the chip: with no spot (a job not from the Ask box, chip at the window's bottom) the note scrolls so the text ends above the chip; a chip parked at the bottom moves onto the spot once one exists.
+- **File tree rows:** 28 px high (were 24; compact 24); the open note's box and the hover box keep 1 px of the row clear above and below, 5 px corners, 4 px from the right; the indent is the box's left margin, so a deeper row's box starts further in.
 - **Tree:** daily notes and templates folders hidden by default (§ Vault folders); backlinks lists per split side in their own column (*Backlinks while split*).
 
 ### 4.34 Text alignment and per-note zoom (user request 2026-11-11, P33)
@@ -1075,6 +1075,13 @@ Order: security first (P23.1–P23.7), then context (P23.8–P23.12), failures (
 | P34.7 | Tree row boxes | 1 px clear above/below, 4 px sides, 5 px corners (screenshot) |
 | P34.8 | Daily notes / templates hidden by default | config defaults off (tests) |
 | P34.9 | Split backlinks per column | opening one side's list leaves the other editor's height unchanged (measured) |
+| P34.10 | Reopen box + tab × aligned | box 28 px, 4 px before the toggle; rtab × 7 px from its edge (measured) |
+| P34.11 | Pane buttons in one place | tree close and ribbon open button both 5 px from the edge (measured) |
+| P34.12 | Start card key chip | 9 px from right / top / bottom (measured) |
+| P34.13 | Calendar boxes + flat week cards | fixed day boxes; today tint, open day outline; cards flat tint, open one outlined (screenshot) |
+| P34.14 | Tree boxes by depth, 28 px rows | box left edge = indent (measured) |
+| P34.15 | AI chip over growing text | streamed text stays above the chip at the bottom; a parked chip moves to the spot (real app) |
+| P34.16 | Cite band handler | no TypeError on click / key (console) |
 
 ### P33 — Text alignment and per-note zoom (user request 2026-11-11, §4.34)
 | ID | Task | Acceptance |

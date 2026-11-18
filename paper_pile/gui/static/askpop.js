@@ -276,7 +276,14 @@
         if (!chip.dataset.ppPlaced) { chip.dataset.ppPlaced = '1'; chip.dataset.ppFree = '1'; }
         continue;
       }
-      if (chip.dataset.ppFree) continue;
+      // a chip that had nowhere to go waits at the bottom; once a spot exists it goes there
+      // (user 2026-11-18: it stayed over the note while the text grew under it)
+      if (chip.dataset.ppFree) {
+        if (!t.scroller) continue; // still no spot (only the box's old place)
+        delete chip.dataset.ppFree;
+        chip.style.transition = 'none';
+        chip.style.visibility = 'visible';
+      }
       const scrollTop = t.scroller ? t.scroller.scrollTop : 0;
       const to = `translate(${Math.round(t.x)}px, ${Math.round(t.y)}px)`;
       if (!chip.dataset.ppPlaced) {

@@ -32,7 +32,7 @@
   --pp-icon-s: 14px;   /* chevrons, close crosses, checks */
   --pp-icon-m: 16px;   /* rows, menus, tabs */
   --pp-icon-l: 18px;   /* toolbar buttons */
-  --pp-row-h: 24px;
+  --pp-row-h: 28px;    /* file tree rows (24 → 28, user 2026-11-18: "congested") */
   --pp-tab-h: 41px;    /* the top rows: as tall as the footer, so their buttons have air */
   --pp-bar-h: 26px;
   --pp-foot-h: 41px;    /* the profile row and the footer under the editor share it */
@@ -91,7 +91,7 @@ body.body--dark {
   --pp-banner-fg: #f1d9a0;
 }
 /* Compact density */
-body.pp-compact { --pp-row-h: 20px; --pp-tab-h: 28px; --pp-bar-h: 22px; }
+body.pp-compact { --pp-row-h: 24px; --pp-tab-h: 28px; --pp-bar-h: 22px; }
 body.pp-compact .pp-pane-body { padding: 6px 8px; }
 body.pp-compact .pp-msg-text, body.pp-compact .pp-msg-body { font-size: 12.5px; }
 
@@ -143,7 +143,9 @@ html, body { overflow: hidden; }
 .pp-start-btn.q-btn:hover { background: rgba(127, 127, 127, .12); }
 .pp-start-btn .q-btn__content { flex-wrap: nowrap; justify-content: flex-start; gap: 10px; width: 100%; }
 .pp-start-btn .q-icon { color: var(--pp-muted); }
-.pp-start-keys { margin-left: auto; padding: 1px 7px; border-radius: 6px; background: rgba(127, 127, 127, .16); color: var(--pp-muted); font-size: 12px; }
+/* the key chip sits as far from the card's right edge as from its top and bottom (9 px; user
+   2026-11-18: "misaligned at the right side of the card border"): -8 px into the card's 16 px padding */
+.pp-start-keys { margin-left: auto; margin-right: -8px; padding: 1px 7px; border-radius: 6px; background: rgba(127, 127, 127, .16); color: var(--pp-muted); font-size: 12px; }
 .pp-statusbar { height: 100%; padding: 0; gap: 10px; flex-shrink: 0; }
 .pp-dot { font-size: 11px; }
 .pp-dot-off { color: var(--pp-dot-off); }
@@ -156,7 +158,7 @@ html, body { overflow: hidden; }
 .pp-ribbon { flex: 0 0 40px; width: 40px; height: 100%; padding: 0;  /* rows line up with the tab strip and the footer */ gap: 2px; background: var(--pp-bg-side); }  /* the splitter line beside it is the divider: no second border */
 
 /* File tree (paper_pile/gui/components/tree.py, static/tree.js) */
-.pp-left-top { width: 100%; height: var(--pp-tab-h); flex: none; padding: 0 4px; gap: 6px; border-bottom: 1px solid var(--pp-border); }
+.pp-left-top { width: 100%; height: var(--pp-tab-h); flex: none; padding: 0 5px; gap: 6px; border-bottom: 1px solid var(--pp-border); }
 .pp-win-title { font-size: 12px; color: var(--pp-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; user-select: none; pointer-events: none; }
 .pp-files-head { width: 100%; height: var(--pp-foot-h); padding: 0 6px 0 12px; gap: 2px; flex: none; border-bottom: 1px solid transparent; } /* as tall as the note header beside it: their boxes line up */
 .pp-ribbon-top { width: 100%; height: var(--pp-tab-h); flex: none; border-bottom: 1px solid var(--pp-border); margin-bottom: 2px; }
@@ -935,35 +937,35 @@ body.body--dark .pp-instr-box textarea { color-scheme: dark; }  /* the corner gr
 .pp-cal-day:hover { background: rgba(127, 127, 127, .14); }
 .pp-cal-num { font-size: 12.5px; line-height: 1.2; }
 .pp-cal-out .pp-cal-num { opacity: .35; }
-.pp-cal-sel, .pp-cal-sel:hover { background: var(--pp-accent); }
-.pp-cal-sel .pp-cal-num { color: var(--pp-on-accent); font-weight: 600; }
-.pp-cal-sel .pp-cal-dot { background: rgba(255, 255, 255, .85); }
-.pp-cal-sel .pp-cal-dot-open { background: transparent; border-color: rgba(255, 255, 255, .85); }
 .pp-cal-dots { gap: 2px; height: 5px; }
 .pp-cal-dot { width: 4px; height: 4px; border-radius: 50%; background: var(--pp-muted); box-sizing: border-box; }
 .pp-cal-dot-open { background: transparent; border: 1.2px solid var(--pp-muted); }
 .pp-cal-foot { width: 100%; gap: 6px; margin-top: 6px; padding-top: 8px; border-top: 1px solid var(--pp-border); font-size: 11px; flex-wrap: wrap; }
 .pp-cal-link { color: var(--pp-accent); cursor: pointer; }
 .pp-cal-link:hover { text-decoration: underline; }
-/* today: a rounded box around its number, not a coloured number (user 2026-11-18) */
-.pp-cal-today { box-shadow: inset 0 0 0 1.5px var(--pp-accent); }
-.pp-cal-today .pp-cal-num { color: var(--pp-fg); font-weight: 600; }
-.pp-cal-today.pp-cal-sel .pp-cal-num { color: var(--pp-on-accent); }
+/* every day is a fixed box (it never widens with the pane), like the icon buttons' boxes;
+   today = that box filled with the accent tint, the open note's day = an accent outline
+   (user 2026-11-18, 2nd round) */
+.pp-cal-day { width: 34px; justify-self: center; }
+.pp-cal-today, .pp-cal-today:hover { background: rgba(var(--pp-accent-rgb), .18); }
+.pp-cal-today .pp-cal-num { color: var(--pp-accent); font-weight: 700; }
+.pp-cal-sel { box-shadow: inset 0 0 0 1.5px var(--pp-accent); }
+.pp-cal-sel .pp-cal-num { font-weight: 600; }
 /* This week (user 2026-11-18): one rounded card per daily note of today's week — weekday in the
    accent, date, the note's first two lines; today's card is accent-tinted */
 .pp-cal-week { width: 100%; gap: 6px; margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--pp-border); flex-wrap: nowrap; }
 .pp-cal-week-head { font-size: 10px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: var(--pp-muted); padding: 0 2px 2px; }
-.pp-cal-card { width: 100%; display: flex; flex-direction: column; gap: 3px; padding: 8px 12px 9px; border: 1px solid var(--pp-border); border-radius: var(--pp-r-ctrl); background: var(--pp-bg); cursor: pointer; user-select: none; transition: background-color var(--pp-dur-fast) ease, border-color var(--pp-dur-fast) ease; }
+.pp-cal-card { width: 100%; display: flex; flex-direction: column; gap: 3px; padding: 8px 12px 9px; border-radius: var(--pp-r-ctrl); background: rgba(var(--pp-accent-rgb), .07); cursor: pointer; user-select: none; transition: background-color var(--pp-dur-fast) ease; }  /* flat accent tint, no outline (2nd round) */
 .pp-cal-card > * { pointer-events: none; }
-.pp-cal-card:hover { border-color: rgba(var(--pp-accent-rgb), .55); }
+.pp-cal-card:hover { background: rgba(var(--pp-accent-rgb), .12); }
 .pp-cal-card-top { gap: 8px; min-width: 0; }
 .pp-cal-card-day { font-size: 13px; font-weight: 700; color: var(--pp-accent); }
 .pp-cal-card-date { font-size: 12px; color: var(--pp-muted); }
 .pp-cal-card-badge { margin-left: auto; font-size: 10px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--pp-on-accent); background: var(--pp-accent); border-radius: 999px; padding: 1px 7px; }
 .pp-cal-card-text { font-size: 12.5px; line-height: 1.45; color: var(--pp-fg); opacity: .85; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; overflow: hidden; overflow-wrap: anywhere; }
 .pp-cal-card-empty { color: var(--pp-muted); font-style: italic; }
-.pp-cal-card-today { background: rgba(var(--pp-accent-rgb), .10); border-color: rgba(var(--pp-accent-rgb), .55); }
-.pp-cal-card-sel { box-shadow: inset 3px 0 0 var(--pp-accent); }
+.pp-cal-card-today, .pp-cal-card-today:hover { background: rgba(var(--pp-accent-rgb), .18); }
+.pp-cal-card-sel { box-shadow: inset 0 0 0 1.5px var(--pp-accent); }  /* the open note's day: outlined, as in the month */
 
 /* message action icons: small and muted, like every other icon */
 .pp-msg-actions .q-btn { color: var(--pp-muted); }
@@ -1074,9 +1076,9 @@ body.body--dark .pp-instr-box textarea { color-scheme: dark; }  /* the corner gr
 .pp-tree-row { margin: 0 6px; border-radius: var(--pp-r-ctrl); }
 /* the open note's box and the hover box (user 2026-11-18: "too rounded, takes more room than it
    deserves"): 1 px of the row's height above and below stays clear (a transparent border, the
-   background drawn inside it), 4 px from the pane's sides, smaller corners; the row's height
+   background drawn inside it), 6 px from the left (plus the indent, tree.py) and 4 px from the right, smaller corners; the row's height
    and hit area are unchanged */
-.pp-tree-row { margin: 0 4px; border-radius: 5px; border-top: 1px solid transparent; border-bottom: 1px solid transparent; background-clip: padding-box; }
+.pp-tree-row { margin: 0 4px 0 6px; border-radius: 5px; border-top: 1px solid transparent; border-bottom: 1px solid transparent; background-clip: padding-box; }
 .pp-backlink { margin: 0 6px; width: calc(100% - 12px); border-radius: var(--pp-r-ctrl); padding-left: 22px; }
 .pp-chat-mention { border-radius: var(--pp-r-ctrl); }
 .pp-tab, .pp-rtab { isolation: isolate; }
@@ -1588,13 +1590,15 @@ body.body--dark { --pp-set-box-bg: rgba(255, 255, 255, .035); }
 .pp-tabstrip > .pp-tab-new.q-btn { margin-left: 3px; margin-top: var(--pp-tab-drop); top: 0; }
 .pp-left-top > * { margin-top: calc(var(--pp-tab-drop) + 1px); }
 /* the folded tree's open button stands exactly where the pane's close button was (user 2026-11-18:
-   "not aligned"): 4 px from the left edge, the same drop as the left header (its row has a border too) */
-.pp-ribbon-top { justify-content: flex-start; padding-left: 4px; }
+   "not aligned"): both 5 px from the left edge — centred on the ribbon's column of tools (its
+   buttons' centre, 20 px) — with the same drop as the left header (its row has a border too) */
+.pp-ribbon-top { justify-content: flex-start; padding-left: 5px; }
 .pp-ribbon-top > * { margin-top: calc(var(--pp-tab-drop) + 1px); }
 /* closed AI chat / Calendar (user 2026-11-18): their buttons in one rounded box beside the pane
    toggle, on the bar's centre line like the other buttons; inner buttons get no drop of their own */
-.pp-tabstrip > .pp-reopen { flex: none; margin: var(--pp-tab-drop) 0 0 4px; padding: 2px; gap: 2px; }
-.pp-tabstrip > .pp-reopen > .pp-icon-btn.q-btn { margin: 0; width: 28px; height: 26px !important; min-width: 28px; }  /* its row's bottom line is a border: 1 px less room */
+.pp-tabstrip > .pp-reopen { flex: none; height: 28px; margin: var(--pp-tab-drop) 4px 0 4px; padding: 2px; gap: 2px; border-radius: var(--pp-r-ctrl); }  /* as tall as the toggle's box beside it (2nd round, user 2026-11-18) */
+.pp-tabstrip > .pp-reopen > .pp-icon-btn.q-btn { margin: 0; width: 26px; height: 24px !important; min-height: 0 !important; min-width: 26px; border-radius: calc(var(--pp-r-ctrl) - 2px); }
+.pp-tabstrip > .pp-reopen + .pp-icon-btn.q-btn:last-child { margin-left: 0; }  /* its row's bottom line is a border: 1 px less room */
 /* the window buttons are the strip's buttons: 30 × 30, 4 px apart */
 .pp-wincontrols { gap: 4px; }
 .pp-wincontrols .pp-icon-btn.q-btn { width: 30px; height: 30px; min-width: 0; min-height: 0; }
@@ -1603,6 +1607,8 @@ body.body--dark { --pp-set-box-bg: rgba(255, 255, 255, .035); }
 .pp-tabstrip .pp-tab { flex: 0 1 auto; min-width: 96px; }  /* many tabs: they shrink to 96 px ("12-Oct-…"), then scroll (user 2026-11-06, back to shrinking) */
 /* the open tab is 2 px wider on each side (user 2026-11-11): more padding, and a minimum 4 px over the others */
 .pp-tabstrip .pp-tab:is(.pp-tab-active, .pp-tab-shown) { padding: 0 calc(var(--pp-tab-gap) + 2px); min-width: 100px; }
+/* the right pane's open tab the same (user 2026-11-18: its × sat 2 px nearer the edge than a note tab's) */
+.pp-rtabbar .pp-rtab.pp-rtab-active { padding: 0 calc(var(--pp-tab-gap) + 2px); }
 .pp-tab:not(.pp-tab-active, .pp-tab-shown) > .pp-tab-close { position: absolute; right: calc(var(--pp-tab-gap) + 1px - 3px); top: 50%; margin: 0; transform: translateY(calc(-50% + .5px)); }
 .pp-tab:not(.pp-tab-active, .pp-tab-shown):hover > :is(.pp-tab-title, .pp-tab-hint):nth-last-child(3) { -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 26px), transparent calc(100% - 12px)); mask-image: linear-gradient(to right, #000 calc(100% - 26px), transparent calc(100% - 12px)); }
 .pp-tab:not(.pp-tab-active, .pp-tab-shown):hover > .pp-tab-dirty { visibility: hidden; }

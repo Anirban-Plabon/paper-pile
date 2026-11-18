@@ -52,7 +52,8 @@ from paper_pile.gui.icons import ico, icon_button, line_icon
 log = logging.getLogger("paper_pile.tree")
 
 INDENT_PX = 14
-BASE_PAD_PX = 6  # rows are inset 6 px (rounded hover), so names line up with "Files"
+BASE_PAD_PX = 6  # padding inside a row's box before its icon
+ROW_INSET_PX = 6  # a top-level row's box starts 6 px in, so names line up with "Files"
 MENU_W, MENU_H = 210, 250  # rough size, only used to keep the menu on screen
 RECENT_SHOWN = 50  # notes listed in search mode
 HITS_SHOWN = 50  # vault-search hits listed
@@ -312,7 +313,10 @@ class FileTree:
         row._props["data-path"] = entry.path
         row._props["data-dir"] = "1" if entry.is_dir else "0"
         row._props["draggable"] = "true"
-        row.style(f"padding-left: {BASE_PAD_PX + depth * INDENT_PX}px")
+        # the indent is the row's left margin, so its hover / open-note box starts at its depth
+        # (user 2026-11-18: deeper rows' boxes shorter on the left)
+        inset = ROW_INSET_PX + depth * INDENT_PX
+        row.style(f"padding-left: {BASE_PAD_PX}px; margin-left: {inset}px")
         with row:
             if entry.is_dir:
                 chevron = "chevron-down" if entry.path in self._expanded else "chevron-right"

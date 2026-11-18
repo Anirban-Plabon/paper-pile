@@ -31,7 +31,7 @@ const citeBandLayer = bandLayer(
   (u) => u.startState.field(citeBandField, false) !== u.state.field(citeBandField, false),
 );
 
-function clear(view) {
+function clear(_event, view) {  // a DOM event handler: (event, view)
   if (view.state.field(citeBandField, false)) view.dispatch({ effects: setCiteBand.of(null) });
   return false;
 }

@@ -55,7 +55,8 @@ export function streamAppend(view, id, text, docId) {
     scrollIntoView: true,
     annotations: first ? isolateHistory.of("before") : [],
   });
-  if (s.chip) keepSpotInView(view); // the line and the chip under it, not just the line
+  // the line and the chip under it (Ask box), or the newest text above the chip at the bottom
+  keepSpotInView(view, s.chip ? null : view.state.field(streamField).get(id)?.pos ?? null);
   return true;
 }
 
