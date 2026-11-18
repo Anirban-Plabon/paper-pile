@@ -1,7 +1,7 @@
 // Small inline widgets for Live Preview. Render-only; the only interaction is the task checkbox,
 // which dispatches a one-character change through the normal editor path (undo, autosave).
 import { WidgetType } from "@codemirror/view";
-import katex from "katex";
+import { renderTex } from "./tex.js";
 import { measureAgain, rtOf } from "./context.js";
 
 export class MathWidget extends WidgetType {
@@ -15,7 +15,7 @@ export class MathWidget extends WidgetType {
   toDOM() {
     const el = document.createElement("span");
     el.className = "pp-math";
-    el.innerHTML = katex.renderToString(this.src, { throwOnError: false });
+    el.innerHTML = renderTex(this.src);
     return el;
   }
   ignoreEvent() {
@@ -100,7 +100,7 @@ function walk(state, node, from, to, out) {
       const marks = c.getChildren("CodeMark");
       const el = document.createElement("code");
       el.className = "pp-code"; // the same chip as inline code outside a table
-      el.textContent = state.sliceDoc(marks[0] ? marks[0].to : c.from, marks.length > 1 ? marks[marks.length - 1].from : c.to);
+      el.textContent = state.sliceDoc(marks[0] ? marks[0].to : c.from, marks.length > 1 ? marks[marks.length - 1].from : c.to).replace(/\\\|/g, "|");
       out.append(el);
     } else if (c.name === "Link") {
       const marks = c.getChildren("LinkMark");
@@ -121,7 +121,8 @@ function walk(state, node, from, to, out) {
     } else if (c.name === "InlineMath") {
       const d = state.sliceDoc(c.from, c.from + 2) === "$$" ? 2 : 1;
       const el = document.createElement("span");
-      el.innerHTML = katex.renderToString(state.sliceDoc(c.from + d, c.to - d), { throwOnError: false });
+      // GFM: `\|` in a cell is the cell's escape for `|`, also inside math and code (as in Python)
+      el.innerHTML = renderTex(state.sliceDoc(c.from + d, c.to - d).replace(/\\\|/g, "|"));
       out.append(el);
     } else if (c.name === "Escape") {
       out.append(state.sliceDoc(c.from + 1, c.to));

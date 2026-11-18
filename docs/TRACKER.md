@@ -6,6 +6,7 @@
 Legend: 🧠 = needs Opus (see PLAN §6 model guidance) · ⬜ todo · 🔄 in progress · ✅ done · ⛔ blocked · ⏭️ skipped/deferred
 
 ## Current focus
+- **Phase:** P35 — Rendering audit: tables, math, paste (user request 2026-11-18, PLAN §4.36): P35.1–P35.5 done; `tools/qa_render.py` 357 passed, 0 failed, 3 known (inline math across a line break)
 - **Phase:** P34 — Calendar week, side-pane buttons and small UI fixes (user request 2026-11-18, PLAN §4.35): P34.1–P34.14, P34.16 done; P34.15 (AI chip over growing text) built, waiting for a real-app check
 - **Phase:** P33 — Text alignment and per-note zoom (user request 2026-11-11, PLAN §4.34): P33.1–P33.4 done; for the user to try
 - **Phase:** P32 — Chat, popup, scrolling and table polish (user request 2026-11-09, PLAN §4.33): P32.1–P32.8 done, second round from the user's review done (P32.9), P32.10–P32.16 done (2026-11-10: tabs, window, scrollbar ends, chat header / + menu, the Ask box turning into a chip that follows streamed text, streaming rewrites); smooth-scroll feel on the 165 Hz panel for the user to confirm
@@ -335,6 +336,15 @@ Legend: 🧠 = needs Opus (see PLAN §6 model guidance) · ⬜ todo · 🔄 in p
 | P27.2 | No "token repeat limit reached" on edits | ✅ | `GenerationOptions.repeat_penalty` (1.1 on text answers, none on JSON), `RepeatLoopError`, `EditRun._ask` retries once at 0.7; 4 tests; eval case 17 added. Eval gemma4:12b ×2: 26/28 before → 27/30 after (06 fails before and after; 17 1/2: one run echoed the paragraph unchanged — not a loop, see Open issues) |
 | P27.3 | Fixed blocks change when asked | ✅ | `unlock_asked` + `FIXED_KIND_WORDS` (edit_run.py), `GuardContext.convert` skips G5 / G6; 7 tests; eval case 18 (ASCII diagram → mermaid) gemma4:12b 3/3 in 2 calls, case 10 3/3. Repro on the user's note with NeoHorse-1:9B: before "cut off or empty", after one change replacing exactly the code block |
 
+### P35 — Rendering audit: tables, math, paste (user request 2026-11-18)
+| ID | Task | Status | Notes |
+|---|---|---|---|
+| P35.1 | One KaTeX setup | ✅ | 2026-11-18 · `tools/editor_src/tex.js` (macros, env fallbacks, mhchem, strict ignore) used by widgets, blocks, typeset (chat / memories / embeds), print; `tests/fixtures/tex_cases.json` + `check_tex.mjs` + `tests/core/test_tex_render.py`: 41/41 (old setup: 16 failed) |
+| P35.2 | Editor = Python | ✅ | 2026-11-18 · quote / callout `$$` without `>` (`parser._strip_quote_marks`, `math.blockMathSource`, 5 fixture cases); cell `\|` in math / code; table columns = header; embeds typeset math (`typesetMath`) |
+| P35.3 | Smart Paste shapes | ✅ | 2026-11-18 · `core/paste.py` rewrite of tables / math / blocks (see Decision log); `needs_own_lines` + `spaced_block` gap under a table; 14 new paste tests, 1 spacing test, 1 parser test |
+| P35.4 | Shell / TOML / diff highlighting | ✅ | 2026-11-18 · `codelang.js` legacy modes wrapped in `LanguageSupport` |
+| P35.5 | `tools/qa_render.py` | ✅ | 2026-11-18 · 45 notes + 7 paste events in the real app: 357 passed, 0 failed, 3 known; `tools/qa_editor.py` run after the editor changes |
+
 ### P34 — Calendar week, side-pane buttons and small UI fixes (user request 2026-11-18)
 | ID | Task | Status | Notes |
 |---|---|---|---|
@@ -467,6 +477,10 @@ Legend: 🧠 = needs Opus (see PLAN §6 model guidance) · ⬜ todo · 🔄 in p
 <!-- YYYY-MM-DD · decision · reason · (who: user / claude) -->
 | Date | Decision | Reason | By |
 |---|---|---|---|
+| 2026-11-18 | P35: Python's parser is the rendering reference; the editor draws what it reads (table columns = header, `\|` in cells, quote math) and `tools/qa_render.py` compares the two in the real app on a sample corpus | User: "test on all kinds of rendering issues that happen and may happen later" — one comparison catches a class of drift instead of one bug | claude |
+| 2026-11-18 | P35: KaTeX gaps are mapped in one `tex.js` (faithful equivalents only; `\newcommand` re-defining a built-in stays an error), mhchem bundled from the KaTeX package (+34 KB, no new dependency) | AI answers and notes use `\label`, `\eqref`, `\abs`, `multline`, `\ce` …; four render paths had four copies of the KaTeX options | claude |
+| 2026-11-18 | P35: Smart Paste lays tables out itself (first row = header without `<th>`, every `\|` escaped incl. math — GFM, Python, editor and `core/tables` all read `\|` as `|`), unwraps inline tags around blocks, maps styled spans, reads MathML; block pieces are put back with their line's prefix | Google Docs pastes were one bold paragraph; a cell with `|x|` split the row; math / code in list items left the list | claude |
+| 2026-11-18 | P35: a paste that starts or ends with a table / code / math block / heading goes on its own lines (`needs_own_lines`, parser-based, not only "the whole paste is a table"); a table always gets an empty line below, even with "Blank lines around blocks" off | the user's table paste failure: a chat answer ending in a table merged with the caret line or took the next line as a row | claude |
 | 2026-11-18 | P34: week cards show today's week (each existing daily note + today's always), not the browsed month's or the open note's week; a missing today is a card that creates it | user: "opened daily note of the current week"; today's card always there to start the day | claude |
 | 2026-11-18 | Closed AI chat / Calendar tabs are kept in the session (`closed_tabs`), not only for the run | a tab closed by its × should stay closed after a restart, like the panes' open state | claude |
 | 2026-11-18 | Daily notes / templates hidden in the tree by default (was shown) | user: "keep daily note and template folder by default off, need to open it in setting" | user |
@@ -741,6 +755,8 @@ Legend: 🧠 = needs Opus (see PLAN §6 model guidance) · ⬜ todo · 🔄 in p
 <!-- YYYY-MM-DD · task · symptom → root cause → fix · (gotcha added? y/n) -->
 | Date | Task | Symptom | Root cause | Fix | Gotcha? |
 |---|---|---|---|---|---|
+| 2026-11-18 | P35.4 (found by qa_render) | a note with a ```bash block logged "Cannot read properties of undefined (reading 'parser')"; shell / TOML / diff never highlighted | `LanguageDescription.load` returned `StreamLanguage.define(…)` (a `Language`), CodeMirror reads `support.language.parser` | wrap in `new LanguageSupport(...)` | y |
+| 2026-11-18 | P35.2 (found by qa_render) | table row with more cells than the header showed an extra column in the editor; export / print had none and the next cell edit dropped it | `readTable` sized columns by the widest row; GFM, Python and `core/tables` use the header | columns = header's cells | n |
 | 2026-11-18 | P34.15 | `tools/build_editor.sh` failed (`check_sync.mjs`: SyntaxError inside `@lezer/markdown`), then `npm ci` failed on esbuild's `install.js` / binary | npm writing `node_modules` on `/mnt/l` (drvfs) produced corrupted files (an interrupted `npm ci` first, then every retry); the same `npm ci` on the Linux file system: 161 packages in 7 s, clean | installed and built in a scratch copy on the Linux file system (`node_modules` + sources + `tests/fixtures`), esbuild output written into the repo (identical to a scratch build) | y |
 | 2026-11-12 | P29.16 | "describe …" in the Ask box edited the note (Antigravity); gemma4 answered | Gemini follows the rule "an instruction … to write more about its subject is a change" for any command, also one asking to be told (held-out-4: 7/10 such requests edited) | v3: `result` field + agreement guard, narrowed sentence; Gemini 9 → 11/16, still open. First try (v2) made gemma4 worse: a field that lists change kinds tells the model they are obvious | n |
 | 2026-11-10 | P32.17 | The diff's − on a list line sat ~17 px left of the + (partly clipped) | the absolute `::before` inherits the line's `text-indent`, which list lines set negative for the hanging bullet | `text-indent: 0` on the marker; found by measuring the pseudo-element in the real app (it was right on plain lines) | n |
@@ -1102,3 +1118,4 @@ Legend: 🧠 = needs Opus (see PLAN §6 model guidance) · ⬜ todo · 🔄 in p
 - 2026-11-12 · Eval report `eval/reports/2026-11-12_ai-eval-report.md` (user: description, datasets, evaluator strategies, settings, results): all evals (intent, edit, unit mode, planned vault-agent eval — found not built, P30.2–P30.7), error-type tables for 5 models × 4 versions, findings F1–F8, next steps
 - 2026-11-18 · P34.1–P34.9: calendar today box + This week cards, × on AI chat / Calendar with reopen buttons, pane toggles aligned, chat to 960 px, bigger start cards, AI chip glow, slimmer tree boxes, daily notes / templates hidden by default, split backlinks per column; 1784 tests
 - 2026-11-18 · P34.10–P34.16 (user's 2nd round): reopen box / tab × / pane buttons aligned, key chip, fixed calendar day boxes + flat week cards, tree boxes by depth + 28 px rows, AI chip keeps written text above it (built, not yet seen in the app), cite band handler fix; npm on drvfs corrupts `node_modules` (Issues log)
+- 2026-11-18 · P35.1–P35.5 rendering audit: one KaTeX setup (16 of 41 common formulas failed before), editor = Python on quote math / table cells / columns / embeds, Smart Paste tables (Google Docs, no-header, pipes, ragged), MathML / Wikipedia / MathJax, blocks in lists and quotes, pasted tables on their own lines, shell highlighting crash; `tools/qa_render.py` 357 passed / 0 failed / 3 known; 1806 tests

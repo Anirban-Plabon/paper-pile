@@ -56,8 +56,13 @@ function readTable(state, table) {
       const m = /^\s*(:?)-+(:?)\s*$/.exec(c);
       return m ? (m[1] && m[2] ? "center" : m[2] ? "right" : m[1] ? "left" : "") : "";
     });
-  const cols = Math.max(aligns.length, ...rows.map((r) => r.length));
-  for (const r of rows) while (r.length < cols) r.push({ node: null, value: "" });
+  // GFM: the header row decides the columns; a row's extra cells are not part of the table
+  // (Python's renderer and core/tables.py read it the same way)
+  const cols = rows.length && rows[0].length ? rows[0].length : aligns.length;
+  for (const r of rows) {
+    r.length = Math.min(r.length, cols);
+    while (r.length < cols) r.push({ node: null, value: "" });
+  }
   return { rows, aligns, cols };
 }
 

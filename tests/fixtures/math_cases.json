@@ -237,5 +237,37 @@
    "x",
    "y"
   ]
+ },
+ {
+  "name": "block_in_quote",
+  "src": "> $$\n> x^2\n> $$",
+  "inline": [],
+  "block": [
+   "x^2"
+  ]
+ },
+ {
+  "name": "block_in_callout",
+  "src": "> **Note:** see\n>\n> $$\n> a\n> = b\n> $$",
+  "inline": [],
+  "block": [
+   "a\n= b"
+  ]
+ },
+ {
+  "name": "block_in_nested_quote",
+  "src": "> > $$\n> > a\n> > $$",
+  "inline": [],
+  "block": [
+   "a"
+  ]
+ },
+ {
+  "name": "block_top_level_gt_line",
+  "src": "$$\na\n> b\n$$",
+  "inline": [],
+  "block": [
+   "a\n> b"
+  ]
  }
 ]

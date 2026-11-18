@@ -4,7 +4,8 @@
 import { ensureSyntaxTree, syntaxTree } from "@codemirror/language";
 import { Facet, StateEffect, StateField } from "@codemirror/state";
 import { Decoration, EditorView, WidgetType } from "@codemirror/view";
-import katex from "katex";
+import { renderTex } from "./tex.js";
+import { blockMathSource } from "./math.js";
 import { copyButton } from "./blockactions.js";
 import { alignedWidget, isAlignChange } from "./align.js";
 import { measureAgain, rtOf } from "./context.js";
@@ -41,7 +42,7 @@ class DisplayMathWidget extends WidgetType {
   toDOM(view) {
     const el = document.createElement("div");
     el.className = "pp-math-block";
-    el.innerHTML = katex.renderToString(this.src, { displayMode: true, throwOnError: false });
+    el.innerHTML = renderTex(this.src, true);
     el.appendChild(copyButton("math", "", this.src));
     revealOnMouseDown(el, view);
     return el;
@@ -246,11 +247,7 @@ function candidates(state) {
         const marks = node.node.getChildren("FrontMatterMark");
         push(node, new FrontMatterWidget(doc.sliceString(marks[0].to, marks[1].from).trim(), inlineTagsOf(tree, doc)));
       } else if (node.name === "BlockMath") {
-        const marks = node.node.getChildren("BlockMathMark");
-        // a block is only ever parsed when it is closed, so both marks exist
-        const raw = doc.sliceString(marks[0].to, marks[marks.length - 1].from);
-        // list indentation and blockquote markers are not part of the formula
-        const src = raw.split("\n").map((l) => l.replace(/^[\s>]+/, "")).join("\n").trim();
+        const src = blockMathSource(node.node, (a, b) => doc.sliceString(a, b));
         if (src) push(node, new DisplayMathWidget(src));
       } else if (node.name === "FencedCode") {
         const info = node.node.getChild("CodeInfo");

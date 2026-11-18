@@ -6,6 +6,7 @@ set -euo pipefail
 cd "$(dirname "$0")/editor_src"
 npm ci --no-audit --no-fund
 node check_sync.mjs  # the editor's grammar must agree with the Python parser
+node check_tex.mjs   # common LaTeX must typeset with the app's KaTeX setup (tex.js)
 out=../../paper_pile/gui/static/vendor
 rm -rf "$out/pp-editor"
 mkdir -p "$out/pp-editor" "$out/katex"

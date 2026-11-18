@@ -114,7 +114,7 @@ from paper_pile.core.links import (
 )
 from paper_pile.core.page_move import move_page_break
 from paper_pile.core.parser import Heading, find_heading
-from paper_pile.core.paste import smart_paste
+from paper_pile.core.paste import needs_own_lines, smart_paste
 from paper_pile.core.picker import search_notes
 from paper_pile.core.recovery import RecoveryEntry, RecoveryStore
 from paper_pile.core.rewrite import Edit, plan_rewrites
@@ -131,7 +131,7 @@ from paper_pile.core.snippets import Snippet, link_snippet
 from paper_pile.core.spacing import spaced_block
 from paper_pile.core.stats import word_count
 from paper_pile.core.table_widths import TableWidths
-from paper_pile.core.tables import apply_op, parse_table, table_extent
+from paper_pile.core.tables import apply_op, table_extent
 from paper_pile.core.tabs import TabList
 from paper_pile.core.templates import render_template
 from paper_pile.core.textpos import codepoint_index, utf16_index
@@ -1395,9 +1395,10 @@ class EditorPane:
         self._dump_paste(html, text)
         enabled = bool(self._config.get("paste.smart_paste", True)) if self._config else True
         converted = smart_paste(html, text) if enabled else text
-        if converted and parse_table(converted.strip("\n")) is not None:
-            # a table (copied cells, user 2026-11-09) is a block: its own lines, or pasted after
-            # text on a line it would be read as more of that paragraph
+        if converted and needs_own_lines(converted):
+            # a table, code / math block or heading at either end must not share a line with the
+            # note's text, or it renders as something else (user 2026-11-18: a pasted table
+            # was not drawn as a table)
             self._spawn(self._insert_block(converted.strip("\n")))
         elif converted:
             self._editor.insert_at_cursor(converted)

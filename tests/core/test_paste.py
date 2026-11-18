@@ -1,8 +1,9 @@
+# ruff: noqa: E501  (clipboard HTML samples)
 from pathlib import Path
 
 import pytest
 
-from paper_pile.core.paste import html_to_md, normalize, smart_paste
+from paper_pile.core.paste import html_to_md, needs_own_lines, normalize, smart_paste
 
 FIXTURES = Path(__file__).parent.parent / "fixtures" / "paste"
 CASES = sorted(p.stem for p in FIXTURES.glob("*.html"))
@@ -128,3 +129,126 @@ def test_smart_paste_keeps_exact_text_for_plain_wrappers() -> None:
     assert smart_paste(html, "  indented code") == "  indented code"
     assert smart_paste("", "x \\(y\\)") == "x $y$"
     assert smart_paste("<p></p>", "fallback") == "fallback"
+
+
+# ---- rendering audit (P35): shapes that broke tables, lists and math --------------------------
+
+
+def _katex(tex: str, display: bool = False) -> str:
+    inner = (
+        '<span class="katex"><span class="katex-mathml"><math><semantics><mi>x</mi>'
+        f'<annotation encoding="application/x-tex">{tex}</annotation></semantics></math></span>'
+        '<span class="katex-html" aria-hidden="true">VISUAL</span></span>'
+    )
+    return f'<span class="katex-display">{inner}</span>' if display else inner
+
+
+def _table(head: str, body: str) -> str:
+    return f"<table><thead><tr>{head}</tr></thead><tbody><tr>{body}</tr></tbody></table>"
+
+
+def test_table_without_header_cells_uses_its_first_row_as_header() -> None:
+    html = "<table><tr><td>a</td><td>b</td></tr><tr><td>1</td><td>2</td></tr></table>"
+    assert html_to_md(html) == "| a | b |\n| --- | --- |\n| 1 | 2 |"
+
+
+def test_pipes_in_cells_are_escaped_also_in_math_and_code() -> None:
+    html = _table(
+        "<th>a</th><th>b</th><th>c</th>",
+        f"<td>x | y</td><td>{_katex('|x|')}</td><td><code>a|b</code></td>",
+    )
+    assert html_to_md(html).split("\n")[2] == r"| x \| y | $\|x\|$ | `a\|b` |"
+
+
+def test_cells_with_blocks_stay_on_one_line() -> None:
+    html = _table(
+        "<th>a</th><th>b</th>",
+        f"<td><p>one</p><p>two<br>three</p></td><td>{_katex('a', True)}<pre><code>x\ny</code></pre></td>",
+    )
+    assert html_to_md(html).split("\n")[2] == "| one two three | $$a$$ `x y` |"
+
+
+def test_ragged_rows_and_colspan_keep_the_column_count() -> None:
+    html = "<table><tr><th colspan=2>ab</th><th>c</th></tr><tr><td>1</td></tr></table>"
+    assert html_to_md(html) == "| ab |  | c |\n| --- | --- | --- |\n| 1 |  |  |"
+
+
+def test_cell_alignment_is_kept() -> None:
+    html = _table(
+        '<th align="right">n</th><th style="text-align: center">m</th>', "<td>1</td><td>2</td>"
+    )
+    assert html_to_md(html).split("\n")[1] == "| ---: | :---: |"
+
+
+def test_google_docs_wrapper_does_not_bold_the_whole_table() -> None:
+    html = (
+        '<meta charset="utf-8"><b style="font-weight:normal;" id="docs-internal-guid-1"><div dir="ltr">'
+        "<table><tbody><tr><td><p><span>Name</span></p></td><td><p><span>Age</span></p></td></tr>"
+        "<tr><td><p><span>Bob</span></p></td><td><p><span>3</span></p></td></tr></tbody></table></div></b>"
+    )
+    assert html_to_md(html) == "| Name | Age |\n| --- | --- |\n| Bob | 3 |"
+
+
+def test_styled_spans_become_bold_italic_strike() -> None:
+    html = (
+        '<p><span style="font-weight:700">b</span> <span style="font-style:italic">i</span> '
+        '<span style="text-decoration:line-through">s</span></p>'
+    )
+    assert html_to_md(html) == "**b** *i* ~~s~~"
+
+
+def test_display_math_and_code_stay_inside_list_items_and_quotes() -> None:
+    html = (
+        f"<ol><li><p>Step:</p>{_katex('x^2', True)}</li><li><p>Run:</p>"
+        "<pre><code class='language-sh'>ls\ncd x</code></pre></li></ol>"
+    )
+    assert html_to_md(html) == "1. Step:\n\n   $$x^2$$\n2. Run:\n\n   ```sh\n   ls\n   cd x\n   ```"
+    quote = f"<blockquote><p>q</p>{_katex('a', True)}<pre><code>x\n\ny</code></pre></blockquote>"
+    assert html_to_md(quote) == "> q\n>\n> $$a$$\n>\n> ```\n> x\n>\n> y\n> ```"
+
+
+def test_wikipedia_mathml_becomes_tex_once() -> None:
+    html = (
+        '<p>E <span class="mwe-math-element"><span class="mwe-math-mathml-inline" style="display: none;">'
+        '<math alttext="{\\displaystyle E=mc^{2}}"><semantics><mrow><mi>E</mi></mrow>'
+        '<annotation encoding="application/x-tex">{\\displaystyle E=mc^{2}}</annotation></semantics>'
+        '</math></span><img src="x.svg" class="mwe-math-fallback-image-inline" alt="{\\displaystyle E=mc^{2}}">'
+        "</span> holds.</p>"
+    )
+    assert html_to_md(html) == "E $E=mc^{2}$ holds."
+
+
+def test_mathml_without_tex_is_read_as_latex() -> None:
+    html = (
+        '<p>v <mjx-container class="MathJax" jax="CHTML"><mjx-math>VISUAL</mjx-math><mjx-assistive-mml>'
+        "<math><mfrac><mi>a</mi><msup><mi>b</mi><mn>2</mn></msup></mfrac><mo>≤</mo><msqrt><mi>x</mi>"
+        "</msqrt></math></mjx-assistive-mml></mjx-container> w</p>"
+    )
+    assert html_to_md(html) == r"v $\frac{a}{{b}^{2}} \le \sqrt{x}$ w"
+    assert html_to_md('<p><math alttext="x^2"><mi>x</mi></math></p>') == "$x^2$"
+
+
+def test_mathjax2_rendered_copy_is_dropped() -> None:
+    html = (
+        '<p>a <span class="MathJax_Preview"></span><span class="MathJax">x1 VISUAL</span>'
+        '<script type="math/tex">x_1</script> b</p>'
+    )
+    assert html_to_md(html) == "a $x_1$ b"
+
+
+def test_blank_lines_inside_display_math_are_removed() -> None:
+    assert html_to_md(f"<p>{_katex('a\\\\\n\n b', True)}</p>") == "$$\na\\\\\nb\n$$"
+    assert normalize("\\[\na\n\nb\n\\]") == "$$\na\nb\n$$"
+
+
+def test_normalize_leaves_tex_line_break_spacing_alone() -> None:
+    text = r"$$\begin{bmatrix}1\\[4pt]2\end{bmatrix}$$ and \(x\) then \[y\]"
+    assert normalize(text) == r"$$\begin{bmatrix}1\\[4pt]2\end{bmatrix}$$ and $x$ then $$y$$"
+
+
+def test_tables_and_blocks_at_the_edges_need_their_own_lines() -> None:
+    assert needs_own_lines("Here:\n\n| a |\n| --- |\n| 1 |")  # ends in a table
+    assert needs_own_lines("| a |\n| --- |\n| 1 |\n\nafter")  # starts with one
+    assert needs_own_lines("```\nx\n```") and needs_own_lines("$$x$$") and needs_own_lines("# H")
+    for inline in ("hello", "a $x$ b", "- item", "> quote", "p1\n\np2"):
+        assert not needs_own_lines(inline)

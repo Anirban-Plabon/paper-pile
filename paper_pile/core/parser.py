@@ -266,7 +266,11 @@ def _interrupting_math_block() -> Callable[[StateBlock, int, int, bool], bool]:
 
     def wrapped(state: StateBlock, start: int, end: int, silent: bool) -> bool:
         if not silent:
-            return rule(state, start, end, False)
+            ntokens = len(state.tokens)
+            found = rule(state, start, end, False)
+            if found and len(state.tokens) > ntokens:
+                _strip_quote_marks(state, state.tokens[-1])
+            return found
         line, ntokens = state.line, len(state.tokens)
         found = rule(state, start, end, False)
         del state.tokens[ntokens:]
@@ -274,6 +278,21 @@ def _interrupting_math_block() -> Callable[[StateBlock, int, int, bool], bool]:
         return found
 
     return wrapped
+
+
+def _strip_quote_marks(state: StateBlock, tok: Token) -> None:
+    """A ``$$`` block inside a quote / callout: the plugin reads the raw lines, so every line but
+    the first still starts with the quote's ``>`` marks; they are not part of the formula (the
+    editor drops them too, ``blocks.js``)."""
+    depth = sum(
+        1 if t.type == "blockquote_open" else -1
+        for t in state.tokens
+        if t.type in ("blockquote_open", "blockquote_close")
+    )
+    if depth <= 0 or tok.type != "math_block":
+        return
+    mark = re.compile(r"^[ \t]*" + r"(?:>[ \t]?)?" * depth)
+    tok.content = "\n".join(mark.sub("", ln, count=1) for ln in tok.content.split("\n"))
 
 
 _PARSER = make_parser()

@@ -1,19 +1,25 @@
 // Typesets rendered markdown that lives outside the editor (the AI chat): KaTeX for
 // `<span class="math inline">` / `<div class="math block">` (what Python's markdown parser writes)
 // and Mermaid for ```mermaid blocks. Links are made inert here; Python decides what may open.
-import katex from "katex";
+import { renderTexInto } from "./tex.js";
 import { renderMermaid } from "./mermaidrender.js";
 
-export async function typeset(root, theme = "light") {
-  if (!root) return;
+// KaTeX for the `.math` elements under `root` (also used by embedded notes, which handle their own
+// clicks)
+export function typesetMath(root) {
   for (const el of root.querySelectorAll(".math:not([data-typeset])")) {
     el.dataset.typeset = "1";
     try {
-      katex.render(el.textContent, el, { displayMode: el.classList.contains("block"), throwOnError: false });
+      renderTexInto(el, el.textContent, el.classList.contains("block"));
     } catch {
       /* leave the source text */
     }
   }
+}
+
+export async function typeset(root, theme = "light") {
+  if (!root) return;
+  typesetMath(root);
   for (const code of root.querySelectorAll("pre > code.language-mermaid:not([data-typeset])")) {
     code.dataset.typeset = "1";
     const pre = code.parentElement;

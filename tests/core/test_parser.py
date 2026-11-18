@@ -204,3 +204,9 @@ def test_outline_headings_skip_code_and_sections_follow_the_caret() -> None:
     assert section_at(heads, 8) == 1
     assert section_at(heads, 99) == 2
     assert headings("one\ntwo\n===\n")[0].text == "one two"  # a two-line underlined heading
+
+
+def test_block_math_in_a_quote_has_no_quote_marks() -> None:
+    html = render_html("> **Note:**\n> $$\n> a\n> = b\n> $$\n")
+    assert '<div class="math block">\na\n= b\n</div>' in html
+    assert "&gt;" not in html

@@ -6,6 +6,8 @@ hard to get the caret around when they touch other text: an empty line on each s
 leaves somewhere to click or type. Pure: callers apply the returned text.
 """
 
+from paper_pile.core.parser import parse
+
 QUOTE = ">"
 
 
@@ -13,6 +15,11 @@ def _joins(line: str, body: str) -> bool:
     """Would an empty line between ``line`` and ``body`` split one block in two? (A quote
     inserted next to a quote line continues that quote.)"""
     return line.lstrip().startswith(QUOTE) and body.lstrip().startswith(QUOTE)
+
+
+def _ends_in_table(body: str) -> bool:
+    top = [t for t in parse(body) if t.level == 0]
+    return bool(top) and top[-1].type == "table_close"
 
 
 def spaced_block(
@@ -38,11 +45,13 @@ def spaced_block(
     elif blank_lines and above is not None and above.strip() and not _joins(above, body):
         lead = "\n"
 
+    # a table takes every text line right under it as one more row: it always needs the gap
+    gap_below = blank_lines or _ends_in_table(body)
     tail = ""
     if rest.strip():
-        tail = "\n\n" if blank_lines else "\n"
+        tail = "\n\n" if gap_below else "\n"
     elif not newline:
         tail = "\n"  # end of the note: leave a line to go to
-    elif blank_lines and under is not None and under.strip() and not _joins(under, body):
+    elif gap_below and under is not None and under.strip() and not _joins(under, body):
         tail = "\n"
     return lead + body + tail, len(lead)

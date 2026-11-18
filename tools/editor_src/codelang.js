@@ -1,11 +1,12 @@
 // Syntax highlighting inside fenced code blocks. A curated set of languages, each loaded lazily
 // (esbuild splits every `import()` into its own chunk), so the main bundle stays small and a
 // language is only fetched when a note actually contains a block in it.
-import { LanguageDescription, StreamLanguage } from "@codemirror/language";
+import { LanguageDescription, LanguageSupport, StreamLanguage } from "@codemirror/language";
 
 const lang = (name, alias, load) => LanguageDescription.of({ name, alias, load });
 const legacy = (name, alias, loadMode) =>
-  lang(name, alias, async () => StreamLanguage.define(await loadMode()));
+  // a description must load a LanguageSupport, not a bare Language (`support.language.parser`)
+  lang(name, alias, async () => new LanguageSupport(StreamLanguage.define(await loadMode())));
 
 export const codeLanguages = [
   lang("JavaScript", ["js", "mjs", "cjs", "jsx", "javascript"], () =>

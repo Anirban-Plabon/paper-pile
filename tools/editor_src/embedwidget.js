@@ -3,6 +3,7 @@
 // note in a tab. The block is read-only: arrow into it to see (and edit) the `![[...]]` text.
 import { WidgetType } from "@codemirror/view";
 import { measureAgain, rtOf } from "./context.js";
+import { typesetMath } from "./typeset.js";
 
 export class EmbedWidget extends WidgetType {
   constructor(note, heading, source) {
@@ -33,6 +34,7 @@ export class EmbedWidget extends WidgetType {
           body.textContent = j.message;
         } else {
           body.innerHTML = j.html; // server-rendered, raw HTML in notes is escaped there
+          typesetMath(body);
         }
         measureAgain(view);
       })

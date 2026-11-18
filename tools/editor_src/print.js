@@ -3,7 +3,7 @@
 // pages in `window.ppPrint`. Used three ways: in a hidden frame of the editor's page (page view's
 // page lines), by the native window's PDF export (Qt prints the page), and in web mode with
 // `?mode=print`, where it opens the browser's print dialog.
-import katex from "katex";
+import { renderTexInto } from "./tex.js";
 import { renderMermaid } from "./mermaidrender.js";
 import { paginate } from "./paginate.js";
 
@@ -41,7 +41,7 @@ function wrapItemText(doc) {
 function typesetMath(doc) {
   for (const el of doc.querySelectorAll("#pp-source .math")) {
     try {
-      katex.render(el.textContent, el, { displayMode: el.classList.contains("block"), throwOnError: false });
+      renderTexInto(el, el.textContent, el.classList.contains("block"));
     } catch {
       /* leave the TeX */
     }

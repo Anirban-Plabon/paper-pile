@@ -32,3 +32,13 @@ def test_quote_next_to_a_quote_continues_it() -> None:
 def test_offset_points_at_the_body() -> None:
     insert, offset = spaced_block("x ", 2, 2, "BODY")
     assert insert[offset:].startswith("BODY")
+
+
+TABLE = "| a | b |\n| --- | --- |\n| 1 | 2 |"
+
+
+def test_a_table_never_takes_the_next_text_line_as_a_row() -> None:
+    # without the empty line "below" / "after" would be one more table row
+    assert put("|\nbelow", TABLE, blank_lines=False) == f"{TABLE}\n\nbelow"
+    assert put("before |after", TABLE, blank_lines=False) == f"before \n{TABLE}\n\nafter"
+    assert put("|\nbelow", f"text\n\n{TABLE}", blank_lines=False) == f"text\n\n{TABLE}\n\nbelow"

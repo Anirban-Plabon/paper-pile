@@ -116,3 +116,14 @@ export const MathExt = {
     },
   ],
 };
+
+// The formula of a BlockMath node: the text between its marks, without the list indentation and,
+// inside a quote / callout, without the `>` marks of each line (Python: parser._strip_quote_marks).
+export function blockMathSource(node, slice) {
+  const marks = node.getChildren("BlockMathMark");
+  const raw = slice(marks[0].to, marks.length > 1 ? marks[marks.length - 1].from : node.to);
+  let depth = 0;
+  for (let p = node.parent; p; p = p.parent) if (p.name === "Blockquote") depth++;
+  const mark = new RegExp("^[ \\t]*" + "(?:>[ \\t]?)?".repeat(depth));
+  return raw.split("\n").map((l) => l.replace(mark, "")).join("\n").trim();
+}

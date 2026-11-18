@@ -5,13 +5,12 @@
 import fs from "node:fs";
 import { GFM, parser } from "@lezer/markdown";
 import { editorExtensions } from "./grammar.js";
+import { blockMathSource } from "./math.js";
 import { parseWikilink } from "./wikilink.js";
 
 const load = (name) => JSON.parse(fs.readFileSync(new URL(`../../tests/fixtures/${name}`, import.meta.url), "utf8"));
 const md = parser.configure([GFM, ...editorExtensions]);
 
-// Container prefixes (list indent, "> ") are not part of the formula.
-const clean = (s) => s.split("\n").map((l) => l.replace(/^[\s>]+/, "")).join("\n").trim();
 
 function extractMath(src) {
   const inline = [];
@@ -23,8 +22,7 @@ function extractMath(src) {
         const d = text.startsWith("$$") ? 2 : 1;
         inline.push(text.slice(d, text.length - d));
       } else if (node.name === "BlockMath") {
-        const marks = node.node.getChildren("BlockMathMark");
-        block.push(clean(src.slice(marks[0].to, marks.length > 1 ? marks[marks.length - 1].from : node.to)));
+        block.push(blockMathSource(node.node, (a, b) => src.slice(a, b)));
       }
     },
   });
