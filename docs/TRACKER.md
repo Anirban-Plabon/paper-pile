@@ -6,7 +6,7 @@
 Legend: 🧠 = needs Opus (see PLAN §6 model guidance) · ⬜ todo · 🔄 in progress · ✅ done · ⛔ blocked · ⏭️ skipped/deferred
 
 ## Current focus
-- **Phase:** P35 — Rendering audit: tables, math, paste (user request 2026-11-18, PLAN §4.36): P35.1–P35.5 done; `tools/qa_render.py` 357 passed, 0 failed, 3 known (inline math across a line break)
+- **Phase:** P35 — Rendering audit: tables, math, paste (user request 2026-11-18, PLAN §4.36): P35.1–P35.6 done; `tools/qa_render.py` 365 passed, 0 failed, 3 known (inline math across a line break)
 - **Phase:** P34 — Calendar week, side-pane buttons and small UI fixes (user request 2026-11-18, PLAN §4.35): P34.1–P34.14, P34.16 done; P34.15 (AI chip over growing text) built, waiting for a real-app check
 - **Phase:** P33 — Text alignment and per-note zoom (user request 2026-11-11, PLAN §4.34): P33.1–P33.4 done; for the user to try
 - **Phase:** P32 — Chat, popup, scrolling and table polish (user request 2026-11-09, PLAN §4.33): P32.1–P32.8 done, second round from the user's review done (P32.9), P32.10–P32.16 done (2026-11-10: tabs, window, scrollbar ends, chat header / + menu, the Ask box turning into a chip that follows streamed text, streaming rewrites); smooth-scroll feel on the 165 Hz panel for the user to confirm
@@ -344,6 +344,7 @@ Legend: 🧠 = needs Opus (see PLAN §6 model guidance) · ⬜ todo · 🔄 in p
 | P35.3 | Smart Paste shapes | ✅ | 2026-11-18 · `core/paste.py` rewrite of tables / math / blocks (see Decision log); `needs_own_lines` + `spaced_block` gap under a table; 14 new paste tests, 1 spacing test, 1 parser test |
 | P35.4 | Shell / TOML / diff highlighting | ✅ | 2026-11-18 · `codelang.js` legacy modes wrapped in `LanguageSupport` |
 | P35.5 | `tools/qa_render.py` | ✅ | 2026-11-18 · 45 notes + 7 paste events in the real app: 357 passed, 0 failed, 3 known; `tools/qa_editor.py` run after the editor changes |
+| P35.6 | Table cell renders again after editing | ✅ | 2026-11-19 · user: clicked math in a table cell stayed LaTeX. `endEdit` (tablewidget.js) renders from the latest parse (`wrap._widget`) when it holds the cell's value; `qa_render.py` cell checks (leave by click / Esc / Tab, edit then leave): 8/8; qa_render 365 / 0 / 3 known, qa_editor 359 / 0 |
 
 ### P34 — Calendar week, side-pane buttons and small UI fixes (user request 2026-11-18)
 | ID | Task | Status | Notes |
@@ -755,6 +756,7 @@ Legend: 🧠 = needs Opus (see PLAN §6 model guidance) · ⬜ todo · 🔄 in p
 <!-- YYYY-MM-DD · task · symptom → root cause → fix · (gotcha added? y/n) -->
 | Date | Task | Symptom | Root cause | Fix | Gotcha? |
 |---|---|---|---|---|---|
+| 2026-11-19 | P35.6 | (user) clicking math in a table cell opened the raw `$x_1$`; after leaving the cell it stayed raw text | `endEdit` wrote the plain value and waited for the next patch to re-render — none comes when nothing changed, and one that came while the cell was still open skipped it (`td._input`) | render from the widget's latest parse when it already holds the value | n |
 | 2026-11-18 | P35.4 (found by qa_render) | a note with a ```bash block logged "Cannot read properties of undefined (reading 'parser')"; shell / TOML / diff never highlighted | `LanguageDescription.load` returned `StreamLanguage.define(…)` (a `Language`), CodeMirror reads `support.language.parser` | wrap in `new LanguageSupport(...)` | y |
 | 2026-11-18 | P35.2 (found by qa_render) | table row with more cells than the header showed an extra column in the editor; export / print had none and the next cell edit dropped it | `readTable` sized columns by the widest row; GFM, Python and `core/tables` use the header | columns = header's cells | n |
 | 2026-11-18 | P34.15 | `tools/build_editor.sh` failed (`check_sync.mjs`: SyntaxError inside `@lezer/markdown`), then `npm ci` failed on esbuild's `install.js` / binary | npm writing `node_modules` on `/mnt/l` (drvfs) produced corrupted files (an interrupted `npm ci` first, then every retry); the same `npm ci` on the Linux file system: 161 packages in 7 s, clean | installed and built in a scratch copy on the Linux file system (`node_modules` + sources + `tests/fixtures`), esbuild output written into the repo (identical to a scratch build) | y |
@@ -1119,3 +1121,4 @@ Legend: 🧠 = needs Opus (see PLAN §6 model guidance) · ⬜ todo · 🔄 in p
 - 2026-11-18 · P34.1–P34.9: calendar today box + This week cards, × on AI chat / Calendar with reopen buttons, pane toggles aligned, chat to 960 px, bigger start cards, AI chip glow, slimmer tree boxes, daily notes / templates hidden by default, split backlinks per column; 1784 tests
 - 2026-11-18 · P34.10–P34.16 (user's 2nd round): reopen box / tab × / pane buttons aligned, key chip, fixed calendar day boxes + flat week cards, tree boxes by depth + 28 px rows, AI chip keeps written text above it (built, not yet seen in the app), cite band handler fix; npm on drvfs corrupts `node_modules` (Issues log)
 - 2026-11-18 · P35.1–P35.5 rendering audit: one KaTeX setup (16 of 41 common formulas failed before), editor = Python on quote math / table cells / columns / embeds, Smart Paste tables (Google Docs, no-header, pipes, ragged), MathML / Wikipedia / MathJax, blocks in lists and quotes, pasted tables on their own lines, shell highlighting crash; `tools/qa_render.py` 357 passed / 0 failed / 3 known; 1806 tests
+- 2026-11-19 · P35.6: a table cell with math renders again after it is left (was raw `$…$` until the next edit elsewhere); qa_render cell checks; 365 passed / 0 failed

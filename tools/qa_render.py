@@ -223,6 +223,81 @@ class Cdp:
             if r.get("id") == self.n:
                 return r.get("result", {}).get("result", {}).get("value")
 
+    async def call(self, method: str, **params: object) -> None:
+        self.n += 1
+        await self.ws.send(json.dumps({"id": self.n, "method": method, "params": params}))
+        while json.loads(await self.ws.recv()).get("id") != self.n:
+            pass
+
+    async def click(self, x: float, y: float) -> None:
+        for t in ("mousePressed", "mouseReleased"):
+            await self.call(
+                "Input.dispatchMouseEvent", type=t, x=x, y=y, button="left", clickCount=1
+            )
+        await asyncio.sleep(0.4)
+
+    async def key(self, key: str, code: int) -> None:
+        for t in ("rawKeyDown", "keyUp"):
+            await self.call("Input.dispatchKeyEvent", type=t, key=key, windowsVirtualKeyCode=code)
+        await asyncio.sleep(0.2)
+
+
+CELL_NOTE = "caret\n\n| f | v |\n| --- | --- |\n| $x_1$ | $\\frac{a}{b}$ |\n\nend"
+# the first body cell's centre, and what each body cell shows: RENDERED (KaTeX drawn), an open
+# input, or its raw text
+CELL_AT = "(() => { const r = document.querySelector('.pp-split .pp-table-edit tbody td').getBoundingClientRect(); return [r.left + r.width / 2, r.top + r.height / 2]; })()"
+LINE_AT = "(() => { const r = document.querySelector('.pp-split .cm-line').getBoundingClientRect(); return [r.left + 30, r.top + r.height / 2]; })()"
+CELLS = "[...document.querySelectorAll('.pp-split .pp-table-edit tbody td')].map(td => td.querySelector('input') ? 'INPUT' : td.querySelector('.katex') ? 'RENDERED' : td.textContent)"
+
+
+async def cell_checks(cdp: Cdp, results: list) -> None:
+    """Click a math cell (it opens for editing), leave it every way: it must render again."""
+
+    async def open_cell() -> object:
+        await cdp.js(f"qa.set({json.dumps(CELL_NOTE)}, 0)")
+        await asyncio.sleep(0.8)
+        x, y = await cdp.js(CELL_AT)
+        await cdp.click(x, y)
+        return await cdp.js(CELLS)
+
+    async def leave(how: str) -> None:
+        if how == "click on text":
+            x, y = await cdp.js(LINE_AT)
+            await cdp.click(x, y)
+        elif how == "Esc":
+            await cdp.key("Escape", 27)
+        elif how == "Tab":
+            await cdp.key("Tab", 9)
+            await cdp.key("Escape", 27)
+        await asyncio.sleep(1.2)
+
+    for how in ("click on text", "Esc", "Tab"):
+        name = f"table cell: click, leave by {how}"
+        opened = await open_cell()
+        results.append((name, "click opens the cell", opened == ["INPUT", "RENDERED"], str(opened)))
+        await leave(how)
+        shown = await cdp.js(CELLS)
+        results.append((name, "math rendered again", shown == ["RENDERED", "RENDERED"], str(shown)))
+    name = "table cell: edit the formula, leave"
+    await open_cell()
+    await cdp.js(
+        "(() => { const i = document.querySelector('.pp-table-input'); i.value = '$y^2$'; i.dispatchEvent(new Event('input')); })()"
+    )
+    await asyncio.sleep(1.5)  # past the idle commit: Python answers while the cell is still open
+    await leave("click on text")
+    shown = await cdp.js(CELLS)
+    text = str(await cdp.js("qa.text()"))
+    results.append(
+        (
+            name,
+            "new formula saved and rendered",
+            "$y^2$" in text and shown == ["RENDERED", "RENDERED"],
+            f"{shown} {text!r}",
+        )
+    )
+    got = await cdp.js("qa.report()")
+    results.append((name, "no widget crashed", not got["errors"], "; ".join(got["errors"])[:200]))
+
 
 def expected(text: str) -> dict:
     """What Python reads in ``text``: formulas, tables (columns, body rows), mermaid blocks."""
@@ -333,6 +408,7 @@ async def run(port: int) -> list:
                 )
             )
             compare(name, str(text), got, {"dollars": "$HOME" in str(text)}, results)
+        await cell_checks(cdp, results)
         return results
 
 

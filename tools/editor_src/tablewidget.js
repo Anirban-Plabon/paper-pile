@@ -128,6 +128,7 @@ export class TableWidget extends WidgetType {
 
   // (re)build the whole DOM of the table
   fill(wrap) {
+    wrap._widget = this; // the latest parse: a cell left after editing renders from it (endEdit)
     const { rows, aligns, cols } = this.data;
     const table = el("table");
     const cells = [];
@@ -185,6 +186,7 @@ export class TableWidget extends WidgetType {
 
   // same shape: only refresh cells whose text changed, and never the one being typed in
   patch(wrap) {
+    wrap._widget = this;
     const { rows, aligns } = this.data;
     rows.forEach((row, r) =>
       row.forEach((cell, c) => {
@@ -294,7 +296,17 @@ function endEdit(wrap, td) {
   if (!td._input) return;
   td._input = null;
   if (wrap._active === td) wrap._active = null;
-  td.replaceChildren(document.createTextNode(td._value)); // plain until the patch re-renders it
+  // rendered again (math, code, links) when the latest parse already holds this value: nothing
+  // was changed, or Python's answer came while the cell was still being typed in (that patch
+  // skipped it). Otherwise plain until the patch with Python's answer re-renders it.
+  const widget = wrap._widget;
+  const cell = widget && widget.data.rows[td._r] && widget.data.rows[td._r][td._c];
+  if (cell && cell.value === td._value) {
+    td._stale = false;
+    showValue(td, widget.state, cell.node, cell.value);
+  } else {
+    td.replaceChildren(document.createTextNode(td._value));
+  }
 }
 
 function commitActive(wrap, except = null) {
