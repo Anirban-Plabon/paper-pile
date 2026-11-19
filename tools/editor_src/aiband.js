@@ -4,6 +4,7 @@
 // the same box as the diff's green rows — and whole rendered blocks (code, images, callouts,
 // tables, math), they move with scrolling without touching the text's DOM, and corners are square.
 import { syntaxTree } from "@codemirror/language";
+import { EditorSelection } from "@codemirror/state";
 import { BlockType, RectangleMarker, layer } from "@codemirror/view";
 
 // Blocks a band covers whole when it covers any of their lines (they are drawn as one block).
@@ -65,6 +66,56 @@ export function bandLayer(className, ranges, changed) {
     above: true, // over the text, see-through: rendered blocks with a background would hide it
     class: `${className}-layer`,
     markers: (view) => bandsFor(view, ranges(view.state, view), className),
+    update: (u) => u.docChanged || u.viewportChanged || u.geometryChanged || u.focusChanged || changed(u),
+  });
+}
+
+// from..to without the tables in it: a table marks its own selection (a word in a cell, a block of
+// cells — tablewidget.js), a band over its lines would cover the whole table.
+function withoutTables(state, from, to) {
+  const tables = [];
+  syntaxTree(state).iterate({
+    from,
+    to,
+    enter(n) {
+      if (n.name !== "Table") return;
+      tables.push([n.from, n.to]);
+      return false;
+    },
+  });
+  const out = [];
+  let at = from;
+  for (const [a, b] of tables) {
+    if (a > at) out.push([at, Math.min(a, to)]);
+    at = Math.max(at, b);
+  }
+  if (at < to) out.push([at, to]);
+  return out;
+}
+
+// Rectangles over exactly the text from..to — the selection's shape, kept inside the line box —
+// for the Ask box's target (user 2026-11-19: a selected word was shown as its whole line / block).
+export function exactLayer(className, ranges, changed) {
+  return layer({
+    above: true,
+    class: `${className}-layer`,
+    markers(view) {
+      const box = lineBox(view);
+      const right = box.left + box.width;
+      const len = view.state.doc.length;
+      const out = [];
+      for (const { from, to, cls } of ranges(view.state, view)) {
+        const name = cls ? `${className} ${cls}` : className;
+        for (const [a, b] of withoutTables(view.state, Math.min(from, len), Math.min(to, len))) {
+          for (const m of RectangleMarker.forRange(view, name, EditorSelection.range(a, b))) {
+            const left = Math.max(m.left, box.left);
+            const end = Math.min(m.left + m.width, right);
+            if (end > left) out.push(new RectangleMarker(name, left, m.top, end - left, m.height));
+          }
+        }
+      }
+      return out;
+    },
     update: (u) => u.docChanged || u.viewportChanged || u.geometryChanged || u.focusChanged || changed(u),
   });
 }

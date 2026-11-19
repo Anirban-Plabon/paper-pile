@@ -5,13 +5,14 @@
 // the widget sends `table_op {docId, from, to, op}` and Python answers by editing the document,
 // after which the widget patches its DOM in place (focus and caret in the cell being typed in are
 // kept). A cell shows rendered markdown until it is focused, then an <input> with its raw value.
-import { undo, redo } from "@codemirror/commands";
+import { undo, redo, isolateHistory } from "@codemirror/commands";
 import { syntaxTree } from "@codemirror/language";
 import { Prec } from "@codemirror/state";
 import { WidgetType, keymap } from "@codemirror/view";
 import { renderInline } from "./widgets.js";
 import { rtOf, editorContext, measureAgain } from "./context.js";
 import { clearSelection, reportSelection } from "./selectpopup.js";
+import { setBlockAlign } from "./align.js";
 
 const IDLE_COMMIT_MS = 600;
 const FOCUS_RETRY_MS = 1500;
@@ -74,6 +75,14 @@ function tableRange(view, dom) {
   if (!node) return null;
   const doc = view.state.doc;
   return { from: doc.lineAt(node.from).from, to: doc.lineAt(node.to).to };
+}
+
+// Align the whole table like any block (align.js: own undo step, saved by Python).
+function alignTable(wrap, align) {
+  const view = wrap._view;
+  const range = view && tableRange(view, wrap);
+  if (!range) return;
+  view.dispatch({ effects: setBlockAlign.of({ ranges: [range], align }), annotations: isolateHistory.of("full") });
 }
 
 function sendOp(dom, op) {
@@ -280,13 +289,15 @@ function startEdit(wrap, td) {
   input.addEventListener("blur", (e) => {
     clearTimeout(timer);
     commit(wrap, td);
-    const asked = inAskBox(e.relatedTarget) && input.selectionStart !== input.selectionEnd;
+    const [start, end] = [input.selectionStart, input.selectionEnd];
+    const asked = inAskBox(e.relatedTarget) && start !== end && input.value === td._value;
     endEdit(wrap, td);
     if (asked) {
-      // the Ask box took the caret to ask about text in this cell: the cell stays marked
-      wrap._sel = { r0: td._r, c0: td._c, r1: td._r, c1: td._c };
-      paintBlock(wrap);
-      keepForAskBox(wrap);
+      // the Ask box took the caret to ask about text in this cell: that text stays highlighted
+      markAsked(td, start, end);
+      keepForAskBox(wrap, () => {
+        if (!td._input && td.querySelector(".pp-table-asked")) renderCell(wrap, td);
+      });
     }
   });
   input.addEventListener("keydown", (e) => onKey(e, wrap, td));
@@ -310,9 +321,13 @@ function endEdit(wrap, td) {
   if (!td._input) return;
   td._input = null;
   if (wrap._active === td) wrap._active = null;
-  // rendered again (math, code, links) when the latest parse already holds this value: nothing
-  // was changed, or Python's answer came while the cell was still being typed in (that patch
-  // skipped it). Otherwise plain until the patch with Python's answer re-renders it.
+  renderCell(wrap, td);
+}
+
+// The cell rendered (math, code, links) when the latest parse already holds its value: nothing
+// was changed, or Python's answer came while the cell was still being typed in (that patch
+// skipped it). Otherwise plain until the patch with Python's answer re-renders it.
+function renderCell(wrap, td) {
   const widget = wrap._widget;
   const cell = widget && widget.data.rows[td._r] && widget.data.rows[td._r][td._c];
   if (cell && cell.value === td._value) {
@@ -321,6 +336,14 @@ function endEdit(wrap, td) {
   } else {
     td.replaceChildren(document.createTextNode(td._value));
   }
+}
+
+// While the Ask box is about text in a cell: the cell's text as it was selected, with exactly the
+// asked part highlighted like the note's own Ask target (class pp-ai-band).
+function markAsked(td, start, end) {
+  const value = td._value;
+  const mark = el("span", "pp-ai-band pp-table-asked", value.slice(start, end));
+  td.replaceChildren(document.createTextNode(value.slice(0, start)), mark, document.createTextNode(value.slice(end)));
 }
 
 function commitActive(wrap, except = null) {
@@ -480,8 +503,14 @@ function openMenu(wrap, td, x, y) {
   items.push(["Insert column right", run({ op: "insert_col", at: c + 1 }, r, c + 1)]);
   if (C > 1) items.push(["Delete column", run({ op: "delete_col", col: c })]);
   items.push(null);
-  for (const [label, align] of [["Align left", "left"], ["Align center", "center"], ["Align right", "right"], ["No alignment", ""]]) {
+  // the column's markdown alignment (`:---:`) — its cells only
+  for (const [label, align] of [["Align column left", "left"], ["Align column center", "center"], ["Align column right", "right"], ["Column: no alignment", ""]]) {
     items.push([label, run({ op: "align", col: c, align })]);
+  }
+  items.push(null);
+  // the whole table as a block (PLAN §4.34): the caret cannot stand in a table for /align-…
+  for (const [label, align] of [["Align table left", "left"], ["Align table center", "center"], ["Align table right", "right"]]) {
+    items.push([label, () => alignTable(wrap, align)]);
   }
   const menu = el("div", "pp-tmenu");
   for (const item of items) {
@@ -818,12 +847,12 @@ const inAskBox = (el) => !!(el && el.closest && el.closest(".pp-askpop"));
 
 // The Ask box took the focus to ask about a selection in this table: the block stays painted
 // until the user goes on elsewhere (a click or the focus outside the box).
-function keepForAskBox(wrap) {
+function keepForAskBox(wrap, done = () => clearBlock(wrap, false)) {
   const away = (e) => {
     if (inAskBox(e.target)) return;
     document.removeEventListener("mousedown", away, true);
     document.removeEventListener("focusin", away, true);
-    if (!wrap.contains(e.target)) clearBlock(wrap, false); // a click in the table handles itself
+    if (!wrap.contains(e.target)) done(); // a click in the table handles itself
   };
   document.addEventListener("mousedown", away, true);
   document.addEventListener("focusin", away, true);

@@ -1,12 +1,12 @@
 // Where the Ask box goes (PLAN §4.27): once a selection settles (selectionsync.js calls
 // `settlePopup`), the editor tells Python what is selected and where it is on screen; Python draws
 // the box (gui/components/ask_popup.py, placed by static/askpop.js). While the box is open its text
-// keeps a band behind its lines (`markTarget`, aiband.js: the same box as the diff's rows),
+// keeps its own highlight over exactly that text (`markTarget`, `exactLayer` in aiband.js; tables mark theirs),
 // pulsing while the AI works; it goes when the diff it led to is shown. Only while AI and the box
 // are on (`aiPopup` option, index.js). JS only reports and draws.
 import { StateEffect, StateField } from "@codemirror/state";
 import { rtOf } from "./context.js";
-import { bandLayer, snapToBlocks } from "./aiband.js";
+import { exactLayer, snapToBlocks } from "./aiband.js";
 import { proposalField } from "./proposal.js";
 
 const setTarget = StateEffect.define(); // {from, to, busy} | null
@@ -24,12 +24,12 @@ const targetField = StateField.define({
   // editor's current one, so a box closed meanwhile never comes back with that note
   // no band while the editor has the selection itself (it shows), nor once a diff is shown
   provide: (f) =>
-    bandLayer(
+    exactLayer(
       "pp-ai-band",
       (state, view) => {
         if (!askBandShown(view)) return [];
         const t = state.field(f);
-        return [{ ...snapToBlocks(state, t.from, t.to), cls: t.busy ? "pp-ai-band-busy" : "" }];
+        return [{ from: t.from, to: t.to, cls: t.busy ? "pp-ai-band-busy" : "" }];
       },
       (u) => u.startState.field(f) !== u.state.field(f) || u.startState.field(proposalField, false) !== u.state.field(proposalField, false),
     ),

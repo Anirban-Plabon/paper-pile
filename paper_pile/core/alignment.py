@@ -185,7 +185,10 @@ ALIGN_CSS = """
 pre:has(> code.pp-al-center), pre:has(> code.pp-al-right) { width: fit-content; max-width: 100%; }
 pre:has(> code.pp-al-center), table.pp-al-center { margin-left: auto; margin-right: auto; }
 pre:has(> code.pp-al-right), table.pp-al-right { margin-left: auto; margin-right: 0; }
-table.pp-al-center, table.pp-al-right, code.pp-al-center, code.pp-al-right { text-align: left; }
+code.pp-al-center, code.pp-al-right { text-align: left; }
+/* cells follow a table's alignment unless their column has its own (inline style) */
+table.pp-al-center :is(th, td) { text-align: center; }
+table.pp-al-right :is(th, td) { text-align: right; }
 """
 
 

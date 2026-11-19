@@ -256,6 +256,13 @@ CELLS = "[...document.querySelectorAll('.pp-split .pp-table-edit tbody td')].map
 SELECT_NOTE = "caret\n\nHello brave new world here\n\n| a | b |\n| --- | --- |\n| one two | 2 |\n| x \\| y | 4 |\n\nend"
 POPUP_SHOWN = "(() => { const p = document.querySelector('.pp-askpop'); return !!p && p.getClientRects().length > 0 && getComputedStyle(p).display !== 'none'; })()"
 MARKED = "document.querySelectorAll('.pp-split .pp-table-edit .pp-tsel').length"
+ASKED_IN_CELL = "(() => { const m = document.querySelector('.pp-split .pp-table-asked'); return m ? m.textContent : null; })()"
+# the Ask target's highlight: widths of its rectangles
+BANDS = "[...document.querySelectorAll('.pp-split .pp-ai-band-layer .pp-ai-band')].map(b => Math.round(b.getBoundingClientRect().width))"
+
+
+def word_width(word: str) -> str:
+    return f"(() => {{ const v = qa.view(); const i = v.state.doc.toString().indexOf({json.dumps(word)}); return Math.round(v.coordsAtPos(i + {len(word)}).left - v.coordsAtPos(i).left); }})()"
 
 
 def word_at(word: str) -> str:
@@ -315,6 +322,16 @@ async def select_checks(cdp: Cdp, results: list) -> None:
         "brave",
         ("Ask box shown", bool(await cdp.js(POPUP_SHOWN)), ""),
     )
+    bands, width = await cdp.js(BANDS), await cdp.js(word_width("brave"))
+    ok = len(bands) == 1 and abs(bands[0] - width) <= 2
+    results.append(
+        (
+            "select: double-click a word",
+            "highlight is the word, not its line",
+            ok,
+            f"bands {bands}, word {width}px",
+        )
+    )
     n = await fresh()
     await clicks(*(await cdp.js(word_at("brave"))), 3)
     check("select: triple-click a line", n, "Hello brave new world here\n")
@@ -325,7 +342,19 @@ async def select_checks(cdp: Cdp, results: list) -> None:
         "select: double-click a word in a cell",
         n,
         "one",
-        ("cell stays marked", await cdp.js(MARKED) == 1, str(await cdp.js(MARKED))),
+        (
+            "the word is highlighted in its cell",
+            await cdp.js(ASKED_IN_CELL) == "one",
+            str(await cdp.js(ASKED_IN_CELL)),
+        ),
+    )
+    results.append(
+        (
+            "select: double-click a word in a cell",
+            "no band over the table",
+            await cdp.js(BANDS) == [],
+            str(await cdp.js(BANDS)),
+        )
     )
     n = await fresh()
     await clicks(*(await cdp.js(cell_at(2))), 1)  # `x \| y`: the input shows `x | y`
@@ -381,6 +410,89 @@ async def select_checks(cdp: Cdp, results: list) -> None:
             "box stays when clicked into",
             bool(box) and bool(await cdp.js(POPUP_SHOWN)),
             str(box),
+        )
+    )
+
+
+ALIGN_NOTE = "Para one\n\n| a | b |\n| --- | --- |\n| 1 | 2 |\n\nend"
+EDITOR_API = "(() => { for (const el of document.querySelectorAll('.pp-split [id^=c]')) { if (!el.querySelector('.cm-editor')) continue; const c = getElement(parseInt(el.id.slice(1))); if (c && c.alignBlocks) return c; } return null; })()"
+# the table against the text box: [left gap, right gap, centre offset] in px, and its cells' alignment
+TABLE_PLACE = r"""(() => {
+  const root = document.querySelector('.pp-split .cm-content');
+  const para = [...root.querySelectorAll('.cm-line')].find(l => l.textContent === 'Para one');
+  const line = para.getBoundingClientRect(), cs = getComputedStyle(para);
+  const L = line.left + parseFloat(cs.paddingLeft), R = line.right - parseFloat(cs.paddingRight);
+  const wrap = root.querySelector('.pp-table-edit'); const g = wrap.querySelector('table').getBoundingClientRect();
+  return {gaps: [Math.round(g.left - L), Math.round(R - g.right), Math.round((g.left + g.right) / 2 - (L + R) / 2)],
+          cells: [...new Set([...wrap.querySelectorAll('th, td')].map(c => getComputedStyle(c).textAlign))]};
+})()"""
+
+
+async def align_checks(cdp: Cdp, results: list) -> None:
+    """Note and block alignment place the table like the text (its centre / right edge) and its
+    cells follow; the table's right-click menu aligns the table as a block (one undo step)."""
+
+    async def place(setup: str) -> dict:
+        await cdp.js(f"qa.set({json.dumps(ALIGN_NOTE)}, 0)")
+        await cdp.js(f"{EDITOR_API}.setAlignment({{}}, true)")
+        await asyncio.sleep(0.6)
+        if setup:
+            await cdp.js(setup)
+            await asyncio.sleep(0.8)
+        return await cdp.js(TABLE_PLACE)
+
+    t0, t1 = ALIGN_NOTE.index("| a"), ALIGN_NOTE.index("| 2 |") + 5
+    for name, setup, want in (
+        (
+            "note centre",
+            f"{EDITOR_API}.setAlignment({{'qa.md': {{note: 'center'}}}}, true)",
+            "center",
+        ),
+        ("note right", f"{EDITOR_API}.setAlignment({{'qa.md': {{note: 'right'}}}}, true)", "right"),
+        ("block right on the table", f"{EDITOR_API}.alignBlocks('right', {t0}, {t1})", "right"),
+    ):
+        got = await place(setup)
+        gap = got["gaps"][2] if want == "center" else got["gaps"][1]
+        results.append((f"align: {name}", "table placed like the text", abs(gap) <= 1, str(got)))
+        results.append(
+            (f"align: {name}", "cells follow", got["cells"] == [want], str(got["cells"]))
+        )
+    await place("")
+    x, y = await cdp.js(
+        "(() => { const r = document.querySelector('.pp-split .pp-table-edit td').getBoundingClientRect(); return [r.left + 10, r.top + r.height / 2]; })()"
+    )
+    for t in ("mousePressed", "mouseReleased"):
+        await cdp.call("Input.dispatchMouseEvent", type=t, x=x, y=y, button="right", clickCount=1)
+    await asyncio.sleep(0.5)
+    item = await cdp.js(
+        "(() => { const i = [...document.querySelectorAll('.pp-tmenu-item')].find(i => i.textContent === 'Align table center'); if (!i) return null; const r = i.getBoundingClientRect(); return [r.left + 10, r.top + r.height / 2]; })()"
+    )
+    if item:
+        await cdp.click(*item)
+        await asyncio.sleep(1.2)
+    got = await cdp.js(TABLE_PLACE)
+    ok = bool(item) and abs(got["gaps"][2]) <= 1 and got["cells"] == ["center"]
+    results.append(
+        ("align: menu 'Align table center'", "table centred, cells follow", ok, str(got))
+    )
+    await cdp.js("qa.view().focus()")
+    for t in ("rawKeyDown", "keyUp"):
+        await cdp.call(
+            "Input.dispatchKeyEvent",
+            type=t,
+            key="z",
+            code="KeyZ",
+            windowsVirtualKeyCode=90,
+            modifiers=2,
+        )
+    await asyncio.sleep(0.8)
+    got = await cdp.js(TABLE_PLACE)
+    results.append(
+        (
+            "align: menu 'Align table center'",
+            "Ctrl+Z puts it back",
+            got["gaps"][0] <= 8 and got["cells"] != ["center"],
+            str(got),
         )
     )
 
@@ -545,6 +657,7 @@ async def run(port: int) -> list:
             compare(name, str(text), got, {"dollars": "$HOME" in str(text)}, results)
         await cell_checks(cdp, results)
         await select_checks(cdp, results)
+        await align_checks(cdp, results)
         return results
 
 

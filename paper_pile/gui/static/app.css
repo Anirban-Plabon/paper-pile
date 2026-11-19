@@ -1896,10 +1896,16 @@ body.body--dark .pp-aidiff-chip-warn { color: #e3b341; }
 .pp-editor .cm-content [data-pp-align="center"]:not(.cm-line) { text-align: center; }
 .pp-editor .cm-content [data-pp-align="right"]:not(.cm-line) { text-align: right; }
 .pp-editor .cm-content [data-pp-align="justify"]:not(.cm-line) { text-align: justify; }
-/* a table is placed as a whole (its cells keep their own column alignment) */
-.pp-editor .cm-content [data-pp-align="center"] > .pp-table-grid { margin-inline: auto; }
-.pp-editor .cm-content [data-pp-align="right"] > .pp-table-grid { margin-left: auto; }
-.pp-editor .cm-content [data-pp-align] table { text-align: start; }
+/* a table is placed as a whole, measured by the table itself: the grid's "+ column" strip is
+   balanced when centred (24 px) and hangs past the edge when right-aligned (18 px) — both measured
+   against centred / right text by tools/qa_render.py; the 6 px left inset is for left tables only. Cells follow the alignment unless their column has
+   its own (`:---:`, set inline by tablewidget.js; user 2026-11-19) */
+.pp-editor .cm-content .pp-table[data-pp-align="center"], .pp-editor .cm-content .pp-table[data-pp-align="right"] { margin-left: 0; }
+.pp-editor .cm-content [data-pp-align="center"] > .pp-table-grid { margin-inline: auto; padding-left: 24px; }
+.pp-editor .cm-content [data-pp-align="right"] > .pp-table-grid { margin-left: auto; margin-right: -18px; }
+.pp-editor .cm-content [data-pp-align="center"] :is(th, td) { text-align: center; }
+.pp-editor .cm-content [data-pp-align="right"] :is(th, td) { text-align: right; }
+.pp-editor .cm-content [data-pp-align="justify"] :is(th, td) { text-align: start; }
 /* the menus' "Align note" row: a label and four buttons, the current one marked */
 .pp-note-menu .pp-align-row { display: flex; align-items: center; gap: 10px; min-height: 32px; padding: 0 4px 0 10px; font-size: 13px; }
 .pp-note-menu .pp-align-row .pp-note-menu-label { flex: 1 1 auto; }

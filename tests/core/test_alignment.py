@@ -144,3 +144,12 @@ def test_the_setting_aligns_notes_without_their_own() -> None:
     body = render_print_body(NOTE, "n.md", align=(None, "center"))
     assert '<table class="pp-al-center"' in body or 'class="pp-al-center"' in body
     assert body.count("pp-al-center") >= 5
+
+
+def test_table_cells_follow_the_table_alignment_unless_their_column_has_one() -> None:
+    # user 2026-11-19: a centred note centred the table but left its cells' text at the left
+    from paper_pile.core.alignment import ALIGN_CSS
+
+    assert "table.pp-al-center :is(th, td) { text-align: center; }" in ALIGN_CSS
+    assert "table.pp-al-right :is(th, td) { text-align: right; }" in ALIGN_CSS
+    assert "table.pp-al-center, table.pp-al-right" not in ALIGN_CSS  # no longer forced left
