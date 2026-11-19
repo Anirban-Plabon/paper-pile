@@ -61,6 +61,7 @@ uv sync                          # install deps
 uv run paper-pile .              # run native window on current dir as vault (no AI)
 uv run paper-pile --ai .         # the same with the AI
 uv run paper-pile --serve ~/n    # web mode on 127.0.0.1
+uv run paper-pile --live-css .   # app.css edits show in the open window at once (dev)
 uv run pytest -q                 # tests
 uv run ruff check --fix && uv run ruff format
 ```
@@ -143,3 +144,4 @@ Ask the user a **short** question instead of guessing on anything that changes t
 - CodeMirror `LanguageDescription.load` must resolve to a `LanguageSupport` — a bare `StreamLanguage.define(...)` throws (`support.language.parser`) and the block is never highlighted.
 - Ask box: it only hears the editor's own selection. A widget with its own selection (table cells, inputs) must report it with `reportSelection` / `clearSelection` (`selectpopup.js`) as a `from`..`to` place in the note, and must not drop its highlight when the focus moves into `.pp-askpop` (the box takes the caret when it opens).
 - Theme switches must not animate: `theme.js` puts `pp-theme-switch` on `<html>` (no transitions) for the switch. A new colour transition is fine for hover, but a theme-dependent part drawn without one (a pseudo-element) next to one that fades shows a broken shape for a few frames — check with `tools/qa_render.py` (theme checks).
+- Content redrawn from Python (`set_content`, streaming) that JS must post-process (KaTeX, highlighting): do it in a `MutationObserver` (runs before paint), not in a `requestAnimationFrame` / `run_javascript` after the update — that paints the raw HTML for a frame on every redraw and the layout jumps. Check visual stability with a per-frame recorder in the page, not CDP polling.

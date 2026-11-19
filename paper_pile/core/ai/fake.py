@@ -47,6 +47,7 @@ class FakeProvider:
         self.measured: list[int] = []  # the windows memory_use was asked about
         self.thinking = ""  # reasoning streamed before the answer (a thinking model)
         self.finish = "stop"  # why the answer ends ("length": cut at the answer limit)
+        self.finishes: list[str] = []  # per call, before ``finish`` (first call first)
         self.fail_after: int | None = None  # raise ProviderError after this many words
         self.fail_calls = 0  # make the next this many calls fail at once
         self.loop_calls = 0  # make the next this many calls stop after a word, looping
@@ -80,7 +81,7 @@ class FakeProvider:
             await asyncio.sleep(self.delay)
             # a scripted reply comes back exactly; the echo keeps its old trailing space
             yield word + (" " if n < len(words) - 1 or self.script is None else "")
-        yield Finish(self.finish)
+        yield Finish(self.finishes.pop(0) if self.finishes else self.finish)
 
     def _answer(self, messages: list[ChatMessage]) -> str:
         if callable(self.script):

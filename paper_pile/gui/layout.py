@@ -70,8 +70,6 @@ log = logging.getLogger("paper_pile.layout")
 
 # (min, max) pane width in px while open. Dragging stops at the limits.
 WIDTH_LIMITS = {"left": (180, 480), "right": (280, 960)}  # right: wider chat (user 2026-11-18)
-SETTINGS_LIMITS = (460, 960)  # the right pane while it shows Settings (its nav folds below 560)
-SETTINGS_OPEN_MIN = 640  # Settings always opens unfolded; dragging narrower folds it
 SAVE_DELAY_S = 0.4
 
 
@@ -85,7 +83,7 @@ class PaneSplitter(ui.splitter):
 
 
 def clamp_width(pane: str, width: int) -> int:
-    low, high = SETTINGS_LIMITS if pane == "settings" else WIDTH_LIMITS[pane]
+    low, high = WIDTH_LIMITS[pane]
     return max(low, min(high, width))
 
 
@@ -130,9 +128,7 @@ class MainLayout:
         self.tags: TagPane | None = None
         self.outline: OutlinePane | None = None
         self._caret_line = 1
-        self._settings_wide = (
-            False  # the right pane shows Settings (own width: pane_widths["settings"])
-        )
+        self._settings_wide = False  # the right pane shows Settings (same width as its other tabs)
         self.settings = SettingsPane(
             self.config,
             self._settings_applied,
@@ -160,7 +156,7 @@ class MainLayout:
             rebuild_index=self._rebuild_index,
             probe=lambda: probe_backends(self.config),
         )
-        for pane in (*WIDTH_LIMITS, "settings"):
+        for pane in WIDTH_LIMITS:  # ("settings" in an older session file is no longer used)
             self.state.pane_widths[pane] = clamp_width(pane, self.state.pane_widths[pane])
         self._splitters: dict[str, PaneSplitter] = {}
         self._status: StatusBar | None = None
@@ -253,11 +249,11 @@ class MainLayout:
         with self._ribbon:
             with ui.row().classes("pp-ribbon-top pp-dragzone items-center"):
                 icon_button(
-                    "panel-left-open",
+                    "panel-left",
                     lambda: self.toggle("left"),
                     "Show file tree (Ctrl+B)",
                     size="m",  # 16 px like every icon of the top bar
-                )
+                ).classes("pp-pane-toggle")
             with ui.element("div").classes("pp-seg pp-tools pp-tools-column"):  # as in the pane
                 icon_button(
                     "search", self.search_vault, "Search in all notes (Ctrl+Shift+F)", size="m"
@@ -435,11 +431,11 @@ class MainLayout:
         with ui.column().classes("pp-pane pp-left"):
             with ui.row().classes("pp-left-top pp-dragzone items-center no-wrap"):
                 icon_button(
-                    "panel-left-close",
+                    "panel-right",
                     lambda: self.toggle("left"),
                     "Hide file tree (Ctrl+B)",
                     size="m",  # 16 px like every icon of the top bar
-                )
+                ).classes("pp-pane-toggle")
                 ui.label(f"paper-pile — {self.vault.name}").classes("pp-win-title")
             with ui.column().classes("pp-pane-body pp-left-body"):
                 self.tree = FileTree(
@@ -471,7 +467,8 @@ class MainLayout:
             )
             self.profile.build()
         with self._ribbon_bottom:  # outline, settings + avatar stay reachable while folded
-            icon_button("list-tree", self.toggle_outline, "Outline (Ctrl+Shift+O)")
+            outline = icon_button("list-tree", self.toggle_outline, "Outline (Ctrl+Shift+O)")
+            outline.classes("pp-pane-toggle")  # the pane toggles' permanent box
             self.profile.build_mini()
 
     def _profile_changed(self) -> None:
@@ -529,16 +526,10 @@ class MainLayout:
             self.right.open_settings(page)
 
     def _settings_wide_mode(self, wide: bool) -> None:
-        """Settings has two columns: widen the right pane while it shows, then put it back."""
-        splitter = self._splitters.get("right")
-        if splitter is None or wide == self._settings_wide:
-            return
+        """Settings shows in the right pane. The pane keeps its width whichever tab it shows
+        (user 2026-11-19: chat → Settings must not resize it); Settings' rows stack by their own
+        container query when the pane is narrow."""
         self._settings_wide = wide
-        if wide:
-            widths = self.state.pane_widths
-            widths["settings"] = max(widths["settings"], SETTINGS_OPEN_MIN)
-        if self.state.panes_open["right"]:
-            self._apply("right")
 
     def _refresh_calendar(self) -> None:
         if self.calendar is not None:
@@ -956,35 +947,11 @@ class MainLayout:
     # ---- behaviour -----------------------------------------------------------------------
 
     def toggle(self, pane: str) -> None:
-        if pane == "left" and self._settings_wide and self.state.panes_open["right"]:
-            background_tasks.create(self._toggle_left_keeping_settings())
-            return
         opening = not self.state.panes_open[pane]
         if pane == "right" and opening and self.right is not None and not self.right.has_tabs():
             return  # AI and Calendar are off and nothing else is open there
         self.state.panes_open[pane] = opening
         self._apply(pane)
-        self._save_soon(immediately=True)
-
-    async def _toggle_left_keeping_settings(self) -> None:
-        """Fold / unfold the file tree while Settings is open without Settings changing width:
-        the width it really has on screen (narrower than wanted in a small window) is kept,
-        and the editor takes or gives the room. Without this it grows on folding and shrinks
-        on unfolding, and its layout flickers between its wide and narrow forms."""
-        splitter = self._splitters["right"]
-        try:
-            shown = await splitter.client.run_javascript(
-                "document.querySelector('.pp-panesplit-right > .q-splitter__after')"
-                "?.getBoundingClientRect().width || 0"
-            )
-        except TimeoutError:
-            shown = 0
-        width = round(float(shown or 0))
-        if width > 0 and width < self.state.pane_widths["settings"]:
-            self.state.pane_widths["settings"] = clamp_width("settings", width)
-            self._apply("right")
-        self.state.panes_open["left"] = not self.state.panes_open["left"]
-        self._apply("left")
         self._save_soon(immediately=True)
 
     def close_tab(self) -> None:
@@ -1003,9 +970,8 @@ class MainLayout:
                 remove="" if self.state.panes_open[pane] else "pp-right-open",
             )
         if self.state.panes_open[pane]:
-            key = "settings" if pane == "right" and self._settings_wide else pane
-            splitter.set_limits(*(SETTINGS_LIMITS if key == "settings" else WIDTH_LIMITS[pane]))
-            splitter.value = self.state.pane_widths[key]
+            splitter.set_limits(*WIDTH_LIMITS[pane])
+            splitter.value = self.state.pane_widths[pane]
             splitter.props(remove="disable")
         else:
             splitter.set_limits(0, 0)
@@ -1020,19 +986,16 @@ class MainLayout:
         tabs = self.right.tabs() if self.right is not None else ["chat"]
         name = {"chat": "AI chat", "calendar": "calendar"}.get(tabs[0] if tabs else "", "side pane")
         for pane, button in self.editor_pane.pane_toggles.items():
-            # the icon shows what a click does: close an open pane, open a closed one
+            # plain icons: panel-left while the right pane is open, panel-right while closed
             is_open = self.state.panes_open[pane]
-            set_icon(button, f"panel-{pane}-{'close' if is_open else 'open'}")
+            set_icon(button, "panel-left" if is_open else "panel-right")
             tip(button, f"{'Hide' if is_open else 'Show'} {name} (Ctrl+L)")
             button.set_visibility(is_open or bool(tabs))
         if self.right is not None:
             self.editor_pane.set_reopen(self.right.closed_tabs())
 
     def _dragged_shut(self, pane: str) -> None:
-        """The pane's edge was dragged on past its narrowest width (``static/panes.js``). Not
-        while the right pane shows Settings: there the drag only resizes."""
-        if pane == "right" and self._settings_wide:
-            return
+        """The pane's edge was dragged on past its narrowest width (``static/panes.js``)."""
         if pane in self.state.panes_open and self.state.panes_open[pane]:
             self.toggle(pane)
 
@@ -1045,10 +1008,9 @@ class MainLayout:
         # Programmatic changes (collapse/restore) also land here; only an open pane's width counts.
         if value is None or not self.state.panes_open[pane] or value <= 0:
             return
-        key = "settings" if pane == "right" and self._settings_wide else pane  # remembered apart
-        width = clamp_width(key, round(value))
-        if width != self.state.pane_widths[key]:
-            self.state.pane_widths[key] = width
+        width = clamp_width(pane, round(value))  # one width per pane, whatever tab it shows
+        if width != self.state.pane_widths[pane]:
+            self.state.pane_widths[pane] = width
             self._save_soon()
 
     def _save_soon(self, *, immediately: bool = False) -> None:

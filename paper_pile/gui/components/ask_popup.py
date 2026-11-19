@@ -22,6 +22,7 @@ from nicegui import Client, background_tasks, ui
 
 from paper_pile.core.ai.access import AccessDeniedError
 from paper_pile.core.ai.ask_route import route_by_words
+from paper_pile.core.ai.cleanup import streaming_view
 from paper_pile.core.ai.commands import AiCommand, ai_command
 from paper_pile.core.ai.edit_run import Again, EditEnd
 from paper_pile.core.ai.edits import FINISHED, EditTooLongError
@@ -131,7 +132,12 @@ class AskPopup:
         with ui.teleport("body"):
             self._root = ui.element("div").classes("pp-askpop")
         with self._root:
+            # the mini chat resizes from every side and corner (user 2026-11-19; askpop.js drags)
+            for edge in ("n", "s", "e", "w", "ne", "nw", "se", "sw"):
+                handle = ui.element("div").classes(f"pp-askpop-rz pp-askpop-rz-{edge}")
+                handle._props["data-edge"] = edge
             with ui.row().classes("pp-askpop-head items-center no-wrap"):  # the mini chat's
+                ui.element("div").classes("pp-askpop-grip")  # six dots: drag here to move
                 line_icon("sparkles", "s").classes("pp-askpop-head-icon")
                 ui.label("Ask AI").classes("pp-askpop-title")
                 close = ui.button(icon=ico("x"), on_click=self.close, color=None)
@@ -689,7 +695,9 @@ class AskPopup:
                 now = time.monotonic()
                 if body is not None and now - last >= RENDER_EVERY_S:
                     last = now
-                    body.set_content(render_chat_html(reply.text))
+                    # an unfinished formula waits until it is complete (no raw-TeX jump)
+                    body.set_content(render_chat_html(streaming_view(reply.text)))
+                    # its math is typeset in the page as it lands (static/chat.js observer)
                     self._scroll_down()
             reply.finished = finish[-1:] == [FINISHED]
             if not reply.finished and reply.text:

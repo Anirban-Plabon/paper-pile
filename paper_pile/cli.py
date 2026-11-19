@@ -26,6 +26,11 @@ def build_parser() -> argparse.ArgumentParser:
         "--debug", action="store_true", help="log details on stderr (window sizes, screens)"
     )
     parser.add_argument("--ai", action="store_true", help="with the AI (chat, AI commands)")
+    parser.add_argument(
+        "--live-css",
+        action="store_true",
+        help="show edits to the app's CSS at once, without a restart (development)",
+    )
     parser.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
     return parser
 
@@ -60,6 +65,8 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     if args.debug:
         os.environ["PAPER_PILE_DEBUG"] = "1"  # the window's own process inherits it
+    if args.live_css:
+        os.environ["PAPER_PILE_LIVE_CSS"] = "1"  # read by gui/live_css.py, also in that process
     if args.ai:
         os.environ["PAPER_PILE_AI"] = "1"  # read by core/ai/install.py, also in that process
     from paper_pile.gui import app  # imported late: keeps --help fast and core UI-free

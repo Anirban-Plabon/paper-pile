@@ -118,11 +118,11 @@ class TabBar:
                     )
             self.set_reopen([])
             self.toggles["right"] = icon_button(
-                "panel-right-close",
+                "panel-left",
                 lambda: self._on_toggle_pane("right"),
                 "Hide AI chat (Ctrl+L)",
                 size="m",  # 16 px like every icon of the top bar
-            )
+            ).classes("pp-pane-toggle")
         ui.on("pp_tab_move", lambda e: self._moved(e.args))
 
     def set_reopen(self, names: list[str]) -> None:

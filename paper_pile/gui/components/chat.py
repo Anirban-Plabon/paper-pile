@@ -37,6 +37,7 @@ from paper_pile.core.ai.chats import (
     turn_time,
 )
 from paper_pile.core.ai.chats import SavedTurn as Turn
+from paper_pile.core.ai.cleanup import streaming_view
 from paper_pile.core.ai.commands import (
     AiCommand,
     ai_command,
@@ -63,6 +64,7 @@ from paper_pile.core.ai.vault.searches import remove_search, save_search, saved_
 from paper_pile.core.links import resolve_wikilink, wikilink_to
 from paper_pile.core.parser import render_chat_html
 from paper_pile.core.picker import switcher_notes
+from paper_pile.core.settings import EDIT_MODES
 from paper_pile.gui.components.ai_access import confirm_access
 from paper_pile.gui.components.options_box import OptionsBox
 from paper_pile.gui.icons import ico, icon_button, line_icon, set_icon
@@ -228,6 +230,13 @@ class ChatPane:
         self._model_chev: ui.icon
         self._model_menu: ui.menu
         self._title: ui.label
+        self._bar: ui.row
+        self._web_btn: ui.button
+        self._edits_label: ui.label
+        self._mode_word: ui.label
+        self._mode_box: ui.element
+        self._web_search = False  # the bar's Web search switch (UI only, no backend yet)
+        self._chat_mode = "auto"  # the box's Auto / Read word (UI only, no backend yet)
         self._model_names: dict[str, str] = {}  # model -> what the button shows
         self._model_details: dict[str, str] = {}
         self._mentions: ui.column
@@ -271,6 +280,7 @@ class ChatPane:
                 # prompts for what is attached: stacked above the box, over the log (max 3)
                 self._suggest = ui.column().classes("pp-chat-suggest")
                 self._suggest.set_visibility(False)
+                self._context_bar()  # folder · web search · model · edits, on the card's top
                 with ui.column().classes("pp-chat-card") as card:
                     self._card = card
                     self._strip = ui.row().classes("pp-chat-strip")  # all chips, above a divider
@@ -292,14 +302,11 @@ class ChatPane:
                             f"data-pp-paste-chars={PASTE_CHIP_CHARS}"
                         )
                         self._input.on_value_change(lambda e: self._input_changed(e.value or ""))
-                        self._model_button()
+                        self._mode_button()
                         self._send = ui.button(
                             icon=ico("arrow-up"), on_click=self.send_or_stop, color=None
                         )
                         self._send.props("round unelevated dense").classes("pp-chat-send")
-                ui.label("AI can make mistakes. Check important information.").classes(
-                    "pp-chat-disclaimer"
-                )
                 self._upload = ui.upload(
                     on_upload=self._file_uploaded,
                     auto_upload=True,
@@ -369,14 +376,16 @@ class ChatPane:
     # ---- the model menu -------------------------------------------------------------------
 
     def _model_button(self) -> None:
-        self._model = ui.button(color=None).props("flat no-caps dense").classes("pp-chat-model")
+        self._model = ui.button(color=None).props("flat no-caps dense")
+        self._model.classes("pp-chat-bar-item pp-chat-model")
         with self._model:
+            line_icon("sparkle", "m")
             self._model_label = ui.label("").classes("pp-chat-model-name")
             self._model_chev = line_icon("chevron-down", "s").classes("pp-chat-model-chev")
             # auto-close: a click on a model closes the menu in the page, no round trip; it pops
             # by CSS (pp-pop, --pp-dur), in step with the chevron
             self._model_menu = ui.menu().props(
-                'anchor="top right" self="bottom right" :offset="[0, 8]" auto-close '
+                'anchor="top left" self="bottom left" :offset="[0, 8]" auto-close '
                 "transition-show=none transition-hide=none transition-duration=0"
             )
             self._model_menu.classes("pp-model-menu")
@@ -420,6 +429,114 @@ class ChatPane:
         self.config.save("global")
         self._show_model()
         background_tasks.create(self.check_health())  # the "not installed" line may go
+
+    # ---- the context bar over the box (user 2026-11-19) ---------------------------------
+
+    def _context_bar(self) -> None:
+        """A tab on the box's top edge, from the middle of the + button: the vault folder, Web
+        search (a switch only; the search itself comes later), the model (its menu) and how AI
+        edits land (its menu), with a chevron that folds the bar to itself."""
+        self._bar = ui.row().classes("pp-chat-bar items-center no-wrap")
+        with self._bar:
+            with ui.element("div").classes("pp-chat-bar-items"):
+                folder = ui.element("div").classes("pp-chat-bar-item pp-chat-bar-folder")
+                with folder:
+                    line_icon("folder", "m")
+                    ui.label(self.vault.root.name or str(self.vault.root)).classes(
+                        "pp-chat-bar-text"
+                    )
+                tip(folder, f"The AI reads notes in {self.vault.root}")
+                self._web_btn = ui.button(on_click=self._toggle_web, color=None)
+                self._web_btn.props("flat no-caps dense").classes("pp-chat-bar-item")
+                with self._web_btn:
+                    line_icon("globe", "m")
+                    ui.label("Web search").classes("pp-chat-bar-text")
+                self._show_web()
+                self._model_button()
+                edits = ui.button(color=None).props("flat no-caps dense")
+                edits.classes("pp-chat-bar-item pp-chat-bar-edits")
+                with edits:
+                    line_icon("shield-check", "m")
+                    self._edits_label = ui.label("").classes("pp-chat-bar-text")
+                    menu = ui.menu().props(
+                        'anchor="top left" self="bottom left" :offset="[0, 8]" auto-close '
+                        "transition-show=none transition-hide=none transition-duration=0"
+                    )
+                    menu.classes("pp-model-menu pp-chat-bar-menu")
+                menu.on("before-show", lambda _e, m=menu: self._build_edits_menu(m))
+                tip(edits, "How AI changes reach your notes")
+                self._show_edits()
+            fold = icon_button("chevron-left", self._toggle_bar, "Hide", "s")
+            fold.classes("pp-chat-bar-fold")
+
+    def _toggle_bar(self) -> None:
+        folded = "pp-chat-bar-folded" not in self._bar.classes
+        if folded:
+            self._bar.classes(add="pp-chat-bar-folded")
+        else:
+            self._bar.classes(remove="pp-chat-bar-folded")
+
+    def _toggle_web(self) -> None:
+        self._web_search = not self._web_search
+        self._show_web()
+
+    def _show_web(self) -> None:
+        on = self._web_search
+        self._web_btn.props(f"data-pp-on={'1' if on else '0'}")
+        tip(self._web_btn, "Web search: on (coming soon)" if on else "Web search: off")
+
+    def _show_edits(self) -> None:
+        mode = str(self.config.get("ai.edits", "ask")) if self.config is not None else "ask"
+        self._edits_label.set_text("Apply at once" if mode == "auto" else "Review edits")
+
+    def _build_edits_menu(self, menu: ui.menu) -> None:
+        current = str(self.config.get("ai.edits", "ask")) if self.config is not None else "ask"
+        menu.clear()
+        with menu:
+            for mode, name in EDIT_MODES.items():
+                item = ui.item(on_click=lambda m=mode: self._edits_changed(m))
+                with item.classes("pp-model-item"):
+                    with ui.column().classes("pp-model-text"):
+                        ui.label(name).classes("pp-model-name")
+                    if mode == current:
+                        line_icon("check", "s").classes("pp-model-check pp-menu-check pp-check")
+
+    def _edits_changed(self, mode: str) -> None:
+        if self.config is None or mode == self.config.get("ai.edits", "ask"):
+            return
+        self.config.set("ai.edits", mode, "global")
+        self.config.save("global")
+        self._show_edits()
+
+    # ---- the Auto / Read word in the box ------------------------------------------------
+
+    def _mode_button(self) -> None:
+        """Where the model picker was: one word in a tool box that flips Auto ⇄ Read on a
+        click (Auto, the default, with an accent dot). UI only for now."""
+        with ui.element("div").classes("pp-seg pp-tools pp-chat-mode") as box:
+            button = ui.button(on_click=self._flip_mode, color=None)
+            button.props("flat no-caps dense").classes("pp-chat-mode-btn")
+            with button:
+                ui.element("span").classes("pp-chat-mode-dot")
+                self._mode_word = ui.label("Auto").classes("pp-chat-mode-word")
+        self._mode_box = box
+        self._show_mode()
+
+    def _flip_mode(self) -> None:
+        self._chat_mode = "read" if self._chat_mode == "auto" else "auto"
+        self._show_mode()
+
+    def _show_mode(self) -> None:
+        auto = self._chat_mode == "auto"
+        self._mode_word.set_text("Auto" if auto else "Read")
+        # a data attribute: the flip animation keys on it, and Python rewrites class lists
+        self._mode_box.props(f"data-pp-mode={self._chat_mode}")
+        tip(
+            self._mode_box,
+            "Auto: the AI answers or edits as the request needs (click for Read)"
+            if auto
+            else "Read: the AI only reads and answers (click for Auto)",
+        )
 
     def _set_include_tabs(self, on: bool) -> None:
         self._include_tabs = on
@@ -1616,7 +1733,9 @@ class ChatPane:
                 now = time.monotonic()
                 if body is not None and now - last >= RENDER_EVERY_S:
                     last = now
-                    body.set_content(render_chat_html(reply.text))
+                    # an unfinished formula waits until it is complete (no raw-TeX jump)
+                    body.set_content(render_chat_html(streaming_view(reply.text)))
+                    # its math is typeset in the page as it lands (static/chat.js observer)
                     self._scroll_down()
         except asyncio.CancelledError:
             self.ai.stopped(reply)

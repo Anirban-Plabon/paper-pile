@@ -35,7 +35,9 @@ export class BulletWidget extends WidgetType {
   toDOM() {
     const el = document.createElement("span");
     el.className = "pp-bullet";
-    el.textContent = this.glyph;
+    // drawn by app.css as an exact shape (user 2026-11-19: 1 px more radius than the font's dot)
+    el.dataset.glyph = { "\u2022": "disc", "\u25E6": "circle", "\u25AA": "square" }[this.glyph] || "";
+    if (!el.dataset.glyph) el.textContent = this.glyph;
     return el;
   }
 }

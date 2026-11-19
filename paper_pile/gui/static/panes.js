@@ -4,7 +4,26 @@
 // pulled to the right. Capture only: Python decides (events
 // `pp_pane_collapse`, `pp_pane_toggle`).
 (() => {
-  const GRACE_PX = 48; // how far past the narrowest width the pointer must go
+  const FOLD_RATIO = 0.3; // pulled this share of its narrowest width past it, the pane slides shut
+  // Animate the pane's max-width (Quasar owns `width`) to 0, then call `done`. The cap stays until
+  // Python has folded the splitter, or the pane would show for a frame at full width.
+  const slideShut = (el, done) => {
+    if (!el) return done();
+    const ms = parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--pp-motion") || "1") * 160;
+    el.style.setProperty("max-width", el.getBoundingClientRect().width + "px", "important");
+    el.style.setProperty("overflow", "hidden", "important");
+    el.dataset.ppSliding = "1"; // app.css: no scrollbars inside while it narrows
+    void el.offsetWidth; // start the transition from the current width
+    el.style.setProperty("transition", `max-width ${ms}ms ease`, "important");
+    el.style.setProperty("max-width", "0px", "important");
+    setTimeout(() => {
+      done();
+      setTimeout(() => {
+        ["max-width", "overflow", "transition"].forEach((k) => el.style.removeProperty(k));
+        delete el.dataset.ppSliding;
+      }, 600);
+    }, ms);
+  };
   const OPEN_PX = 24; // how far a folded file tree's edge must be pulled to open it
   const paneEdge = (el) => {
     const sep = el && el.closest && el.closest(".q-splitter__separator");
@@ -46,12 +65,17 @@
         return;
       }
       const rect = box.getBoundingClientRect();
+      const el = box.querySelector(
+        pane === "left" ? ":scope > .q-splitter__before" : ":scope > .q-splitter__after",
+      );
       sep.classList.add("pp-sep-active");
+      // The splitter stops at the narrowest width; pulled on past FOLD_RATIO of it, the pane
+      // slides shut (an animation, not a jump) and Python folds it once the slide has ended.
       const move = (ev) => {
         const width = pane === "left" ? ev.clientX - rect.left : rect.right - ev.clientX;
-        if (width < min - GRACE_PX) {
+        if (width < min * (1 - FOLD_RATIO)) {
           stop();
-          emitEvent("pp_pane_collapse", { pane });
+          slideShut(el, () => emitEvent("pp_pane_collapse", { pane }));
         }
       };
       const stop = () => {

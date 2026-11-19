@@ -7,7 +7,7 @@ from pathlib import Path
 from nicegui import app, background_tasks, ui
 
 from paper_pile.core.ai.factory import shutdown_providers
-from paper_pile.gui import native_boot
+from paper_pile.gui import live_css, native_boot
 from paper_pile.gui.files import make_asset_router
 from paper_pile.gui.icons import icons_config_script, make_icon_router
 from paper_pile.gui.layout import MainLayout
@@ -49,6 +49,8 @@ def _build_pages(host: VaultHost, *, native: bool) -> None:
         ui.add_head_html(f'<script src="{static_url("marks.js")}" defer></script>')
         if native:  # drag / resize of the frameless window
             ui.add_head_html(f'<script src="{static_url("window.js")}" defer></script>')
+        if live_css.enabled():  # --live-css: stylesheet edits show at once (development)
+            live_css.install()
         # "reveal" only makes sense on this machine
         layout = MainLayout(host.vault, can_reveal=native, fs_bus=host.fs_bus, host=host)
         layout.build()

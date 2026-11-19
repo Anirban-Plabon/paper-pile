@@ -46,7 +46,7 @@
   function choose(el) {
     // the side, once: where the full mini chat fits (its height is fixed, so known in advance)
     const b = bounds();
-    const need = inset('--pp-askpop-full') || 480;
+    const need = parseFloat(getComputedStyle(el).getPropertyValue('--pp-askpop-full')) || 480; // the user's size, if resized
     const below = b.bottom - (anchor.bottom + CLEAR);
     const above = anchor.top - CLEAR - b.top;
     side = below >= need ? 'down' : above >= need ? 'up' : below >= above ? 'down' : 'up';
@@ -84,7 +84,7 @@
     if (!side) choose(el);
     fitList(el);
     const b = bounds();
-    const x = Math.min(anchor.left - EDGE, b.right - Math.max(WIDEST, el.offsetWidth));
+    const x = Math.min(anchor.left - EDGE, b.right - Math.max(parseFloat(el.style.getPropertyValue('--pp-askpop-w')) || WIDEST, el.offsetWidth));
     el.style.left = Math.max(b.left - EDGE, x) + 'px'; // the card in line with the selection
     if (side === 'down') {
       el.style.bottom = '';
@@ -171,6 +171,46 @@
     };
     const up = () => {
       el.classList.remove('pp-askpop-dragging');
+      window.removeEventListener('pointermove', move, true);
+      window.removeEventListener('pointerup', up, true);
+    };
+    window.addEventListener('pointermove', move, true);
+    window.addEventListener('pointerup', up, true);
+  }, true);
+
+  // resize the mini chat from any side or corner (user 2026-11-19); the size stays for the session
+  const MIN_W = 280;
+  const MIN_H = 220;
+  document.addEventListener('pointerdown', function (e) {
+    const el = box();
+    const handle = e.target.closest && e.target.closest('.pp-askpop-chat .pp-askpop-rz');
+    if (!el || !handle || e.button !== 0) return;
+    e.preventDefault();
+    e.stopPropagation();
+    const edge = handle.dataset.edge || '';
+    const r = el.getBoundingClientRect();
+    const b = bounds();
+    moved = true; // held by its own top-left corner from now on
+    el.style.bottom = '';
+    el.style.left = r.left + 'px';
+    el.style.top = r.top + 'px';
+    el.classList.add('pp-askpop-resizing');
+    const move = (ev) => {
+      let { left, top, right, bottom } = r;
+      const dx = ev.clientX - e.clientX; // by the pointer's move: no jump where it grabbed
+      const dy = ev.clientY - e.clientY;
+      if (edge.includes('e')) right = Math.max(left + MIN_W, Math.min(b.right, r.right + dx));
+      if (edge.includes('w')) left = Math.min(right - MIN_W, Math.max(b.left, r.left + dx));
+      if (edge.includes('s')) bottom = Math.max(top + MIN_H, Math.min(b.bottom, r.bottom + dy));
+      if (edge.includes('n')) top = Math.min(bottom - MIN_H, Math.max(b.top, r.top + dy));
+      el.style.left = left + 'px';
+      el.style.top = top + 'px';
+      el.style.setProperty('--pp-askpop-w', right - left + 'px');
+      el.style.setProperty('--pp-askpop-full', bottom - top + 'px');
+      el.style.setProperty('--pp-askpop-room', bottom - top + 'px');
+    };
+    const up = () => {
+      el.classList.remove('pp-askpop-resizing');
       window.removeEventListener('pointermove', move, true);
       window.removeEventListener('pointerup', up, true);
     };

@@ -76,7 +76,7 @@ document.addEventListener('mousedown', function (e) {
   if (e.target && e.target.closest && e.target.closest('.pp-chat-chips, .pp-chat-preview')) return;
   if (document.querySelector('.pp-chat-chip-open')) emitEvent('pp_chip_close', {});
 }, true);
-// The composer is one line (+ · text · model · send) until the text needs more room; then the
+// The composer is one line (+ · text · Auto/Read · send) until the text needs more room; then the
 // text takes the full width above the buttons (`pp-chat-multi` on the card). An empty box is
 // measured by its placeholder, so a narrow pane never squeezes "Ask, or @ a note" onto 2 lines.
 // It is re-checked when the pane is resized.
@@ -84,7 +84,7 @@ document.addEventListener('mousedown', function (e) {
   const ctx = document.createElement('canvas').getContext('2d');
   function inlineWidth(row) {
     let w = row.clientWidth - 24;  // the row's padding and gaps, plus the text's own padding
-    row.querySelectorAll('.pp-chat-plus, .pp-chat-model, .pp-chat-send').forEach(function (el) { w -= el.offsetWidth; });
+    row.querySelectorAll('.pp-chat-plus, .pp-chat-mode, .pp-chat-send').forEach(function (el) { w -= el.offsetWidth; });
     return w;
   }
   function singleLine(area) {  // an empty box is one line high, whatever its placeholder does
@@ -224,3 +224,21 @@ document.addEventListener('paste', function (e) {
   e.preventDefault();
   emitEvent('pp_chat_paste', { text: text });
 }, true);
+// An answer redrawn while it streams (chat, mini chat) gets its math typeset in the same moment,
+// before the browser paints (a MutationObserver runs before the next frame): typesetting a frame
+// later showed the raw TeX for a frame on every redraw and the lines jumped (user 2026-11-19).
+(function () {
+  const bodies = '.pp-chat-log .pp-msg-body, .pp-askpop .pp-msg-body';
+  new MutationObserver(function (records) {
+    if (!window.ppTypesetMath) return;
+    const seen = new Set();
+    for (const r of records) {
+      const el = r.target;
+      const body = el && el.closest ? el.closest(bodies) : null;
+      if (body && !seen.has(body)) {
+        seen.add(body);
+        window.ppTypesetMath(body);
+      }
+    }
+  }).observe(document.body, { childList: true, subtree: true });
+})();

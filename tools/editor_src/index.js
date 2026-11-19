@@ -27,7 +27,7 @@ import { proposalExtension, showLiveText, showProposal } from "./proposal.js";
 import { askAbout, markTarget, selectPopup, settlePopup } from "./selectpopup.js";
 import { selectionBand } from "./selectionband.js";
 import { citeBand, showCiteBand } from "./citeband.js";
-import { typeset } from "./typeset.js";
+import { typeset, typesetMath } from "./typeset.js";
 import { alignment, defaultAlign, loadAlign, setBlockAlign } from "./align.js";
 import { noteZoom, resetZoom } from "./zoom.js";
 
@@ -59,6 +59,9 @@ function externalUrl(href) {
 // Chat replies are typeset by the same code as the editor's widgets (KaTeX, Mermaid).
 if (typeof window !== "undefined") {
   window.ppTypeset = (el, theme) => typeset(el, theme || (window.ppIsDark ? "dark" : "light"));
+  // While an answer streams in: its math only (diagrams wait for the whole answer, they are slow
+  // and a half-written one is not valid yet)
+  window.ppTypesetMath = (el) => el && typesetMath(el);
   // Focus the editor that owns `dom` with its selection on screen at once (askpop.js: copy, cut
   // and paste typed in the Ask box go to the note's selection). A plain DOM focus() restores the
   // selection a moment later, after the browser has already copied nothing.

@@ -67,6 +67,8 @@ log = logging.getLogger("paper_pile.ai.edit")
 
 ADD_ANSWER = 600  # tokens for new text
 ADD_ANSWER_MAX = 1500
+LENGTH = "length"  # the finish reason of an answer cut off at its token budget
+GROW_ROOM = 3  # a write cut off at its budget is written again with this many times the room
 WRITE_TEMPERATURE = 0.3  # at most: low temperature keeps the model from changing too much
 LOOP_TEMPERATURE = 0.7  # the one retry after the model got stuck repeating itself
 SAME_FEEDBACK = (  # the retry after an answer identical to the text it was asked to change
@@ -199,6 +201,7 @@ class EditRun:
         self._prefix: list[ChatMessage] = []
         self._vault: list[tuple[str, str, str]] = []
         self._window = 0
+        self._last_finish = ""  # the finish reason of the last write ("" = none: stopped)
         self._changing: list[str] = []
         self.suggested: list[Suggestion] = []  # the last result's "maybe also update"
 
@@ -364,7 +367,15 @@ class EditRun:
             def arrived(so_far: str, start: int = start, end: int = end) -> None:
                 self._show_live(live_change(self.note, start, end, live_text(job, so_far), True))
 
-            answer, finished = await self._ask(messages, job, arrived)
+            room = self._room(job)
+            answer, finished = await self._ask(messages, job, arrived, room)
+            bigger = self._more_room(messages, room)
+            if not finished and answer.strip() and self._last_finish == LENGTH and bigger:
+                # cut off by our own answer budget (a request that makes the text much longer:
+                # "add details", "expand"): write it again with room for it, not a dead end
+                log.info("answer cut off at %d tokens; writing again with %d", room, bigger)
+                self._show_live(live_change(self.note, start, end, writing=True))
+                answer, finished = await self._ask(messages, job, arrived, bigger)
             if not finished or not answer.strip():
                 self.dropped.append(_dropped(edit, "the answer was cut off or empty"))
                 return None
@@ -427,21 +438,29 @@ class EditRun:
             return reply_room(estimate_tokens(job.old))
         return min(ADD_ANSWER, ADD_ANSWER_MAX)
 
+    def _more_room(self, messages: list[ChatMessage], room: int) -> int:
+        """A bigger answer budget for a write cut off at ``room`` (0: no more fits the window)."""
+        fits = self._window - message_tokens(messages) if self._window else room * GROW_ROOM
+        bigger = min(room * GROW_ROOM, fits)
+        return bigger if bigger > room else 0
+
     async def _ask(
         self,
         messages: list[ChatMessage],
         job: WriteJob,
         arrived: Callable[[str], None] | None = None,
+        room: int | None = None,
     ) -> tuple[str, bool]:
         chosen = self.engine.setting("ai.temperature", 0.8)
         temperature = min(
             float(chosen) if isinstance(chosen, int | float) else 0.8, WRITE_TEMPERATURE
         )
         try:
-            return await self._write(messages, job, temperature, arrived)
+            return await self._write(messages, job, temperature, arrived, room)
         except RepeatLoopError:  # stuck repeating itself: once more, with more variety
             log.info("the model looped; asking again at %.1f", LOOP_TEMPERATURE)
-            return await self._write(messages, job, max(temperature, LOOP_TEMPERATURE), arrived)
+            hotter = max(temperature, LOOP_TEMPERATURE)
+            return await self._write(messages, job, hotter, arrived, room)
 
     async def _write(
         self,
@@ -449,9 +468,11 @@ class EditRun:
         job: WriteJob,
         temperature: float,
         arrived: Callable[[str], None] | None = None,
+        room: int | None = None,
     ) -> tuple[str, bool]:
         """One write call; ``arrived`` gets the answer so far after every piece."""
         finish: list[str] = []
+        self._last_finish = ""
         self.calls += 1
         answer = ""
         async for piece in self.engine.stream(
@@ -460,11 +481,12 @@ class EditRun:
             on_finish=finish.append,
             think=False,
             temperature=temperature,
-            max_answer=self._room(job),
+            max_answer=room if room is not None else self._room(job),
         ):
             answer += piece
             if arrived is not None:
                 arrived(answer)
+        self._last_finish = finish[0] if finish else ""
         return answer, finish == [FINISHED]
 
     def _guard_context(self, edit: PlannedEdit, job: WriteJob) -> GuardContext:

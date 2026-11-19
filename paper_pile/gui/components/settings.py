@@ -461,9 +461,9 @@ class SettingsPane:
             self._commit(s, value)
 
         if setting.kind == "bool":
-            switch = ui.switch(value=bool(current), on_change=lambda e: commit(e.value))
+            track = self._onoff(bool(current), commit)
             if setting.key == "features.ai" and not ai_available():
-                switch.disable()
+                track.classes("pp-seg-disabled")
         elif setting.key == "appearance.accent":
             self._accent_picker(setting, str(current))
         elif setting.key in _SEGMENTED:
@@ -591,7 +591,7 @@ class SettingsPane:
         options: list[tuple[str, str, str | None]],
         value: str,
         on_pick: Callable[[str], None],
-    ) -> None:
+    ) -> ui.row:
         """A row of options in a soft track; the chosen one is a raised pill."""
         items: dict[str, ui.element] = {}
 
@@ -603,7 +603,7 @@ class SettingsPane:
                     el.classes(remove="pp-seg-on")
             on_pick(key)
 
-        with ui.row().classes("pp-seg no-wrap"):
+        with ui.row().classes("pp-seg no-wrap") as track:
             for key, label, icon in options:
                 item = ui.row().classes("pp-seg-item items-center no-wrap")
                 if key == value:
@@ -614,9 +614,33 @@ class SettingsPane:
                     if label:
                         ui.label(label)
                 if icon and not label:
+                    item.classes("pp-seg-item-icon")  # an icon alone: a square
                     tip(item, key.capitalize())
                 item.on("click", lambda _e, k=key: pick(k))
                 items[key] = item
+        return track
+
+    def _onoff(self, value: bool, on_change: Callable[[bool], None]) -> ui.row:
+        """An on / off switch drawn as the mode control's track: Off on the left, On on the right
+        (user 2026-11-19), the chosen side a raised pill. A click anywhere on it flips it."""
+        state = {"on": value}
+        with ui.row().classes("pp-seg pp-seg-onoff no-wrap") as track:
+            off = ui.row().classes("pp-seg-item pp-seg-off-part")
+            on = ui.row().classes("pp-seg-item pp-seg-on-part")
+
+        def show() -> None:
+            on.classes(add="pp-seg-on") if state["on"] else on.classes(remove="pp-seg-on")
+            off.classes(remove="pp-seg-on") if state["on"] else off.classes(add="pp-seg-on")
+            tip(track, "On" if state["on"] else "Off")
+
+        def flip() -> None:
+            state["on"] = not state["on"]
+            show()
+            on_change(state["on"])
+
+        show()
+        track.on("click", flip)
+        return track
 
     def _accent_picker(self, setting: Setting, current: str) -> None:
         """The accent as a colour dot; its popup is a grid of presets plus a colour-code field

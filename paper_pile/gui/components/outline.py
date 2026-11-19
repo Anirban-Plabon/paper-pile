@@ -16,6 +16,8 @@ from paper_pile.core.parser import Heading, headings, section_at
 from paper_pile.gui.icons import line_icon
 
 INDENT_PX = 12
+ROW_INSET_PX = 6  # a top-level heading's box starts 6 px in, like a tree row's
+ROW_RIGHT_PX = 4  # and ends 4 px before the pane's edge, like a tree row's
 
 
 class OutlinePane:
@@ -74,7 +76,12 @@ class OutlinePane:
                 row = ui.label(head.text or "(empty heading)").classes(
                     f"pp-outline-row pp-outline-h{head.level}"
                 )
-                row.style(f"padding-left: {10 + (head.level - top) * INDENT_PX}px")
+                # the indent is the row's left margin, as in the file tree: its hover / current-
+                # heading box starts at its level (the text stays where it was: margin + 10 px)
+                inset = ROW_INSET_PX + (head.level - top) * INDENT_PX
+                width = f"calc(100% - {inset + ROW_RIGHT_PX}px)"
+                margin = f"0 {ROW_RIGHT_PX}px 0 {inset}px"
+                row.style(f"padding-left: 10px; margin: {margin}; width: {width}")
                 row.on("click", lambda _e, line=head.line: self._on_jump(line))
                 self._rows.append(row)
 

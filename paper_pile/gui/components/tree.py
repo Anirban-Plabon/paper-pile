@@ -39,7 +39,7 @@ from collections.abc import Awaitable, Callable
 from datetime import date
 from typing import Any
 
-from nicegui import background_tasks, ui
+from nicegui import background_tasks, run, ui
 
 from paper_pile.core.daily import daily_date, daily_order
 from paper_pile.core.events import EventBus
@@ -47,7 +47,8 @@ from paper_pile.core.fsutil import reveal_in_file_manager
 from paper_pile.core.index import SearchHit
 from paper_pile.core.vault import TreeEntry, Vault, VaultError
 from paper_pile.gui.dialog import Dialog
-from paper_pile.gui.icons import ico, icon_button, line_icon
+from paper_pile.gui.icons import ico, icon_button, line_icon, set_icon
+from paper_pile.gui.tips import tip
 
 log = logging.getLogger("paper_pile.tree")
 
@@ -96,6 +97,7 @@ class FileTree:
         self._searching = False
         self._filter = ""
         self._search_button: ui.button
+        self._fold_all: ui.button
         self._search_box: ui.input
         self._root: ui.element
         self._menu: ui.column
@@ -106,6 +108,11 @@ class FileTree:
     def build(self) -> None:
         with ui.row().classes("pp-files-head items-center no-wrap"):
             ui.label("Files").classes("pp-pane-title")
+            # expand / collapse every folder (user 2026-11-19); icon + tip follow the tree's state
+            self._fold_all = icon_button(
+                "chevrons-up-down", self.toggle_all, "Expand all", size="s"
+            )
+            self._fold_all.classes("pp-files-foldall")
             ui.space()
             with ui.element("div").classes("pp-seg pp-tools pp-tools-row"):  # one box
                 self._search_button = icon_button(
@@ -131,6 +138,7 @@ class FileTree:
         ui.on("pp_tree_band", lambda e: self._guard(self._on_band(e.args)))
         ui.on("pp_tree_key", lambda e: self._guard(self._on_key(e.args)))
         ui.on("pp_tree_add", lambda e: self._guard(self._new_note(str(e.args["path"]))))
+        ui.on("pp_tree_fold", lambda e: self._guard(self._fold_folder(str(e.args["path"]))))
         ui.on("pp_ctx_close", lambda _e: self._close_menu())
         # a tab's menu renames through the tree (same dialog as the tree's own Rename)
         self.bus.subscribe(
@@ -175,6 +183,44 @@ class FileTree:
                         )
                         button.props("flat dense no-caps").classes("pp-tree-empty-new")
         self._apply_selection()
+        self._sync_fold_all()
+
+    # ---- expand / collapse all (user 2026-11-19) -------------------------------------------
+
+    def _sync_fold_all(self) -> None:
+        """The header button collapses while any folder is open, else it expands every folder."""
+        if not hasattr(self, "_fold_all"):
+            return
+        any_open = bool(self._expanded)
+        set_icon(self._fold_all, "chevrons-down-up" if any_open else "chevrons-up-down")
+        tip(self._fold_all, "Collapse all folders" if any_open else "Expand all folders")
+
+    async def _subfolders(self, rel: str) -> set[str]:
+        """``rel`` and every visible folder under it ("" = the whole vault), off the UI loop."""
+        hidden = self._hidden()
+        found = await run.io_bound(self.vault.folders)
+        keep = {f for f in found if not any(f == h or f.startswith(h + "/") for h in hidden)}
+        if not rel:
+            return keep
+        return {rel} | {f for f in keep if f.startswith(rel + "/")}
+
+    async def toggle_all(self) -> None:
+        """Header button: collapse every folder while any is open, else expand them all."""
+        if self._expanded:
+            self._expanded.clear()
+        else:
+            self._expanded = await self._subfolders("")
+        self.refresh()
+
+    async def _fold_folder(self, rel: str) -> None:
+        """A folder row's button: an open folder closes with everything in it; a closed one opens
+        with every folder inside it."""
+        inside = {p for p in self._expanded if p == rel or p.startswith(rel + "/")}
+        if rel in self._expanded:
+            self._expanded -= inside
+        else:
+            self._expanded |= await self._subfolders(rel)
+        self.refresh()
 
     # ---- search: recent notes ------------------------------------------------------------
 
@@ -329,8 +375,12 @@ class FileTree:
             if dot:
                 mark = ui.element("span").classes("pp-tree-dot")
                 mark._props["data-tip"] = dot
-            if entry.is_dir:  # static/tree.js: a click here is "new note in this folder"
-                add = line_icon("plus").classes("pp-tree-add")
+            if entry.is_dir:  # static/tree.js: expand / collapse all inside, then new note here
+                is_open = entry.path in self._expanded
+                fold = line_icon("chevrons-down-up" if is_open else "chevrons-up-down")
+                fold.classes("pp-tree-add pp-tree-fold")
+                fold._props["data-tip"] = "Collapse all inside" if is_open else "Expand all inside"
+                add = line_icon("plus").classes("pp-tree-add pp-tree-new")
                 add._props["data-tip"] = "New note here"
         self._rows[entry.path] = row
 

@@ -126,6 +126,15 @@ html, body { overflow: hidden; }
    8 px band centred on the line, tinted like the outline's divider (the grab strip itself reaches
    right of the line only, so it is not what is tinted) */
 .pp-root .pp-panesplit > .q-splitter__separator::after { content: ""; position: absolute; top: 0; bottom: 0; left: -4px; width: 9px; pointer-events: none; background: transparent; transition: background-color var(--pp-dur-fast) ease; }
+/* The main area (editor + right pane) never scrolls sideways: its children scroll themselves.
+   Quasar gives the panel overflow:auto, so anything a few px past the window's right border (the
+   right edge's 9 px hover band once the right pane is shut or sliding shut) popped up a
+   horizontal scrollbar at the bottom. */
+.pp-root .pp-panesplit-left > .q-splitter__after,
+.pp-root .pp-panesplit-right > .q-splitter__before { overflow-x: hidden !important; }
+.pp-root .pp-panesplit-right.q-splitter--disabled > .q-splitter__separator::after { display: none; }
+/* a pane sliding shut (static/panes.js): its content gets narrower than itself — no scrollbars */
+.pp-root [data-pp-sliding] * { scrollbar-width: none !important; }
 .pp-root .pp-panesplit > .q-splitter__separator:hover, .pp-root .pp-panesplit > .q-splitter__separator.pp-sep-active { z-index: 5; }
 .pp-root .pp-panesplit > .q-splitter__separator:hover::after,
 .pp-root .pp-panesplit > .q-splitter__separator.pp-sep-active::after { background: rgba(var(--pp-accent-rgb), .35); }
@@ -218,6 +227,10 @@ body.pp-native.pp-right-open .pp-rtabbar { padding-right: 108px; }
 .pp-tree-group-end { height: 1px; margin: 6px 12px; background: var(--pp-border); }
 .pp-tree-pinrow .pp-ico-chev { color: var(--pp-muted); }
 .pp-tree-row > .pp-tree-add:hover { opacity: 1; color: var(--pp-fg); background: rgba(127, 127, 127, .22); }
+/* a folder's expand / collapse-all button stands left of its + (user 2026-11-19) */
+.pp-tree-row > .pp-tree-fold + .pp-tree-new { margin-left: 2px; }
+/* the header's expand / collapse-all button, right after the word FILES */
+.pp-files-head .pp-files-foldall.q-btn { margin-left: 4px; color: var(--pp-muted); }
 .pp-tree-name { overflow: hidden; text-overflow: ellipsis; font-size: 13px; pointer-events: none; }
 .pp-tree-row > * { pointer-events: none; }
 .pp-tree-empty { padding: 6px 12px; }
@@ -671,7 +684,7 @@ body.pp-page-dragging, body.pp-page-dragging * { cursor: row-resize !important; 
 .pp-chat-row { display: grid; grid-template-columns: auto minmax(0, 1fr) auto auto; grid-template-areas: "plus input model send"; align-items: center; gap: 4px; padding: 0 4px 0 6px; }
 .pp-chat-row > .pp-chat-plus { grid-area: plus; }
 .pp-chat-row > .pp-chat-input { grid-area: input; }
-.pp-chat-row > .pp-chat-model { grid-area: model; }
+.pp-chat-row > .pp-chat-mode { grid-area: model; }
 .pp-chat-row > .pp-chat-send { grid-area: send; }
 /* long or multi-line text: it takes the full width, the buttons go on their own line below */
 .pp-chat-multi .pp-chat-row { grid-template-areas: "input input input input" "plus . model send"; row-gap: 2px; align-items: end; }
@@ -1425,7 +1438,7 @@ body.pp-no-motion *, body.pp-no-motion *::before, body.pp-no-motion *::after { t
 .pp-outline-open .pp-outline-head .pp-chev { transform: rotate(90deg); }
 .pp-backlinks-head .pp-chev.pp-open { transform: rotate(-90deg); }
 .pp-chat-model[data-pp-open="1"] .pp-chat-model-chev { transform: rotate(180deg); }
-.pp-model-menu { animation: pp-pop var(--pp-dur) var(--pp-ease); transform-origin: bottom right; }
+.pp-model-menu { animation: pp-pop var(--pp-dur) var(--pp-ease); transform-origin: bottom left; }
 /* the + menu pops as the + turns into × (a 45° turn, from before-show / before-hide in the page) */
 .pp-chat-plus.q-btn .q-icon { transition: transform var(--pp-dur) var(--pp-ease); }
 .pp-chat-plus[data-pp-open="1"].q-btn .q-icon { transform: rotate(45deg); }
@@ -1601,6 +1614,33 @@ body.body--dark { --pp-set-box-bg: rgba(255, 255, 255, .035); }
 .pp-tabstrip > .pp-reopen { flex: none; height: 28px; margin: var(--pp-tab-drop) 4px 0 4px; padding: 2px; gap: 2px; border-radius: var(--pp-r-ctrl); }  /* as tall as the toggle's box beside it (2nd round, user 2026-11-18) */
 .pp-tabstrip > .pp-reopen > .pp-icon-btn.q-btn { margin: 0; width: 26px; height: 24px !important; min-height: 0 !important; min-width: 26px; border-radius: calc(var(--pp-r-ctrl) - 2px); }
 .pp-tabstrip > .pp-reopen + .pp-icon-btn.q-btn:last-child { margin-left: 0; }  /* its row's bottom line is a border: 1 px less room */
+/* The pane toggles, the folder-name title and the closed AI / Calendar box stand on the window
+   buttons' line (user 2026-11-18: "align them the way those 3 are"): no drop, centred in the bar.
+   The window buttons' row is the full 41 px, the bars have a 1 px border (40 px inside), so a 1 px
+   margin-top (moves a centred item by half) puts them on the same centre, 20.5 px. */
+.pp-left-top > *, .pp-ribbon-top > * { margin-top: 1px; }
+/* the tab strip draws its line as an inset shadow (no border), so its row is the full 41 px, like the
+   window buttons' row: no margin at all (the 1 px above was 0.5 px too low there) */
+.pp-tabstrip > .pp-icon-btn.q-btn.pp-pane-toggle { margin-top: 0; }
+/* the closed AI / Calendar buttons are centred on the strip's bottom line, the "tab line" (user
+   2026-11-18, outline in his screenshot): half in the strip, half over the note header; `top`
+   moves it without changing the row's layout. The pane toggle and window buttons stay at 20.5. */
+.pp-tabstrip > .pp-reopen { margin-top: 0; position: relative; top: 20px; z-index: 3;
+  /* opaque, or the strip's line shows through the grey: the same tint, laid over a solid colour */
+  background: linear-gradient(rgba(127, 127, 127, .14), rgba(127, 127, 127, .14)), var(--pp-bg-side); }
+/* 30 px between it and the pane toggle's box (user 2026-11-18), a dot of radius 3 px in the accent colour on the strip's
+   line in the middle of that gap and the same on its left (the box's centre is on that line; each dot's centre is 15 px past the box's edge) */
+.pp-tabstrip > .pp-reopen { margin-right: 30px; }
+/* Each side is one 18 px piece from the dot's outer edge to the box: the dot (radius 3 px, accent) and,
+   between it and the box, a patch that hides the strip's line (2 px tall around the line at the box's
+   centre: strip colour above it, page colour below it), so no line runs from the box to the dots. */
+.pp-tabstrip > .pp-reopen::before, .pp-tabstrip > .pp-reopen::after { content: ""; position: absolute; top: calc(50% - 3px); width: 18px; height: 6px; pointer-events: none; background-repeat: no-repeat; }
+.pp-tabstrip > .pp-reopen::before { left: -18px;
+  background-image: radial-gradient(circle 3px at 3px 3px, var(--pp-accent) 98%, transparent 100%), linear-gradient(var(--pp-bg-side) 50%, var(--pp-bg) 50%);
+  background-position: 0 0, 6px 2px; background-size: 6px 6px, 12px 2px; }
+.pp-tabstrip > .pp-reopen::after { right: -18px;
+  background-image: radial-gradient(circle 3px at 3px 3px, var(--pp-accent) 98%, transparent 100%), linear-gradient(var(--pp-bg-side) 50%, var(--pp-bg) 50%);
+  background-position: 12px 0, 0 2px; background-size: 6px 6px, 12px 2px; }
 /* the window buttons are the strip's buttons: 30 × 30, 4 px apart */
 .pp-wincontrols { gap: 4px; }
 .pp-wincontrols .pp-icon-btn.q-btn { width: 30px; height: 30px; min-width: 0; min-height: 0; }
@@ -1709,6 +1749,29 @@ body.body--dark .pp-aidiff-chip-warn { color: #e3b341; }
 .pp-askpop-box { animation: pp-pop var(--pp-dur) var(--pp-ease); }
 .pp-askpop-bottom { width: 100%; flex: none; gap: 6px; }
 /* the card as the chat's composer: 6 px around a 34 px row, 24 px corners */
+/* The note under the popup's input card and its "to chat" button is blurred (5 px) in a rim
+   that follows each one's rounded shape and fades out over --pp-halo-f (no hard edge). The fade is
+   a mask made of four corner rings (radial) and two edge bands (linear). --pp-halo-r is the
+   element's corner radius (both are 46 px tall pills); the element itself is left out of the
+   mask. Not in the mini chat: its box is solid. */
+.pp-askpop .pp-askpop-card, .pp-askpop .pp-askpop-to-chat.q-btn { position: relative; isolation: isolate; --pp-halo-r: 23px; --pp-halo-f: 10px; --pp-halo-R: calc(var(--pp-halo-r) + var(--pp-halo-f)); }
+.pp-askpop .pp-askpop-card::after, .pp-askpop .pp-askpop-to-chat.q-btn::after, .pp-askpop.pp-askpop-chat::after {
+  content: ""; position: absolute; inset: calc(-1px - var(--pp-halo-f)); z-index: -1; pointer-events: none; border-radius: 0;
+  -webkit-backdrop-filter: blur(5px); backdrop-filter: blur(5px);
+  /* a ring: nothing over the element itself (or its own border gets blurred), full at its edge,
+     fading out to the rim's edge */
+  --c: transparent var(--pp-halo-r), #000 var(--pp-halo-r), transparent var(--pp-halo-R);
+  --e: transparent 0, #000 var(--pp-halo-f), transparent var(--pp-halo-f), transparent calc(100% - var(--pp-halo-f)), #000 calc(100% - var(--pp-halo-f)), transparent 100%;
+  mask-image:
+    radial-gradient(circle var(--pp-halo-R) at 100% 100%, var(--c)), radial-gradient(circle var(--pp-halo-R) at 0 100%, var(--c)),
+    radial-gradient(circle var(--pp-halo-R) at 100% 0, var(--c)), radial-gradient(circle var(--pp-halo-R) at 0 0, var(--c)),
+    linear-gradient(to right, var(--e)), linear-gradient(to bottom, var(--e));
+  mask-position: left top, right top, left bottom, right bottom, center, center;
+  mask-size: var(--pp-halo-R) var(--pp-halo-R), var(--pp-halo-R) var(--pp-halo-R), var(--pp-halo-R) var(--pp-halo-R), var(--pp-halo-R) var(--pp-halo-R),
+    100% max(0px, calc(100% - 2 * var(--pp-halo-R))), max(0px, calc(100% - 2 * var(--pp-halo-R))) 100%;
+  mask-repeat: no-repeat;
+}
+.pp-askpop-chat .pp-askpop-card::after, .pp-askpop-chat .pp-askpop-to-chat.q-btn::after { display: none; }
 .pp-askpop .pp-askpop-card { flex: 1; min-width: 0; background: var(--pp-askpop-tint); border-color: var(--pp-askpop-line); box-shadow: 0 4px 16px rgba(0, 0, 0, .12); }
 .pp-askpop .pp-askpop-card:focus-within { border-color: rgba(var(--pp-accent-rgb), .6); }
 .pp-askpop .pp-askpop-row { grid-template-columns: auto minmax(0, 1fr) auto; grid-template-areas: "plus input send"; padding: 0 0 0 4px; }
@@ -1917,3 +1980,202 @@ body.body--dark .pp-aidiff-chip-warn { color: #e3b341; }
    selection in the system Highlight (!important); ours is the accent like everywhere else */
 .pp-editor .cm-editor .cm-content :focus::selection,
 .pp-editor .cm-editor .cm-content :focus ::selection { background: rgba(var(--pp-accent-rgb), .30) !important; color: var(--pp-fg); }
+
+/* The pane toggles in a box like the other tool boxes (user 2026-11-18): the same grey fill, the
+   hover lifts the icon onto the page colour with the same soft shadow as .pp-tools buttons. */
+.pp-icon-btn.q-btn.pp-pane-toggle { width: 30px; background: rgba(127, 127, 127, .14); border-radius: var(--pp-r-ctrl); }
+.pp-icon-btn.q-btn.pp-pane-toggle:hover { background: var(--pp-bg); box-shadow: 0 1px 3px rgba(0, 0, 0, .15); }
+/* the closed AI / Calendar box and its buttons 20 % bigger (user 2026-11-18): box 28 → 34 px high,
+   buttons 26 × 24 → 31 × 30 (same 2 px padding and gap), icons 16 → 19 px, corners × 1.2 */
+.pp-tabstrip > .pp-reopen { height: 34px; border-radius: calc(var(--pp-r-ctrl) * 1.2); }
+.pp-tabstrip > .pp-reopen > .pp-icon-btn.q-btn { width: 31px; min-width: 31px; height: 30px !important; border-radius: calc((var(--pp-r-ctrl) - 2px) * 1.2); }
+.pp-tabstrip > .pp-reopen .q-icon { font-size: 19px; }
+/* no notes open: the + stands 2 px from the left side pane's line (user 2026-11-18; it was 15 =
+   4 strip padding + 8 row padding + 3 margin) — the strip and the empty row give up their padding */
+.pp-tabstrip:not(:has(.pp-tab)) { padding-left: 0; }
+.pp-tabstrip:not(:has(.pp-tab)) > .pp-tabbar { padding-left: 0; }
+.pp-tabstrip:not(:has(.pp-tab)) > .pp-tab-new.q-btn { margin-left: 2px; }
+/* 6 px gaps (user 2026-11-18): the right pane toggle 6 px from the pane's vertical line (strip padding
+   4 + 2) and 6 px above and below (the line is at y = 40, so the bar's centre is 20); the window
+   buttons, the left toggle and the folder name move to that centre too, to stay level with it. The
+   tree's search / add buttons box is 6 px under the header's line (it was 4; right gap is 6). */
+.pp-tabstrip > .pp-icon-btn.q-btn.pp-pane-toggle { margin-right: 2px; margin-bottom: 1px; }
+.pp-wincontrols { height: calc(var(--pp-tab-h) - 1px); }
+.pp-left-top > *, .pp-ribbon-top > * { margin-top: 0; }
+.pp-files-head .pp-tools { margin-top: 4px; }
+/* the bottom bar's tools box as the top one's (user 2026-11-18): 6 px under the bar's line, 6 px from
+   the pane's vertical line; both bars stay 41 px high (--pp-tab-h = --pp-foot-h) and as wide as
+   the panes above them */
+.pp-profile { padding-right: 6px; }
+.pp-profile .pp-tools { margin-top: 0; }
+/* the bottom bars are 4 px taller than the top ones (user 2026-11-18: 6 px under the tools box and 6 px
+   above it): all three (profile row, editor footer, folded pane's foot) together, so their top
+   lines stay on one horizontal line */
+.pp-profile, .pp-footer, .pp-ribbon-foot { height: calc(var(--pp-foot-h) + 4px); }
+/* hover box of an inactive tab (user 2026-11-18, back to 3 px, user's table): 3 px from the line below (it was 2) and 3 px from the
+   pane's vertical line on the left when it is the row's first tab (it was 11 / 15), 3 px from a
+   neighbour tab's side line (unchanged); the strip top stays 10 px. The first tab's box reaches out of
+   the tab into the row's left padding (--pp-r-ctrl, plus the strip's 4 px for note tabs), so the tabs
+   themselves do not move. */
+.pp-tab:not(.pp-tab-active):not(.pp-tab-shown):hover::before, .pp-rtab:not(.pp-rtab-active):hover::before { inset: 4px 3px 4px; }
+/* The outline's rows have the file tree rows' box (user 2026-11-18: "the outline hover box is not the
+   same"): the row's 28 px height with 1 px kept clear above and below for the open heading's box
+   (a transparent border, the colour drawn inside it), the hover box paints the whole row (the
+   `background` shorthand resets the clip, as on a tree row), 5 px corners; ends 4 px from the edge
+   (outline.py). */
+.pp-outline-row { height: var(--pp-row-h); min-height: 0; padding-top: 0; padding-bottom: 0; line-height: calc(var(--pp-row-h) - 2px); border-radius: 5px; border-top: 1px solid transparent; border-bottom: 1px solid transparent; background-clip: padding-box; }
+.pp-outline-row.pp-outline-on { background-color: rgba(var(--pp-accent-rgb), .14); }
+/* The folded left strip (user 2026-11-18): tool boxes 30 px wide, 6 px from the window edge and from
+   the strip's vertical line (so the strip is 6 + 30 + 6 = 42 px), 6 px under the header's line and
+   6 px over the foot's line; the pane toggle in the header stands on the same 6 px. */
+.pp-ribbon { flex: 0 0 42px; width: 42px; }
+.pp-ribbon .pp-tools-column { width: 30px; padding: 3px 1px; }
+.pp-ribbon-top { padding-left: 6px; margin-bottom: 4px; }  /* + the column's 2 px gap: the tools box is 6 px under the line */
+/* The note header's ⋯ and the folded strip's outline button have the pane toggles' permanent box
+   (user 2026-11-18), 30 × 28 like them; in split view the ⋯ already sits in a box with the ×, so it
+   keeps no second one. */
+.pp-notehead .pp-pane-toggle, .pp-ribbon-bottom .pp-pane-toggle { height: 28px; min-height: 0; }
+.pp-seg .pp-icon-btn.q-btn.pp-pane-toggle { background: transparent; }
+.pp-seg .pp-icon-btn.q-btn.pp-pane-toggle:hover { background: var(--pp-bg); }
+/* The ⋮ box of the chat header and the × / ⋯ box of a split note header (user 2026-11-18): 28 px
+   high, 30 px per button (like the pane toggles), so in the headers' 40 px (inside the line) they
+   stand 6 px from the line above and below; same corner as the toggles. */
+.pp-chat-head .pp-chat-tools, .pp-notehead .pp-notehead-tools.pp-seg { height: 28px; padding: 2px 1px; box-sizing: border-box; border-radius: var(--pp-r-ctrl); }
+.pp-chat-tools .pp-icon-btn.q-btn, .pp-notehead-tools.pp-seg .pp-icon-btn.q-btn { width: 28px; min-width: 28px; height: 24px; min-height: 0; border-radius: calc(var(--pp-r-ctrl) - 2px); }
+/* the note header's ⋯ stands under the pane toggle, both 6 px from the pane's right line (user 2026-11-18) */
+.pp-notehead { padding-right: 6px; }
+
+/* Tab insides (user 2026-11-18). Inactive tab, hover box (inset 3 px at the sides, y 10–37) around the
+   name: name 6 px from the box left / top / bottom, the × box (19 × 19) 4 px from the box right / top /
+   bottom. Selected tab, the tab itself is the box (y 6–41): name 10 px from the left / top / bottom,
+   the × box (21 × 21) 7 px from the right / top / bottom. Note tabs and the right pane's tabs alike. */
+.pp-tab:not(.pp-tab-active):not(.pp-tab-shown), .pp-rtab:not(.pp-rtab-active) { padding-left: var(--pp-tab-gap); }
+.pp-tabstrip .pp-tab:is(.pp-tab-active, .pp-tab-shown), .pp-rtabbar .pp-rtab.pp-rtab-active { padding-left: var(--pp-tab-gap); }
+.pp-tab-title, .pp-rtab-title { position: relative; top: -.25px; }  /* the text's box centre on the hover box's */
+.pp-tab:not(.pp-tab-active):not(.pp-tab-shown) > .pp-tab-close, .pp-rtab:not(.pp-rtab-active) > .pp-rtab-close { padding: 2.5px; }
+.pp-tab:is(.pp-tab-active, .pp-tab-shown) > .pp-tab-close, .pp-rtab-active > .pp-rtab-close { padding: 3.5px; }
+.pp-tab:not(.pp-tab-active, .pp-tab-shown) > .pp-tab-close { transform: translateY(-50%); }
+.pp-tab:is(.pp-tab-active, .pp-tab-shown) > .pp-tab-close, .pp-rtab > .pp-rtab-close { position: relative; top: -.5px; }
+.pp-rtab:not(.pp-rtab-active) > .pp-rtab-close { margin-right: -3px; }  /* 4 px from the hover box's right edge, as on a note tab */
+/* The first tab's hover box is 6 px from the pane's vertical line (user 2026-11-18), dimensions as
+   they are: the row starts 3 px (tab) + 3 px (the box's inset) from the line, so the strip and the
+   rows give up their left room (4 px strip padding, 8 px ramp room → 3 px); the room was for the left
+   ramp of a selected first tab, which is not drawn there (the tab then starts 3 px from the line). */
+.pp-tabstrip { padding-left: 0; }
+.pp-tabbar, .pp-rtabbar { padding-left: 3px; }
+/* A selected first tab stands 6 px from the line (user 2026-11-18, "the slope got disrupted"): its left
+   ramp is back, 6 px wide (the room there) instead of 8, ending at the line; the row starts 6 px in
+   while the first tab is the selected one (3 px while it is not, so its hover box is 6 px from the line). */
+.pp-tabbar:has(> :first-child:is(.pp-tab-active, .pp-tab-shown)), .pp-rtabbar:has(> :first-child.pp-rtab-active) { padding-left: 6px; }
+.pp-tabbar > .pp-tab:first-child:is(.pp-tab-active, .pp-tab-shown)::before, .pp-rtabbar > .pp-rtab:first-child.pp-rtab-active::before { width: 6px; height: 6px; left: -6px; border-bottom-right-radius: 6px; box-shadow: 3px 3px 0 3px var(--pp-tab-fill); }
+/* the On / Off control of a setting (components/settings.py): not available (AI without a backend) */
+.pp-seg.pp-seg-disabled { opacity: .5; pointer-events: none; }
+/* the On / Off control of a setting: small and without text, the two-part track and the raised pill of
+   the mode control (user 2026-11-18); the words are the tooltips */
+.pp-seg.pp-seg-onoff { padding: 2px; gap: 2px; border-radius: calc(var(--pp-r-ctrl) + 1px); }
+.pp-seg-onoff .pp-seg-item { width: 18px; height: 16px; padding: 0; gap: 0; border-radius: calc(var(--pp-r-ctrl) - 1px); }
+/* the On / Off control (user 2026-11-18): squarer corners (track 6 px, parts 4 px), and the part that
+   is "on" is drawn in the accent colour (the first part is On; Off keeps the neutral pill) */
+.pp-seg.pp-seg-onoff { border-radius: calc(var(--pp-r-sm) + 2px); }
+.pp-seg-onoff .pp-seg-item { border-radius: var(--pp-r-sm); }
+.pp-seg-onoff .pp-seg-on-part.pp-seg-on, .pp-seg-onoff .pp-seg-on-part.pp-seg-on:hover { background: var(--pp-accent); }
+/* On / Off is one switch (user 2026-11-19): Off left, On right, a click anywhere on it flips it */
+.pp-seg.pp-seg-onoff { cursor: pointer; }
+.pp-seg-onoff .pp-seg-item { pointer-events: none; }
+/* the accent popup is balanced (user 2026-11-18): the swatches spread over the popup's width, first one
+   on the left edge of the colour field and last on its right edge, instead of 11 px short of it */
+.pp-swatchgrid { width: 100%; justify-content: space-between; }
+/* An option that is an icon alone (the Mode picker's sun / moon / monitor) is a square: the icon has the same
+   5 px of room on the left and right as above and below (user 2026-11-18), it was 13 px at the sides. */
+.pp-seg-item.pp-seg-item-icon { flex: none; padding: 5px; }
+/* the full-width mode picker at the bottom of the Settings pane keeps its options sharing the track */
+.pp-set-mode .pp-seg-item.pp-seg-item-icon { flex: 1 1 0; padding: 6px 0; }
+/* The chat box sits 9 px lower (user 2026-11-18): the editor footer's top line (y = 755, 45 px over the
+   window's bottom) runs through the middle of the box. The footer of the pane keeps its 86 px (17 above
+   the box, the 2 px gap, the 19 px note, no bottom padding), so the log above does not change. */
+.pp-chat-compose:has(.pp-chat-disclaimer) { padding-top: 17px; padding-bottom: 0; }
+.pp-chat-disclaimer { padding-top: 5px; }
+/* No disclaimer under the box any more (user 2026-11-18): the 21 px it took (2 gap + 19 note) stay as
+   padding, so the box keeps the same place and the footer's top line still runs through its middle. */
+.pp-chat-compose { padding-top: 17px; padding-bottom: 21px; }
+/* The mini chat (user 2026-11-19): the same blurred rim as the small box around the whole window
+   (the ::after of the box's card, here with the window's corner radius); no line under the header,
+   six dots (3 × 2) at its top middle to drag it by; the × 6 px from the window's top and right edge
+   (5 px inside its 1 px border); resizable from every side and corner (askpop.js, the size is kept
+   in --pp-askpop-w / --pp-askpop-full for the rest of the session). */
+.pp-askpop.pp-askpop-chat { isolation: isolate; --pp-halo-r: var(--pp-r-popup); --pp-halo-f: 10px; --pp-halo-R: calc(var(--pp-halo-r) + var(--pp-halo-f)); width: var(--pp-askpop-w, min(384px, calc(100vw - 12px))); max-width: calc(100vw - 12px); }
+.pp-askpop-chat .pp-askpop-head { border-bottom: none; padding-right: 30px; }
+.pp-askpop-grip { display: none; }
+.pp-askpop-chat .pp-askpop-grip { display: block; position: absolute; top: 5px; left: 50%; width: 12px; height: 8px; transform: translateX(-50%); pointer-events: none; background: radial-gradient(circle, var(--pp-muted) 1px, transparent 1.3px) 0 0 / 4px 4px; opacity: .8; }
+.pp-askpop-chat .pp-askpop-close.q-btn { position: absolute; top: 5px; right: 5px; z-index: 2; }
+.pp-askpop-rz { display: none; }
+.pp-askpop-chat .pp-askpop-rz { display: block; position: absolute; z-index: 3; }
+.pp-askpop-rz-n, .pp-askpop-rz-s { left: 10px; right: 10px; height: 8px; cursor: ns-resize; }
+.pp-askpop-rz-e, .pp-askpop-rz-w { top: 10px; bottom: 10px; width: 8px; cursor: ew-resize; }
+.pp-askpop-rz-n { top: -4px; } .pp-askpop-rz-s { bottom: -4px; }
+.pp-askpop-rz-e { right: -4px; } .pp-askpop-rz-w { left: -4px; }
+.pp-askpop-rz-ne, .pp-askpop-rz-nw, .pp-askpop-rz-se, .pp-askpop-rz-sw { width: 14px; height: 14px; }
+.pp-askpop-rz-ne { top: -4px; right: -4px; cursor: nesw-resize; } .pp-askpop-rz-sw { bottom: -4px; left: -4px; cursor: nesw-resize; }
+.pp-askpop-rz-nw { top: -4px; left: -4px; cursor: nwse-resize; } .pp-askpop-rz-se { bottom: -4px; right: -4px; cursor: nwse-resize; }
+.pp-askpop-resizing, .pp-askpop-resizing * { user-select: none; }
+/* The calendar's month / year picker (user 2026-11-19): a click on the title opens a popup with the
+   year (‹ ›) and the twelve months; the month on screen is the accent one. */
+.pp-cal-title { cursor: pointer; border-radius: var(--pp-r-ctrl); padding: 0 4px; margin-left: -4px; }
+.pp-cal-title:hover { background: rgba(127, 127, 127, .12); }
+.pp-cal-pick-chev { font-size: var(--pp-icon-s); color: var(--pp-muted); align-self: center; margin-left: -4px; }
+.q-menu.pp-cal-picker { padding: 8px; border: 1px solid var(--pp-border); border-radius: var(--pp-r-popup); background: var(--pp-bg); box-shadow: 0 8px 28px rgba(0, 0, 0, .2); color: var(--pp-fg); }
+.pp-cal-picker-head { justify-content: space-between; margin-bottom: 6px; }
+.pp-cal-picker-year { font-size: 14px; font-weight: 600; }
+.pp-cal-picker-grid { display: grid; grid-template-columns: repeat(3, 56px); gap: 4px; }
+.pp-cal-picker-month { padding: 6px 0; text-align: center; font-size: 13px; border-radius: var(--pp-r-ctrl); cursor: pointer; }
+.pp-cal-picker-month:hover { background: rgba(127, 127, 127, .15); }
+.pp-cal-picker-month.pp-cal-picker-on, .pp-cal-picker-month.pp-cal-picker-on:hover { background: var(--pp-accent); color: #fff; }
+
+/* List bullets as exact shapes (user 2026-11-19: radius 1 px more than the font's dot, 2.5 → 3.5 px).
+   The span keeps its 1ch width; the shape's centre sits where the dot's was (0.39em over the
+   baseline). widgets.js sets data-glyph; an unknown glyph is still drawn as text. */
+.pp-bullet[data-glyph]::before { content: ""; display: inline-block; box-sizing: border-box; width: 7px; height: 7px; vertical-align: calc(0.39em - 3.5px); background: var(--pp-accent); }
+.pp-bullet[data-glyph="disc"]::before { border-radius: 50%; }
+.pp-bullet[data-glyph="circle"]::before { border-radius: 50%; background: transparent; border: 1.5px solid var(--pp-accent); }
+.pp-bullet[data-glyph="square"]::before { border-radius: 1px; }
+
+/* The context bar (user 2026-11-19): a tab standing on the chat box's top edge, its left edge at the
+   middle of the + button (1 px border + 6 px padding + 17 px = 24 px into the card); the box itself
+   keeps its rounded corners. Folder · Web search (switch only for now) · model (menu) · how AI edits
+   land (menu) · a chevron that folds the bar to itself. Narrow panes keep the icons, the words go. */
+.pp-chat-compose { container: ppcompose / inline-size; }
+.pp-chat-bar { align-self: flex-start; max-width: calc(100% - 24px - 8px); margin: 0 0 -2px 24px; gap: 2px; padding: 4px 2px 3px 4px; border-radius: 14px 14px 0 0; background: rgba(127, 127, 127, .08); }
+.pp-chat-bar-items { display: flex; align-items: center; gap: 2px; min-width: 0; overflow: hidden; }
+.pp-chat-bar-item, .pp-chat-bar .pp-chat-bar-item.q-btn { display: flex; align-items: center; flex: 0 1 auto; min-width: 0; height: 28px; min-height: 0; gap: 5px; padding: 0 6px; border-radius: var(--pp-r-ctrl); font-size: 13px; font-weight: 400; color: var(--pp-muted); transition: color var(--pp-dur-fast), background var(--pp-dur-fast); }
+.pp-chat-bar .pp-chat-bar-item.q-btn { max-width: none; }
+.pp-chat-bar .pp-chat-bar-item.q-btn .q-btn__content { gap: 5px; flex-wrap: nowrap; min-width: 0; }
+.pp-chat-bar .pp-chat-bar-item.q-btn:hover, .pp-chat-bar .pp-chat-bar-item[data-pp-open="1"].q-btn { background: rgba(127, 127, 127, .14); color: var(--pp-fg); }
+.pp-chat-bar-item .q-icon { flex: none; }
+.pp-chat-bar-text, .pp-chat-bar .pp-chat-model-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pp-chat-bar-folder { cursor: default; flex-shrink: 1; }
+.pp-chat-bar .pp-chat-model.q-btn { flex-shrink: 3; }
+.pp-chat-bar-folder .pp-chat-bar-text { max-width: 140px; }
+.pp-chat-bar .pp-chat-model-name { max-width: 150px; }
+.pp-chat-bar .pp-chat-bar-item[data-pp-on="1"].q-btn { color: var(--pp-accent); }
+.pp-chat-bar .pp-chat-bar-fold.q-btn { flex: none; width: 22px; min-width: 22px; height: 28px; color: var(--pp-muted); }
+.pp-chat-bar-fold .q-icon { transition: transform var(--pp-dur) var(--pp-ease); }
+.pp-chat-bar-folded .pp-chat-bar-items { display: none; }
+.pp-chat-bar-folded .pp-chat-bar-fold .q-icon { transform: rotate(180deg); }
+.pp-chat-bar-folded { padding-left: 4px; }
+@container ppcompose (max-width: 400px) {
+  .pp-chat-bar .pp-chat-bar-item:not(.pp-chat-bar-folder):not(.pp-chat-model) .pp-chat-bar-text { display: none; }
+  .pp-chat-bar .pp-chat-model-chev { display: none; }
+}
+/* Auto / Read (user 2026-11-19): where the model picker was, one word in a tool box that flips on a
+   click; Auto (the default) carries an accent dot. 3 + 28 + 3 = 34 px, the send button's height. */
+.pp-chat-mode.pp-seg { padding: 3px; perspective: 120px; }
+.pp-chat-mode .pp-chat-mode-btn.q-btn { height: 28px; min-height: 0; padding: 0 10px; border-radius: var(--pp-r-ctrl); font-size: 13px; font-weight: 400; color: var(--pp-fg); }
+.pp-chat-mode .pp-chat-mode-btn.q-btn:hover { background: var(--pp-bg); box-shadow: 0 1px 3px rgba(0, 0, 0, .15); }
+.pp-chat-mode .pp-chat-mode-btn .q-btn__content { gap: 6px; flex-wrap: nowrap; }
+.pp-chat-mode-dot { width: 7px; height: 7px; flex: none; border-radius: 50%; background: var(--pp-accent); }
+.pp-chat-mode[data-pp-mode="read"] .pp-chat-mode-dot { display: none; }
+.pp-chat-mode-word { display: inline-block; min-width: 2.4em; text-align: center; }
+.pp-chat-mode[data-pp-mode="auto"] .pp-chat-mode-word { animation: pp-flip-a var(--pp-dur) var(--pp-ease); }
+.pp-chat-mode[data-pp-mode="read"] .pp-chat-mode-word { animation: pp-flip-b var(--pp-dur) var(--pp-ease); }
+@keyframes pp-flip-a { from { opacity: 0; transform: rotateX(90deg); } }
+@keyframes pp-flip-b { from { opacity: 0; transform: rotateX(-90deg); } }

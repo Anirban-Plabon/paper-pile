@@ -93,9 +93,12 @@ class CalendarPane:
         self._body.clear()
         with self._body:
             with ui.row().classes("pp-cal-head items-center no-wrap"):
-                with ui.row().classes("pp-cal-title items-baseline no-wrap"):
+                with ui.row().classes("pp-cal-title items-baseline no-wrap") as title:
                     ui.label(month_name(self.month)).classes("pp-cal-month")
                     ui.label(str(self.year)).classes("pp-cal-year")
+                    line_icon("chevron-down", "s").classes("pp-cal-pick-chev")
+                    self._month_picker()
+                title.props('data-tip="Pick a month and year"')
                 ui.space()
                 prev = line_icon("chevron-left", "s").classes("pp-cal-nav")
                 prev.on("click", lambda _e: self._step(-1))
@@ -119,6 +122,50 @@ class CalendarPane:
                 ui.label(f"Daily notes go {note}, named {fmt}.").classes("pp-muted")
                 link = ui.label("Change").classes("pp-cal-link")
                 link.on("click", lambda _e: self._open_settings())
+
+    def _month_picker(self) -> None:
+        """A click on the month / year opens a popup: the year with ‹ › and the twelve months
+        (user 2026-11-19: pick any month and year, not only step a month at a time)."""
+        shown = {"year": self.year}
+        with ui.menu().props("no-focus").classes("pp-cal-picker") as menu:
+            with ui.row().classes("pp-cal-picker-head items-center no-wrap"):
+                prev = line_icon("chevron-left", "s").classes("pp-cal-nav")
+                year = ui.label(str(self.year)).classes("pp-cal-picker-year")
+                nxt = line_icon("chevron-right", "s").classes("pp-cal-nav")
+            months: list[ui.label] = []
+            with ui.element("div").classes("pp-cal-picker-grid"):
+                for m in range(1, 13):
+                    cell = ui.label(month_name(m)[:3]).classes("pp-cal-picker-month")
+                    cell.on("click", lambda _e, m=m: pick(m))
+                    months.append(cell)
+
+        def mark() -> None:
+            year.set_text(str(shown["year"]))
+            for m, cell in enumerate(months, start=1):
+                on = shown["year"] == self.year and m == self.month
+                cell.classes(add="pp-cal-picker-on") if on else cell.classes(
+                    remove="pp-cal-picker-on"
+                )
+
+        def step(delta: int) -> None:
+            shown["year"] += delta
+            mark()
+
+        def pick(m: int) -> None:
+            menu.close()
+            self.year, self.month = shown["year"], m
+            self.refresh()
+
+        def reset() -> None:  # opens on the month on screen, not where it was left
+            shown["year"] = self.year
+            mark()
+
+        menu.on("before-show", lambda _e: reset())
+        prev.on("click", lambda _e: step(-1))
+        nxt.on("click", lambda _e: step(1))
+        prev.props('data-tip="Previous year"')
+        nxt.props('data-tip="Next year"')
+        mark()
 
     def _day(self, d: date, in_month: bool, is_today: bool, marks, active, folder, fmt) -> None:  # type: ignore[no-untyped-def]
         cell = ui.element("div").classes("pp-cal-day")

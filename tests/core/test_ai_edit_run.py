@@ -440,3 +440,27 @@ def test_an_insertion_at_a_line_end_shows_under_that_line() -> None:
     assert live_change(note, 3, 3, "\n\nnew").text == "new"
     assert not live_change(note, 4, 4, "x").after  # a line's start: above that line
     assert not live_change(note, 0, 3, "x").after  # a replacement
+
+
+async def test_a_write_cut_off_at_its_budget_is_written_again_with_more_room(
+    tmp_path: Path,
+) -> None:
+    """User 2026-11-19: a streamed rewrite stopped half-way, "the answer was cut off or empty".
+    A request that makes the text much fixed outgrows the answer budget (1.25 × the old text):
+    once more with three times the room, not a dead end."""
+    fixed = "The backups run every night. See [[Ops]]."
+    ai, fake = make(tmp_path, ["The backups run every", fixed])
+    fake.finishes = ["length"]
+    result = await run_on(ai, sel(BACKUPS), "fix grammar").run()
+    assert len(fake.calls) == 2 and fixed in final(result)
+    first, second = fake.options_seen
+    assert first is not None and second is not None
+    assert second.num_predict == 3 * reply_room(estimate_tokens(BACKUPS))
+    assert first.num_predict == reply_room(estimate_tokens(BACKUPS))
+
+
+async def test_a_write_cut_off_twice_is_dropped(tmp_path: Path) -> None:
+    ai, fake = make(tmp_path, ["The backups", "The backups run"])
+    fake.finish = "length"
+    result = await run_on(ai, sel(BACKUPS), "fix grammar").run()
+    assert len(fake.calls) == 2 and result.proposal is None
