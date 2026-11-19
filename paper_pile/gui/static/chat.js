@@ -242,8 +242,8 @@ document.addEventListener('paste', function (e) {
     }
   }).observe(document.body, { childList: true, subtree: true });
 })();
-// The context bar over the chat box (chat.py, user 2026-11-19): it may reach the middle of the box at
-// most; as the pane narrows, Web search and the edit mode keep only their icons (data-pp-fit 1), then
+// The context bar over the chat box (chat.py, user 2026-11-19): it reaches at most the middle of the
+// send button (24 px from the box's right edge, as it starts 24 px from the left); as the pane narrows, Web search and the edit mode keep only their icons (data-pp-fit 1), then
 // go (2), then the folder keeps only its icon (3); after that the model's name shortens. Widths come
 // from the words (canvas) and the CSS sizes below, never from the bar's own layout, so a stage cannot
 // change what decides it.
@@ -260,7 +260,7 @@ document.addEventListener('paste', function (e) {
     const compose = bar.parentElement;
     const cs = getComputedStyle(compose);
     const box = compose.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight);
-    const room = Math.min(box - 32, Math.max(box / 2 - 24, 190)) - BAR_PAD - FOLD - ITEM_GAP;
+    const room = box - 48 - BAR_PAD - FOLD - ITEM_GAP;
     const icon = PAD + ICON;
     const full = (sel, cap) => {
       const w = words(bar.querySelector(sel), cap);

@@ -2144,10 +2144,11 @@ body.body--dark .pp-aidiff-chip-warn { color: #e3b341; }
    keeps its rounded corners. Folder (menu) · Web search (switch only for now) · model (menu) · how AI
    edits land (menu) · a 30 × 28 hide button 6 px from the bar's top and right edge that folds the bar
    to the model. Second round (user 2026-11-19): corners follow the buttons inside (12 px), the bar
-   ends at the middle of the box at most, and as the pane narrows chat.js sets data-pp-fit: 1 = Web
+   reaches at most the middle of the send button (24 px from the box's right, as its left edge is
+   24 px from the left: 1 px border + 6 px padding + 17 px), and as the pane narrows chat.js sets data-pp-fit: 1 = Web
    search and edits keep only their icons, 2 = they go, 3 = the folder keeps only its icon. */
 .pp-chat-compose { container: ppcompose / inline-size; }
-.pp-chat-bar { align-self: flex-start; max-width: min(calc(100% - 32px), max(calc(50% - 24px), 190px)); margin: 0 0 -2px 24px; gap: 2px; padding: 6px 6px 3px; border-radius: var(--pp-r-popup) var(--pp-r-popup) 0 0; background: rgba(127, 127, 127, .08); }
+.pp-chat-bar { align-self: flex-start; max-width: calc(100% - 48px); margin: 0 0 -2px 24px; gap: 2px; padding: 6px 6px 3px; border-radius: var(--pp-r-popup) var(--pp-r-popup) 0 0; background: rgba(127, 127, 127, .08); }
 .pp-chat-bar-items { display: flex; align-items: center; gap: 2px; min-width: 0; overflow: hidden; }
 .pp-chat-bar-item, .pp-chat-bar .pp-chat-bar-item.q-btn { display: flex; align-items: center; flex: 0 1 auto; min-width: 0; height: 28px; min-height: 0; gap: 5px; padding: 0 6px; border-radius: var(--pp-r-ctrl); font-size: 13px; font-weight: 400; color: var(--pp-muted); transition: color var(--pp-dur-fast), background var(--pp-dur-fast); }
 .pp-chat-bar .pp-chat-bar-item.q-btn { max-width: none; }
