@@ -24,6 +24,10 @@
     const dark = isDark(cfg);
     const root = document.documentElement;
     const body = document.body;
+    // the new colours land at once: the hover fades (app.css) would otherwise fade every tab,
+    // row and button from the old theme's colour — a selected tab showed as a dark box for a
+    // moment (user 2026-11-19). Back on once the switch is painted.
+    root.classList.add('pp-theme-switch');
     body.classList.toggle('body--dark', dark);
     body.classList.toggle('body--light', !dark);
     body.classList.toggle('pp-compact', cfg.density === 'compact');
@@ -49,6 +53,10 @@
       if (window.Quasar && window.Quasar.Dark) window.Quasar.Dark.set(dark);
     } catch (e) { /* the classes above are enough */ }
     window.ppIsDark = dark;
+    void getComputedStyle(body).backgroundColor; // apply the new colours now, without transitions
+    requestAnimationFrame(function () {
+      requestAnimationFrame(function () { root.classList.remove('pp-theme-switch'); });
+    });
     tell(dark);
   }
 

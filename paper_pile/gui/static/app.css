@@ -1434,6 +1434,8 @@ body.pp-no-motion *, body.pp-no-motion *::before, body.pp-no-motion *::after { t
 /* hover backgrounds fade instead of flickering when the mouse sweeps a list */
 .pp-tree-row, .pp-tab, .pp-rtab, .pp-icon-btn.q-btn, .pp-ctx-item.q-btn, .pp-note-menu-item, .pp-picker-row, .pp-set-navitem, .pp-seg-item { transition: background-color var(--pp-dur-fast) ease, color var(--pp-dur-fast) ease, box-shadow var(--pp-dur-fast) ease; }
 .pp-tab-close, .pp-rtab-close, .pp-fold { transition: opacity var(--pp-dur-fast) ease, background-color var(--pp-dur-fast) ease; }
+/* a theme switch is never animated: theme.js sets this on <html> for the frame of the switch */
+.pp-theme-switch *, .pp-theme-switch *::before, .pp-theme-switch *::after { transition: none !important; }
 /* a task the user just ticked: the tick grows in (widgets.js `pp-task-pop`) */
 @keyframes pp-tick { from { opacity: 0; transform: rotate(45deg) scale(.4); } }
 .pp-task-pop .pp-box::after { animation: pp-tick var(--pp-dur) var(--pp-ease); }

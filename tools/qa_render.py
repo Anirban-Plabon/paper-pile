@@ -497,6 +497,37 @@ async def align_checks(cdp: Cdp, results: list) -> None:
     )
 
 
+# switch the theme and read the selected tab's background on each of the next frames
+THEME_FRAMES = r"""(async (theme) => {
+  const tab = document.querySelector('.pp-tab-active'); const out = [];
+  window.ppTheme.apply({...window.__pp_theme, theme});
+  for (let i = 0; i < 12; i++) { out.push(getComputedStyle(tab).backgroundColor); await new Promise(r => requestAnimationFrame(r)); }
+  return out;
+})(%s)"""
+
+
+async def theme_checks(cdp: Cdp, results: list) -> None:
+    """A light / dark switch lands at once: no tab, row or button fades through in-between
+    colours (user 2026-11-19: the selected tab showed as a grey box), and the hover fades are
+    back afterwards."""
+    for theme in ("dark", "light", "dark", "light"):
+        frames = await cdp.js(THEME_FRAMES % json.dumps(theme))
+        results.append(
+            (
+                f"theme: switch to {theme}",
+                "selected tab never in between",
+                len(set(frames)) == 1,
+                str(frames[:4]),
+            )
+        )
+    await asyncio.sleep(0.3)
+    back = await cdp.js(
+        "!document.documentElement.classList.contains('pp-theme-switch') && getComputedStyle(document.querySelector('.pp-tab-active')).transitionDuration !== '0s'"
+    )
+    results.append(("theme: after the switch", "hover fades on again", bool(back), str(back)))
+    await cdp.js("window.ppTheme.apply(window.__pp_theme)")
+
+
 async def cell_checks(cdp: Cdp, results: list) -> None:
     """Click a math cell (it opens for editing), leave it every way: it must render again."""
 
@@ -658,6 +689,7 @@ async def run(port: int) -> list:
         await cell_checks(cdp, results)
         await select_checks(cdp, results)
         await align_checks(cdp, results)
+        await theme_checks(cdp, results)
         return results
 
 

@@ -1087,6 +1087,7 @@ Order: security first (P23.1–P23.7), then context (P23.8–P23.12), failures (
 | P35.6 | Table cell renders again after editing (user 2026-11-19) | click a math cell → edit; leave by click / Esc / Tab or after typing → rendered (qa_render cell checks) |
 | P35.7 | Ask box for selections in a table (user 2026-11-19) | double-click a word in a cell → box about that word (its place in the note); drag / Shift+click cells → box about their rows; the selection stays shown while typing in the box (qa_render select checks) |
 | P35.8 | Ask highlight = the selection; tables follow alignment (user 2026-11-19) | a selected word is highlighted as that word (in text and in a cell); a centred / right table lines up with centred / right text (±1 px) and its cells follow unless the column has its own; "Align table …" in the table menu (qa_render) |
+| P35.9 | Theme switch without fades (user 2026-11-19) | a light / dark switch changes every colour in one frame; hover fades still work afterwards (qa_render theme checks) |
 
 ### P34 — Calendar week, side-pane buttons and small UI fixes (user request 2026-11-18, §4.35)
 | ID | Task | Acceptance |
