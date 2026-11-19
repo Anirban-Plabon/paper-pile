@@ -189,6 +189,7 @@ class ChatPane:
         open_note: Callable[[str], None] = lambda path: None,
         edit_in_note: EditInNote | None = None,
         open_at: Callable[[str, int, int, bool], None] = lambda path, first, last, split: None,
+        native: bool = False,  # the native window (system pickers); else the in-app browser
     ) -> None:
         self.ai = ai
         self.vault = ai.vault
@@ -197,6 +198,7 @@ class ChatPane:
         self._apply_to_note = apply_to_note  # (path, old, new): show an answer as a diff there
         self._open_note = open_note  # a source under an answer was clicked
         self._open_at = open_at  # a citation pill: (path, first line, last line, in split view)
+        self._native = native
         self._edit_in_note = edit_in_note  # a change command from the / list (PLAN §4.28)
         self._command_card: _CommandCard | None = None
         self._answering: _CommandCard | None = None  # the AI asked: the next message answers
@@ -236,6 +238,16 @@ class ChatPane:
         self._mode_word: ui.label
         self._mode_box: ui.element
         self._web_search = False  # the bar's Web search switch (UI only, no backend yet)
+        # the bar's folder: None = the whole vault, else a folder (inside or outside the vault);
+        # UI only for now, like Web search
+        self._folder: Path | None = None
+        self._folders: list[str] | None = None  # the vault's note folders (from the index)
+        self._folder_label: ui.label
+        self._folder_btn: ui.button
+        self._folder_list: ui.column
+        self._folder_menu: ui.menu
+        self._folder_query = ""
+        self._fold_btn: ui.button
         self._chat_mode = "auto"  # the box's Auto / Read word (UI only, no backend yet)
         self._model_names: dict[str, str] = {}  # model -> what the button shows
         self._model_details: dict[str, str] = {}
@@ -433,21 +445,17 @@ class ChatPane:
     # ---- the context bar over the box (user 2026-11-19) ---------------------------------
 
     def _context_bar(self) -> None:
-        """A tab on the box's top edge, from the middle of the + button: the vault folder, Web
-        search (a switch only; the search itself comes later), the model (its menu) and how AI
-        edits land (its menu), with a chevron that folds the bar to itself."""
+        """A tab on the box's top edge, from the middle of the + button: the folder (its menu),
+        Web search (a switch only; the search itself comes later), the model (its menu) and how AI
+        edits land (its menu), with a hide button that folds the bar to the model. chat.js turns
+        items to icons and drops them as the pane narrows (``data-pp-fit``)."""
         self._bar = ui.row().classes("pp-chat-bar items-center no-wrap")
         with self._bar:
             with ui.element("div").classes("pp-chat-bar-items"):
-                folder = ui.element("div").classes("pp-chat-bar-item pp-chat-bar-folder")
-                with folder:
-                    line_icon("folder", "m")
-                    ui.label(self.vault.root.name or str(self.vault.root)).classes(
-                        "pp-chat-bar-text"
-                    )
-                tip(folder, f"The AI reads notes in {self.vault.root}")
+                self._folder_button()
                 self._web_btn = ui.button(on_click=self._toggle_web, color=None)
-                self._web_btn.props("flat no-caps dense").classes("pp-chat-bar-item")
+                self._web_btn.props("flat no-caps dense")
+                self._web_btn.classes("pp-chat-bar-item pp-chat-bar-web")
                 with self._web_btn:
                     line_icon("globe", "m")
                     ui.label("Web search").classes("pp-chat-bar-text")
@@ -464,10 +472,10 @@ class ChatPane:
                     )
                     menu.classes("pp-model-menu pp-chat-bar-menu")
                 menu.on("before-show", lambda _e, m=menu: self._build_edits_menu(m))
-                tip(edits, "How AI changes reach your notes")
+                tip(edits, "Edit mode")
                 self._show_edits()
-            fold = icon_button("chevron-left", self._toggle_bar, "Hide", "s")
-            fold.classes("pp-chat-bar-fold")
+            self._fold_btn = icon_button("chevron-left", self._toggle_bar, "Hide", "s")
+            self._fold_btn.classes("pp-chat-bar-fold")
 
     def _toggle_bar(self) -> None:
         folded = "pp-chat-bar-folded" not in self._bar.classes
@@ -475,6 +483,129 @@ class ChatPane:
             self._bar.classes(add="pp-chat-bar-folded")
         else:
             self._bar.classes(remove="pp-chat-bar-folded")
+        tip(self._fold_btn, "Show" if folded else "Hide")
+
+    # ---- the bar's folder menu ------------------------------------------------------------
+
+    def _folder_button(self) -> None:
+        """The folder the AI works in: a menu with a search field, the whole vault and its
+        folders, and a folder outside the vault (the system's picker)."""
+        self._folder_btn = ui.button(color=None).props("flat no-caps dense")
+        self._folder_btn.classes("pp-chat-bar-item pp-chat-bar-folder")
+        with self._folder_btn:
+            line_icon("folder", "m")
+            self._folder_label = ui.label("").classes("pp-chat-bar-text")
+            menu = ui.menu().props(
+                'anchor="top left" self="bottom left" :offset="[0, 8]" '
+                "transition-show=none transition-hide=none transition-duration=0"
+            )
+            menu.classes("pp-model-menu pp-chat-bar-menu pp-chat-folder-menu")
+        self._folder_menu = menu
+        menu.on("before-show", lambda _e, m=menu: self._build_folder_menu(m))
+        self._show_folder()
+
+    def _show_folder(self) -> None:
+        root = self.vault.root
+        where = self._folder or root
+        self._folder_label.set_text(where.name or str(where))
+        tip(self._folder_btn, str(where))
+
+    def _build_folder_menu(self, menu: ui.menu) -> None:
+        menu.clear()
+        self._folder_query = ""
+        with menu:
+            search = (
+                ui.input(placeholder="Search folders")
+                .props("borderless dense autofocus")
+                .classes("pp-chat-folder-search")
+            )
+            with search.add_slot("prepend"):
+                line_icon("search", "s")
+            search.on_value_change(lambda e: self._filter_folders(str(e.value or "")))
+            self._folder_list = ui.column().classes("pp-chat-folder-list")
+            ui.separator()
+            with ui.item(on_click=lambda m=menu: self._pick_outside(m)).classes(
+                "pp-model-item pp-chat-folder-outside"
+            ):
+                line_icon("folder-open", "m")
+                ui.label("Folder outside the vault…").classes("pp-model-name")
+        self._render_folders()
+        # the cached list at once, then fresh from the index (off the event loop)
+        background_tasks.create(self._load_folders(menu))
+
+    async def _load_folders(self, menu: ui.menu) -> None:
+        from paper_pile.core.ai.vault.scope import note_folders
+
+        index = self.ai.index
+        paths = getattr(index, "paths", None)
+        try:
+            found = note_folders(await asyncio.to_thread(paths)) if paths else []
+        except Exception:  # the index may be closing (vault switch)
+            log.debug("folder list failed", exc_info=True)
+            found = []
+        self._folders = found
+        if not self._folder_list.is_deleted:
+            with menu:
+                self._render_folders()
+
+    def _filter_folders(self, query: str) -> None:
+        self._folder_query = query.strip().lower()
+        with self._folder_list:
+            self._render_folders()
+
+    def _render_folders(self) -> None:
+        rows: list[tuple[str, Path | None]] = [(self.vault.root.name or "Vault", None)]
+        rows += [(rel, self.vault.root / rel) for rel in self._folders or []]
+        query = self._folder_query
+        if query:
+            rows = [r for r in rows if query in r[0].lower()]
+        if self._folder is not None and not self._inside_vault(self._folder) and not query:
+            rows.insert(1, (str(self._folder), self._folder))  # the outside folder in use
+        self._folder_list.clear()
+        with self._folder_list:
+            if not rows:
+                ui.label("No folder matches").classes("pp-model-empty")
+            for name, where in rows:
+                item = ui.item(on_click=lambda w=where: self._folder_changed(w, close=True))
+                with item.classes("pp-model-item pp-chat-folder-item"):
+                    line_icon("library" if where is None else "folder", "m")
+                    ui.label(name).classes("pp-model-name pp-chat-folder-name")
+                    if where == self._folder:
+                        line_icon("check", "s").classes("pp-model-check pp-menu-check pp-check")
+
+    def _inside_vault(self, folder: Path) -> bool:
+        return folder == self.vault.root or self.vault.root in folder.parents
+
+    def _folder_changed(self, folder: Path | None, close: bool = False) -> None:
+        if close:
+            self._folder_menu.close()
+        if folder is not None and folder == self.vault.root:
+            folder = None
+        self._folder = folder
+        self._show_folder()
+
+    async def _pick_outside(self, menu: ui.menu) -> None:
+        menu.close()
+        start = self._folder or self.vault.root.parent
+        picked: Path | None = None
+        if self._native:
+            import webview  # native window only (the server process has pywebview installed)
+            from nicegui import app
+
+            chosen = await app.native.main_window.create_file_dialog(  # type: ignore[union-attr]
+                dialog_type=webview.FileDialog.FOLDER, directory=str(start)
+            )
+            choice = chosen if isinstance(chosen, str) else (chosen[0] if chosen else None)
+            picked = Path(choice) if choice else None
+        else:  # web mode: the app's own folder browser
+            from paper_pile.gui.components.vault_dialog import ask_folder
+
+            with self._bar:
+                picked = await ask_folder(
+                    start, native=False, title="Choose a folder", action="Use"
+                )
+        if picked is not None:
+            self._folder_changed(picked.resolve())
 
     def _toggle_web(self) -> None:
         self._web_search = not self._web_search
@@ -483,7 +614,7 @@ class ChatPane:
     def _show_web(self) -> None:
         on = self._web_search
         self._web_btn.props(f"data-pp-on={'1' if on else '0'}")
-        tip(self._web_btn, "Web search: on (coming soon)" if on else "Web search: off")
+        tip(self._web_btn, "Web search on" if on else "Web search off")
 
     def _show_edits(self) -> None:
         mode = str(self.config.get("ai.edits", "ask")) if self.config is not None else "ask"
@@ -533,9 +664,7 @@ class ChatPane:
         self._mode_box.props(f"data-pp-mode={self._chat_mode}")
         tip(
             self._mode_box,
-            "Auto: the AI answers or edits as the request needs (click for Read)"
-            if auto
-            else "Read: the AI only reads and answers (click for Auto)",
+            "Auto: answers or edits" if auto else "Read: answers only",
         )
 
     def _set_include_tabs(self, on: bool) -> None:

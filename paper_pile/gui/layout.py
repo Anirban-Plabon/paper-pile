@@ -727,6 +727,7 @@ class MainLayout:
             open_note=lambda path: self.bus.publish("tree.open", path=path),
             edit_in_note=self.editor_pane.edit_in_note,
             open_at=self._open_cited,
+            native=self.can_reveal,
         )
         self.chat.build()
 

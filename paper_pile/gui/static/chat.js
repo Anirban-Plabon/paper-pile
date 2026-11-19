@@ -242,3 +242,64 @@ document.addEventListener('paste', function (e) {
     }
   }).observe(document.body, { childList: true, subtree: true });
 })();
+// The context bar over the chat box (chat.py, user 2026-11-19): it may reach the middle of the box at
+// most; as the pane narrows, Web search and the edit mode keep only their icons (data-pp-fit 1), then
+// go (2), then the folder keeps only its icon (3); after that the model's name shortens. Widths come
+// from the words (canvas) and the CSS sizes below, never from the bar's own layout, so a stage cannot
+// change what decides it.
+(function () {
+  const PAD = 12, ICON = 16, GAP = 5, CHEV = 14, ITEM_GAP = 2, FOLD = 30, BAR_PAD = 12;
+  const FOLDER_MAX = 140, MODEL_MAX = 150, MODEL_MIN = 48;  // .pp-chat-bar-folder / -model-name caps
+  const ctx = document.createElement('canvas').getContext('2d');
+  function words(el, cap) {
+    if (!el || !el.textContent) return 0;
+    ctx.font = getComputedStyle(el).font;
+    return Math.min(cap, Math.ceil(ctx.measureText(el.textContent).width));
+  }
+  function stage(bar) {
+    const compose = bar.parentElement;
+    const cs = getComputedStyle(compose);
+    const box = compose.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight);
+    const room = Math.min(box - 32, Math.max(box / 2 - 24, 190)) - BAR_PAD - FOLD - ITEM_GAP;
+    const icon = PAD + ICON;
+    const full = (sel, cap) => {
+      const w = words(bar.querySelector(sel), cap);
+      return icon + (w ? GAP + w : 0);
+    };
+    const folder = full('.pp-chat-bar-folder .pp-chat-bar-text', FOLDER_MAX);
+    const web = full('.pp-chat-bar-web .pp-chat-bar-text', 1e4);
+    const edits = full('.pp-chat-bar-edits .pp-chat-bar-text', 1e4);
+    const name = words(bar.querySelector('.pp-chat-model-name'), MODEL_MAX);
+    const model = icon + GAP + Math.max(MODEL_MIN, name) + GAP + CHEV;
+    const need = [
+      folder + web + model + edits + 3 * ITEM_GAP,
+      folder + icon + model + icon + 3 * ITEM_GAP,
+      folder + model + ITEM_GAP,
+    ];
+    const at = need.findIndex((w) => w <= room);
+    return at < 0 ? 3 : at;
+  }
+  function fit(bar) {
+    if (bar.getClientRects().length === 0) return;  // the chat pane is hidden
+    const s = String(stage(bar));
+    if (bar.dataset.ppFit !== s) bar.dataset.ppFit = s;  // a data attribute: Python owns the classes
+  }
+  const sizes = new ResizeObserver(function (entries) {
+    entries.forEach(function (entry) {
+      const bar = entry.target.querySelector(':scope > .pp-chat-bar');
+      if (bar) fit(bar);
+    });
+  });
+  const watched = new WeakSet();
+  window.ppEachFrame(function () {  // after DOM changes (a new model or folder name), once per frame
+    document.querySelectorAll('.pp-chat-compose > .pp-chat-bar').forEach(function (bar) {
+      if (!watched.has(bar.parentElement)) {
+        watched.add(bar.parentElement);
+        sizes.observe(bar.parentElement);
+        // a renamed model / folder changes a text node only (no childList change upstream)
+        new MutationObserver(function () { fit(bar); }).observe(bar, { characterData: true, subtree: true });
+      }
+      fit(bar);
+    });
+  });
+})();

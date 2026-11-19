@@ -2,9 +2,11 @@
 // hover after a short delay, below the element (above it if there is no room), always 8 px
 // inside the window. It goes away on leave, click, key press, scroll or when the window blurs.
 // Warm-up: moving from one tip to the next within WARM ms shows the next one at once.
+// A clicked element shows no tip again until the mouse leaves it (a menu opening under the mouse
+// fires a new mouseover on the same button, and its tip would cover the menu).
 (function () {
   const MARGIN = 8, GAP = 6, DELAY = 450, WARM = 800;
-  let box = null, timer = null, current = null, warmUntil = 0;
+  let box = null, timer = null, current = null, warmUntil = 0, pressed = null;
   function el() {
     if (!box) { box = document.createElement('div'); box.className = 'pp-tip'; document.body.appendChild(box); }
     return box;
@@ -37,10 +39,14 @@
     const target = e.target && e.target.closest ? e.target.closest('[data-tip]') : null;
     if (target === current) return;
     hide();
-    if (!target || !target.dataset.tip) return;
+    if (target !== pressed) pressed = null;
+    if (!target || !target.dataset.tip || target === pressed) return;
     current = target;
     if (Date.now() < warmUntil) show(target);
     else timer = setTimeout(function () { show(target); }, DELAY);
+  }, true);
+  document.addEventListener('mousedown', function (e) {
+    pressed = e.target && e.target.closest ? e.target.closest('[data-tip]') : null;
   }, true);
   ['mousedown', 'keydown', 'scroll', 'wheel'].forEach(function (type) { document.addEventListener(type, cooled, true); });
   window.addEventListener('blur', cooled);
