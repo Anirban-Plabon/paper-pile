@@ -2140,34 +2140,49 @@ body.body--dark .pp-aidiff-chip-warn { color: #e3b341; }
 .pp-bullet[data-glyph="square"]::before { border-radius: 1px; }
 
 /* The context bar (user 2026-11-19): a tab standing on the chat box's top edge, its left edge at the
-   middle of the + button (1 px border + 6 px padding + 17 px = 24 px into the card); the box itself
-   keeps its rounded corners. Folder (menu) · Web search (switch only for now) · model (menu) · how AI
-   edits land (menu) · a 30 × 28 hide button 6 px from the bar's top and right edge that folds the bar
-   to the model. Second round (user 2026-11-19): corners follow the buttons inside (12 px), the bar
-   reaches at most the middle of the send button (24 px from the box's right, as its left edge is
-   24 px from the left: 1 px border + 6 px padding + 17 px), and as the pane narrows chat.js sets data-pp-fit: 1 = Web
-   search and edits keep only their icons, 2 = they go, 3 = the folder keeps only its icon. */
+   middle of the + button (1 px border + 6 px padding + 17 px = 24 px into the card), reaching at most
+   the middle of the send button (24 px from the box's right). folder | model | Web search | edits,
+   with dividers between words, and the 30 × 28 hide button in a tool box (3 px padding: the button is
+   6 px from the bar's top and right edge) that folds the bar to the model. As the pane narrows chat.js
+   sets data-pp-fit: 1 = Web search and edits become icons in the hide button's box, 2 = they go,
+   3 = the folder becomes an icon in its own box; then the model's name ends in "…". */
 .pp-chat-compose { container: ppcompose / inline-size; }
-.pp-chat-bar { align-self: flex-start; max-width: calc(100% - 48px); margin: 0 0 -2px 24px; gap: 2px; padding: 6px 6px 3px; border-radius: var(--pp-r-popup) var(--pp-r-popup) 0 0; background: rgba(127, 127, 127, .08); }
-.pp-chat-bar-items { display: flex; align-items: center; gap: 2px; min-width: 0; overflow: hidden; }
+.pp-chat-bar { align-self: flex-start; max-width: calc(100% - 48px); margin: 0 0 -2px 24px; gap: 0; padding: 3px; border-radius: var(--pp-r-popup) var(--pp-r-popup) 0 0; background: rgba(127, 127, 127, .08); }
 .pp-chat-bar-item, .pp-chat-bar .pp-chat-bar-item.q-btn { display: flex; align-items: center; flex: 0 1 auto; min-width: 0; height: 28px; min-height: 0; gap: 5px; padding: 0 6px; border-radius: var(--pp-r-ctrl); font-size: 13px; font-weight: 400; color: var(--pp-muted); transition: color var(--pp-dur-fast), background var(--pp-dur-fast); }
 .pp-chat-bar .pp-chat-bar-item.q-btn { max-width: none; }
 .pp-chat-bar .pp-chat-bar-item.q-btn .q-btn__content { gap: 5px; flex-wrap: nowrap; min-width: 0; }
 .pp-chat-bar .pp-chat-bar-item.q-btn:hover, .pp-chat-bar .pp-chat-bar-item[data-pp-open="1"].q-btn, .pp-chat-bar .pp-chat-bar-item[aria-expanded="true"].q-btn { background: rgba(127, 127, 127, .14); color: var(--pp-fg); }
 .pp-chat-bar-item .q-icon { flex: none; }
 .pp-chat-bar-text, .pp-chat-bar .pp-chat-model-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.pp-chat-bar .pp-chat-model.q-btn { flex-shrink: 3; }
+.pp-chat-bar .pp-chat-model.q-btn { flex: 0 1 auto; }
 .pp-chat-bar-folder .pp-chat-bar-text { max-width: 140px; }
 .pp-chat-bar .pp-chat-model-name { max-width: 150px; }
 .pp-chat-bar .pp-chat-bar-item[data-pp-on="1"].q-btn { color: var(--pp-accent); }
-.pp-chat-bar .pp-chat-bar-fold.q-btn { flex: none; width: 30px; min-width: 30px; height: 28px; min-height: 0; padding: 0; color: var(--pp-muted); }
-.pp-chat-bar .pp-chat-bar-fold.q-btn:hover { background: rgba(127, 127, 127, .14); color: var(--pp-fg); }
-.pp-chat-bar-fold .q-icon { transition: transform var(--pp-dur) var(--pp-ease); }
-.pp-chat-bar-folded .pp-chat-bar-item:not(.pp-chat-model) { display: none; }
-.pp-chat-bar-folded .pp-chat-bar-fold .q-icon { transform: rotate(180deg); }
+/* dividers between worded items; boxes need none */
+.pp-chat-bar-div { flex: none; width: 1px; height: 16px; margin: 0 4px; background: var(--pp-border); }
+/* the boxes (like the panes' tool boxes): the hide button's always, the folder's when it is an icon */
+.pp-chat-bar-box { display: flex; align-items: center; flex: 0 1 auto; min-width: 0; }
+.pp-chat-bar-tools { display: flex; align-items: center; flex: none; gap: 2px; border-radius: calc(var(--pp-r-ctrl) + 3px); }
+.pp-chat-bar-hidebox, .pp-chat-bar[data-pp-fit="3"] .pp-chat-bar-folderbox, .pp-chat-bar:is([data-pp-fit="1"], [data-pp-fit="2"], [data-pp-fit="3"]) .pp-chat-bar-tools { flex: none; padding: 3px; border-radius: calc(var(--pp-r-ctrl) + 3px); background: rgba(127, 127, 127, .14); }
+.pp-chat-bar-tools .pp-chat-bar-hidebox { margin-left: 2px; }
+.pp-chat-bar:is([data-pp-fit="1"], [data-pp-fit="2"], [data-pp-fit="3"]) .pp-chat-bar-tools { margin-left: 4px; }
+.pp-chat-bar:is([data-pp-fit="1"], [data-pp-fit="2"], [data-pp-fit="3"]) .pp-chat-bar-hidebox { padding: 0; margin-left: 0; background: none; }
+.pp-chat-bar:is([data-pp-fit="1"], [data-pp-fit="2"], [data-pp-fit="3"]) .pp-chat-bar-div-tool { display: none; }
 .pp-chat-bar[data-pp-fit="1"] :is(.pp-chat-bar-web, .pp-chat-bar-edits) .pp-chat-bar-text { display: none; }
+.pp-chat-bar[data-pp-fit="1"] :is(.pp-chat-bar-web, .pp-chat-bar-edits).q-btn { flex: none; width: 28px; padding: 0; justify-content: center; }
 .pp-chat-bar:is([data-pp-fit="2"], [data-pp-fit="3"]) :is(.pp-chat-bar-web, .pp-chat-bar-edits) { display: none; }
-.pp-chat-bar[data-pp-fit="3"] .pp-chat-bar-folder .pp-chat-bar-text { display: none; }
+.pp-chat-bar[data-pp-fit="3"] .pp-chat-bar-folder .pp-chat-bar-text, .pp-chat-bar[data-pp-fit="3"] .pp-chat-bar-div-folder { display: none; }
+.pp-chat-bar[data-pp-fit="3"] .pp-chat-bar-folder.q-btn { flex: none; width: 28px; padding: 0; justify-content: center; }
+.pp-chat-bar[data-pp-fit="3"] .pp-chat-model.q-btn { margin-left: 4px; }
+.pp-chat-bar .pp-chat-bar-fold.q-btn { flex: none; width: 30px; min-width: 30px; height: 28px; min-height: 0; padding: 0; color: var(--pp-muted); }
+.pp-chat-bar .pp-chat-bar-fold.q-btn:hover { background: var(--pp-bg); color: var(--pp-fg); box-shadow: 0 1px 3px rgba(0, 0, 0, .15); }
+.pp-chat-bar-fold .q-icon { transition: transform var(--pp-dur) var(--pp-ease); }
+/* folded: the model and the hide button only */
+.pp-chat-bar.pp-chat-bar-folded :is(.pp-chat-bar-folderbox, .pp-chat-bar-div, .pp-chat-bar-web, .pp-chat-bar-edits) { display: none; }
+.pp-chat-bar.pp-chat-bar-folded .pp-chat-bar-tools { margin-left: 4px; padding: 0; background: none; }
+.pp-chat-bar.pp-chat-bar-folded .pp-chat-bar-tools .pp-chat-bar-hidebox { margin-left: 0; padding: 3px; background: rgba(127, 127, 127, .14); }
+.pp-chat-bar.pp-chat-bar-folded .pp-chat-model.q-btn { margin-left: 0; }
+.pp-chat-bar-folded .pp-chat-bar-fold .q-icon { transform: rotate(180deg); }
 /* the folder menu: a search field, the whole vault and its folders (scrolls), a folder outside */
 .q-menu.pp-chat-folder-menu { width: 280px; max-width: calc(100vw - 16px); }
 .pp-chat-folder-search { padding: 2px 8px 4px; }
@@ -2185,7 +2200,7 @@ body.body--dark .pp-aidiff-chip-warn { color: #e3b341; }
 .pp-chat-mode .pp-chat-mode-btn.q-btn { height: 28px; min-height: 0; padding: 0 10px; border-radius: var(--pp-r-ctrl); font-size: 13px; font-weight: 400; color: var(--pp-fg); }
 .pp-chat-mode .pp-chat-mode-btn.q-btn:hover { background: var(--pp-bg); box-shadow: 0 1px 3px rgba(0, 0, 0, .15); }
 .pp-chat-mode .pp-chat-mode-btn .q-btn__content { gap: 6px; flex-wrap: nowrap; }
-.pp-chat-mode-dot { width: 7px; height: 7px; flex: none; border-radius: 50%; background: var(--pp-accent); }
+.pp-chat-mode-dot { order: 2; width: 7px; height: 7px; flex: none; border-radius: 50%; background: var(--pp-accent); }  /* right of the word (user 2026-11-19) */
 .pp-chat-mode[data-pp-mode="read"] .pp-chat-mode-dot { display: none; }
 .pp-chat-mode-word { display: inline-block; min-width: 2.4em; text-align: center; }
 .pp-chat-mode[data-pp-mode="auto"] .pp-chat-mode-word { animation: pp-flip-a var(--pp-dur) var(--pp-ease); }

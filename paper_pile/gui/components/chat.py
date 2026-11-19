@@ -446,13 +446,19 @@ class ChatPane:
 
     def _context_bar(self) -> None:
         """A tab on the box's top edge, from the middle of the + button: the folder (its menu),
-        Web search (a switch only; the search itself comes later), the model (its menu) and how AI
-        edits land (its menu), with a hide button that folds the bar to the model. chat.js turns
-        items to icons and drops them as the pane narrows (``data-pp-fit``)."""
+        the model (its menu), Web search (a switch only; the search itself comes later) and how
+        AI edits land (its menu), with a hide button that folds the bar to the model. chat.js
+        turns items to icons and drops them as the pane narrows (``data-pp-fit``)."""
         self._bar = ui.row().classes("pp-chat-bar items-center no-wrap")
         with self._bar:
-            with ui.element("div").classes("pp-chat-bar-items"):
+            # folder | model | Web search | edits [‹]; chat.js narrows it in steps (data-pp-fit):
+            # the icon-only buttons sit in one tool box with the hide button (user 2026-11-19)
+            with ui.element("div").classes("pp-chat-bar-box pp-chat-bar-folderbox"):
                 self._folder_button()
+            ui.element("span").classes("pp-chat-bar-div pp-chat-bar-div-folder")
+            self._model_button()
+            with ui.element("div").classes("pp-chat-bar-tools"):
+                ui.element("span").classes("pp-chat-bar-div pp-chat-bar-div-tool")
                 self._web_btn = ui.button(on_click=self._toggle_web, color=None)
                 self._web_btn.props("flat no-caps dense")
                 self._web_btn.classes("pp-chat-bar-item pp-chat-bar-web")
@@ -460,7 +466,7 @@ class ChatPane:
                     line_icon("globe", "m")
                     ui.label("Web search").classes("pp-chat-bar-text")
                 self._show_web()
-                self._model_button()
+                ui.element("span").classes("pp-chat-bar-div pp-chat-bar-div-tool")
                 edits = ui.button(color=None).props("flat no-caps dense")
                 edits.classes("pp-chat-bar-item pp-chat-bar-edits")
                 with edits:
@@ -474,8 +480,9 @@ class ChatPane:
                 menu.on("before-show", lambda _e, m=menu: self._build_edits_menu(m))
                 tip(edits, "Edit mode")
                 self._show_edits()
-            self._fold_btn = icon_button("chevron-left", self._toggle_bar, "Hide", "s")
-            self._fold_btn.classes("pp-chat-bar-fold")
+                with ui.element("div").classes("pp-chat-bar-box pp-chat-bar-hidebox"):
+                    self._fold_btn = icon_button("chevron-left", self._toggle_bar, "Hide", "s")
+                    self._fold_btn.classes("pp-chat-bar-fold")
 
     def _toggle_bar(self) -> None:
         folded = "pp-chat-bar-folded" not in self._bar.classes
