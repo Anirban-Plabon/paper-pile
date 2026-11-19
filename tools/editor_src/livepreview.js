@@ -103,10 +103,13 @@ const numberPadded = (pad) => Decoration.mark({ class: "pp-list-num", attributes
 // A list line is pushed right by `--pp-hang` and its first line pulled back by the same amount, so
 // wrapped lines sit under the item's text. The padding itself is in CSS (app.css), where it adds
 // up with the quote bar's offset `--pp-qpad`, so a list inside a quote stays inside the bar.
-const hangingIndent = (cols) =>
-  Decoration.line({ class: "pp-li", attributes: { style: `--pp-hang:${cols}ch` } });
-const continuationIndent = (cols, lead) =>
-  Decoration.line({ class: "pp-li", attributes: { style: `--pp-hang:${cols}ch;--pp-pull:${Math.min(cols, lead)}ch` } });
+// `bullet`: the item's `- ` is drawn as a bullet widget `--pp-bullet-w` wide (app.css), so the hang is
+// that width plus the characters left around it, not two columns.
+const hangOf = (cols, bullet) => (bullet ? `calc(${cols - 2}ch + var(--pp-bullet-w))` : `${cols}ch`);
+const hangingIndent = (cols, bullet) =>
+  Decoration.line({ class: "pp-li", attributes: { style: `--pp-hang:${hangOf(cols, bullet)}` } });
+const continuationIndent = (cols, lead, bullet) =>
+  Decoration.line({ class: "pp-li", attributes: { style: `--pp-hang:${hangOf(cols, bullet)};--pp-pull:${Math.min(cols, lead)}ch` } });
 // How many characters of a line the quote marks (`> `) hide when the line is not being edited.
 const quotePrefix = (text) => /^(?:>[ ]?)+/.exec(text)?.[0].length ?? 0;
 
@@ -178,6 +181,7 @@ const handlers = {
     for (let a = item.parent?.parent; a; a = a.parent) if (a.name === "ListItem") depth++;
 
     let col; // visual column where the item's text starts on its first line
+    let bullet = false; // the marker and its space are drawn as one bullet widget
     if (box && !raw) {
       const checked = /[xX]/.test(cx.doc.sliceString(box.from + 1, box.from + 2));
       cx.out.push(
@@ -200,8 +204,10 @@ const handlers = {
         col += pad;
         cx.out.push((pad ? numberPadded(pad) : LIST_NUM).range(mark.from, mark.to));
       }
-      else if (!box && !raw) {
-        cx.out.push(Decoration.replace({ widget: new BulletWidget(LIST_GLYPHS[depth % LIST_GLYPHS.length]) }).range(mark.from, mark.to));
+      else if (!box && !raw && cx.doc.sliceString(mark.to, mark.to + 1) === " ") {
+        // the widget covers the marker and one space: the gap to the text is the chat's (user 2026-11-20)
+        bullet = true;
+        cx.out.push(Decoration.replace({ widget: new BulletWidget(LIST_GLYPHS[depth % LIST_GLYPHS.length]) }).range(mark.from, mark.to + 1));
       }
     }
     const own = task ? [task] : item.getChildren("Paragraph");
@@ -211,11 +217,12 @@ const handlers = {
         // quote marks in front of the item are hidden (zero width) unless that line is being edited
         const hidden = cx.active.has(n) ? 0 : quotePrefix(line.text);
         const hang = Math.max(0, col - hidden);
+        const asBullet = bullet && hang >= 2;
         // a continuation line (also a "lazy" one written without indentation) sits under the
         // item's text: only its own leading spaces are pulled back, not the whole hang
         const prefix = quotePrefix(line.text);
         const lead = prefix - hidden + /^[ \t]*/.exec(line.text.slice(prefix))[0].length;
-        cx.out.push((n === first.number ? hangingIndent(hang) : continuationIndent(hang, lead)).range(line.from));
+        cx.out.push((n === first.number ? hangingIndent(hang, asBullet) : continuationIndent(hang, lead, asBullet)).range(line.from));
       }
     }
   },

@@ -244,13 +244,14 @@ document.addEventListener('paste', function (e) {
 })();
 // The context bar over the chat box (chat.py, user 2026-11-19): it reaches at most the middle of the
 // send button (24 px from the box's right edge, as it starts 24 px from the left). As the pane
-// narrows, Web search and the edit mode become icons in the hide button's box (data-pp-fit 1), then
-// go (2), then the folder becomes an icon in its own box (3); after that the model's name ends in
+// narrows, Web search and the edit mode become icons in a tool box with the hide button (data-pp-fit
+// 1), then go (2), then the folder becomes an icon (3); after that the model's name ends in
 // "…". Widths come from the words (canvas) and the CSS sizes below, never from the bar's own layout,
 // so a stage cannot change what decides it.
 (function () {
   const PAD = 12, ICON = 16, GAP = 5, CHEV = 14, BTN = 28, FOLD = 30, BOX = 6, DIV = 9, SEP = 4;
-  const BAR_PAD = 6, FOLDER_MAX = 140, MODEL_MAX = 150, MODEL_MIN = 48;  // app.css .pp-chat-bar…
+  const HIDE = BOX + FOLD - 3;  // the hide button's own box, 3 px of it in the bar's padding
+  const BAR_PAD = 12, FOLDER_MAX = 140, MODEL_MAX = 150, MODEL_MIN = 48;  // app.css .pp-chat-bar…
   const ctx = document.createElement('canvas').getContext('2d');
   function words(el, cap) {
     if (!el || !el.textContent) return 0;
@@ -268,11 +269,10 @@ document.addEventListener('paste', function (e) {
     const edits = full('.pp-chat-bar-edits .pp-chat-bar-text', 1e4);
     const name = words(bar.querySelector('.pp-chat-model-name'), MODEL_MAX);
     const model = PAD + ICON + GAP + Math.max(MODEL_MIN, name) + GAP + CHEV;
-    const hide = BOX + FOLD;
     const need = [
-      folder + DIV + model + DIV + web + DIV + edits + 4 * 2 + 2 + hide,  // the tools row: gap 2, hide box 2 in
-      folder + DIV + model + SEP + BOX + BTN + 2 + BTN + 2 + FOLD,
-      folder + DIV + model + SEP + hide,
+      folder + DIV + model + DIV + web + DIV + edits + 4 * 2 + 2 + HIDE,  // the tools row: gap 2, hide 2 in
+      folder + DIV + model + SEP + BOX + BTN + 2 + BTN + 2 + FOLD - 3,  // the box takes 3 px of bar padding
+      folder + DIV + model + SEP + HIDE,
     ];
     const at = need.findIndex((w) => w <= room);
     return at < 0 ? 3 : at;

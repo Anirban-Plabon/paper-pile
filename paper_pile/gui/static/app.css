@@ -254,7 +254,11 @@ body.pp-native.pp-right-open .pp-rtabbar { padding-right: 108px; }
 .pp-setext-underline { opacity: .3; font-size: .8em; }
 
 /* Lists, tasks, quotes, rules (tools/editor_src/livepreview.js) */
-.pp-bullet { display: inline-block; width: 1ch; text-align: center; text-indent: 0; color: var(--pp-accent); }
+/* A bullet replaces `- ` (marker + space) and is as wide as the chat's list indent (1.4em, user
+   2026-11-20: the chat's gap between dot and text); the dot stays centred in the first column. */
+.pp-editor { --pp-bullet-w: 1.4em; }
+.pp-bullet { display: inline-block; box-sizing: border-box; width: var(--pp-bullet-w); text-indent: 0; color: var(--pp-accent); }
+.pp-bullet:not([data-glyph]) { padding-left: calc(.5ch - .25em); }
 .pp-list-num { color: var(--pp-muted); }
 .pp-task { display: inline-block; width: 2ch; text-align: left; text-indent: 0; cursor: pointer; }
 .pp-task .pp-box { display: inline-block; box-sizing: border-box; width: 1.5ch; height: 1.5ch; border: 1.5px solid var(--pp-muted); border-radius: var(--pp-r-sm); vertical-align: -0.2em; }
@@ -2118,6 +2122,26 @@ body.body--dark .pp-aidiff-chip-warn { color: #e3b341; }
 .pp-askpop-rz-ne { top: -4px; right: -4px; cursor: nesw-resize; } .pp-askpop-rz-sw { bottom: -4px; left: -4px; cursor: nesw-resize; }
 .pp-askpop-rz-nw { top: -4px; left: -4px; cursor: nwse-resize; } .pp-askpop-rz-se { bottom: -4px; right: -4px; cursor: nwse-resize; }
 .pp-askpop-resizing, .pp-askpop-resizing * { user-select: none; }
+/* The mini chat, second look (user 2026-11-19, a reference screenshot): an accent frame with the
+   header on it (white title, ×; the sparkle in a 30 × 28 rounded box; the drag dots, 6 × 2, in a
+   chip) and a box in the theme's background inside, 42 px from the frame's top edge and 6 px from its
+   other edges. Icon, dots and × share one centre line, 21 px from the frame's top. The inner box is
+   a ::before (no DOM change: askpop.js keeps its children); the content sits 8 px inside it at the
+   sides and bottom (1 border + 13 padding = 6 + 8). Corners concentric with the AI icon box (user
+   2026-11-20): its 8 px + its 7 px from the frame's top = 15 px outside, 9 px inside. The frame has the
+   idle send button's colour (accent at 35 %), made solid over the theme's background so the note
+   does not show through; the header's words and icons take the text colour, as on that button. */
+.pp-askpop.pp-askpop-chat { --pp-r-popup: calc(var(--pp-r-ctrl) + 7px); --pp-askpop-frame: color-mix(in srgb, var(--pp-accent) 35%, var(--pp-bg)); --pp-askpop-on-frame: color-mix(in srgb, var(--pp-bg) 45%, transparent); padding: 0 13px 13px; background: var(--pp-askpop-frame); border-color: var(--pp-askpop-frame); }
+.pp-askpop.pp-askpop-chat::before { content: ""; position: absolute; inset: 41px 5px 5px 5px; z-index: -1; pointer-events: none; border-radius: calc(var(--pp-r-popup) - 6px); background: var(--pp-bg); }
+.pp-askpop-chat .pp-askpop-head { height: 40px; margin: 0 0 0 -8px; padding: 0 30px 0 0; gap: 10px; }  /* the icon on the inner box's left edge (1 + 13 − 8 = 6 px; user 2026-11-20) */
+.pp-askpop-chat .pp-askpop-head-icon.q-icon { flex: none; width: 30px; height: 28px; border-radius: var(--pp-r-ctrl); background: var(--pp-askpop-on-frame); color: var(--pp-fg); }
+.pp-askpop-chat .pp-askpop-head-icon.q-icon svg { width: 16px; height: 16px; }
+.pp-askpop-chat .pp-askpop-title { color: var(--pp-fg); font-size: 13.5px; }
+/* 6 × 2 dots (4 px apart) in a lighter chip: 24 × 8 dots + 4 / 8 px padding = 40 × 16, top 12 → centre 21 */
+.pp-askpop-chat .pp-askpop-grip { box-sizing: content-box; top: 12px; width: 24px; height: 8px; padding: 4px 8px; border-radius: 999px; opacity: 1;
+  background: radial-gradient(circle, var(--pp-fg) 1px, transparent 1.3px) content-box 0 0 / 4px 4px, var(--pp-askpop-on-frame); }
+.pp-askpop-chat .pp-askpop-close.q-btn { top: 5px; right: 5px; color: var(--pp-fg); }  /* on the inner box's right edge (1 + 5 = 6 px), like the icon */
+.pp-askpop-chat .pp-askpop-close.q-btn:hover { color: var(--pp-fg); background: var(--pp-askpop-on-frame); }
 /* The calendar's month / year picker (user 2026-11-19): a click on the title opens a popup with the
    year (‹ ›) and the twelve months; the month on screen is the accent one. */
 .pp-cal-title { cursor: pointer; border-radius: var(--pp-r-ctrl); padding: 0 4px; margin-left: -4px; }
@@ -2132,9 +2156,9 @@ body.body--dark .pp-aidiff-chip-warn { color: #e3b341; }
 .pp-cal-picker-month.pp-cal-picker-on, .pp-cal-picker-month.pp-cal-picker-on:hover { background: var(--pp-accent); color: #fff; }
 
 /* List bullets as exact shapes (user 2026-11-19: radius 1 px more than the font's dot, 2.5 → 3.5 px).
-   The span keeps its 1ch width; the shape's centre sits where the dot's was (0.39em over the
+   The shape's centre sits in the middle of the first column, where the dot's was (0.39em over the
    baseline). widgets.js sets data-glyph; an unknown glyph is still drawn as text. */
-.pp-bullet[data-glyph]::before { content: ""; display: inline-block; box-sizing: border-box; width: 7px; height: 7px; vertical-align: calc(0.39em - 3.5px); background: var(--pp-accent); }
+.pp-bullet[data-glyph]::before { content: ""; display: inline-block; box-sizing: border-box; width: 7px; height: 7px; margin-left: calc(.5ch - 3.5px); vertical-align: calc(0.39em - 3.5px); background: var(--pp-accent); }
 .pp-bullet[data-glyph="disc"]::before { border-radius: 50%; }
 .pp-bullet[data-glyph="circle"]::before { border-radius: 50%; background: transparent; border: 1.5px solid var(--pp-accent); }
 .pp-bullet[data-glyph="square"]::before { border-radius: 1px; }
@@ -2142,15 +2166,23 @@ body.body--dark .pp-aidiff-chip-warn { color: #e3b341; }
 /* The context bar (user 2026-11-19): a tab standing on the chat box's top edge, its left edge at the
    middle of the + button (1 px border + 6 px padding + 17 px = 24 px into the card), reaching at most
    the middle of the send button (24 px from the box's right). folder | model | Web search | edits,
-   with dividers between words, and the 30 × 28 hide button in a tool box (3 px padding: the button is
-   6 px from the bar's top and right edge) that folds the bar to the model. As the pane narrows chat.js
-   sets data-pp-fit: 1 = Web search and edits become icons in the hide button's box, 2 = they go,
-   3 = the folder becomes an icon in its own box; then the model's name ends in "…". */
+   with dividers between words, and the 30 × 28 hide button that folds the bar to the model. Every
+   item is 28 px tall in 6 px of bar padding (user 2026-11-20: bar 40 px at every stage). As the pane
+   narrows chat.js sets data-pp-fit: 1 = Web search and edits become icons and join the hide button
+   in a tool box (34 px: 3 px padding, standing in the bar's padding by −3 px so the bar stays 40 px
+   and the hide button stays 6 px from its top and right edge), 2 = they go, 3 = the folder becomes
+   an icon; then the model's name ends in "…". The hide button always has a box (user 2026-11-20):
+   its own 36 × 34 one at every other stage (also −3 px into the bar's padding), the shared tool box
+   at stage 1. */
 .pp-chat-compose { container: ppcompose / inline-size; }
-.pp-chat-bar { align-self: flex-start; max-width: calc(100% - 48px); margin: 0 0 -2px 24px; gap: 0; padding: 3px; border-radius: var(--pp-r-popup) var(--pp-r-popup) 0 0; background: rgba(127, 127, 127, .08); }
+.pp-chat-bar { align-self: flex-start; max-width: calc(100% - 48px); margin: 0 0 -2px 24px; gap: 0; padding: 6px; border-radius: var(--pp-r-popup) var(--pp-r-popup) 0 0; background: rgba(127, 127, 127, .08); }
 .pp-chat-bar-item, .pp-chat-bar .pp-chat-bar-item.q-btn { display: flex; align-items: center; flex: 0 1 auto; min-width: 0; height: 28px; min-height: 0; gap: 5px; padding: 0 6px; border-radius: var(--pp-r-ctrl); font-size: 13px; font-weight: 400; color: var(--pp-muted); transition: color var(--pp-dur-fast), background var(--pp-dur-fast); }
 .pp-chat-bar .pp-chat-bar-item.q-btn { max-width: none; }
 .pp-chat-bar .pp-chat-bar-item.q-btn .q-btn__content { gap: 5px; flex-wrap: nowrap; min-width: 0; }
+/* Quasar's button is a column flex, so align-items: center above sizes the content to its max
+   width — a squeezed button's content spilt out on both sides (model sparkle over the folder box,
+   chevron over the hide box) and the name never got its "…". Cap it at the button's width. */
+.pp-chat-bar .pp-chat-bar-item.q-btn .q-btn__content { max-width: 100%; }
 .pp-chat-bar .pp-chat-bar-item.q-btn:hover, .pp-chat-bar .pp-chat-bar-item[data-pp-open="1"].q-btn, .pp-chat-bar .pp-chat-bar-item[aria-expanded="true"].q-btn { background: rgba(127, 127, 127, .14); color: var(--pp-fg); }
 .pp-chat-bar-item .q-icon { flex: none; }
 .pp-chat-bar-text, .pp-chat-bar .pp-chat-model-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -2163,24 +2195,28 @@ body.body--dark .pp-aidiff-chip-warn { color: #e3b341; }
 /* the boxes (like the panes' tool boxes): the hide button's always, the folder's when it is an icon */
 .pp-chat-bar-box { display: flex; align-items: center; flex: 0 1 auto; min-width: 0; }
 .pp-chat-bar-tools { display: flex; align-items: center; flex: none; gap: 2px; border-radius: calc(var(--pp-r-ctrl) + 3px); }
-.pp-chat-bar-hidebox, .pp-chat-bar[data-pp-fit="3"] .pp-chat-bar-folderbox, .pp-chat-bar:is([data-pp-fit="1"], [data-pp-fit="2"], [data-pp-fit="3"]) .pp-chat-bar-tools { flex: none; padding: 3px; border-radius: calc(var(--pp-r-ctrl) + 3px); background: rgba(127, 127, 127, .14); }
-.pp-chat-bar-tools .pp-chat-bar-hidebox { margin-left: 2px; }
+.pp-chat-bar-hidebox { flex: none; padding: 3px; border-radius: calc(var(--pp-r-ctrl) + 3px); background: rgba(127, 127, 127, .14); }
+.pp-chat-bar-tools .pp-chat-bar-hidebox { margin: -3px -3px -3px 2px; }
 .pp-chat-bar:is([data-pp-fit="1"], [data-pp-fit="2"], [data-pp-fit="3"]) .pp-chat-bar-tools { margin-left: 4px; }
-.pp-chat-bar:is([data-pp-fit="1"], [data-pp-fit="2"], [data-pp-fit="3"]) .pp-chat-bar-hidebox { padding: 0; margin-left: 0; background: none; }
+.pp-chat-bar:is([data-pp-fit="2"], [data-pp-fit="3"]) .pp-chat-bar-tools .pp-chat-bar-hidebox { margin-left: 0; }
+.pp-chat-bar[data-pp-fit="1"] .pp-chat-bar-tools .pp-chat-bar-hidebox { margin: 0; padding: 0; background: none; }
+/* the tool box: only when Web search, edits and hide are three icons together */
+.pp-chat-bar[data-pp-fit="1"] .pp-chat-bar-tools { margin: -3px -3px -3px 4px; padding: 3px; background: rgba(127, 127, 127, .14); }
 .pp-chat-bar:is([data-pp-fit="1"], [data-pp-fit="2"], [data-pp-fit="3"]) .pp-chat-bar-div-tool { display: none; }
 .pp-chat-bar[data-pp-fit="1"] :is(.pp-chat-bar-web, .pp-chat-bar-edits) .pp-chat-bar-text { display: none; }
 .pp-chat-bar[data-pp-fit="1"] :is(.pp-chat-bar-web, .pp-chat-bar-edits).q-btn { flex: none; width: 28px; padding: 0; justify-content: center; }
 .pp-chat-bar:is([data-pp-fit="2"], [data-pp-fit="3"]) :is(.pp-chat-bar-web, .pp-chat-bar-edits) { display: none; }
 .pp-chat-bar[data-pp-fit="3"] .pp-chat-bar-folder .pp-chat-bar-text, .pp-chat-bar[data-pp-fit="3"] .pp-chat-bar-div-folder { display: none; }
 .pp-chat-bar[data-pp-fit="3"] .pp-chat-bar-folder.q-btn { flex: none; width: 28px; padding: 0; justify-content: center; }
+.pp-chat-bar[data-pp-fit="3"] .pp-chat-bar-folderbox { flex: none; }
 .pp-chat-bar[data-pp-fit="3"] .pp-chat-model.q-btn { margin-left: 4px; }
 .pp-chat-bar .pp-chat-bar-fold.q-btn { flex: none; width: 30px; min-width: 30px; height: 28px; min-height: 0; padding: 0; color: var(--pp-muted); }
 .pp-chat-bar .pp-chat-bar-fold.q-btn:hover { background: var(--pp-bg); color: var(--pp-fg); box-shadow: 0 1px 3px rgba(0, 0, 0, .15); }
 .pp-chat-bar-fold .q-icon { transition: transform var(--pp-dur) var(--pp-ease); }
 /* folded: the model and the hide button only */
 .pp-chat-bar.pp-chat-bar-folded :is(.pp-chat-bar-folderbox, .pp-chat-bar-div, .pp-chat-bar-web, .pp-chat-bar-edits) { display: none; }
-.pp-chat-bar.pp-chat-bar-folded .pp-chat-bar-tools { margin-left: 4px; padding: 0; background: none; }
-.pp-chat-bar.pp-chat-bar-folded .pp-chat-bar-tools .pp-chat-bar-hidebox { margin-left: 0; padding: 3px; background: rgba(127, 127, 127, .14); }
+.pp-chat-bar.pp-chat-bar-folded .pp-chat-bar-tools { margin: 0 0 0 4px; padding: 0; background: none; }
+.pp-chat-bar.pp-chat-bar-folded .pp-chat-bar-tools .pp-chat-bar-hidebox { margin: -3px -3px -3px 0; padding: 3px; background: rgba(127, 127, 127, .14); }
 .pp-chat-bar.pp-chat-bar-folded .pp-chat-model.q-btn { margin-left: 0; }
 .pp-chat-bar-folded .pp-chat-bar-fold .q-icon { transform: rotate(180deg); }
 /* the folder menu: a search field, the whole vault and its folders (scrolls), a folder outside */
