@@ -228,6 +228,9 @@ class AskPopup:
         self._target = AskTarget(
             int(args["docId"]), path, str(args["text"]), int(args["from"]), int(args["to"])
         )
+        log.debug(
+            "ask about %d..%d: %r", self._target.start, self._target.end, self._target.text[:80]
+        )
         self._pane.mark_ask_target(self._target)
         self._render_commands()
         self._set_mode("box")

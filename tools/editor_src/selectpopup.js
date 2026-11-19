@@ -87,6 +87,29 @@ export function settlePopup(view) {
   rt.emit("selection_popup", { docId: rt.getDocId(), from: r.from, to: r.to, text, rect: placeOf(view, r) });
 }
 
+// A selection the editor does not hold itself — text selected in a table cell's input, a block of
+// cells (tablewidget.js) — reported like a settled one. `from`..`to` is its place in the note;
+// `rect` is where it is on screen (client pixels: left, top, bottom).
+export function reportSelection(view, from, to, rect) {
+  if (view.state.field(targetField, false) === undefined || to <= from) return;
+  const text = view.state.sliceDoc(from, to);
+  const key = text.trim() ? `${from}:${to}` : null;
+  if (key === null || key === (reported.get(view) ?? null)) return;
+  reported.set(view, key);
+  for (const el of document.querySelectorAll("[data-pp-ask-anchor]")) el.removeAttribute("data-pp-ask-anchor");
+  view.scrollDOM.setAttribute("data-pp-ask-anchor", "");
+  const rt = rtOf(view.state);
+  rt.emit("selection_popup", { docId: rt.getDocId(), from, to, text, rect });
+}
+
+// That selection is gone (the user clicked elsewhere in the table).
+export function clearSelection(view) {
+  if (view.state.field(targetField, false) === undefined || (reported.get(view) ?? null) === null) return;
+  reported.set(view, null);
+  const rt = rtOf(view.state);
+  rt.emit("selection_popup", { docId: rt.getDocId(), clear: true });
+}
+
 // An AI command picked in the editor's own slash menu for a selection (Ctrl+J, right-click):
 // select `from`..`to` again and open the box there with `command` already picked (Python).
 export function askAbout(view, from, to, command) {

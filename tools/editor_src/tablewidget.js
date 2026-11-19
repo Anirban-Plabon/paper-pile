@@ -11,6 +11,7 @@ import { Prec } from "@codemirror/state";
 import { WidgetType, keymap } from "@codemirror/view";
 import { renderInline } from "./widgets.js";
 import { rtOf, editorContext, measureAgain } from "./context.js";
+import { clearSelection, reportSelection } from "./selectpopup.js";
 
 const IDLE_COMMIT_MS = 600;
 const FOCUS_RETRY_MS = 1500;
@@ -221,6 +222,7 @@ export class TableWidget extends WidgetType {
         e.preventDefault();
         const from = wrap._active || (wrap._sel && wrap._cells[wrap._sel.r0]?.[wrap._sel.c0]) || td;
         selectBlock(wrap, from._r, from._c, td._r, td._c);
+        reportBlock(wrap);
         return;
       }
       if (e.button === 0) startDrag(wrap, td);
@@ -235,7 +237,9 @@ export class TableWidget extends WidgetType {
     wrap.addEventListener("cut", (e) => copyBlock(e, wrap, true));
     wrap.addEventListener("paste", (e) => pasteCells(e, wrap));
     wrap.addEventListener("focusout", (e) => {
-      if (!wrap.contains(e.relatedTarget)) clearBlock(wrap);
+      if (wrap.contains(e.relatedTarget)) return;
+      if (inAskBox(e.relatedTarget)) keepForAskBox(wrap); // asking about the block: it stays shown
+      else clearBlock(wrap, false);
     });
     wrap.addEventListener("contextmenu", (e) => {
       const td = e.target.closest && e.target.closest("td, th");
@@ -273,12 +277,22 @@ function startEdit(wrap, td) {
     clearTimeout(timer);
     timer = setTimeout(() => commit(wrap, td), IDLE_COMMIT_MS);
   });
-  input.addEventListener("blur", () => {
+  input.addEventListener("blur", (e) => {
     clearTimeout(timer);
     commit(wrap, td);
+    const asked = inAskBox(e.relatedTarget) && input.selectionStart !== input.selectionEnd;
     endEdit(wrap, td);
+    if (asked) {
+      // the Ask box took the caret to ask about text in this cell: the cell stays marked
+      wrap._sel = { r0: td._r, c0: td._c, r1: td._r, c1: td._c };
+      paintBlock(wrap);
+      keepForAskBox(wrap);
+    }
   });
   input.addEventListener("keydown", (e) => onKey(e, wrap, td));
+  // text selected in the cell (double-click a word, drag, Shift+arrows): the Ask box, as in text
+  const select = () => setTimeout(() => reportCellText(wrap, td, input), 0);
+  for (const type of ["mouseup", "keyup", "select"]) input.addEventListener(type, select);
 }
 
 // send the typed text to Python if it changed
@@ -619,10 +633,13 @@ function paintBlock(wrap) {
   wrap.classList.toggle("pp-table-block", !!box);
 }
 
-function clearBlock(wrap) {
+// `report`: also tell the Ask box the block is gone (not when the focus merely left the table —
+// that is the user clicking into the box to ask about the block)
+function clearBlock(wrap, report = true) {
   if (!wrap._sel) return;
   wrap._sel = null;
   paintBlock(wrap);
+  if (report && wrap._view) clearSelection(wrap._view);
 }
 
 function blockValues(wrap) {
@@ -721,6 +738,7 @@ function onBlockKey(e, wrap) {
     e.preventDefault();
     const [dr, dc] = arrows[e.key];
     selectBlock(wrap, sel.r0, sel.c0, sel.r1 + dr, sel.c1 + dc);
+    reportBlock(wrap);
   } else if (arrows[e.key] || e.key === "Enter" || e.key === "Tab") {
     e.preventDefault();
     clearBlock(wrap);
@@ -749,9 +767,79 @@ function startDrag(wrap, from) {
   const up = () => {
     document.removeEventListener("mousemove", move, true);
     document.removeEventListener("mouseup", up, true);
+    if (wrap._sel) reportBlock(wrap);
   };
   document.addEventListener("mousemove", move, true);
   document.addEventListener("mouseup", up, true);
+}
+
+// ---- the Ask box for selections inside the table -----------------------------------------------
+// The editor's own selection never enters a table, so the table reports its selections itself
+// (selectpopup.js `reportSelection`), as places in the note read from the current syntax tree.
+
+function liveRows(wrap) {
+  const view = wrap._view;
+  if (!view) return null;
+  let node = syntaxTree(view.state).resolveInner(view.posAtDOM(wrap), 1);
+  while (node && node.name !== "Table") node = node.parent;
+  if (!node) return null;
+  const head = node.getChild("TableHeader");
+  return [...(head ? [head] : []), ...node.getChildren("TableRow")];
+}
+
+// Text selected in the input of cell `td`: its place in the note. Only while the input shows what
+// the note holds (typed text not sent yet has no place in the note).
+function reportCellText(wrap, td, input) {
+  const view = wrap._view;
+  if (!view || td._input !== input) return;
+  const start = input.selectionStart;
+  const end = input.selectionEnd;
+  if (start === null || end === null) return;
+  if (start === end) return clearSelection(view); // a caret, no selection: as a click in text
+  if (input.value !== input._original) return;
+  const row = liveRows(wrap)?.[td._r];
+  const cell = row && row.getChildren("TableCell")[td._c];
+  if (!cell) return;
+  const raw = view.state.sliceDoc(cell.from, cell.to);
+  const lead = raw.length - raw.trimStart().length;
+  // value offset -> note offset (`\|` in the note is one `|` in the value)
+  const at = [];
+  for (let i = lead; i < raw.trimEnd().length; i++) {
+    at.push(i);
+    if (raw[i] === "\\" && raw[i + 1] === "|") i++;
+  }
+  at.push(raw.trimEnd().length);
+  if (at.length - 1 !== input.value.length) return; // not the same text: leave it
+  const r = input.getBoundingClientRect();
+  reportSelection(view, cell.from + at[start], cell.from + at[end], { left: r.left, top: r.top, bottom: r.bottom });
+}
+
+const inAskBox = (el) => !!(el && el.closest && el.closest(".pp-askpop"));
+
+// The Ask box took the focus to ask about a selection in this table: the block stays painted
+// until the user goes on elsewhere (a click or the focus outside the box).
+function keepForAskBox(wrap) {
+  const away = (e) => {
+    if (inAskBox(e.target)) return;
+    document.removeEventListener("mousedown", away, true);
+    document.removeEventListener("focusin", away, true);
+    if (!wrap.contains(e.target)) clearBlock(wrap, false); // a click in the table handles itself
+  };
+  document.addEventListener("mousedown", away, true);
+  document.addEventListener("focusin", away, true);
+}
+
+// A block of cells: the rows it covers, whole lines (a column block is not one piece of text).
+function reportBlock(wrap) {
+  const view = wrap._view;
+  const rows = liveRows(wrap);
+  if (!view || !wrap._sel || !rows) return;
+  const b = blockBox(wrap._sel);
+  if (!rows[b.top] || !rows[b.bottom]) return;
+  const doc = view.state.doc;
+  const tl = wrap._cells[b.top][b.left].getBoundingClientRect();
+  const br = wrap._cells[b.bottom][b.right].getBoundingClientRect();
+  reportSelection(view, doc.lineAt(rows[b.top].from).from, doc.lineAt(rows[b.bottom].to).to, { left: tl.left, top: tl.top, bottom: br.bottom });
 }
 
 // ---- column widths (user 2026-11-09) -----------------------------------------------------------

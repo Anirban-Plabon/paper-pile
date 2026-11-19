@@ -32,7 +32,10 @@ from pathlib import Path
 import websockets
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+from paper_pile.core.ai.access import Grant, save_grant  # noqa: E402
 from paper_pile.core.parser import math_spans, parse  # noqa: E402
+
+LOG: Path | None = None  # the app's --debug log (the Ask box's targets)
 
 REPO = Path(__file__).resolve().parent.parent
 PORT = int(os.environ.get("QA_PORT", "9341"))
@@ -250,6 +253,138 @@ LINE_AT = "(() => { const r = document.querySelector('.pp-split .cm-line').getBo
 CELLS = "[...document.querySelectorAll('.pp-split .pp-table-edit tbody td')].map(td => td.querySelector('input') ? 'INPUT' : td.querySelector('.katex') ? 'RENDERED' : td.textContent)"
 
 
+SELECT_NOTE = "caret\n\nHello brave new world here\n\n| a | b |\n| --- | --- |\n| one two | 2 |\n| x \\| y | 4 |\n\nend"
+POPUP_SHOWN = "(() => { const p = document.querySelector('.pp-askpop'); return !!p && p.getClientRects().length > 0 && getComputedStyle(p).display !== 'none'; })()"
+MARKED = "document.querySelectorAll('.pp-split .pp-table-edit .pp-tsel').length"
+
+
+def word_at(word: str) -> str:
+    return f"(() => {{ const v = qa.view(); const c = v.coordsAtPos(v.state.doc.toString().indexOf({json.dumps(word)}) + 2); return [c.left, (c.top + c.bottom) / 2]; }})()"
+
+
+def cell_at(i: int) -> str:
+    return f"(() => {{ const r = document.querySelectorAll('.pp-split .pp-table-edit tbody td')[{i}].getBoundingClientRect(); return [r.left + 12, r.top + r.height / 2]; }})()"
+
+
+def asked() -> list[str]:
+    """What the Ask box was opened about so far (the app logs each target)."""
+    if LOG is None or not LOG.exists():
+        return []
+    return [ln.split(": ", 2)[-1] for ln in LOG.read_text().splitlines() if "ask about" in ln]
+
+
+async def select_checks(cdp: Cdp, results: list) -> None:
+    """Selections open the Ask box about the right text: a double-clicked word, a line, a word in
+    a table cell (its place in the note, across `\\|`), a block of cells (its rows)."""
+
+    async def fresh() -> int:
+        await cdp.js(f"qa.set({json.dumps(SELECT_NOTE)}, 0)")
+        await asyncio.sleep(0.8)
+        x, y = await cdp.js(word_at("caret"))
+        await cdp.click(x, y)
+        return len(asked())
+
+    async def clicks(x: float, y: float, n: int) -> None:
+        for k in range(1, n + 1):
+            for t in ("mousePressed", "mouseReleased"):
+                await cdp.call(
+                    "Input.dispatchMouseEvent", type=t, x=x, y=y, button="left", clickCount=k
+                )
+        await asyncio.sleep(1.2)
+
+    def check(
+        name: str, before: int, want: str, extra: tuple[str, bool, str] | None = None
+    ) -> None:
+        got = asked()[before:]
+        results.append(
+            (
+                name,
+                "Ask box about the selection",
+                bool(got) and got[-1] == repr(want),
+                f"{got} want {want!r}",
+            )
+        )
+        if extra:
+            results.append((name, *extra))
+
+    n = await fresh()
+    await clicks(*(await cdp.js(word_at("brave"))), 2)
+    check(
+        "select: double-click a word",
+        n,
+        "brave",
+        ("Ask box shown", bool(await cdp.js(POPUP_SHOWN)), ""),
+    )
+    n = await fresh()
+    await clicks(*(await cdp.js(word_at("brave"))), 3)
+    check("select: triple-click a line", n, "Hello brave new world here\n")
+    n = await fresh()
+    await clicks(*(await cdp.js(cell_at(0))), 1)
+    await clicks(*(await cdp.js(cell_at(0))), 2)
+    check(
+        "select: double-click a word in a cell",
+        n,
+        "one",
+        ("cell stays marked", await cdp.js(MARKED) == 1, str(await cdp.js(MARKED))),
+    )
+    n = await fresh()
+    await clicks(*(await cdp.js(cell_at(2))), 1)  # `x \| y`: the input shows `x | y`
+    await cdp.call(
+        "Input.dispatchKeyEvent",
+        type="rawKeyDown",
+        key="Home",
+        windowsVirtualKeyCode=36,
+        modifiers=8,
+    )
+    await cdp.call(
+        "Input.dispatchKeyEvent", type="keyUp", key="Home", windowsVirtualKeyCode=36, modifiers=8
+    )
+    await asyncio.sleep(1.2)
+    check("select: cell text across an escaped pipe", n, "x \\| y")
+    n = await fresh()
+    a, b = await cdp.js(cell_at(0)), await cdp.js(cell_at(3))
+    await cdp.call(
+        "Input.dispatchMouseEvent", type="mousePressed", x=a[0], y=a[1], button="left", clickCount=1
+    )
+    for k in range(1, 6):
+        await cdp.call(
+            "Input.dispatchMouseEvent",
+            type="mouseMoved",
+            x=a[0] + (b[0] - a[0]) * k / 5,
+            y=a[1] + (b[1] - a[1]) * k / 5,
+            button="left",
+        )
+    await cdp.call(
+        "Input.dispatchMouseEvent",
+        type="mouseReleased",
+        x=b[0],
+        y=b[1],
+        button="left",
+        clickCount=1,
+    )
+    await asyncio.sleep(1.2)
+    check(
+        "select: drag a block of cells",
+        n,
+        "| one two | 2 |\n| x \\| y | 4 |",
+        ("block stays painted", await cdp.js(MARKED) == 4, str(await cdp.js(MARKED))),
+    )
+    box = await cdp.js(
+        "(() => { const i = document.querySelector('.pp-askpop textarea'); if (!i) return null; const r = i.getBoundingClientRect(); return [r.left + 10, r.top + r.height / 2]; })()"
+    )
+    if box:
+        await cdp.click(*box)
+        await asyncio.sleep(0.6)
+    results.append(
+        (
+            "select: drag a block of cells",
+            "box stays when clicked into",
+            bool(box) and bool(await cdp.js(POPUP_SHOWN)),
+            str(box),
+        )
+    )
+
+
 async def cell_checks(cdp: Cdp, results: list) -> None:
     """Click a math cell (it opens for editing), leave it every way: it must render again."""
 
@@ -409,6 +544,7 @@ async def run(port: int) -> list:
             )
             compare(name, str(text), got, {"dollars": "$HOME" in str(text)}, results)
         await cell_checks(cdp, results)
+        await select_checks(cdp, results)
         return results
 
 
@@ -422,8 +558,12 @@ def main() -> int:
     (vault / ".paper-pile" / "session.json").write_text(
         json.dumps({"tabs": ["qa.md"], "active": "qa.md"})
     )
+    save_grant(vault, Grant("2026-10-30T12:00"), work / "xdg" / "paper-pile")
+    global LOG
+    LOG = work / "app.log"
     env = {
         **os.environ,
+        "PAPER_PILE_FAKE_AI": "1",  # the AI on (Ask box) with the app's scripted backend
         "QT_QPA_PLATFORM": "offscreen",
         "XDG_CONFIG_HOME": str(work / "xdg"),
         "XDG_STATE_HOME": str(work / "state"),  # or the user's "last vault" points here
@@ -431,11 +571,11 @@ def main() -> int:
         "QTWEBENGINE_CHROMIUM_FLAGS": f"--remote-debugging-port={PORT}",
     }
     app = subprocess.Popen(
-        ["uv", "run", "paper-pile", str(vault)],
+        ["uv", "run", "paper-pile", "--ai", "--debug", str(vault)],
         cwd=REPO,
         env=env,
         stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
+        stderr=LOG.open("w"),
         start_new_session=True,
     )
     try:

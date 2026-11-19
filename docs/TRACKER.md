@@ -6,7 +6,7 @@
 Legend: 🧠 = needs Opus (see PLAN §6 model guidance) · ⬜ todo · 🔄 in progress · ✅ done · ⛔ blocked · ⏭️ skipped/deferred
 
 ## Current focus
-- **Phase:** P35 — Rendering audit: tables, math, paste (user request 2026-11-18, PLAN §4.36): P35.1–P35.6 done; `tools/qa_render.py` 365 passed, 0 failed, 3 known (inline math across a line break)
+- **Phase:** P35 — Rendering audit: tables, math, paste (user request 2026-11-18, PLAN §4.36): P35.1–P35.7 done; `tools/qa_render.py` 374 passed, 0 failed, 3 known (inline math across a line break)
 - **Phase:** P34 — Calendar week, side-pane buttons and small UI fixes (user request 2026-11-18, PLAN §4.35): P34.1–P34.14, P34.16 done; P34.15 (AI chip over growing text) built, waiting for a real-app check
 - **Phase:** P33 — Text alignment and per-note zoom (user request 2026-11-11, PLAN §4.34): P33.1–P33.4 done; for the user to try
 - **Phase:** P32 — Chat, popup, scrolling and table polish (user request 2026-11-09, PLAN §4.33): P32.1–P32.8 done, second round from the user's review done (P32.9), P32.10–P32.16 done (2026-11-10: tabs, window, scrollbar ends, chat header / + menu, the Ask box turning into a chip that follows streamed text, streaming rewrites); smooth-scroll feel on the 165 Hz panel for the user to confirm
@@ -345,6 +345,7 @@ Legend: 🧠 = needs Opus (see PLAN §6 model guidance) · ⬜ todo · 🔄 in p
 | P35.4 | Shell / TOML / diff highlighting | ✅ | 2026-11-18 · `codelang.js` legacy modes wrapped in `LanguageSupport` |
 | P35.5 | `tools/qa_render.py` | ✅ | 2026-11-18 · 45 notes + 7 paste events in the real app: 357 passed, 0 failed, 3 known; `tools/qa_editor.py` run after the editor changes |
 | P35.6 | Table cell renders again after editing | ✅ | 2026-11-19 · user: clicked math in a table cell stayed LaTeX. `endEdit` (tablewidget.js) renders from the latest parse (`wrap._widget`) when it holds the cell's value; `qa_render.py` cell checks (leave by click / Esc / Tab, edit then leave): 8/8; qa_render 365 / 0 / 3 known, qa_editor 359 / 0 |
+| P35.7 | Ask box for selections in a table | ✅ | 2026-11-19 · user: double-click a word / cell selection did not open the Ask box. Text and line selection already worked everywhere else (checked in 13 kinds of text); in tables the selection is the widget's own. `reportSelection` / `clearSelection` (selectpopup.js); `tablewidget.js` reports a cell input's selection (its exact place in the note, `\|` mapped) and a cell block (the rows it covers); the block / the cell stays painted while the Ask box has the focus. `ask_popup` logs the target (debug). qa_render select checks 9/9 (with the fake AI on); 374 / 0 / 3 known; qa_editor 359 / 0 |
 
 ### P34 — Calendar week, side-pane buttons and small UI fixes (user request 2026-11-18)
 | ID | Task | Status | Notes |
@@ -478,6 +479,7 @@ Legend: 🧠 = needs Opus (see PLAN §6 model guidance) · ⬜ todo · 🔄 in p
 <!-- YYYY-MM-DD · decision · reason · (who: user / claude) -->
 | Date | Decision | Reason | By |
 |---|---|---|---|
+| 2026-11-19 | P35.7: a block of cells asks about the whole rows it covers (lines of the note); text selected in one cell asks about exactly that text | a column block is not one piece of note text, and the Ask box edits a `from`..`to` range; rows keep it one contiguous range | claude |
 | 2026-11-18 | P35: Python's parser is the rendering reference; the editor draws what it reads (table columns = header, `\|` in cells, quote math) and `tools/qa_render.py` compares the two in the real app on a sample corpus | User: "test on all kinds of rendering issues that happen and may happen later" — one comparison catches a class of drift instead of one bug | claude |
 | 2026-11-18 | P35: KaTeX gaps are mapped in one `tex.js` (faithful equivalents only; `\newcommand` re-defining a built-in stays an error), mhchem bundled from the KaTeX package (+34 KB, no new dependency) | AI answers and notes use `\label`, `\eqref`, `\abs`, `multline`, `\ce` …; four render paths had four copies of the KaTeX options | claude |
 | 2026-11-18 | P35: Smart Paste lays tables out itself (first row = header without `<th>`, every `\|` escaped incl. math — GFM, Python, editor and `core/tables` all read `\|` as `|`), unwraps inline tags around blocks, maps styled spans, reads MathML; block pieces are put back with their line's prefix | Google Docs pastes were one bold paragraph; a cell with `|x|` split the row; math / code in list items left the list | claude |
@@ -1122,3 +1124,4 @@ Legend: 🧠 = needs Opus (see PLAN §6 model guidance) · ⬜ todo · 🔄 in p
 - 2026-11-18 · P34.10–P34.16 (user's 2nd round): reopen box / tab × / pane buttons aligned, key chip, fixed calendar day boxes + flat week cards, tree boxes by depth + 28 px rows, AI chip keeps written text above it (built, not yet seen in the app), cite band handler fix; npm on drvfs corrupts `node_modules` (Issues log)
 - 2026-11-18 · P35.1–P35.5 rendering audit: one KaTeX setup (16 of 41 common formulas failed before), editor = Python on quote math / table cells / columns / embeds, Smart Paste tables (Google Docs, no-header, pipes, ragged), MathML / Wikipedia / MathJax, blocks in lists and quotes, pasted tables on their own lines, shell highlighting crash; `tools/qa_render.py` 357 passed / 0 failed / 3 known; 1806 tests
 - 2026-11-19 · P35.6: a table cell with math renders again after it is left (was raw `$…$` until the next edit elsewhere); qa_render cell checks; 365 passed / 0 failed
+- 2026-11-19 · P35.7: Ask box opens for a word / text in a table cell and for a block of cells (rows), selection stays shown while asking; qa_render runs with the fake AI and checks the Ask targets; 374 passed / 0 failed
