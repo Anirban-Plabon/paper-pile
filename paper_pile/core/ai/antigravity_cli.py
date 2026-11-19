@@ -16,7 +16,10 @@ summaries (``conversation_summaries.db``, ``jetbox_summaries_proto.pb``,
 with ``HOME`` set to the app's own folder (``<state>/paper-pile/agy-home``): nothing of the
 app's requests reaches the user's own ``~/.gemini``, and the user's agy settings, permissions,
 MCP servers and memories never reach the app's requests — the app's own memory (chats, the
-vault memory file) is the only one. Each request's conversation files are deleted when its
+vault memory file) is the only one. Only the sign-in is shared (:func:`sync_sign_in`): on WSL
+agy keeps it as a file in ``HOME`` (:data:`SIGN_IN`), so the user's own sign-in (``agy`` in a
+terminal) is copied into the app's home before each run — one way, the user's home is never
+written. Each request's conversation files are deleted when its
 answer is in, and everything but agy's program files is wiped when the session ends
 (:func:`end_session`, the app's shutdown) or at the next start after a crash. It streams no
 reasoning and takes no temperature, top-p or answer limit: those options are dropped.
@@ -71,6 +74,12 @@ STREAM_LIMIT = 64 * 1024 * 1024  # one stdout line holds a whole answer
 WINDOWS = (("gemini", 131072), ("claude", 131072), ("gpt", 131072))
 KEEP = frozenset(  # what a session's wipe leaves in agy's data folder: its program files
     {"bin", "builtin", "installation_id", "updater", "jetski_state.pbtxt", "last_check.timestamp"}
+)
+# the sign-in agy keeps under HOME (agy ≥ 1.5.11 on WSL: "file-based token storage"), relative
+# to HOME; copied from the user's real home (sync_sign_in), wiped with the rest of the session
+SIGN_IN = (
+    Path(".gemini/antigravity-cli/antigravity-oauth-token"),
+    Path(".config/antigravity/credential-user-scope"),
 )
 USERS = ".paper-pile-users"  # one file per app process using an agy home (named by its pid)
 WARM_KEYS = 3  # processes kept waiting (~260 MB each): one per agent / model / schema
@@ -189,6 +198,47 @@ def _others(agy_home: Path) -> list[int]:
     return out
 
 
+def sync_sign_in(agy_home: Path, real_home: Path | None = None) -> bool:
+    """Copy the user's agy sign-in (:data:`SIGN_IN`) from their real home into ``agy_home``
+    when it changed there since the last copy (signed in, another account) and remove the
+    app's copy when they signed out. One way: agy refreshes its copy in ``agy_home``, and that
+    copy is kept until the real one changes. True when the app's sign-in changed."""
+    real = (real_home or _real_home()).resolve()
+    if agy_home.resolve() == real:
+        return False
+    changed = False
+    for rel in SIGN_IN:
+        src, dst = real / rel, agy_home / rel
+        try:
+            st = src.stat()
+        except OSError:
+            st = None
+        stamp = None if st is None else (st.st_mtime_ns, st.st_size)
+        key = (str(dst), str(src))
+        if stamp is None:
+            if dst.exists():  # signed out in the real home: signed out here too
+                with contextlib.suppress(OSError):
+                    dst.unlink()
+                changed = True
+            _COPIED.pop(key, None)
+            continue
+        if dst.exists() and _COPIED.get(key) == stamp:
+            continue
+        try:
+            dst.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+            tmp = dst.with_name(dst.name + ".paper-pile-tmp")
+            tmp.write_bytes(src.read_bytes())
+            tmp.chmod(0o600)
+            tmp.replace(dst)
+        except OSError:
+            log.warning("could not copy the agy sign-in %s", rel, exc_info=True)
+            continue
+        _COPIED[key] = stamp
+        changed = True
+    return changed
+
+
+_COPIED: dict[tuple[str, str], tuple[int, int]] = {}  # (app copy, real file) -> real's stamp
 _SESSIONS: set[Path] = set()  # agy homes this process has used
 _LISTED: dict[tuple[str, str], tuple[float, dict[str, str]]] = {}  # (program, home) -> listing
 
@@ -368,6 +418,12 @@ class WarmPool:
         if self._tasks:
             await asyncio.gather(*list(self._tasks), return_exceptions=True)
 
+    def drop_all(self) -> None:
+        """End every waiting process without waiting (the sign-in changed)."""
+        waiting, self._waiting = list(self._waiting.values()), {}
+        for started in waiting:
+            self._end(started)
+
     def kill_all(self) -> None:
         waiting, self._waiting = list(self._waiting.values()), {}
         for started in waiting:
@@ -432,6 +488,7 @@ class AntigravityCliProvider:
         """The empty folder agy runs in, with the app's agents in it (and this process's
         session in the app's agy home begun)."""
         begin_session(self._agy_home)
+        self._sync_sign_in()
         folder = self._run_dir / ".agents" / "agents"
         for name, text in AGENTS.items():
             agent = folder / f"{name}.md"
@@ -439,6 +496,15 @@ class AntigravityCliProvider:
                 folder.mkdir(parents=True, exist_ok=True)
                 agent.write_text(text, encoding="utf-8")
         return self._run_dir
+
+    def _sync_sign_in(self) -> None:
+        """The user's sign-in into the app's agy home (:func:`sync_sign_in`). agy reads it at
+        start: when it changed, the processes waiting ahead and the kept model list belong to
+        the old one."""
+        if sync_sign_in(self._agy_home):
+            POOL.drop_all()
+            for key in [k for k in _LISTED if k[1] == str(self._agy_home)]:
+                del _LISTED[key]
 
     def command(self, program: str, model: str, schema: Any = None) -> list[str]:
         agent = AGENT if schema is None else JSON_AGENT
@@ -560,6 +626,9 @@ class AntigravityCliProvider:
         if program is None:
             raise ProviderUnavailableError(self._not_installed())
         key = (program, str(self._agy_home))
+        with contextlib.suppress(OSError):
+            begin_session(self._agy_home)  # a crash's leftovers go before the sign-in comes
+            self._sync_sign_in()  # a new sign-in drops the kept listing
         kept = _LISTED.get(key)
         if kept is not None and time.monotonic() - kept[0] < LIST_KEEP_S:
             self._listed = dict(kept[1])

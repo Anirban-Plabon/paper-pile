@@ -85,6 +85,15 @@ elif mode == "slow":
 """
 
 
+@pytest.fixture(autouse=True)
+def _own_real_home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """The user's real home is a scratch folder: never copy the real agy sign-in."""
+    from paper_pile.core.ai import antigravity_cli
+
+    monkeypatch.setattr(antigravity_cli, "_real_home", lambda: (tmp_path / "real").resolve())
+    monkeypatch.setattr(antigravity_cli, "_COPIED", {})
+
+
 @pytest.fixture
 def agy(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> AntigravityCliProvider:
     program = tmp_path / "bin" / "agy"
@@ -439,3 +448,54 @@ def test_never_wipes_the_real_home(monkeypatch: pytest.MonkeyPatch, tmp_path: Pa
     monkeypatch.setattr(antigravity_cli, "_real_home", lambda: (tmp_path / "home").resolve())
     antigravity_cli.wipe_data(tmp_path / "home")
     assert (data(tmp_path) / "conversation_summaries.db").exists()
+
+
+# ---- the user's sign-in reaches the app's home (P28.9) --------------------------------------
+
+
+def test_sign_in_is_copied_one_way(tmp_path: Path) -> None:
+    from paper_pile.core.ai.antigravity_cli import SIGN_IN, sync_sign_in
+
+    real, app = tmp_path / "real", tmp_path / "home"
+    token = SIGN_IN[0]
+    assert not sync_sign_in(app)  # never signed in: nothing to do
+    (real / token).parent.mkdir(parents=True)
+    (real / token).write_text("one")
+    assert sync_sign_in(app)
+    assert (app / token).read_text() == "one"
+    assert (app / token).stat().st_mode & 0o777 == 0o600
+    assert not sync_sign_in(app)  # unchanged: no copy
+    (app / token).write_text("refreshed by the app's agy")
+    assert not sync_sign_in(app)  # the app's refresh is kept
+    assert (real / token).read_text() == "one"  # the real home is never written
+    (real / token).write_text("another account")
+    assert sync_sign_in(app)
+    assert (app / token).read_text() == "another account"
+    (real / token).unlink()  # signed out in a terminal
+    assert sync_sign_in(app)
+    assert not (app / token).exists()
+
+
+def test_sign_in_never_copied_onto_itself(tmp_path: Path) -> None:
+    from paper_pile.core.ai.antigravity_cli import SIGN_IN, sync_sign_in
+
+    (tmp_path / "real" / SIGN_IN[0]).parent.mkdir(parents=True)
+    (tmp_path / "real" / SIGN_IN[0]).write_text("x")
+    assert not sync_sign_in(tmp_path / "real")
+
+
+async def test_new_sign_in_drops_kept_listing(
+    agy: AntigravityCliProvider, tmp_path: Path, no_sessions: object
+) -> None:
+    from paper_pile.core.ai import antigravity_cli
+    from paper_pile.core.ai.antigravity_cli import end_session
+
+    await agy.models()
+    assert antigravity_cli._LISTED
+    token = tmp_path / "real" / antigravity_cli.SIGN_IN[0]
+    token.parent.mkdir(parents=True)
+    token.write_text("signed in")
+    await agy.models()  # lists again with the new sign-in, which is now in the app's home
+    assert (tmp_path / "home" / antigravity_cli.SIGN_IN[0]).read_text() == "signed in"
+    await end_session()
+    assert not (tmp_path / "home" / antigravity_cli.SIGN_IN[0]).exists()  # wiped with the rest
