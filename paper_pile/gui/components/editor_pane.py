@@ -966,6 +966,8 @@ class EditorPane:
 
     def _move_tab(self, src: int, dst: int, after: bool) -> None:
         if self.tabs.move(src, dst, after=after):
+            if self._tabbar.reorder():  # the chips moved in place: no full redraw of the bar
+                self._rendered = self._tab_shape()
             self._refresh()
             self._notify_tabs()
 
@@ -2565,9 +2567,12 @@ class EditorPane:
             self._plain_shown = plain
             self._on_plain_changed(plain)
 
+    def _tab_shape(self) -> tuple[tuple[int, str, bool], ...]:
+        return tuple((t.id, t.path, t.pinned) for t in self.tabs.tabs)
+
     def _structure_changed(self) -> bool:
         """Re-render the bar only when tabs, titles or the active tab changed (not on typing)."""
-        shape = tuple((t.id, t.path, t.pinned) for t in self.tabs.tabs)
+        shape = self._tab_shape()
         active = (self.tabs.active, self._split_tabs())
         if shape == self._rendered and active == self._rendered_active:
             return False

@@ -6,7 +6,7 @@
 Legend: 🧠 = needs Opus (see PLAN §6 model guidance) · ⬜ todo · 🔄 in progress · ✅ done · ⛔ blocked · ⏭️ skipped/deferred
 
 ## Current focus
-- **Phase:** P37 — List / chip polish, comments, formatting menu (user request 2026-11-20, PLAN §4.38): P37.1–P37.3 done; P37.4 / P37.5 wait for the user's answers; P37.6–P37.12 (formatting menu, comments) next
+- **Phase:** P37 — List / chip polish, comments, formatting menu (user request 2026-11-20, PLAN §4.38): P37.1–P37.4 done; P37.5 (empty lines around a typed list) next; P37.6–P37.12 (formatting menu, comments) next
 - **Phase:** P36 — Tree expand / collapse all, settings switch, mini chat frame + resize, one right-pane width, calendar month picker, `--live-css` (user request 2026-11-19, PLAN §4.37): P36.1–P36.6 done; P36.14 (chat context bar, Auto / Read) done; P36.15 (context bar, second round: folder menu, fit stages, hide button) done
 - **Phase:** P35 — Rendering audit: tables, math, paste (user request 2026-11-18, PLAN §4.36): P35.1–P35.9 done; `tools/qa_render.py` 389 passed, 0 failed, 3 known (inline math across a line break)
 - **Phase:** P34 — Calendar week, side-pane buttons and small UI fixes (user request 2026-11-18, PLAN §4.35): P34.1–P34.14, P34.16 done; P34.15 (AI chip over growing text) built, waiting for a real-app check
@@ -344,7 +344,7 @@ Legend: 🧠 = needs Opus (see PLAN §6 model guidance) · ⬜ todo · 🔄 in p
 | P37.1 | Bullets 6.5 px, 5 px right, nested 15 px per level | ✅ | 2026-11-20 · app.css `--pp-bullet-shift` / `--pp-nest-step`; `NestWidget` (widgets.js) replaces a nested bullet's leading spaces when all parents are plain bullets (livepreview.js `plainBulletParents`); measured: dot 6.5 px, centres 304 / 319 / 334 px |
 | P37.2 | Tag chip + TODAY badge rounded rectangle | ✅ | 2026-11-20 · `.pp-tag`, `.pp-cal-card-badge`: `padding: 2px 6px; border-radius: 6px` (measured) |
 | P37.3 | Info box line gap | ✅ | 2026-11-20 · `.pp-fm-row` line-height 1.6 → 1.8 + 1 px padding (row 23.4 px) |
-| P37.4 | Tab reorder slow (move a tab left / right) | 🔄 | 2026-11-20 · user: the slow part is moving a tab left / right, not switching (switch: perf_ui median 120 ms on 2 000 notes) |
+| P37.4 | Tab reorder slow (move a tab left / right) | ✅ | 2026-11-20 · user: the slow part is moving a tab, not switching (switch: perf_ui median 120 ms). A move rebuilt the whole bar (every chip + its right-click menu); now `TabBar.reorder` moves the existing chips (`Element.move`) and the list menu is refilled. Real app, 14 tabs, `pp_tab_move` → new order painted (2 frames): median 83 → 33 ms; order and clicks checked after a move |
 | P37.5 | New bullet: one empty line before / after | ⬜ | user 2026-11-20: real empty lines in the file (typed `- ` under text; leaving the list) |
 | P37.6 | `core/formatting.py` toggles | ⬜ | |
 | P37.7 | Parser + editor + export: `==`, `<u>`, colour span | ⬜ | |
@@ -1246,3 +1246,4 @@ Legend: 🧠 = needs Opus (see PLAN §6 model guidance) · ⬜ todo · 🔄 in p
 - 2026-11-20 · P36.16: mini chat × on the inner box's right edge (6 px from the frame, measured)
 - 2026-11-20 · P36.17: editor bullet gap like the chat (12.2 px at 14 px, measured in the real app; wrapped lines under the text); qa_editor 359/359 (as root it needs `QTWEBENGINE_DISABLE_SANDBOX=1`); 1822 tests
 - 2026-11-20 · P37.1–P37.3: bullets 6.5 px / +5 px / nested 15 px per level (NestWidget), tag chip + TODAY badge rounded rectangles (2 × 6 px padding), info rows line-height 1.8; measured in the real app; P37 spec (formatting menu, comments) in PLAN §4.38
+- 2026-11-20 · P37.4: tab move redraws only the order (`TabBar.reorder`), 83 → 33 ms median for 14 tabs in the real app; 1825 tests

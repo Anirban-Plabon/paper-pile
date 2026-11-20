@@ -91,6 +91,8 @@ class TabBar:
         self.toggles: dict[str, ui.button] = {}
         self._bar: ui.element
         self._dots: dict[int, ui.label] = {}
+        self._chips: dict[int, ui.element] = {}  # the left bar's chips by tab id
+        self._split: SplitTabs | None = None  # as of the last render
         self._list_menu: ui.menu
 
     def build(self) -> None:
@@ -136,6 +138,8 @@ class TabBar:
         self._bar.clear()
         self._right.clear()
         self._dots.clear()
+        self._chips.clear()
+        self._split = split
         self._right.set_visibility(split is not None and split.right is not None)
         if split is not None:
             self._strip.classes("pp-tabstrip-split")
@@ -167,6 +171,8 @@ class TabBar:
         elif tab_id == (split.left, split.right)[side]:
             chip.classes("pp-tab-active" if side == split.active_slot else "pp-tab-shown")
         chip._props["data-doc"] = str(tab_id)
+        if side == 0:
+            self._chips[tab_id] = chip
         chip._props["draggable"] = "true"
         if split is not None and self._on_activate_side is not None:
             chip.on("click", lambda _e, i=tab_id, s=side: self._on_activate_side(i, s))  # type: ignore[misc]
@@ -202,6 +208,20 @@ class TabBar:
                         ):
                             line_icon(icon).classes("pp-note-menu-icon")
                             ui.label(label).classes("pp-note-menu-label")
+
+    def reorder(self) -> bool:
+        """The tabs only changed order (a drag): move the existing chips instead of drawing the
+        bar again — a full render rebuilds every chip and its menu (slow with many tabs). False
+        when the chips no longer match the tabs (then call :meth:`render`)."""
+        right = self._split.right if self._split is not None else None
+        keep_right = self._split is not None and self._split.left == right
+        order = [t.id for t in self._tabs.tabs if t.id != right or keep_right]
+        if set(order) != set(self._chips) or len(order) != len(self._chips):
+            return False
+        for index, tab_id in enumerate(order):
+            self._chips[tab_id].move(self._bar, target_index=index)
+        self._fill_list(self._split)
+        return True
 
     def _fill_list(self, split: SplitTabs | None) -> None:
         """The list button's menu: every open tab, the one(s) on screen marked."""
