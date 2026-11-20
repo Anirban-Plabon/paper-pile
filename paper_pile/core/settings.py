@@ -406,6 +406,13 @@ SECTIONS: dict[str, tuple[Setting, ...]] = {
             essential=True,
         ),
         Setting(
+            "print.keep_highlights",
+            "Highlights in exports",
+            "bool",
+            help="Comments are never exported",
+            group="Page view",
+        ),
+        Setting(
             "editor.block_spacing",
             "Blank lines around blocks",
             "bool",

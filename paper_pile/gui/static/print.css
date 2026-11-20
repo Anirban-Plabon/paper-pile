@@ -76,3 +76,5 @@ th { background: var(--pp-code-bg); font-weight: 600; }
 .footnotes-sep { border-top-color: var(--pp-border); }
 .footnotes { font-size: .9em; color: var(--pp-muted); }
 .pp-page-break { display: none; }
+/* ==highlights== (PLAN §4.38; off in Settings: written as plain text before rendering) */
+mark { background: #fff1a8; color: inherit; border-radius: 2px; padding: 0 .1em; -webkit-print-color-adjust: exact; print-color-adjust: exact; }

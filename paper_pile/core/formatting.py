@@ -360,6 +360,77 @@ def _lines(text: str, start: int, end: int, kind: str) -> TextEdit | None:
     return TextEdit(tuple(changes), after_last, first)
 
 
+# ---- export -------------------------------------------------------------------------------------
+
+_CODE_SPAN = re.compile(r"(`+)(?:.+?)\1")
+_HIGHLIGHT = re.compile(r"(?<!=)==(?=[^\s=])(.+?)(?<=[^\s=])==(?!=)")
+_RAW_BLOCKS = {
+    "fence",
+    "code_block",
+    "math_block",
+    "math_block_label",
+    "front_matter",
+    "html_block",
+}
+
+
+def _raw_lines(text: str) -> set[int]:
+    """Line numbers (0-based) of code, math and front matter: written out as they are."""
+    from paper_pile.core.parser import parse  # local: the parser is heavy to import
+
+    lines: set[int] = set()
+    for tok in parse(text):
+        if tok.type in _RAW_BLOCKS and tok.map:
+            lines.update(range(tok.map[0], tok.map[1]))
+    return lines
+
+
+def _line_comment_at(line: str, pos: int, part: str) -> int | None:
+    """Where a ``//`` comment starts in ``part`` (``line[pos:…]``): at the line's start or after
+    a space or tab — never glued to text (``https://``) or to a code span before it."""
+    for m in re.finditer("//", part):
+        i = m.start()
+        before = part[i - 1] if i > 0 else (line[pos - 1] if pos > 0 else "")
+        if before in ("", " ", "\t"):
+            return i
+    return None
+
+
+def _strip_line(line: str, keep_highlights: bool) -> str:
+    """One line without its comments (outside code spans), highlights unwrapped if asked."""
+    out: list[str] = []
+    pos = 0
+    spans = [(m.start(), m.end()) for m in _CODE_SPAN.finditer(line)] + [(len(line), len(line))]
+    for start, end in spans:
+        part = COMMENT.sub("", line[pos:start])
+        cut = _line_comment_at(line, pos, part)
+        if cut is not None:
+            part = part[:cut]
+        out.append(part if keep_highlights else _HIGHLIGHT.sub(r"\1", part))
+        if cut is not None:
+            return "".join(out).rstrip()
+        out.append(line[start:end])
+        pos = end
+    return "".join(out)
+
+
+def strip_for_export(text: str, *, keep_highlights: bool = True) -> str:
+    """The note as it is exported (PLAN §4.38): ``%%comments%%`` and ``//`` comments removed
+    (a line that was only a comment goes), ``==highlights==`` unwrapped unless kept. Code, math
+    and front matter are left as they are."""
+    raw = _raw_lines(text)
+    out: list[str] = []
+    for n, line in enumerate(text.split("\n")):
+        if n in raw:
+            out.append(line)
+            continue
+        new = _strip_line(line, keep_highlights)
+        if new.strip() or not line.strip():
+            out.append(new)
+        # else: the line held only comments — dropped, so it cannot split a paragraph
+    return "\n".join(out)
+
+
 # ---- entry point --------------------------------------------------------------------------------
 
 

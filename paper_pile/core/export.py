@@ -74,6 +74,8 @@ table { border-collapse: collapse; margin: 1em 0; }
 th, td { border: 1px solid var(--border); padding: 6px 10px; }
 hr { border: none; border-top: 1px solid var(--border); margin: 2em 0; }
 .wikilink { color: var(--accent); }
+mark { background: #fff1a8; color: inherit; border-radius: 2px; padding: 0 .1em; }
+@media (prefers-color-scheme: dark) { mark { background: rgba(255, 213, 0, .3); } }
 .pp-page-break { break-after: page; page-break-after: always; }
 @media screen { .pp-page-break { border-top: 1px dashed var(--border); margin: 2em 0; } }
 """

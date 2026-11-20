@@ -53,7 +53,7 @@ DEFAULTS: dict[str, Any] = {
         # the formatting menu's pinned items (PLAN §4.38; core/format_items.py DEFAULT_PINNED)
         "format_pinned": ["highlight", "comment", "underline", "color", "link"],
     },
-    "print": {"paper": "A4"},
+    "print": {"paper": "A4", "keep_highlights": True},  # highlights in exports (PLAN §4.38)
     "general": {"language": "en", "restore_tabs": True, "confirm_delete": True},
     "vault": {
         "templates_folder": ".template",

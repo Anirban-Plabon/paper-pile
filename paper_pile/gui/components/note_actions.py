@@ -12,11 +12,13 @@ from nicegui import app, ui
 
 from paper_pile.core import assets
 from paper_pile.core.export import export_html, export_markdown
+from paper_pile.core.formatting import strip_for_export
 from paper_pile.core.index import search_body
 from paper_pile.core.links import link_keys
 from paper_pile.core.merge import plan_merge
 from paper_pile.core.parser import parse
 from paper_pile.core.picker import search_notes
+from paper_pile.core.settings import sanitized
 from paper_pile.core.titles import note_name
 from paper_pile.core.vault import VaultError
 from paper_pile.gui import printing
@@ -271,10 +273,16 @@ async def _merge(pane: "EditorPane", source: str) -> None:
 # ---- export ---------------------------------------------------------------------------------
 
 
+def _export_text(pane: "EditorPane", path: str) -> str:
+    """The note as exported: no comments, highlights as the setting says (PLAN §4.38)."""
+    keep = bool(sanitized(pane.config.values if pane.config else {})["print.keep_highlights"])
+    return strip_for_export(pane.note_text(path), keep_highlights=keep)
+
+
 async def _export(pane: "EditorPane", path: str, kind: str) -> None:
     await pane.save_now()
     try:
-        text = pane.note_text(path)
+        text = _export_text(pane, path)
         name = note_name(path)
         if kind == "md":
             content, filename = export_markdown(pane.vault, path, text), f"{name}.md"
@@ -323,7 +331,7 @@ async def _export_pdf(pane: "EditorPane", path: str) -> None:
     name = note_name(path)
     try:
         html = build_print_page(
-            pane.vault, pane.config, path, pane.note_text(path), name, pane.export_align(path)
+            pane.vault, pane.config, path, _export_text(pane, path), name, pane.export_align(path)
         )
     except (VaultError, OSError) as exc:
         pane.toast(f"Could not export: {exc}", error=True)

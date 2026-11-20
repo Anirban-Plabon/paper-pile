@@ -180,3 +180,36 @@ def test_line_items_skip_empty_lines_and_the_line_after_a_full_line() -> None:
 def test_unknown_kind() -> None:
     with pytest.raises(ValueError):
         apply("a", 0, 1, "sparkle")
+
+
+# ---- export ---------------------------------------------------------------------------------
+
+
+def test_export_drops_comments_and_keeps_code() -> None:
+    from paper_pile.core.formatting import strip_for_export
+
+    text = (
+        "---\ntitle: a // b\n---\n"
+        "plan%%secret%% done // aside\n"
+        "// whole line\n"
+        "next ==hl== `a // b` and `==c==`\n"
+        "see https://x.org/a and `x`//glued\n\n"
+        "```\ncode // keep %%keep%%\n```\n"
+    )
+    out = strip_for_export(text)
+    assert out == (
+        "---\ntitle: a // b\n---\n"
+        "plan done\n"
+        "next ==hl== `a // b` and `==c==`\n"
+        "see https://x.org/a and `x`//glued\n\n"
+        "```\ncode // keep %%keep%%\n```\n"
+    )
+    plain = strip_for_export(text, keep_highlights=False)
+    assert "next hl `a // b` and `==c==`" in plain
+
+
+def test_export_keeps_a_note_without_comments_unchanged() -> None:
+    from paper_pile.core.formatting import strip_for_export
+
+    text = "# T\n\n- a\n- b  \n\n| x | y |\n| - | - |\n| 1 | 2 |\n"
+    assert strip_for_export(text) == text

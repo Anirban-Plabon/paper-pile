@@ -56,3 +56,16 @@ def test_editor_palette_matches_python() -> None:
     css = (ROOT / "paper_pile" / "gui" / "static" / "app.css").read_text(encoding="utf-8")
     for name, code in COLORS.items():
         assert f".pp-fc-{name} {{ color: {code}; }}" in css
+
+
+def test_html_export_keeps_or_drops_highlights_and_never_comments(tmp_path: Path) -> None:
+    from paper_pile.core.export import export_html
+    from paper_pile.core.formatting import strip_for_export
+    from paper_pile.core.vault import Vault
+
+    vault = Vault(tmp_path)
+    text = "a ==hi== b%%secret%% // aside\n"
+    kept = export_html(vault, "n.md", strip_for_export(text), "n")
+    assert "<mark>hi</mark>" in kept and "secret" not in kept and "aside" not in kept
+    plain = export_html(vault, "n.md", strip_for_export(text, keep_highlights=False), "n")
+    assert "<mark>" not in plain and "a hi b" in plain
