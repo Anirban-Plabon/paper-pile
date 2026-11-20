@@ -334,7 +334,14 @@ async def list_gap_checks(cdp: Cdp, results: list[tuple[str, str, bool, str]]) -
             await cdp.type(ch)
         await asyncio.sleep(0.3)
         text = await cdp.js("qa.text()")
-        results.append((f"list gap {name}", "empty line above a new list", text.rstrip("\n") == want, repr(text)))
+        results.append(
+            (
+                f"list gap {name}",
+                "empty line above a new list",
+                text.rstrip("\n") == want,
+                repr(text),
+            )
+        )
 
 
 LAZY_JS = """(() => {
