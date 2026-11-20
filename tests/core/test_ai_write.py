@@ -121,3 +121,34 @@ def test_delete_takes_the_blank_lines_along() -> None:
     assert "- **VM**: a whole machine\n\n| Name" in apply(gone)
     last = delete_change(PlannedEdit("w", "delete", ID["## Next"]), BLOCKS, NOTE)
     assert apply(last).endswith("| Docker | 0 |\n")
+
+
+COMMENTED = """# Plan
+
+The plan is due on Friday%%check with Sam%% for now. Ask Ana // she knows
+
+Next part.
+"""
+
+
+def test_comments_are_lifted_and_put_back_after_their_words() -> None:
+    blocks = block_map(COMMENTED)
+    para = next(b for b in blocks if b.text(COMMENTED).startswith("The plan"))
+    job = write_job(PlannedEdit("formal", "change", para.id), blocks, COMMENTED, "make it formal")
+    sent = job.task.split("<<<")[1]
+    assert "%%" not in sent and "check with Sam" not in job.task  # never sent to the model
+    assert "Keep exactly: // she knows" in job.task  # a `//` comment is visible: kept exactly
+    change = fit_answer(
+        job, blocks, COMMENTED, "The plan is due by Friday at the latest. Ask Ana // she knows"
+    )
+    assert change is not None
+    assert "due by Friday%%check with Sam%% at the latest." in apply(change)
+
+
+def test_a_comment_whose_words_are_gone_goes_to_the_end() -> None:
+    blocks = block_map(COMMENTED)
+    para = next(b for b in blocks if b.text(COMMENTED).startswith("The plan"))
+    job = write_job(PlannedEdit("short", "change", para.id), blocks, COMMENTED, "shorten")
+    change = fit_answer(job, blocks, COMMENTED, "Deadline: next week. Ask Ana // she knows")
+    assert change is not None
+    assert "Deadline: next week. Ask Ana%%check with Sam%% // she knows" in apply(change)

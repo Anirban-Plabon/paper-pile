@@ -14,7 +14,14 @@ from dataclasses import dataclass
 from paper_pile.core.ai.blocks import Block
 from paper_pile.core.ai.issues import Issue
 from paper_pile.core.ai.plan import PlannedEdit
-from paper_pile.core.ai.protect import mask, protected_tokens, unmask
+from paper_pile.core.ai.protect import (
+    Lifted,
+    lift_comments,
+    mask,
+    protected_tokens,
+    restore_comments,
+    unmask,
+)
 from paper_pile.core.tables import Table, format_table, parse_table, split_row
 
 WRITE_RULES = (
@@ -51,7 +58,8 @@ class WriteJob:
     kept: tuple[str, ...]  # fixed blocks masked in the part (⟦KEEP n⟧)
     old: str  # the part's text now ("" for new text)
     keep: tuple[str, ...]  # inline tokens the answer must keep
-    masked: str = ""  # ``old`` as sent: its fixed blocks as ⟦KEEP n⟧ lines
+    masked: str = ""  # ``old`` as sent: its fixed blocks as ⟦KEEP n⟧ lines, no comments
+    comments: tuple[Lifted, ...] = ()  # ``%%comments%%`` lifted out of ``old`` (put back after)
 
 
 def _span(edit: PlannedEdit, blocks: Sequence[Block]) -> list[Block]:
@@ -62,7 +70,7 @@ def _span(edit: PlannedEdit, blocks: Sequence[Block]) -> list[Block]:
 
 
 def _words(text: str, most: int = CONTEXT_WORDS) -> str:
-    words = text.split()
+    words = lift_comments(text)[0].split()  # context without the note's comments
     return " ".join(words[:most]) + (" …" if len(words) > most else "")
 
 
@@ -142,10 +150,12 @@ def write_job(
     kept: list[str] = []
     old = masked = ""
     keep: list[str] = []
+    comments: tuple[Lifted, ...] = ()
     if edit.action == "change":
         old = note[first.start : last.end]
         spans = [(b.start - first.start, b.end - first.start) for b in part if b.fixed]
         masked, kept = mask(old, spans)
+        masked, comments = lift_comments(masked)  # comments are not the model's to rewrite
         keep = list(dict.fromkeys(protected_tokens(masked)))
         before, after = _neighbours(blocks, first, last)
         lines.append(f"Where it is (context, do not write it): {where}")
@@ -174,7 +184,7 @@ def write_job(
         else ("Reply with only the new text.")
     )
     lines.append(reply)
-    return WriteJob(edit, "\n".join(lines), tuple(kept), old, tuple(keep), masked)
+    return WriteJob(edit, "\n".join(lines), tuple(kept), old, tuple(keep), masked, comments)
 
 
 def style_hint(edit: PlannedEdit, anchor: Block, note: str) -> str:
@@ -220,6 +230,7 @@ def fit_answer(
         new, bad = unmask(text.strip("\n"), job.kept)
         if bad:
             return None
+        new = restore_comments(new.rstrip(), job.comments)
         return _change(edit, first.start, last.end, new.rstrip())
     body = text.strip("\n").rstrip()
     if not body:

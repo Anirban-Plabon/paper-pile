@@ -6,7 +6,7 @@
 Legend: 🧠 = needs Opus (see PLAN §6 model guidance) · ⬜ todo · 🔄 in progress · ✅ done · ⛔ blocked · ⏭️ skipped/deferred
 
 ## Current focus
-- **Phase:** P37 — List / chip polish, comments, formatting menu (user request 2026-11-20, PLAN §4.38): P37.1–P37.10, P37.13 done; P37.11 (export Keep highlights), P37.12 (AI edits keep marks) next; P37.6–P37.12 (formatting menu, comments) next
+- **Phase:** P37 — List / chip polish, comments, formatting menu (user request 2026-11-20, PLAN §4.38): P37.1–P37.13 done; for the user to try (Ask box format button needs the AI on: not driven in a test); P37.6–P37.12 (formatting menu, comments) next
 - **Phase:** P36 — Tree expand / collapse all, settings switch, mini chat frame + resize, one right-pane width, calendar month picker, `--live-css` (user request 2026-11-19, PLAN §4.37): P36.1–P36.6 done; P36.14 (chat context bar, Auto / Read) done; P36.15 (context bar, second round: folder menu, fit stages, hide button) done
 - **Phase:** P35 — Rendering audit: tables, math, paste (user request 2026-11-18, PLAN §4.36): P35.1–P35.9 done; `tools/qa_render.py` 389 passed, 0 failed, 3 known (inline math across a line break)
 - **Phase:** P34 — Calendar week, side-pane buttons and small UI fixes (user request 2026-11-18, PLAN §4.35): P34.1–P34.14, P34.16 done; P34.15 (AI chip over growing text) built, waiting for a real-app check
@@ -353,7 +353,7 @@ Legend: 🧠 = needs Opus (see PLAN §6 model guidance) · ⬜ todo · 🔄 in p
 | P37.9 | Formatting button + popup (5 pinned, More, Customize) | ✅ | 2026-11-20 · `core/format_items.py` (catalogue, `pinned_items`, `toggle_pinned`, max 8), `gui/components/format_menu.py` + `static/formatmenu.js`; Ask box button `pp-askpop-format` (left of Move to chat, hidden in the mini chat); `editor.format_pinned` in config (global); Colour (swatches / No colour), Link (URL or note, note list from the index), Comment (one line) views; edit items via editor `clipboard`, alignment via `align_blocks`, Ask AI… via `slashForSelection`. Ask box button not driven in the real app (needs the AI on) |
 | P37.10 | Right-click menu on a selection | ✅ | 2026-11-20 · slash.js: right-click inside a selection emits `format_menu` (x, y) instead of the slash menu (still there without a selection, and as Ask AI…). Real app, real mouse events 18/18: pinned list, Highlight on / off with the words kept selected, Comment, Colour, Link, More > Bold, Customize pin (saved to config.toml), Esc / outside click close, no-selection right-click unchanged |
 | P37.11 | Export *Keep highlights* switch | ✅ | 2026-11-20 · no export dialog exists (⋯ menu exports directly), so the switch is a setting: Settings → Page view → *Highlights in exports* (`print.keep_highlights`, on). `strip_for_export` (formatting.py): comments out of Markdown / HTML / PDF, comment-only lines dropped, highlights unwrapped when off; code, math, front matter untouched (parser block map); `<mark>` styled in export and print.css. Page view's own layout is not stripped (the parser already hides comments). 3 tests |
-| P37.12 | AI edits keep the marks | ⬜ | |
+| P37.12 | AI edits keep the marks | ✅ | 2026-11-20 · structural, no prompt change (rule 9): `%%comments%%` lifted out of the text sent to the model and out of its context (`protect.lift_comments`, WriteJob.comments) and put back after their words (3 / 2 / 1 words, else at the end before a trailing `//`) by `restore_comments` in `fit_answer`; `//` comments join the "Keep exactly" tokens (guard G3); `<u>` / colour spans already were (HTML tokens). `==` highlights are ordinary inline markup like `**` (not guarded). 2 tests |
 
 ### P36 — Tree, switches, mini chat, calendar picker, live CSS (user request 2026-11-19)
 | ID | Task | Status | Notes |
@@ -522,6 +522,7 @@ Legend: 🧠 = needs Opus (see PLAN §6 model guidance) · ⬜ todo · 🔄 in p
 <!-- YYYY-MM-DD · decision · reason · (who: user / claude) -->
 | Date | Decision | Reason | By |
 |---|---|---|---|
+| 2026-11-20 | P37.12: comments are taken out of what an AI edit sends (not masked as placeholders): their words mean nothing to the rewrite and a placeholder can be dropped or moved by the model; they go back after the same words, or at the end so none is lost. No prompt sentence added (CLAUDE.md rule 9); the only prompt difference is a `//` comment listed under "Keep exactly" when the text has one | structural over prompt | claude |
 | 2026-11-20 | P37.11: the user's "switch in the export dialog" became a setting (*Highlights in exports*, Settings → Page view): exports have no dialog (Export Markdown / HTML / PDF run straight from the ⋯ menu), and adding a dialog to every export for one switch would slow every export. Comments are removed from the Markdown export too | deviation from the chosen option, technical reason | claude |
 | 2026-11-20 | P37.8: a comment shows as raw text only while the caret / a selection is strictly inside it (not when touching it as other marks): after Add comment the words stay selected and end where the comment starts, so the pin shows at once. Comments in the AI chat's parser are off (an answer's `//` stays text) | real-app check: the pin did not show after adding a comment | claude |
 | 2026-11-20 | P37.9: the pinned items are a list in config.toml (`editor.format_pinned`, global) read like `page_view_last`, not a Settings row — the Settings registry has no list kind, and the menu's own Customize view is where they are chosen | simplest | claude |
@@ -1257,3 +1258,4 @@ Legend: 🧠 = needs Opus (see PLAN §6 model guidance) · ⬜ todo · 🔄 in p
 - 2026-11-20 · P37.6: core/formatting.py (every menu item as a toggle) + 35 tests; 1860 tests; mypy clean
 - 2026-11-20 · P37.6–P37.10: formatting syntax in both parsers (23 sync cases), comments with margin pins and their window, the formatting menu (Ask box button, right-click on a selection, More / Customize); real-app checks 14/14 + 18/18; qa_editor 364/0, qa_render 389/0/3 known; 1895 tests
 - 2026-11-20 · P37.11: Highlights in exports setting + strip_for_export (comments never exported); 1898 tests
+- 2026-11-20 · P37.12: AI rewrites lift / restore %%comments%%, keep // comments; 1900 tests
