@@ -1761,7 +1761,7 @@ body.body--dark .pp-aidiff-chip-warn { color: #e3b341; }
    the composer's card with Move to chat beside it (box), grown into a small floating chat (chat),
    or dissolved while the AI rewrites the text (gone). askpop.js sets left / top; it lives in
    <body> (ui.teleport). */
-.pp-askpop { --pp-askpop-tint: var(--pp-bg); --pp-askpop-line: var(--pp-border); --pp-askpop-full: 480px; position: fixed; z-index: 3000; left: 0; top: 0; width: min(325px, calc(100vw - 12px)); padding: 10px; border: 1px solid transparent; display: flex; flex-direction: column; gap: 6px; font-family: Roboto, -apple-system, "Helvetica Neue", Helvetica, Arial, sans-serif; color: var(--pp-fg); }
+.pp-askpop { --pp-askpop-tint: var(--pp-bg); --pp-askpop-line: var(--pp-border); --pp-askpop-full: 480px; position: fixed; z-index: 3000; left: 0; top: 0; width: min(377px, calc(100vw - 12px));  /* 325 + the format button (46) and its gap (6), P37.9 */ padding: 10px; border: 1px solid transparent; display: flex; flex-direction: column; gap: 6px; font-family: Roboto, -apple-system, "Helvetica Neue", Helvetica, Arial, sans-serif; color: var(--pp-fg); }
 /* the small box: its card + Move to chat as wide as the editor's / menu (320 px, user 2026-11-06) */
 .pp-askpop-box { animation: pp-pop var(--pp-dur) var(--pp-ease); }
 .pp-askpop-bottom { width: 100%; flex: none; gap: 6px; }
