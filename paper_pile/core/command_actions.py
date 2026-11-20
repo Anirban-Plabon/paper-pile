@@ -31,6 +31,7 @@ class TextChange:
 class TextEdit:
     changes: tuple[TextChange, ...]
     cursor: int  # caret offset in the text *after* the changes
+    anchor: int | None = None  # with it, the selection anchor..cursor (formatting keeps it)
 
 
 # Leading block markers of a line: quotes, headings, bullets, numbers, task boxes (any mix).
