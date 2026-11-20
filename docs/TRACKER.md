@@ -6,7 +6,7 @@
 Legend: 🧠 = needs Opus (see PLAN §6 model guidance) · ⬜ todo · 🔄 in progress · ✅ done · ⛔ blocked · ⏭️ skipped/deferred
 
 ## Current focus
-- **Phase:** P37 — List / chip polish, comments, formatting menu (user request 2026-11-20, PLAN §4.38): P37.1–P37.4 done; P37.5 (empty lines around a typed list) next; P37.6–P37.12 (formatting menu, comments) next
+- **Phase:** P37 — List / chip polish, comments, formatting menu (user request 2026-11-20, PLAN §4.38): P37.1–P37.5, P37.13 done; P37.6–P37.12 (formatting menu, comments) next
 - **Phase:** P36 — Tree expand / collapse all, settings switch, mini chat frame + resize, one right-pane width, calendar month picker, `--live-css` (user request 2026-11-19, PLAN §4.37): P36.1–P36.6 done; P36.14 (chat context bar, Auto / Read) done; P36.15 (context bar, second round: folder menu, fit stages, hide button) done
 - **Phase:** P35 — Rendering audit: tables, math, paste (user request 2026-11-18, PLAN §4.36): P35.1–P35.9 done; `tools/qa_render.py` 389 passed, 0 failed, 3 known (inline math across a line break)
 - **Phase:** P34 — Calendar week, side-pane buttons and small UI fixes (user request 2026-11-18, PLAN §4.35): P34.1–P34.14, P34.16 done; P34.15 (AI chip over growing text) built, waiting for a real-app check
@@ -346,7 +346,7 @@ Legend: 🧠 = needs Opus (see PLAN §6 model guidance) · ⬜ todo · 🔄 in p
 | P37.3 | Info box line gap | ✅ | 2026-11-20 · `.pp-fm-row` line-height 1.6 → 1.8 + 1 px padding (row 23.4 px) |
 | P37.4 | Tab reorder slow (move a tab left / right) | ✅ | 2026-11-20 · user: the slow part is moving a tab, not switching (switch: perf_ui median 120 ms). A move rebuilt the whole bar (every chip + its right-click menu); now `TabBar.reorder` moves the existing chips (`Element.move`) and the list menu is refilled. Real app, 14 tabs, `pp_tab_move` → new order painted (2 frames): median 83 → 33 ms; order and clicks checked after a move |
 | P37.13 | Chrome-like tab drag | ✅ | 2026-11-20 · tabs.js pointer drag (follow, slide aside, glide into the slot, transforms dropped in the frame the new order lands; out of the bar: ghost + `window.ppNoteZones` / marker on the other split bar; Esc cancels); `draggable` off on chips; notedrop.js zones exposed. Real app, CDP mouse events: 13/13 (slide by the tab's width, order, no styles left, no jump per frame, click still switches, drag-out opens a split) |
-| P37.5 | New bullet: one empty line before / after | ⬜ | user 2026-11-20: real empty lines in the file (typed `- ` under text; leaving the list) |
+| P37.5 | New bullet: one empty line before / after | ✅ | 2026-11-20 · user: real empty lines. Leaving a list already left one below (`leave`); now `listGapBefore` (listedit.js): the space after `-`/`*`/`+`/`1.` at the start of a top-level line right under a paragraph / heading inserts an empty line above (one undo step); only with `editor.block_spacing` (new editor option `blockSpacing`). qa_editor `list_gap_checks` 5/5 (also: no gap inside a list, after an empty line, or for `a - b`); 364/364 |
 | P37.6 | `core/formatting.py` toggles | ⬜ | |
 | P37.7 | Parser + editor + export: `==`, `<u>`, colour span | ⬜ | |
 | P37.8 | Comments `%%…%%` (margin icon + mini window) and `//` inline | ⬜ | |
@@ -1250,3 +1250,4 @@ Legend: 🧠 = needs Opus (see PLAN §6 model guidance) · ⬜ todo · 🔄 in p
 - 2026-11-20 · P37.1–P37.3: bullets 6.5 px / +5 px / nested 15 px per level (NestWidget), tag chip + TODAY badge rounded rectangles (2 × 6 px padding), info rows line-height 1.8; measured in the real app; P37 spec (formatting menu, comments) in PLAN §4.38
 - 2026-11-20 · P37.4: tab move redraws only the order (`TabBar.reorder`), 83 → 33 ms median for 14 tabs in the real app; 1825 tests
 - 2026-11-20 · P37.13: Chrome-like tab drag (follow, slide aside, glide, ghost out of the bar); real-app mouse checks 13/13; 1825 tests
+- 2026-11-20 · P37.5: a typed list gets an empty line above (listGapBefore, with Blank lines around blocks); qa_editor 364/364; 1825 tests

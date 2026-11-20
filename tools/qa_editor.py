@@ -206,6 +206,7 @@ async def run(port: int) -> list[tuple[str, str, bool, str]]:
         )
         await slash_checks(cdp, results)
         await leave_checks(cdp, results)
+        await list_gap_checks(cdp, results)
         await lazy_checks(cdp, results)
         await page_break_checks(cdp, results)
         return results
@@ -310,6 +311,30 @@ async def leave_checks(cdp: Cdp, results: list[tuple[str, str, bool, str]]) -> N
                 repr(text),
             )
         )
+
+
+GAP = {  # typed at the end of the note -> the note afterwards (P37.5, "Blank lines around blocks")
+    "under a paragraph": ("Some text\n", "- item", "Some text\n\n- item"),
+    "numbered under a heading": ("# Title\n", "1. one", "# Title\n\n1. one"),
+    "after an empty line": ("Some text\n\n", "- item", "Some text\n\n- item"),
+    "inside a list": ("- a\n", "- b", "- a\n- b"),
+    "a dash in a sentence": ("Some text\n", "a - b", "Some text\na - b"),
+}
+
+
+async def list_gap_checks(cdp: Cdp, results: list[tuple[str, str, bool, str]]) -> None:
+    """A list typed straight under a paragraph / heading starts after an empty line."""
+    for name, (start, typed, want) in GAP.items():
+        await cdp.js(f"qa.set({json.dumps(start)})")
+        await asyncio.sleep(0.4)
+        await cdp.js(
+            "(() => { const v = qa.view(); v.dispatch({selection: {anchor: v.state.doc.length}}); v.focus(); })()"
+        )
+        for ch in typed:  # key by key: the empty line comes from the typed space
+            await cdp.type(ch)
+        await asyncio.sleep(0.3)
+        text = await cdp.js("qa.text()")
+        results.append((f"list gap {name}", "empty line above a new list", text.rstrip("\n") == want, repr(text)))
 
 
 LAZY_JS = """(() => {

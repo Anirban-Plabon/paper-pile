@@ -66,6 +66,7 @@ EDITOR_OPTION_KEYS = frozenset(
         "editor.page_view",
         "print.paper",
         "features.ai",  # the Ask box (PLAN §4.27)
+        "editor.block_spacing",  # a typed list gets an empty line above (listedit.js)
         "ai.selection_popup",
     }
 )
@@ -90,6 +91,7 @@ def editor_options(config: Config | None) -> dict[str, Any]:
         "paperHeightMm": paper(str(v["print.paper"])).height_mm,
         "marginMm": MARGIN_MM,
         "aiPopup": v["features.ai"] and v["ai.selection_popup"],  # the Ask box (PLAN §4.27)
+        "blockSpacing": v["editor.block_spacing"],  # a typed list gets an empty line above
     }
 
 

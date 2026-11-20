@@ -15,7 +15,7 @@ import { editorContext, runtimeFacet } from "./context.js";
 import { editorExtensions } from "./grammar.js";
 import { autoBrackets, autoClose } from "./autoclose.js";
 import { headingFolding } from "./fold.js";
-import { listEditing } from "./listedit.js";
+import { listEditing, listGapBefore } from "./listedit.js";
 import { flashChanges, jumpTo, motion } from "./motion.js";
 import { pageDrag } from "./pagedrag.js";
 import { frontMatterEnd, pageView, printLayoutReady } from "./pageview.js";
@@ -128,6 +128,7 @@ export function createEditor(
     indentUnit.of(" ".repeat(o.tabSize)),
     EditorView.contentAttributes.of({ spellcheck: o.spellCheck ? "true" : "false", lang: o.lang || "en" }),
     o.aiPopup ? selectPopup : [],
+    o.blockSpacing === false ? [] : listGapBefore,  // "Blank lines around blocks" (listedit.js)
     o.pageView ? pageView({ style: o.pageStyle, paper: o.paper, textWidthMm: o.textWidthMm, paperHeightMm: o.paperHeightMm, marginMm: o.marginMm }) : [],
   ];
   const themeSlot = new Compartment();

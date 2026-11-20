@@ -8,7 +8,11 @@
 //    makes it a child of the item above, also inside quotes (the indentation goes AFTER the `> `).
 //  * A list marker typed right after a list marker (`- -`) is written as an escaped character
 //    (`- \-`): a second marker never makes a nested list by accident.
+//  * A new list typed straight under a paragraph or heading (`- `, `1. ` at the start of a line)
+//    gets an empty line above it (`listGapBefore`, with "Blank lines around blocks" on; user
+//    2026-11-20): a list always stands one line apart from the text around it.
 import { insertNewlineContinueMarkupCommand, deleteMarkupBackward } from "@codemirror/lang-markdown";
+import { syntaxTree } from "@codemirror/language";
 import { Prec } from "@codemirror/state";
 import { EditorView, keymap } from "@codemirror/view";
 
@@ -151,6 +155,37 @@ const secondMarker = EditorView.inputHandler.of((view, from, to, text) => {
   const line = view.state.doc.lineAt(from);
   if (!EMPTY_ITEM.test(view.state.sliceDoc(line.from, from))) return false;
   view.dispatch({ changes: { from, insert: `\\${text}` }, selection: { anchor: from + 2 }, userEvent: "input.type" });
+  return true;
+});
+
+// The top-level block a line belongs to (its node right under Document), or null.
+function topBlock(state, pos) {
+  let node = syntaxTree(state).resolveInner(pos, 1);
+  while (node.parent && node.parent.name !== "Document") node = node.parent;
+  return node.name === "Document" ? null : node;
+}
+
+const TEXT_BLOCK = /^(Paragraph|ATXHeading\d|SetextHeading\d)$/;
+const NEW_MARKER = /^(?:[-*+]|\d{1,9}[.)])$/;
+
+// The space after a marker at the very start of a line, right under a line of a paragraph or
+// heading: the list starts after an empty line. (While `-` is typed, "text" + "-" reads as a setext
+// heading, hence the heading kinds.)
+export const listGapBefore = EditorView.inputHandler.of((view, from, to, text) => {
+  if (from !== to || text !== " ") return false;
+  const { state } = view;
+  const line = state.doc.lineAt(from);
+  if (line.number === 1 || !NEW_MARKER.test(state.sliceDoc(line.from, from))) return false;
+  const above = state.doc.line(line.number - 1);
+  if (above.text.trim() === "" || /^[ \t>]/.test(above.text) || parse(above.text).marker) return false;
+  const block = topBlock(state, above.from);
+  if (!block || !TEXT_BLOCK.test(block.name)) return false;
+  view.dispatch({
+    changes: [{ from: line.from, insert: "\n" }, { from, insert: " " }],
+    selection: { anchor: from + 2 },
+    userEvent: "input.type",
+    scrollIntoView: true,
+  });
   return true;
 });
 
