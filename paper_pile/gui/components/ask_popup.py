@@ -170,20 +170,22 @@ class AskPopup:
                         icon=ico("arrow-up"), on_click=self._send_or_stop, color=None
                     )
                     self._send.props("round unelevated dense").classes("pp-chat-send")
-                # the formatting menu for the selection (PLAN §4.38), left of Move to chat
-                fmt = ui.button(icon=ico("type"), color=None)
-                fmt.on("click", lambda e: self._open_format(e.args), ["clientX", "clientY"])
-                fmt.props("round flat dense").classes("pp-askpop-to-chat pp-askpop-format")
-                tip(fmt, "Format")
-                self._format_btn = fmt
-                # chat bubble + arrow (own icons, tools/editor_src/build_icons.mjs):
-                # up while the box holds a conversation, down while it holds only the selection
-                chat = ui.button(icon=ico(CHAT_ICON[False]), color=None)
-                self._chat_btn = chat
-                self._chat_icon = False
-                chat.on("click", self._move_to_chat)
-                chat.props("round flat dense").classes("pp-askpop-to-chat")
-                tip(chat, "Move to chat")
+                # one chip beside the card (user 2026-11-20): the formatting menu for the
+                # selection (PLAN §4.38) and Move to chat
+                with ui.row().classes("pp-askpop-tools items-center no-wrap"):
+                    fmt = ui.button(icon=ico("menu"), color=None)
+                    fmt.on("click", lambda e: self._open_format(e.args), ["clientX", "clientY"])
+                    fmt.props("round flat dense").classes("pp-askpop-tool pp-askpop-format")
+                    tip(fmt, "Format")
+                    self._format_btn = fmt
+                    # chat bubble + arrow (own icons, tools/editor_src/build_icons.mjs):
+                    # up while the box holds a conversation, down while it holds only the selection
+                    chat = ui.button(icon=ico(CHAT_ICON[False]), color=None)
+                    self._chat_btn = chat
+                    self._chat_icon = False
+                    chat.on("click", self._move_to_chat)
+                    chat.props("round flat dense").classes("pp-askpop-tool pp-askpop-to-chat")
+                    tip(chat, "Move to chat")
         self._set_mode("closed")
 
     def _open_format(self, args: dict[str, Any]) -> None:

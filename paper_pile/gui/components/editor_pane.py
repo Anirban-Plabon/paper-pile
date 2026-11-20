@@ -1059,7 +1059,10 @@ class EditorPane:
         if text is None:
             return
         at = codepoint_index(text, int(args.get("from", -1)))
-        edit = set_comment(text, at, str(args.get("body", "")))
+        color = args.get("color")  # None: keep the pin's colour
+        edit = set_comment(
+            text, at, str(args.get("body", "")), None if color is None else str(color)
+        )
         if edit is not None:
             await self._apply_edit(tab_id, text, edit, move_caret=False)
 

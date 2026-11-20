@@ -261,28 +261,53 @@ def _comment(text: str, start: int, end: int, comment: str | None) -> TextEdit |
     return TextEdit((TextChange(b, b, f"%%{body}%%"),), b, a)
 
 
+# A comment's pin colour (user 2026-11-20): grey without a mark, else ``%%{red} text%%``.
+COMMENT_COLORS = ("red", "yellow", "green")
+_COMMENT_COLOR = re.compile(r"^\{(" + "|".join(COMMENT_COLORS) + r")\}\s*")
+
+
+def split_comment(raw: str) -> tuple[str, str]:
+    """A comment's inside as ``(colour, text)``; colour ``""`` = the default grey."""
+    m = _COMMENT_COLOR.match(raw.strip())
+    if m is None:
+        return "", raw.strip()
+    return m.group(1), raw.strip()[m.end() :].strip()
+
+
+def comment_mark(body: str, color: str = "") -> str:
+    """The ``%%…%%`` for a comment's text and pin colour (unknown colour: grey)."""
+    tag = f"{{{color}}} " if color in COMMENT_COLORS else ""
+    return f"%%{tag}{body}%%"
+
+
 @dataclass(frozen=True, slots=True)
 class Comment:
-    """A ``%%comment%%`` in the note: where the mark is and what it says."""
+    """A ``%%comment%%`` in the note: where the mark is, what it says, its pin colour."""
 
     start: int
     end: int
     body: str
+    color: str = ""
 
 
 def comments(text: str) -> list[Comment]:
     """Every inline comment of the note (outside code is the editor's business: it hides only
     those its parser sees)."""
-    return [Comment(m.start(), m.end(), m.group(1).strip()) for m in COMMENT.finditer(text)]
+    return [
+        Comment(m.start(), m.end(), *reversed(split_comment(m.group(1))))
+        for m in COMMENT.finditer(text)
+    ]
 
 
-def set_comment(text: str, at: int, body: str) -> TextEdit | None:
-    """Change the comment that starts at ``at`` (empty ``body``: delete it)."""
+def set_comment(text: str, at: int, body: str, color: str | None = None) -> TextEdit | None:
+    """Change the comment that starts at ``at`` (empty ``body``: delete it). ``color`` None keeps
+    the comment's pin colour; ``""`` makes it grey."""
     m = COMMENT.match(text, at)
     if m is None:
         return None
-    new = clean_comment(body)
-    insert = f"%%{new}%%" if new else ""
+    old_color, _ = split_comment(m.group(1))
+    new = clean_comment(split_comment(body)[1])
+    insert = comment_mark(new, old_color if color is None else color) if new else ""
     return TextEdit((TextChange(m.start(), m.end(), insert),), m.start() + len(insert))
 
 

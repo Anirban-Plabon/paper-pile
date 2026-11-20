@@ -236,7 +236,7 @@ body.pp-native.pp-right-open .pp-rtabbar { padding-right: 108px; }
 .pp-tree-empty { padding: 6px 12px; }
 .pp-drop-target { background: rgba(var(--pp-accent-rgb), .28) !important; outline: 1px dashed var(--pp-accent); outline-offset: -1px; }
 .pp-tree.pp-drop-target { outline-offset: -2px; }
-.pp-ctxmenu { display: none; position: fixed; z-index: 3000; min-width: 190px; padding: 4px; gap: 0; background: var(--pp-bg); border: 1px solid var(--pp-border); border-radius: var(--pp-r-popup); box-shadow: 0 6px 20px rgba(0, 0, 0, .18); }
+.pp-ctxmenu { display: none; position: fixed; z-index: 3000; min-width: 190px; padding: 6px; gap: 0; background: var(--pp-bg); border: 1px solid var(--pp-border); border-radius: var(--pp-r-popup); box-shadow: 0 6px 20px rgba(0, 0, 0, .18); }
 .pp-ctxmenu-open { display: flex; }
 .pp-ctxmenu .pp-ctx-item.q-btn { width: 100%; justify-content: flex-start; font-size: 13px; font-weight: 400; color: var(--pp-fg) !important; }
 .pp-ctxmenu .pp-ctx-item .q-icon { color: var(--pp-muted); font-size: var(--pp-icon-m); }
@@ -1761,7 +1761,7 @@ body.body--dark .pp-aidiff-chip-warn { color: #e3b341; }
    the composer's card with Move to chat beside it (box), grown into a small floating chat (chat),
    or dissolved while the AI rewrites the text (gone). askpop.js sets left / top; it lives in
    <body> (ui.teleport). */
-.pp-askpop { --pp-askpop-tint: var(--pp-bg); --pp-askpop-line: var(--pp-border); --pp-askpop-full: 480px; position: fixed; z-index: 3000; left: 0; top: 0; width: min(377px, calc(100vw - 12px));  /* 325 + the format button (46) and its gap (6), P37.9 */ padding: 10px; border: 1px solid transparent; display: flex; flex-direction: column; gap: 6px; font-family: Roboto, -apple-system, "Helvetica Neue", Helvetica, Arial, sans-serif; color: var(--pp-fg); }
+.pp-askpop { --pp-askpop-tint: var(--pp-bg); --pp-askpop-line: var(--pp-border); --pp-askpop-full: 480px; position: fixed; z-index: 3000; left: 0; top: 0; width: min(361px, calc(100vw - 12px));  /* the card (251) + 6 + the tools chip (82), user 2026-11-20 */ padding: 10px; border: 1px solid transparent; display: flex; flex-direction: column; gap: 6px; font-family: Roboto, -apple-system, "Helvetica Neue", Helvetica, Arial, sans-serif; color: var(--pp-fg); }
 /* the small box: its card + Move to chat as wide as the editor's / menu (320 px, user 2026-11-06) */
 .pp-askpop-box { animation: pp-pop var(--pp-dur) var(--pp-ease); }
 .pp-askpop-bottom { width: 100%; flex: none; gap: 6px; }
@@ -1771,8 +1771,8 @@ body.body--dark .pp-aidiff-chip-warn { color: #e3b341; }
    a mask made of four corner rings (radial) and two edge bands (linear). --pp-halo-r is the
    element's corner radius (both are 46 px tall pills); the element itself is left out of the
    mask. Not in the mini chat: its box is solid. */
-.pp-askpop .pp-askpop-card, .pp-askpop .pp-askpop-to-chat.q-btn { position: relative; isolation: isolate; --pp-halo-r: 23px; --pp-halo-f: 10px; --pp-halo-R: calc(var(--pp-halo-r) + var(--pp-halo-f)); }
-.pp-askpop .pp-askpop-card::after, .pp-askpop .pp-askpop-to-chat.q-btn::after, .pp-askpop.pp-askpop-chat::after {
+.pp-askpop .pp-askpop-card, .pp-askpop .pp-askpop-tools { position: relative; isolation: isolate; --pp-halo-r: 24px; --pp-halo-f: 10px; --pp-halo-R: calc(var(--pp-halo-r) + var(--pp-halo-f)); }
+.pp-askpop .pp-askpop-card::after, .pp-askpop .pp-askpop-tools::after, .pp-askpop.pp-askpop-chat::after {
   content: ""; position: absolute; inset: calc(-1px - var(--pp-halo-f)); z-index: -1; pointer-events: none; border-radius: 0;
   -webkit-backdrop-filter: blur(5px); backdrop-filter: blur(5px);
   /* a ring: nothing over the element itself (or its own border gets blurred), full at its edge,
@@ -1788,17 +1788,22 @@ body.body--dark .pp-aidiff-chip-warn { color: #e3b341; }
     100% max(0px, calc(100% - 2 * var(--pp-halo-R))), max(0px, calc(100% - 2 * var(--pp-halo-R))) 100%;
   mask-repeat: no-repeat;
 }
-.pp-askpop-chat .pp-askpop-card::after, .pp-askpop-chat .pp-askpop-to-chat.q-btn::after { display: none; }
+.pp-askpop-chat .pp-askpop-card::after, .pp-askpop-chat .pp-askpop-tools::after { display: none; }
 .pp-askpop .pp-askpop-card { flex: 1; min-width: 0; background: var(--pp-askpop-tint); border-color: var(--pp-askpop-line); box-shadow: 0 4px 16px rgba(0, 0, 0, .12); }
 .pp-askpop .pp-askpop-card:focus-within { border-color: rgba(var(--pp-accent-rgb), .6); }
 .pp-askpop .pp-askpop-row { grid-template-columns: auto minmax(0, 1fr) auto; grid-template-areas: "plus input send"; padding: 0 0 0 4px; }
 .pp-askpop .pp-chat-multi .pp-askpop-row { grid-template-areas: "plus input input" ". . send"; }
 .pp-askpop textarea::placeholder { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .pp-askpop-chip { align-self: start; line-height: 34px; padding-left: 6px; font-size: 13.5px; font-weight: 600; white-space: nowrap; color: var(--pp-accent); }
-.pp-askpop-to-chat.q-btn { flex: none; width: 46px; height: 46px; min-width: 46px; min-height: 0; padding: 0; color: var(--pp-fg); background: var(--pp-askpop-tint); border: 1px solid var(--pp-askpop-line); box-shadow: 0 4px 16px rgba(0, 0, 0, .12); }
+/* Format + Move to chat as one chip (user 2026-11-20): as tall as the card (48 px) with its
+   24 px corners, 6 px around its two 34 px round buttons; in the mini chat only Move to chat */
+.pp-askpop { --pp-askpop-tools: 82px; }
+.pp-askpop-chat { --pp-askpop-tools: 48px; }
+.pp-askpop-tools { flex: none; gap: 0; height: 48px; padding: 0 6px; border-radius: 24px; background: var(--pp-askpop-tint); border: 1px solid var(--pp-askpop-line); box-shadow: 0 4px 16px rgba(0, 0, 0, .12); }
+.pp-askpop-tool.q-btn { flex: none; width: 34px; height: 34px; min-width: 34px; min-height: 0; padding: 0; color: var(--pp-fg); }
 /* hover: a grey layer over the solid background (a see-through hover would show the note) */
-.pp-askpop-to-chat.q-btn:hover { background: linear-gradient(rgba(127, 127, 127, .14), rgba(127, 127, 127, .14)), var(--pp-bg); }
-.pp-askpop-to-chat.q-btn .q-icon { font-size: var(--pp-icon-l); }  /* 18 px, as toolbar buttons */
+.pp-askpop-tool.q-btn:hover { background: linear-gradient(rgba(127, 127, 127, .14), rgba(127, 127, 127, .14)), var(--pp-askpop-tint); }
+.pp-askpop-tool.q-btn .q-icon { font-size: var(--pp-icon-l); }  /* 18 px, as toolbar buttons */
 .pp-askpop-dragging, .pp-askpop-dragging * { cursor: grabbing !important; user-select: none; }
 /* the mini chat: a window with a header (drag to move, ×), the messages, the box at the bottom */
 .pp-askpop .pp-askpop-head, .pp-askpop .pp-askpop-log { display: none; }
@@ -1808,7 +1813,7 @@ body.body--dark .pp-aidiff-chip-warn { color: #e3b341; }
 .pp-askpop-head-icon { color: var(--pp-accent); }
 .pp-askpop-chat .pp-askpop-log { display: flex; flex: 1 1 auto; min-height: 0; overflow-y: auto; gap: 12px; padding: 4px 2px; scrollbar-width: thin; }
 .pp-askpop-chat .pp-askpop-card { background: var(--pp-bg); }
-.pp-askpop-chat .pp-askpop-card, .pp-askpop-chat .pp-askpop-to-chat.q-btn { box-shadow: none; }
+.pp-askpop-chat .pp-askpop-card, .pp-askpop-chat .pp-askpop-tools { box-shadow: none; }
 .pp-askpop-msg-cmd, .pp-askpop-msg-words { display: inline; }
 /* the box's hint over the empty input: an Enter key icon (corner-down-right: the user wanted it mirrored), "Ask, / a command" (an icon cannot go in
    a placeholder; the placeholder is one space so :placeholder-shown tells an empty box) */
@@ -1832,8 +1837,8 @@ body.body--dark .pp-aidiff-chip-warn { color: #e3b341; }
    uncovered from the small box's footprint (clip-path, no layout change), away from the selection */
 .pp-askpop-chat[data-pp-side="down"] { animation: pp-askpop-grow-down calc(var(--pp-dur) * 1.6) var(--pp-ease); }
 .pp-askpop-chat[data-pp-side="up"] { animation: pp-askpop-grow-up calc(var(--pp-dur) * 1.6) var(--pp-ease); }
-@keyframes pp-askpop-grow-down { from { clip-path: inset(0 calc(100% - 325px) calc(100% - 66px) 0 round 24px); } to { clip-path: inset(0 0 0 0 round var(--pp-r-popup)); } }
-@keyframes pp-askpop-grow-up { from { clip-path: inset(calc(100% - 66px) calc(100% - 325px) 0 0 round 24px); } to { clip-path: inset(0 0 0 0 round var(--pp-r-popup)); } }
+@keyframes pp-askpop-grow-down { from { clip-path: inset(0 calc(100% - 361px) calc(100% - 66px) 0 round 24px); } to { clip-path: inset(0 0 0 0 round var(--pp-r-popup)); } }
+@keyframes pp-askpop-grow-up { from { clip-path: inset(calc(100% - 66px) calc(100% - 361px) 0 0 round 24px); } to { clip-path: inset(0 0 0 0 round var(--pp-r-popup)); } }
 .pp-askpop-msg-cmd { margin-right: 6px; font-weight: 600; color: var(--pp-accent); }
 /* askpop.js picks the side once (data-pp-side = down / up; an attribute, since Python rewrites
    the class list) and holds the box by its edge next to the selection. The mini chat has one
@@ -1851,13 +1856,13 @@ body.body--dark .pp-aidiff-chip-warn { color: #e3b341; }
 .pp-askpop-chat .pp-askpop-cmds { max-height: min(300px, calc(100% - 110px)); }
 .pp-askpop-cmd-title, .pp-chat-cmd > .q-label, .pp-chat-cmd > div { white-space: nowrap; }
 /* no room on the growing side: the list over the selection instead, out of the box's flow */
-.pp-askpop-cmds[data-pp-flip] { position: absolute; left: 10px; width: calc(100% - 72px); }
+.pp-askpop-cmds[data-pp-flip] { position: absolute; left: 10px; width: calc(100% - 26px - var(--pp-askpop-tools)); }
 .pp-askpop[data-pp-side="down"] .pp-askpop-cmds[data-pp-flip] { bottom: calc(100% + 6px); }
 .pp-askpop[data-pp-side="up"] .pp-askpop-cmds[data-pp-flip] { top: calc(100% + 6px); }
 /* the / list: as wide as the card (not under Move to chat) */
 /* as wide as the Ask box itself (its card: the row minus Move to chat, 46 px + 6 px gap); box and list
    253 px (user 2026-11-09: 15 % narrower than 298) */
-.pp-askpop-cmds { flex: none; width: calc(100% - 52px); min-width: 0; max-width: none; gap: 0; padding: 4px; max-height: 300px; overflow-y: auto; border: 1px solid var(--pp-askpop-line); border-radius: var(--pp-r-popup); background: var(--pp-askpop-tint); box-shadow: 0 4px 16px rgba(0, 0, 0, .12); }
+.pp-askpop-cmds { flex: none; width: calc(100% - 6px - var(--pp-askpop-tools)); min-width: 0; max-width: none; gap: 0; padding: 4px; max-height: 300px; overflow-y: auto; border: 1px solid var(--pp-askpop-line); border-radius: var(--pp-r-popup); background: var(--pp-askpop-tint); box-shadow: 0 4px 16px rgba(0, 0, 0, .12); }
 .pp-askpop-cmd { width: 100%; flex-wrap: nowrap; gap: 10px; padding: 7px 12px; border-radius: var(--pp-r-ctrl); cursor: pointer; font-size: 13.5px; }
 .pp-askpop-cmd:hover, .pp-askpop-cmd-active { background: rgba(var(--pp-accent-rgb), .12); }
 .pp-askpop-cmd-sub { margin-left: auto; padding-left: 12px; min-width: 0; font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -2259,8 +2264,8 @@ body.body--dark .pp-aidiff-chip-warn { color: #e3b341; }
 @keyframes pp-flip-b { from { opacity: 0; transform: rotateX(-90deg); } }
 
 /* Formatting menu syntax in the editor (PLAN §4.38; format.js, livepreview.js, comments.js) */
-:root { --pp-hl: rgba(255, 213, 0, .38); --pp-comment: #8a9099; }
-body.body--dark { --pp-hl: rgba(255, 213, 0, .26); --pp-comment: #a4aab3; }
+:root { --pp-hl: rgba(255, 213, 0, .38); --pp-comment: #8a9099; --pp-pop-field: rgba(127, 127, 127, .1); }
+body.body--dark { --pp-hl: rgba(255, 213, 0, .26); --pp-comment: #a4aab3; --pp-pop-field: rgba(255, 255, 255, .07); }
 .pp-highlight { background: var(--pp-hl); border-radius: 3px; box-decoration-break: clone; -webkit-box-decoration-break: clone; padding: 1px 0; }
 .pp-underline { text-decoration: underline; text-underline-offset: 3px; text-decoration-thickness: 1px; }
 .pp-format-tag { color: var(--pp-muted); font-size: .85em; }
@@ -2275,22 +2280,38 @@ body.body--dark { --pp-hl: rgba(255, 213, 0, .26); --pp-comment: #a4aab3; }
 /* a line holding hidden %%comments%%: room on the right for its pin, which sits in that margin */
 .pp-editor .cm-line.pp-cmt-line { position: relative; padding-right: 34px; }
 .pp-cmt-anchor { display: inline; }  /* not positioned: the pin sits against the line */
-.pp-cmt-pin { position: absolute; right: 4px; top: calc((1lh - 24px) / 2); width: 24px; height: 24px; display: inline-flex; align-items: center; justify-content: center; text-indent: 0; border-radius: var(--pp-r-ctrl); color: var(--pp-comment); background: rgba(127, 127, 127, .08); cursor: pointer; user-select: none; transition: background-color var(--pp-dur-fast) ease, color var(--pp-dur-fast) ease; }
-.pp-cmt-pin:hover { background: rgba(var(--pp-accent-rgb), .14); color: var(--pp-accent); }
-.pp-cmt-pin .pp-cmt-icon, .pp-cmt-pop .pp-cmt-icon { display: inline-flex; width: 15px; height: 15px; }
+.pp-cmt-pin { position: absolute; right: 4px; top: calc((1lh - 24px) / 2); width: 24px; height: 24px; display: inline-flex; align-items: center; justify-content: center; text-indent: 0; border-radius: var(--pp-r-ctrl); cursor: pointer; user-select: none; transition: background-color var(--pp-dur-fast) ease, color var(--pp-dur-fast) ease; }
+.pp-cmt-pin .pp-cmt-icon { display: inline-flex; width: 15px; height: 15px; }
 .pp-cmt-pin svg, .pp-cmt-pop .pp-cmt-icon svg { width: 100%; height: 100%; }
 .pp-cmt-count { position: absolute; right: -3px; top: -4px; min-width: 14px; height: 14px; padding: 0 3px; border-radius: 7px; font-size: 9px; line-height: 14px; font-weight: 700; text-align: center; color: var(--pp-on-accent); background: var(--pp-accent); }
-/* the comment window (a pin's click) */
-.pp-cmt-pop { position: fixed; z-index: 2600; width: 280px; max-width: calc(100vw - 16px); padding: 8px; display: flex; flex-direction: column; gap: 8px; border: 1px solid var(--pp-border); border-radius: var(--pp-r-popup); background: var(--pp-bg); color: var(--pp-fg); box-shadow: 0 10px 30px rgba(0, 0, 0, .18); font-size: 13px; animation: pp-drop-in var(--pp-dur) var(--pp-ease); }
-.pp-cmt-head { display: flex; align-items: center; gap: 6px; padding: 0 2px; color: var(--pp-comment); font-weight: 600; font-size: 12px; }
+/* comment pin colours (comments.js; user 2026-11-20): grey by default, red / yellow / green */
+:root { --pp-cmt-red: #e03e3e; --pp-cmt-yellow: #d4a106; --pp-cmt-green: #3f9a62; }
+body.body--dark { --pp-cmt-red: #ff6b6b; --pp-cmt-yellow: #f2c94c; --pp-cmt-green: #4dbb85; }
+.pp-cmt-c-gray { --pp-cmt-c: var(--pp-comment); }
+.pp-cmt-c-red { --pp-cmt-c: var(--pp-cmt-red); }
+.pp-cmt-c-yellow { --pp-cmt-c: var(--pp-cmt-yellow); }
+.pp-cmt-c-green { --pp-cmt-c: var(--pp-cmt-green); }
+.pp-cmt-pin { color: var(--pp-cmt-c); background: color-mix(in srgb, var(--pp-cmt-c) 12%, transparent); }
+.pp-cmt-pin:hover { color: var(--pp-cmt-c); background: color-mix(in srgb, var(--pp-cmt-c) 22%, transparent); }
+/* the comment window (a pin's click). Popup look (user 2026-11-20, also the formatting menu):
+   6 px around the content, 6 px inside icon tiles and buttons, fields told apart by their tint
+   (no outline) */
+.pp-cmt-pop { position: fixed; z-index: 2600; width: 280px; max-width: calc(100vw - 16px); padding: 6px; display: flex; flex-direction: column; gap: 6px; border: 1px solid var(--pp-border); border-radius: var(--pp-r-popup); background: var(--pp-bg); color: var(--pp-fg); box-shadow: 0 10px 30px rgba(0, 0, 0, .18); font-size: 13px; animation: pp-drop-in var(--pp-dur) var(--pp-ease); }
+.pp-cmt-head { display: flex; align-items: center; gap: 6px; color: var(--pp-fg); font-weight: 600; font-size: 12px; }
 .pp-cmt-title { flex: 1 1 auto; }
-.pp-cmt-x { display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 24px; border: 0; border-radius: var(--pp-r-ctrl); background: none; color: var(--pp-muted); cursor: pointer; }
+.pp-cmt-tile { display: inline-flex; padding: 6px; border-radius: var(--pp-r-ctrl); color: var(--pp-cmt-c); background: color-mix(in srgb, var(--pp-cmt-c) 14%, transparent); transition: color var(--pp-dur-fast) ease, background-color var(--pp-dur-fast) ease; }
+.pp-cmt-pop .pp-cmt-icon { display: inline-flex; width: 16px; height: 16px; }
+.pp-cmt-x { display: inline-flex; align-items: center; justify-content: center; padding: 6px; border: 0; border-radius: var(--pp-r-ctrl); background: none; color: var(--pp-muted); cursor: pointer; }
 .pp-cmt-x:hover { background: rgba(127, 127, 127, .15); color: var(--pp-fg); }
 .pp-cmt-item { display: flex; flex-direction: column; gap: 6px; }
-.pp-cmt-text { width: 100%; box-sizing: border-box; resize: none; min-height: 34px; padding: 7px 9px; border: 1px solid var(--pp-border); border-radius: var(--pp-r-ctrl); background: var(--pp-bg-side); color: var(--pp-comment); font: inherit; line-height: 1.45; outline: none; }
-.pp-cmt-text:focus { border-color: rgba(var(--pp-accent-rgb), .6); }
-.pp-cmt-actions { display: flex; justify-content: flex-end; gap: 6px; }
-.pp-cmt-btn { height: 26px; padding: 0 10px; border: 0; border-radius: var(--pp-r-ctrl); font: inherit; font-size: 12px; cursor: pointer; background: rgba(127, 127, 127, .12); color: var(--pp-fg); }
+.pp-cmt-text { display: block; width: 100%; box-sizing: border-box; resize: none; min-height: 32px; padding: 6px; border: 0; border-radius: var(--pp-r-ctrl); background: var(--pp-pop-field); color: var(--pp-fg); font: inherit; line-height: 20px; outline: none; }
+.pp-cmt-actions { display: flex; align-items: center; gap: 6px; }
+.pp-cmt-colors { display: flex; align-items: center; gap: 2px; margin-right: auto; }
+.pp-cmt-dot { display: inline-flex; padding: 6px; border: 0; border-radius: var(--pp-r-ctrl); background: none; cursor: pointer; }
+.pp-cmt-dot::before { content: ""; width: 12px; height: 12px; border-radius: 50%; background: var(--pp-cmt-c); box-shadow: 0 0 0 2px var(--pp-bg), 0 0 0 3.5px transparent; transition: box-shadow var(--pp-dur-fast) ease; }
+.pp-cmt-dot:hover { background: rgba(127, 127, 127, .12); }
+.pp-cmt-dot[aria-pressed="true"]::before { box-shadow: 0 0 0 2px var(--pp-bg), 0 0 0 3.5px var(--pp-cmt-c); }
+.pp-cmt-btn { padding: 6px 10px; border: 0; border-radius: var(--pp-r-ctrl); font: inherit; font-size: 12px; line-height: 16px; cursor: pointer; background: rgba(127, 127, 127, .12); color: var(--pp-fg); }
 .pp-cmt-btn:hover { background: rgba(127, 127, 127, .2); }
 .pp-cmt-del { color: var(--pp-danger); }
 .pp-cmt-save { background: var(--pp-accent); color: var(--pp-on-accent); }
@@ -2299,8 +2320,8 @@ body.body--dark { --pp-hl: rgba(255, 213, 0, .26); --pp-comment: #a4aab3; }
 /* The formatting menu (components/format_menu.py, static/formatmenu.js; PLAN §4.38): the look of
    the other popup menus — icon, label, a muted markdown hint on the right */
 .pp-askpop-chat .pp-askpop-format { display: none; }  /* the mini chat is about a question, not the words' look */
-.pp-fmenu { position: fixed; z-index: 2600; left: -9999px; top: 0; width: 248px; max-height: min(460px, calc(100vh - var(--pp-inset-bottom, 0px) - 16px)); display: flex; flex-direction: column; padding: 5px; border: 1px solid var(--pp-border); border-radius: var(--pp-r-popup); background: var(--pp-bg); color: var(--pp-fg); box-shadow: 0 10px 30px rgba(0, 0, 0, .18); font-size: 13px; user-select: none; animation: pp-drop-in var(--pp-dur) var(--pp-ease); }
-.pp-fmenu-item { display: flex; align-items: center; gap: 10px; min-height: 32px; padding: 0 8px; border-radius: var(--pp-r-ctrl); cursor: pointer; flex: none; }
+.pp-fmenu { position: fixed; z-index: 2600; left: -9999px; top: 0; width: 248px; max-height: min(460px, calc(100vh - var(--pp-inset-bottom, 0px) - 16px)); display: flex; flex-direction: column; padding: 6px; border: 1px solid var(--pp-border); border-radius: var(--pp-r-popup); background: var(--pp-bg); color: var(--pp-fg); box-shadow: 0 10px 30px rgba(0, 0, 0, .18); font-size: 13px; user-select: none; animation: pp-drop-in var(--pp-dur) var(--pp-ease); }
+.pp-fmenu-item { display: flex; align-items: center; gap: 10px; min-height: 32px; padding: 6px; border-radius: var(--pp-r-ctrl); cursor: pointer; flex: none; }
 .pp-fmenu-item:hover { background: rgba(127, 127, 127, .12); }
 .pp-fmenu-icon { color: var(--pp-muted); flex: none; }
 .pp-fmenu-item:hover .pp-fmenu-icon { color: var(--pp-fg); }
@@ -2310,8 +2331,8 @@ body.body--dark { --pp-hl: rgba(255, 213, 0, .26); --pp-comment: #a4aab3; }
 .pp-fmenu-sep { height: 1px; margin: 4px 6px; background: var(--pp-border); flex: none; }
 .pp-fmenu-group { padding: 8px 8px 3px; font-size: 10px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: var(--pp-muted); flex: none; }
 .pp-fmenu-scroll { flex: 1 1 auto; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; }
-.pp-fmenu-head { display: flex; align-items: center; gap: 6px; min-height: 32px; padding: 0 4px 2px; flex: none; }
-.pp-fmenu-back { display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 24px; border-radius: var(--pp-r-ctrl); color: var(--pp-muted); cursor: pointer; }
+.pp-fmenu-head { display: flex; align-items: center; gap: 6px; min-height: 32px; padding: 0 0 6px; flex: none; }
+.pp-fmenu-back { display: inline-flex; align-items: center; justify-content: center; padding: 6px; border-radius: var(--pp-r-ctrl); color: var(--pp-muted); cursor: pointer; }
 .pp-fmenu-back:hover { background: rgba(127, 127, 127, .15); color: var(--pp-fg); }
 .pp-fmenu-title { font-size: 12px; font-weight: 600; color: var(--pp-muted); }
 /* Customize: pinned items in the accent, a full list greys the rest */
@@ -2320,13 +2341,13 @@ body.body--dark { --pp-hl: rgba(255, 213, 0, .26); --pp-comment: #a4aab3; }
 .pp-fmenu-pick:not(.pp-fmenu-on):hover .pp-fmenu-check { opacity: .7; }
 .pp-fmenu-pick.pp-fmenu-off { opacity: .45; pointer-events: none; }
 /* Text colour: the palette as round swatches */
-.pp-fmenu-swatches { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; padding: 6px 8px 8px; flex: none; }
+.pp-fmenu-swatches { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; padding: 6px; flex: none; }
 .pp-fmenu-swatch { height: 30px; border-radius: var(--pp-r-ctrl); background: var(--sw); cursor: pointer; box-shadow: inset 0 0 0 1px rgba(0, 0, 0, .08); transition: transform var(--pp-dur-fast) ease; }
 .pp-fmenu-swatch:hover { transform: scale(1.08); }
-/* Link and Comment: one field (and a button) */
-.pp-fmenu-input, .pp-fmenu-text { margin: 0 4px 4px; padding: 0 8px; border: 1px solid var(--pp-border); border-radius: var(--pp-r-ctrl); background: var(--pp-bg-side); flex: none; }
+/* Link and Comment: one field (and a button), told apart by its tint, no outline (user 2026-11-20) */
+.pp-fmenu-input, .pp-fmenu-text { margin: 0 0 6px; padding: 0 6px; border: 0; border-radius: var(--pp-r-ctrl); background: var(--pp-pop-field); flex: none; }
 .pp-fmenu-input .q-field__control, .pp-fmenu-input .q-field__native { min-height: 32px; height: 32px; }
-.pp-fmenu-text .q-field__native { min-height: 52px; padding: 6px 0; color: var(--pp-comment); line-height: 1.45; }
+.pp-fmenu-text .q-field__native { min-height: 52px; padding: 6px 0; color: var(--pp-fg); line-height: 20px; }
 .pp-fmenu-notes { display: flex; flex-direction: column; flex: none; }
-.pp-fmenu-actions { display: flex; justify-content: flex-end; padding: 2px 4px 2px; flex: none; }
-.pp-fmenu-btn.q-btn { height: 28px; min-height: 0; padding: 0 12px; border-radius: var(--pp-r-ctrl); background: var(--pp-accent); color: var(--pp-on-accent); font-size: 12px; }
+.pp-fmenu-actions { display: flex; justify-content: flex-end; gap: 6px; flex: none; }
+.pp-fmenu-btn.q-btn { height: 28px; min-height: 0; padding: 6px 10px; border-radius: var(--pp-r-ctrl); background: var(--pp-accent); color: var(--pp-on-accent); font-size: 12px; }

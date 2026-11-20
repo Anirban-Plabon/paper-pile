@@ -142,6 +142,23 @@ def test_comments_are_found_and_edited() -> None:
     assert gone is not None and gone.changes[0].insert == ""
 
 
+def _set(text: str, edit: TextEdit | None) -> str:
+    assert edit is not None
+    c = edit.changes[0]
+    return text[: c.start] + c.insert + text[c.end :]
+
+
+def test_comment_pin_colour() -> None:
+    text = "a%%{red} one%% b %%two%% c %%{blue} three%%"
+    found = comments(text)
+    assert [(c.body, c.color) for c in found] == [("one", "red"), ("two", ""), ("{blue} three", "")]
+    # the colour is kept when only the words change, and set / cleared on its own
+    assert _set(text, set_comment(text, found[0].start, "uno")).startswith("a%%{red} uno%%")
+    assert "%%{green} two%%" in _set(text, set_comment(text, found[1].start, "two", "green"))
+    assert _set(text, set_comment(text, 1, "one", "")).startswith("a%%one%%")
+    assert "%%two%%" in _set(text, set_comment(text, found[1].start, "two", "pink"))
+
+
 @pytest.mark.parametrize(
     ("kind", "want"),
     [

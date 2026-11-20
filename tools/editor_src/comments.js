@@ -6,7 +6,19 @@ import { WidgetType } from "@codemirror/view";
 import { rtOf } from "./context.js";
 
 const COMMENT = /%%((?:[^\n%]|%(?!%))*)%%/g;
+// a comment's pin colour (core/formatting.py COMMENT_COLORS): grey without a mark, else `%%{red} …%%`
+export const COMMENT_COLORS = ["", "red", "yellow", "green"];
+const COLOR_MARK = /^\{(red|yellow|green)\}\s*/;
+const COLOR_NAME = { "": "Grey", red: "Red", yellow: "Yellow", green: "Green" };
 let open = null; // {el, close}
+
+// `{red} words` -> {color: "red", body: "words"}
+export function splitComment(raw) {
+  const t = raw.trim();
+  const m = COLOR_MARK.exec(t);
+  return m ? { color: m[1], body: t.slice(m[0].length).trim() } : { color: "", body: t };
+}
+const colorClass = (c) => `pp-cmt-c-${c || "gray"}`;
 
 function el(tag, cls, text) {
   const e = document.createElement(tag);
@@ -35,7 +47,7 @@ function lineComments(view, pin) {
   }
   const line = view.state.doc.lineAt(pos);
   const out = [];
-  for (const m of line.text.matchAll(COMMENT)) out.push({ from: line.from + m.index, body: m[1].trim() });
+  for (const m of line.text.matchAll(COMMENT)) out.push({ from: line.from + m.index, ...splitComment(m[1]) });
   return out;
 }
 
@@ -46,15 +58,18 @@ function openPopup(view, pin) {
   const rt = rtOf(view.state);
   const box = el("div", "pp-cmt-pop");
   const head = el("div", "pp-cmt-head");
-  head.append(icon("message-square"), el("span", "pp-cmt-title", items.length > 1 ? `${items.length} comments` : "Comment"));
+  // the comment icon in its tile, in the (first) comment's pin colour
+  const tile = el("span", `pp-cmt-tile ${colorClass(items[0].color)}`);
+  tile.append(icon("message-square"));
+  head.append(tile, el("span", "pp-cmt-title", items.length > 1 ? `${items.length} comments` : "Comment"));
   const x = el("button", "pp-cmt-x");
   x.append(icon("x"));
   x.title = "Close (Esc)";
   head.append(x);
   box.append(head);
-  const send = (i, body) => {
+  const send = (i, body, color) => {
     const now = lineComments(view, pin)[i];
-    if (now) rt.emit("comment_set", { docId: rt.getDocId(), from: now.from, body });
+    if (now) rt.emit("comment_set", { docId: rt.getDocId(), from: now.from, body, color });
     close();
   };
   items.forEach((item, i) => {
@@ -63,24 +78,38 @@ function openPopup(view, pin) {
     ta.value = item.body;
     ta.rows = 1;
     ta.spellcheck = true;
-    // as tall as its text (border-box: + the 2 px border), scrolling only past 160 px
+    let color = item.color; // picked in the dots below, written with Save / Enter
+    // as tall as its text (no border), scrolling only past 160 px
     const fit = () => {
       ta.style.height = "auto";
-      const h = ta.scrollHeight + 2;
+      const h = ta.scrollHeight;
       ta.style.height = `${Math.min(h, 160)}px`;
       ta.style.overflowY = h > 160 ? "auto" : "hidden";
     };
     ta.addEventListener("input", fit);
     ta.addEventListener("keydown", (e) => {
-      if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(i, ta.value); }
+      if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(i, ta.value, color); }
       else if (e.key === "Escape") { e.preventDefault(); close(); view.focus(); }
     });
     const actions = el("div", "pp-cmt-actions");
+    const dots = el("div", "pp-cmt-colors");
+    for (const c of COMMENT_COLORS) {
+      const dot = el("button", `pp-cmt-dot ${colorClass(c)}`);
+      dot.title = COLOR_NAME[c];
+      dot.setAttribute("aria-pressed", String(c === color));
+      dot.addEventListener("mousedown", (e) => e.preventDefault()); // the text keeps the caret
+      dot.addEventListener("click", () => {
+        color = c;
+        for (const d of dots.children) d.setAttribute("aria-pressed", String(d === dot));
+        if (i === 0) tile.className = `pp-cmt-tile ${colorClass(c)}`;
+      });
+      dots.append(dot);
+    }
     const del = el("button", "pp-cmt-btn pp-cmt-del", "Delete");
     const save = el("button", "pp-cmt-btn pp-cmt-save", "Save");
-    del.addEventListener("click", () => send(i, ""));
-    save.addEventListener("click", () => send(i, ta.value));
-    actions.append(del, save);
+    del.addEventListener("click", () => send(i, "", color));
+    save.addEventListener("click", () => send(i, ta.value, color));
+    actions.append(dots, del, save);
     row.append(ta, actions);
     box.append(row);
     requestAnimationFrame(fit);
@@ -117,7 +146,7 @@ function openPopup(view, pin) {
 export class CommentPin extends WidgetType {
   constructor(bodies) {
     super();
-    this.bodies = bodies; // the comments' texts (the tooltip)
+    this.bodies = bodies; // the comments' insides as written (`{red} words`)
   }
   eq(other) {
     return other.bodies.join("\u0000") === this.bodies.join("\u0000");
@@ -126,10 +155,12 @@ export class CommentPin extends WidgetType {
   // which is placed against the line (the line is the positioned box, app.css)
   toDOM(view) {
     const anchor = el("span", "pp-cmt-anchor");
-    const pin = el("span", "pp-cmt-pin");
+    const parts = this.bodies.map(splitComment);
+    // the pin takes the first coloured comment's colour (grey when none has one)
+    const pin = el("span", `pp-cmt-pin ${colorClass(parts.find((p) => p.color)?.color)}`);
     anchor.append(pin);
     pin.setAttribute("role", "button");
-    pin.title = this.bodies.join("\n");
+    pin.title = parts.map((p) => p.body).join("\n");
     pin.append(icon("message-square"));
     if (this.bodies.length > 1) pin.append(el("span", "pp-cmt-count", String(this.bodies.length)));
     pin.addEventListener("mousedown", (e) => { e.preventDefault(); e.stopPropagation(); });
