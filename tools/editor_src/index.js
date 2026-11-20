@@ -20,7 +20,7 @@ import { flashChanges, jumpTo, motion } from "./motion.js";
 import { pageDrag } from "./pagedrag.js";
 import { frontMatterEnd, pageView, printLayoutReady } from "./pageview.js";
 import { selectionSync } from "./selectionsync.js";
-import { closeSlash, setSlashResults, slashExtension } from "./slash.js";
+import { closeSlash, setSlashResults, slashExtension, slashForSelection } from "./slash.js";
 import { focusTableCell, tableKeys } from "./tablewidget.js";
 import { streamAppend, streamBegin, streamEnd, streamField } from "./stream.js";
 import { proposalExtension, showLiveText, showProposal } from "./proposal.js";
@@ -554,7 +554,10 @@ export function createEditor(
       if (id === docId) {
         if (view.state.doc.toString() !== expected) return false;
         const spec = { changes, annotations: isolateHistory.of("full") }; // its own undo step
-        if (cursor !== null) {
+        if (Array.isArray(cursor)) {
+          spec.selection = { anchor: cursor[0], head: cursor[1] }; // a formatting item keeps the words selected
+          spec.scrollIntoView = true;
+        } else if (cursor !== null) {
           spec.selection = { anchor: cursor }; // offset in the document after the changes
           spec.scrollIntoView = true;
         }
@@ -566,6 +569,52 @@ export function createEditor(
       if (state.doc.toString() !== expected) return false;
       parked.set(id, state.update({ changes }).state);
       return true;
+    },
+    // The formatting menu's edit items (PLAN §4.38) on `from`..`to`: cut / copy / paste / delete.
+    // Paste goes the way Ctrl+V does (Python's paste handling), as plain text.
+    async clipboard(op, from, to) {
+      const max = view.state.doc.length;
+      const a = Math.max(0, Math.min(from, max));
+      const b = Math.max(a, Math.min(to, max));
+      view.focus();
+      view.dispatch({ selection: { anchor: a, head: b } });
+      if (op === "copy" || op === "cut") {
+        const text = view.state.sliceDoc(a, b);
+        try {
+          await navigator.clipboard.writeText(text);
+        } catch (_) {
+          const ta = document.createElement("textarea");
+          ta.value = text;
+          document.body.append(ta);
+          ta.select();
+          document.execCommand("copy");
+          ta.remove();
+          view.focus();
+        }
+        if (op === "cut") view.dispatch({ changes: { from: a, to: b }, userEvent: "delete.cut" });
+        return true;
+      }
+      if (op === "delete") {
+        view.dispatch({ changes: { from: a, to: b }, userEvent: "delete" });
+        return true;
+      }
+      if (op === "paste") {
+        let text;
+        try {
+          text = await navigator.clipboard.readText();
+        } catch (_) {
+          return false; // no clipboard access here: Ctrl+V still works
+        }
+        if (text) emit("paste", { kind: "text", html: "", text });
+        return true;
+      }
+      return false;
+    },
+    // "Ask AI…" in the formatting menu: the slash menu of AI commands for `from`..`to`.
+    slashForSelection(from, to) {
+      view.focus();
+      view.dispatch({ selection: { anchor: from, head: to } });
+      return slashForSelection(view);
     },
     // An AI answer typed into the note at `pos` as it arrives (see stream.js).
     streamBegin(id, pos, chip) {

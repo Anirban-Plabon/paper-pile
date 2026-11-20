@@ -337,11 +337,22 @@ function onContextMenu(e, view) {
   view.focus();
   const sel = view.state.selection.main;
   if (!sel.empty && pos >= sel.from && pos <= sel.to && view.state.selection.ranges.length === 1) {
-    emitFrom(view.state, "ai_selection", { from: sel.from, to: sel.to, text: view.state.sliceDoc(sel.from, sel.to) });
-    openTemp(view, sel.to, { from: sel.from, to: sel.to });
+    // a right-click on the selection: the formatting menu (Python, gui/components/format_menu.py;
+    // PLAN §4.38); its "Ask AI…" brings this menu back (`slashForSelection`)
+    emitFrom(view.state, "format_menu", { from: sel.from, to: sel.to, x: e.clientX, y: e.clientY });
   } else {
     openTemp(view, pos, null);
   }
+  return true;
+}
+
+// The slash menu for the selection (its AI commands; Cut / Copy / Paste on top): what a
+// right-click on a selection opened before the formatting menu.
+export function slashForSelection(view) {
+  const sel = view.state.selection.main;
+  if (sel.empty) return false;
+  emitFrom(view.state, "ai_selection", { from: sel.from, to: sel.to, text: view.state.sliceDoc(sel.from, sel.to) });
+  openTemp(view, sel.to, { from: sel.from, to: sel.to });
   return true;
 }
 

@@ -14,6 +14,8 @@ import { parseWikilink } from "./wikilink.js";
 import { activeLines, isHoldChange, refreshEffect, touches } from "./reveal.js";
 import { CodeCopyWidget } from "./blockactions.js";
 import { FoldToggle, foldEffects, foldState } from "./fold.js";
+import { CommentPin } from "./comments.js";
+import { PALETTE } from "./format.js";
 import { BulletWidget, CalloutLabelWidget, CheckboxWidget, HrWidget, ImageWidget, MathWidget, NestWidget, PageBreakWidget } from "./widgets.js";
 
 const hide = Decoration.replace({});
@@ -27,6 +29,7 @@ const INLINE = {
   Emphasis: { cls: "pp-em", marks: "EmphasisMark" },
   Strikethrough: { cls: "pp-strike", marks: "StrikethroughMark" },
   InlineCode: { cls: "pp-code", marks: "CodeMark" },
+  Highlight: { cls: "pp-highlight", marks: "HighlightMark" }, // ==text== (format.js, PLAN §4.38)
 };
 const INLINE_DECO = Object.fromEntries(Object.entries(INLINE).map(([k, v]) => [k, mark(v.cls)]));
 const linkDeco = (href) =>
@@ -131,6 +134,21 @@ function context(view) {
   return { state, doc: state.doc, active: activeLines(state), out: [], quoteDepth: new Map() };
 }
 
+// `<u>` / `<span style="color:…">` and their closing tag (format.js FormatTag), PLAN §4.38
+const tagKind = (t) => (t === "<u>" || t === "</u>" ? "u" : "span");
+const COMMENT_MARK = mark("pp-comment");
+const FORMAT_TAG_RAW = mark("pp-format-tag");
+const UNDERLINE = mark("pp-underline");
+const COMMENT_LINE = lineDeco("pp-cmt-line");
+function colorDeco(tag) {
+  const m = /color:\s*([^;"]+)/.exec(tag);
+  const code = m ? m[1].trim().toLowerCase() : "";
+  const name = PALETTE[code];
+  return name
+    ? Decoration.mark({ class: `pp-fc pp-fc-${name}` })
+    : Decoration.mark({ class: "pp-fc", attributes: { style: `color:${code}` } });
+}
+
 const handlers = {
   ...Object.fromEntries(
     Object.keys(INLINE).map((name) => [
@@ -142,6 +160,52 @@ const handlers = {
       },
     ]),
   ),
+
+  // An opening tag finds its closing one among the next siblings (same kind, nesting counted);
+  // the words between get the style, the tags hide while the caret is not on the pair. A tag
+  // without its pair stays text.
+  FormatTag: (cx, node) => {
+    const text = cx.doc.sliceString(node.from, node.to);
+    if (text.startsWith("</")) return;
+    const kind = tagKind(text);
+    let depth = 0;
+    let close = null;
+    for (let n = node.node.nextSibling; n; n = n.nextSibling) {
+      if (n.name !== "FormatTag") continue;
+      const t = cx.doc.sliceString(n.from, n.to);
+      if (tagKind(t) !== kind) continue;
+      if (!t.startsWith("</")) depth++;
+      else if (depth-- === 0) { close = n; break; }
+    }
+    if (!close) return;
+    if (close.from > node.to) cx.out.push((kind === "u" ? UNDERLINE : colorDeco(text)).range(node.to, close.from));
+    if (touches(cx.state, node.from, close.to)) {
+      cx.out.push(FORMAT_TAG_RAW.range(node.from, node.to), FORMAT_TAG_RAW.range(close.from, close.to));
+    } else {
+      cx.out.push(hide.range(node.from, node.to), hide.range(close.from, close.to));
+    }
+  },
+
+  // `%%comment%%`: grey where the caret is, else hidden, and its line gets a pin in the margin
+  // (only a caret / selection strictly inside it shows it: the words a comment was just added to
+  // stay selected and end where it starts)
+  Comment: (cx, node) => {
+    const inside = cx.state.selection.ranges.some((r) => (r.empty ? r.head > node.from && r.head < node.to : r.from < node.to && r.to > node.from));
+    if (inside) {
+      cx.out.push(COMMENT_MARK.range(node.from, node.to));
+      return;
+    }
+    cx.out.push(hide.range(node.from, node.to));
+    const line = cx.doc.lineAt(node.from);
+    const list = (cx.comments ??= new Map()).get(line.number) || [];
+    list.push(cx.doc.sliceString(node.from + 2, node.to - 2).trim());
+    cx.comments.set(line.number, list);
+  },
+
+  // `// …` to the end of the line: an inline comment, grey
+  LineComment: (cx, node) => {
+    if (node.to > node.from) cx.out.push(COMMENT_MARK.range(node.from, node.to));
+  },
 
   // `#`..`######` (ATX) headings: the size comes from the line, the marks hide off-line.
   ...Object.fromEntries(
@@ -455,6 +519,11 @@ function build(view) {
   }
   for (const [lineNo, depth] of cx.quoteDepth) {
     cx.out.push(QUOTE_LINE[Math.min(depth, 3) - 1].range(cx.doc.line(lineNo).from));
+  }
+  for (const [lineNo, bodies] of cx.comments || []) {
+    const line = cx.doc.line(lineNo);
+    cx.out.push(COMMENT_LINE.range(line.from));
+    cx.out.push(Decoration.widget({ widget: new CommentPin(bodies), side: 1 }).range(line.to));
   }
   return Decoration.set(cx.out, true);
 }

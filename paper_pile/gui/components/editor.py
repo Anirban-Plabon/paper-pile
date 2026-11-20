@@ -61,6 +61,8 @@ class Editor(
         on_page_break: Handler | None = None,
         on_page_break_move: Handler | None = None,
         on_page_count: Handler | None = None,
+        on_comment_set: Handler | None = None,
+        on_format_menu: Handler | None = None,
     ) -> None:
         super().__init__()
         self._props["initialText"] = text
@@ -87,6 +89,10 @@ class Editor(
             self.on("page_break_move", on_page_break_move)
         if on_page_count:
             self.on("page_count", on_page_count)
+        if on_comment_set:  # a comment edited / deleted in its window (comments.js)
+            self.on("comment_set", on_comment_set)
+        if on_format_menu:  # a right-click on the selection (slash.js)
+            self.on("format_menu", on_format_menu)
         if on_blur:
             self.on("blur", on_blur)
         if on_save:
@@ -162,10 +168,11 @@ class Editor(
         doc_id: int,
         changes: list[dict[str, int | str]],
         expected: str,
-        cursor: int | None = None,
+        cursor: int | list[int] | None = None,
     ) -> bool:
         """Apply text edits to tab ``doc_id`` keeping its undo history, as one undo step.
-        ``cursor`` (a JavaScript offset in the text after the edits) moves the caret. ``False``
+        ``cursor`` (a JavaScript offset in the text after the edits) moves the caret; a pair
+        ``[anchor, head]`` selects. ``False``
         means the tab no longer held ``expected`` (or the browser did not answer): nothing
         changed."""
         try:
@@ -274,6 +281,14 @@ class Editor(
     def align_blocks(self, align: str | None, start: int, end: int) -> None:
         """Align the blocks touching ``start..end`` (UTF-16 offsets of the note on screen)."""
         self.run_method("alignBlocks", align, start, end)
+
+    def clipboard(self, op: str, start: int, end: int) -> None:
+        """Cut / copy / paste / delete on ``start..end`` (UTF-16), for the formatting menu."""
+        self.run_method("clipboard", op, start, end)
+
+    def slash_for_selection(self, start: int, end: int) -> None:
+        """Select ``start..end`` and open the slash menu of AI commands for it."""
+        self.run_method("slashForSelection", start, end)
 
     def goto_line(self, line: int) -> None:
         """Put the caret on a 1-based line of the shown note and scroll it to the top."""

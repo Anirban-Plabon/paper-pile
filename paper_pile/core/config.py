@@ -50,6 +50,8 @@ DEFAULTS: dict[str, Any] = {
         "block_spacing": True,
         "page_view": "off",  # off | lines | pages (PLAN §4.17)
         "page_view_last": "lines",  # the style the ⋯ menu turns on
+        # the formatting menu's pinned items (PLAN §4.38; core/format_items.py DEFAULT_PINNED)
+        "format_pinned": ["highlight", "comment", "underline", "color", "link"],
     },
     "print": {"paper": "A4"},
     "general": {"language": "en", "restore_tabs": True, "confirm_delete": True},

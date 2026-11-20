@@ -103,6 +103,12 @@ export default {
     async alignBlocks(align, from, to) {
       (await this.ready).alignBlocks(align, from, to);
     },
+    async clipboard(op, from, to) {  // the formatting menu's cut / copy / paste / delete
+      return (await this.ready).clipboard(op, from, to);
+    },
+    async slashForSelection(from, to) {  // the formatting menu's "Ask AI…"
+      return (await this.ready).slashForSelection(from, to);
+    },
     async gotoLine(line) {
       (await this.ready).gotoLine(line);
     },

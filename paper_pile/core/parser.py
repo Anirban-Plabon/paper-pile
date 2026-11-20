@@ -37,6 +37,7 @@ from markdown_it.rules_core import StateCore
 from markdown_it.rules_inline import StateInline
 from markdown_it.rules_inline.image import image as _image_rule
 from markdown_it.rules_inline.link import link as _link_rule
+from markdown_it.rules_inline.state_inline import Delimiter
 from markdown_it.token import Token
 from markdown_it.utils import EnvType, OptionsDict
 from mdit_py_plugins.dollarmath import dollarmath_plugin
@@ -51,8 +52,9 @@ from paper_pile.core.tags import property_tags, starts_tag, tag_body, unique
 _PARAGRAPH_LIKE = ["paragraph", "reference", "blockquote", "list"]
 
 
-def make_parser(*, breaks: bool = True) -> MarkdownIt:
-    """A fresh configured parser (cheap; the module-level one below is shared)."""
+def make_parser(*, breaks: bool = True, comments: bool = True) -> MarkdownIt:
+    """A fresh configured parser (cheap; the module-level one below is shared). ``comments``:
+    ``%%…%%`` and ``//`` comments are notes' syntax (PLAN §4.38), not the AI chat's."""
     md = (
         MarkdownIt("commonmark", {"html": False, "breaks": breaks})
         .enable(["table", "strikethrough"])
@@ -78,9 +80,121 @@ def make_parser(*, breaks: bool = True) -> MarkdownIt:
     md.add_render_rule("hashtag", _render_hashtag)
     md.add_render_rule("page_break", _render_page_break)
     md.add_render_rule("math_block", _render_math_block)  # keeps a block's class (alignment)
+    # formatting menu (PLAN §4.38): ==highlight==, the two allowed tags, comments
+    md.inline.ruler.before("emphasis", "highlight", _highlight_rule)
+    md.inline.ruler2.before("emphasis", "highlight", _highlight_pairs)
+    md.inline.ruler.before("autolink", "format_tag", _format_tag_rule)
+    if comments:
+        md.inline.add_terminator_char("/")  # so a `//` inside a run of text is seen
+        md.inline.ruler.before("emphasis", "pp_comment", _comment_rule)
+        md.inline.ruler.before("emphasis", "pp_line_comment", _line_comment_rule)
+    md.add_render_rule("pp_comment", _render_nothing)  # comments are never exported / shown
+    md.add_render_rule("pp_line_comment", _render_nothing)
     # let a `$$` block start right after a paragraph line (the plugin's own registration cannot)
     md.block.ruler.at("math_block", _interrupting_math_block(), {"alt": _PARAGRAPH_LIKE})
     return md
+
+
+# ---- formatting menu syntax (PLAN §4.38; the editor's twin is tools/editor_src/format.js) ----
+
+_EQ = 0x3D
+# the only raw HTML a note may hold: underline and a text colour (a code or a colour name)
+FORMAT_TAG = re.compile(
+    r'<u>|</u>|<span style="color:\s*(?:#[0-9a-fA-F]{3,8}|[a-zA-Z]+)\s*;?">|</span>'
+)
+_COMMENT = re.compile(r"%%((?:[^\n%]|%(?!%))*)%%")
+
+
+def _highlight_rule(state: StateInline, silent: bool) -> bool:
+    """``==`` (exactly two, as GFM's ``~~``) as a delimiter, paired by :func:`_highlight_pairs`."""
+    start = state.pos
+    if silent or state.src[start] != "=" or (start > 0 and state.src[start - 1] == "="):
+        return False
+    scanned = state.scanDelims(start, True)
+    if scanned.length != 2:
+        return False
+    token = state.push("text", "", 0)
+    token.content = "=="
+    state.delimiters.append(
+        Delimiter(
+            marker=_EQ,
+            length=0,  # no "rule of 3"
+            token=len(state.tokens) - 1,
+            end=-1,
+            open=scanned.can_open,
+            close=scanned.can_close,
+        )
+    )
+    state.pos += 2
+    return True
+
+
+def _highlight_pairs(state: StateInline) -> None:
+    """Paired ``==`` delimiters become ``<mark>``."""
+    lists = [state.delimiters] + [
+        meta["delimiters"] for meta in state.tokens_meta if meta and "delimiters" in meta
+    ]
+    for delimiters in lists:
+        for delim in delimiters:
+            if delim.marker != _EQ or delim.end == -1:
+                continue
+            for i, (kind, nesting) in (
+                (delim.token, ("mark_open", 1)),
+                (delimiters[delim.end].token, ("mark_close", -1)),
+            ):
+                tok = state.tokens[i]
+                tok.type, tok.tag, tok.nesting, tok.markup, tok.content = (
+                    kind,
+                    "mark",
+                    nesting,
+                    "==",
+                    "",
+                )
+
+
+def _format_tag_rule(state: StateInline, silent: bool) -> bool:
+    """``<u>``, ``</u>``, ``<span style="color:…">``, ``</span>``: passed through as they are (the
+    pattern admits nothing else); any other HTML stays escaped text."""
+    if state.src[state.pos] != "<":
+        return False
+    m = FORMAT_TAG.match(state.src, state.pos, state.posMax)
+    if m is None:
+        return False
+    if not silent:
+        state.push("html_inline", "", 0).content = m.group(0)
+    state.pos = m.end()
+    return True
+
+
+def _comment_rule(state: StateInline, silent: bool) -> bool:
+    """``%%comment%%`` on one line: kept out of what is shown and exported."""
+    if not state.src.startswith("%%", state.pos):
+        return False
+    m = _COMMENT.match(state.src, state.pos, state.posMax)
+    if m is None:
+        return False
+    if not silent:
+        state.push("pp_comment", "", 0).content = m.group(1)
+    state.pos = m.end()
+    return True
+
+
+def _line_comment_rule(state: StateInline, silent: bool) -> bool:
+    """``//`` at the start of a line or after a space: the rest of the line is a comment
+    (``https://`` is not: a colon is before it; code was consumed by its own rule)."""
+    pos, src = state.pos, state.src
+    if not src.startswith("//", pos) or (pos > 0 and src[pos - 1] not in " \t\n"):
+        return False
+    end = src.find("\n", pos, state.posMax)
+    end = state.posMax if end < 0 else end
+    if not silent:
+        state.push("pp_line_comment", "", 0).content = src[pos + 2 : end]
+    state.pos = end
+    return True
+
+
+def _render_nothing(self: Any, tokens: Sequence[Token], idx: int, options: Any, env: Any) -> str:
+    return ""
 
 
 def _render_math_block(self: Any, tokens: Sequence[Token], idx: int, options: Any, env: Any) -> str:
@@ -328,7 +442,7 @@ def _render_inert_image(
     return f'<code class="pp-remote-image">{escapeHtml(f"![{alt}]({src})")}</code>'
 
 
-_CHAT_PARSER = make_parser()
+_CHAT_PARSER = make_parser(comments=False)
 _CHAT_PARSER.add_render_rule("image", _render_inert_image)
 
 
@@ -600,6 +714,31 @@ def image_spans(text: str) -> list[LinkSpan]:
                     content[line_start : line_end if line_end >= 0 else len(content)],
                 )
             )
+    return found
+
+
+def format_marks(markdown: str) -> dict[str, list[str]]:
+    """What the formatting syntax of ``markdown`` amounts to (PLAN §4.38): each highlight's text,
+    the allowed tags in order, each ``%%comment%%`` and each ``//`` comment. The editor's grammar
+    must find the same (tests/fixtures/format_cases.json)."""
+    kinds = ("highlights", "tags", "comments", "line_comments")
+    found: dict[str, list[str]] = {k: [] for k in kinds}
+    for tok in _PARSER.parse(markdown):
+        depth, text = 0, ""
+        for child in tok.children or []:
+            if child.type == "mark_open":
+                depth, text = depth + 1, ""
+            elif child.type == "mark_close":
+                depth -= 1
+                found["highlights"].append(text)
+            elif depth and child.type in ("text", "code_inline"):
+                text += child.content
+            elif child.type == "html_inline":
+                found["tags"].append(child.content)
+            elif child.type == "pp_comment":
+                found["comments"].append(child.content)
+            elif child.type == "pp_line_comment":
+                found["line_comments"].append(child.content)
     return found
 
 

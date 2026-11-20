@@ -1,0 +1,228 @@
+[
+  {
+    "name": "highlight",
+    "src": "a ==hi there== b",
+    "highlights": [
+      "hi there"
+    ],
+    "tags": [],
+    "comments": [],
+    "line_comments": []
+  },
+  {
+    "name": "highlight_two",
+    "src": "==one== and ==two==",
+    "highlights": [
+      "one",
+      "two"
+    ],
+    "tags": [],
+    "comments": [],
+    "line_comments": []
+  },
+  {
+    "name": "highlight_nested_bold",
+    "src": "==a **b** c==",
+    "highlights": [
+      "a b c"
+    ],
+    "tags": [],
+    "comments": [],
+    "line_comments": []
+  },
+  {
+    "name": "highlight_needs_flanking",
+    "src": "a == b == c",
+    "highlights": [],
+    "tags": [],
+    "comments": [],
+    "line_comments": []
+  },
+  {
+    "name": "triple_is_text",
+    "src": "a === b ==c==",
+    "highlights": [
+      "c"
+    ],
+    "tags": [],
+    "comments": [],
+    "line_comments": []
+  },
+  {
+    "name": "highlight_in_list",
+    "src": "- item ==mark==",
+    "highlights": [
+      "mark"
+    ],
+    "tags": [],
+    "comments": [],
+    "line_comments": []
+  },
+  {
+    "name": "highlight_in_code_is_text",
+    "src": "`==no==` ==yes==",
+    "highlights": [
+      "yes"
+    ],
+    "tags": [],
+    "comments": [],
+    "line_comments": []
+  },
+  {
+    "name": "underline",
+    "src": "x <u>under</u> y",
+    "highlights": [],
+    "tags": [
+      "<u>",
+      "</u>"
+    ],
+    "comments": [],
+    "line_comments": []
+  },
+  {
+    "name": "color_hex",
+    "src": "a <span style=\"color:#e03e3e\">red</span> b",
+    "highlights": [],
+    "tags": [
+      "<span style=\"color:#e03e3e\">",
+      "</span>"
+    ],
+    "comments": [],
+    "line_comments": []
+  },
+  {
+    "name": "color_name_and_semicolon",
+    "src": "<span style=\"color: blue;\">b</span>",
+    "highlights": [],
+    "tags": [
+      "<span style=\"color: blue;\">",
+      "</span>"
+    ],
+    "comments": [],
+    "line_comments": []
+  },
+  {
+    "name": "other_html_is_not_a_tag",
+    "src": "<b>x</b> <span class=\"c\">y</span> <u >z</u>",
+    "highlights": [],
+    "tags": [
+      "</span>",
+      "</u>"
+    ],
+    "comments": [],
+    "line_comments": []
+  },
+  {
+    "name": "comment",
+    "src": "plan%%check with Sam%% done",
+    "highlights": [],
+    "tags": [],
+    "comments": [
+      "check with Sam"
+    ],
+    "line_comments": []
+  },
+  {
+    "name": "comment_with_percent",
+    "src": "x%%50% off%%",
+    "highlights": [],
+    "tags": [],
+    "comments": [
+      "50% off"
+    ],
+    "line_comments": []
+  },
+  {
+    "name": "comment_not_across_lines",
+    "src": "a %%open\nclose%% b",
+    "highlights": [],
+    "tags": [],
+    "comments": [],
+    "line_comments": []
+  },
+  {
+    "name": "two_comments",
+    "src": "%%one%% mid %%two%%",
+    "highlights": [],
+    "tags": [],
+    "comments": [
+      "one",
+      "two"
+    ],
+    "line_comments": []
+  },
+  {
+    "name": "comment_in_code_is_text",
+    "src": "`%%no%%` y",
+    "highlights": [],
+    "tags": [],
+    "comments": [],
+    "line_comments": []
+  },
+  {
+    "name": "line_comment_after_text",
+    "src": "buy milk // or oat milk",
+    "highlights": [],
+    "tags": [],
+    "comments": [],
+    "line_comments": [
+      " or oat milk"
+    ]
+  },
+  {
+    "name": "line_comment_whole_line",
+    "src": "// the whole line\nnext line",
+    "highlights": [],
+    "tags": [],
+    "comments": [],
+    "line_comments": [
+      " the whole line"
+    ]
+  },
+  {
+    "name": "url_is_not_a_comment",
+    "src": "see https://example.org/a and a//b",
+    "highlights": [],
+    "tags": [],
+    "comments": [],
+    "line_comments": []
+  },
+  {
+    "name": "line_comment_in_code",
+    "src": "`a // b` c",
+    "highlights": [],
+    "tags": [],
+    "comments": [],
+    "line_comments": []
+  },
+  {
+    "name": "line_comment_second_line",
+    "src": "first\n// second\nthird",
+    "highlights": [],
+    "tags": [],
+    "comments": [],
+    "line_comments": [
+      " second"
+    ]
+  },
+  {
+    "name": "line_comment_in_heading",
+    "src": "# Title // note",
+    "highlights": [],
+    "tags": [],
+    "comments": [],
+    "line_comments": [
+      " note"
+    ]
+  },
+  {
+    "name": "line_comment_eats_marks",
+    "src": "x // **bold** ==hl==",
+    "highlights": [],
+    "tags": [],
+    "comments": [],
+    "line_comments": [
+      " **bold** ==hl=="
+    ]
+  }
+]

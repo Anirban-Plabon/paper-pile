@@ -62,6 +62,26 @@ function extractTags(src) {
   return found;
 }
 
+// what the formatting syntax amounts to (as Python's `format_marks`): a highlight's text is its
+// source without any *Mark node inside it (`==a **b** c==` -> "a b c")
+function extractFormat(src) {
+  const found = { highlights: [], tags: [], comments: [], line_comments: [] };
+  md.parse(src).iterate({
+    enter(node) {
+      if (node.name === "Highlight") {
+        const marks = [];
+        node.node.toTree().iterate({ enter: (n) => { if (n.name.endsWith("Mark")) marks.push([n.from + node.from, n.to + node.from]); } });
+        let text = "";
+        for (let i = node.from; i < node.to; i++) if (!marks.some(([a, b]) => i >= a && i < b)) text += src[i];
+        found.highlights.push(text);
+      } else if (node.name === "FormatTag") found.tags.push(src.slice(node.from, node.to));
+      else if (node.name === "Comment") found.comments.push(src.slice(node.from + 2, node.to - 2));
+      else if (node.name === "LineComment") found.line_comments.push(src.slice(node.from + 2, node.to));
+    },
+  });
+  return found;
+}
+
 function extractPageBreaks(src) {
   const found = [];
   md.parse(src).iterate({
@@ -124,6 +144,17 @@ for (const c of breakCases) {
     console.log(`  lezer : ${JSON.stringify(got)}`);
   }
 }
-const total = math.length + fm.length + wiki.length + tagCases.length + breakCases.length;
-console.log(failed ? `${failed} of ${total} cases differ` : `all ${total} grammar cases agree with the Python parser (${math.length} math, ${fm.length} front matter, ${wiki.length} wikilink, ${tagCases.length} tag, ${breakCases.length} page break)`);
+const formatCases = load("format_cases.json");
+for (const c of formatCases) {
+  const got = extractFormat(c.src);
+  const want = { highlights: c.highlights, tags: c.tags, comments: c.comments, line_comments: c.line_comments };
+  if (JSON.stringify(got) !== JSON.stringify(want)) {
+    failed++;
+    console.log(`MISMATCH format/${c.name}: ${JSON.stringify(c.src)}`);
+    console.log(`  python: ${JSON.stringify(want)}`);
+    console.log(`  lezer : ${JSON.stringify(got)}`);
+  }
+}
+const total = math.length + fm.length + wiki.length + tagCases.length + breakCases.length + formatCases.length;
+console.log(failed ? `${failed} of ${total} cases differ` : `all ${total} grammar cases agree with the Python parser (${math.length} math, ${fm.length} front matter, ${wiki.length} wikilink, ${tagCases.length} tag, ${breakCases.length} page break, ${formatCases.length} format)`);
 process.exit(failed ? 1 : 0);

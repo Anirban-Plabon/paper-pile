@@ -2257,3 +2257,76 @@ body.body--dark .pp-aidiff-chip-warn { color: #e3b341; }
 .pp-chat-mode[data-pp-mode="read"] .pp-chat-mode-word { animation: pp-flip-b var(--pp-dur) var(--pp-ease); }
 @keyframes pp-flip-a { from { opacity: 0; transform: rotateX(90deg); } }
 @keyframes pp-flip-b { from { opacity: 0; transform: rotateX(-90deg); } }
+
+/* Formatting menu syntax in the editor (PLAN §4.38; format.js, livepreview.js, comments.js) */
+:root { --pp-hl: rgba(255, 213, 0, .38); --pp-comment: #8a9099; }
+body.body--dark { --pp-hl: rgba(255, 213, 0, .26); --pp-comment: #a4aab3; }
+.pp-highlight { background: var(--pp-hl); border-radius: 3px; box-decoration-break: clone; -webkit-box-decoration-break: clone; padding: 1px 0; }
+.pp-underline { text-decoration: underline; text-underline-offset: 3px; text-decoration-thickness: 1px; }
+.pp-format-tag { color: var(--pp-muted); font-size: .85em; }
+/* comments are grey (a lighter grey in dark mode) */
+.pp-comment { color: var(--pp-comment); }
+/* text colours: the palette with a dark-theme variant each */
+.pp-fc-gray { color: #787774; } .pp-fc-red { color: #e03e3e; } .pp-fc-orange { color: #d9730d; } .pp-fc-yellow { color: #cb912f; }
+.pp-fc-green { color: #448361; } .pp-fc-blue { color: #337ea9; } .pp-fc-purple { color: #9065b0; } .pp-fc-pink { color: #c14c8a; }
+.pp-editor.pp-dark .pp-fc-gray { color: #9b9b9b; } .pp-editor.pp-dark .pp-fc-red { color: #ff6b6b; } .pp-editor.pp-dark .pp-fc-orange { color: #ffa344; }
+.pp-editor.pp-dark .pp-fc-yellow { color: #ffdc49; } .pp-editor.pp-dark .pp-fc-green { color: #4dab9a; } .pp-editor.pp-dark .pp-fc-blue { color: #529cca; }
+.pp-editor.pp-dark .pp-fc-purple { color: #b48ae0; } .pp-editor.pp-dark .pp-fc-pink { color: #e255a1; }
+/* a line holding hidden %%comments%%: room on the right for its pin, which sits in that margin */
+.pp-editor .cm-line.pp-cmt-line { position: relative; padding-right: 34px; }
+.pp-cmt-anchor { display: inline; }  /* not positioned: the pin sits against the line */
+.pp-cmt-pin { position: absolute; right: 4px; top: calc((1lh - 24px) / 2); width: 24px; height: 24px; display: inline-flex; align-items: center; justify-content: center; text-indent: 0; border-radius: var(--pp-r-ctrl); color: var(--pp-comment); background: rgba(127, 127, 127, .08); cursor: pointer; user-select: none; transition: background-color var(--pp-dur-fast) ease, color var(--pp-dur-fast) ease; }
+.pp-cmt-pin:hover { background: rgba(var(--pp-accent-rgb), .14); color: var(--pp-accent); }
+.pp-cmt-pin .pp-cmt-icon, .pp-cmt-pop .pp-cmt-icon { display: inline-flex; width: 15px; height: 15px; }
+.pp-cmt-pin svg, .pp-cmt-pop .pp-cmt-icon svg { width: 100%; height: 100%; }
+.pp-cmt-count { position: absolute; right: -3px; top: -4px; min-width: 14px; height: 14px; padding: 0 3px; border-radius: 7px; font-size: 9px; line-height: 14px; font-weight: 700; text-align: center; color: var(--pp-on-accent); background: var(--pp-accent); }
+/* the comment window (a pin's click) */
+.pp-cmt-pop { position: fixed; z-index: 2600; width: 280px; max-width: calc(100vw - 16px); padding: 8px; display: flex; flex-direction: column; gap: 8px; border: 1px solid var(--pp-border); border-radius: var(--pp-r-popup); background: var(--pp-bg); color: var(--pp-fg); box-shadow: 0 10px 30px rgba(0, 0, 0, .18); font-size: 13px; animation: pp-drop-in var(--pp-dur) var(--pp-ease); }
+.pp-cmt-head { display: flex; align-items: center; gap: 6px; padding: 0 2px; color: var(--pp-comment); font-weight: 600; font-size: 12px; }
+.pp-cmt-title { flex: 1 1 auto; }
+.pp-cmt-x { display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 24px; border: 0; border-radius: var(--pp-r-ctrl); background: none; color: var(--pp-muted); cursor: pointer; }
+.pp-cmt-x:hover { background: rgba(127, 127, 127, .15); color: var(--pp-fg); }
+.pp-cmt-item { display: flex; flex-direction: column; gap: 6px; }
+.pp-cmt-text { width: 100%; box-sizing: border-box; resize: none; min-height: 34px; padding: 7px 9px; border: 1px solid var(--pp-border); border-radius: var(--pp-r-ctrl); background: var(--pp-bg-side); color: var(--pp-comment); font: inherit; line-height: 1.45; outline: none; }
+.pp-cmt-text:focus { border-color: rgba(var(--pp-accent-rgb), .6); }
+.pp-cmt-actions { display: flex; justify-content: flex-end; gap: 6px; }
+.pp-cmt-btn { height: 26px; padding: 0 10px; border: 0; border-radius: var(--pp-r-ctrl); font: inherit; font-size: 12px; cursor: pointer; background: rgba(127, 127, 127, .12); color: var(--pp-fg); }
+.pp-cmt-btn:hover { background: rgba(127, 127, 127, .2); }
+.pp-cmt-del { color: var(--pp-danger); }
+.pp-cmt-save { background: var(--pp-accent); color: var(--pp-on-accent); }
+.pp-cmt-save:hover { background: var(--pp-accent); filter: brightness(1.08); }
+
+/* The formatting menu (components/format_menu.py, static/formatmenu.js; PLAN §4.38): the look of
+   the other popup menus — icon, label, a muted markdown hint on the right */
+.pp-askpop-chat .pp-askpop-format { display: none; }  /* the mini chat is about a question, not the words' look */
+.pp-fmenu { position: fixed; z-index: 2600; left: -9999px; top: 0; width: 248px; max-height: min(460px, calc(100vh - var(--pp-inset-bottom, 0px) - 16px)); display: flex; flex-direction: column; padding: 5px; border: 1px solid var(--pp-border); border-radius: var(--pp-r-popup); background: var(--pp-bg); color: var(--pp-fg); box-shadow: 0 10px 30px rgba(0, 0, 0, .18); font-size: 13px; user-select: none; animation: pp-drop-in var(--pp-dur) var(--pp-ease); }
+.pp-fmenu-item { display: flex; align-items: center; gap: 10px; min-height: 32px; padding: 0 8px; border-radius: var(--pp-r-ctrl); cursor: pointer; flex: none; }
+.pp-fmenu-item:hover { background: rgba(127, 127, 127, .12); }
+.pp-fmenu-icon { color: var(--pp-muted); flex: none; }
+.pp-fmenu-item:hover .pp-fmenu-icon { color: var(--pp-fg); }
+.pp-fmenu-label { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pp-fmenu-hint { flex: none; font-size: 11.5px; color: var(--pp-muted); font-family: var(--pp-code-font, monospace); }
+.pp-fmenu-more, .pp-fmenu-check { flex: none; color: var(--pp-muted); }
+.pp-fmenu-sep { height: 1px; margin: 4px 6px; background: var(--pp-border); flex: none; }
+.pp-fmenu-group { padding: 8px 8px 3px; font-size: 10px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: var(--pp-muted); flex: none; }
+.pp-fmenu-scroll { flex: 1 1 auto; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; }
+.pp-fmenu-head { display: flex; align-items: center; gap: 6px; min-height: 32px; padding: 0 4px 2px; flex: none; }
+.pp-fmenu-back { display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 24px; border-radius: var(--pp-r-ctrl); color: var(--pp-muted); cursor: pointer; }
+.pp-fmenu-back:hover { background: rgba(127, 127, 127, .15); color: var(--pp-fg); }
+.pp-fmenu-title { font-size: 12px; font-weight: 600; color: var(--pp-muted); }
+/* Customize: pinned items in the accent, a full list greys the rest */
+.pp-fmenu-pick.pp-fmenu-on .pp-fmenu-check, .pp-fmenu-pick.pp-fmenu-on .pp-fmenu-icon { color: var(--pp-accent); }
+.pp-fmenu-pick:not(.pp-fmenu-on) .pp-fmenu-check { opacity: 0; }
+.pp-fmenu-pick:not(.pp-fmenu-on):hover .pp-fmenu-check { opacity: .7; }
+.pp-fmenu-pick.pp-fmenu-off { opacity: .45; pointer-events: none; }
+/* Text colour: the palette as round swatches */
+.pp-fmenu-swatches { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; padding: 6px 8px 8px; flex: none; }
+.pp-fmenu-swatch { height: 30px; border-radius: var(--pp-r-ctrl); background: var(--sw); cursor: pointer; box-shadow: inset 0 0 0 1px rgba(0, 0, 0, .08); transition: transform var(--pp-dur-fast) ease; }
+.pp-fmenu-swatch:hover { transform: scale(1.08); }
+/* Link and Comment: one field (and a button) */
+.pp-fmenu-input, .pp-fmenu-text { margin: 0 4px 4px; padding: 0 8px; border: 1px solid var(--pp-border); border-radius: var(--pp-r-ctrl); background: var(--pp-bg-side); flex: none; }
+.pp-fmenu-input .q-field__control, .pp-fmenu-input .q-field__native { min-height: 32px; height: 32px; }
+.pp-fmenu-text .q-field__native { min-height: 52px; padding: 6px 0; color: var(--pp-comment); line-height: 1.45; }
+.pp-fmenu-notes { display: flex; flex-direction: column; flex: none; }
+.pp-fmenu-actions { display: flex; justify-content: flex-end; padding: 2px 4px 2px; flex: none; }
+.pp-fmenu-btn.q-btn { height: 28px; min-height: 0; padding: 0 12px; border-radius: var(--pp-r-ctrl); background: var(--pp-accent); color: var(--pp-on-accent); font-size: 12px; }

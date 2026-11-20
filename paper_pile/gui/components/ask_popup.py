@@ -170,6 +170,12 @@ class AskPopup:
                         icon=ico("arrow-up"), on_click=self._send_or_stop, color=None
                     )
                     self._send.props("round unelevated dense").classes("pp-chat-send")
+                # the formatting menu for the selection (PLAN §4.38), left of Move to chat
+                fmt = ui.button(icon=ico("type"), color=None)
+                fmt.on("click", lambda e: self._open_format(e.args), ["clientX", "clientY"])
+                fmt.props("round flat dense").classes("pp-askpop-to-chat pp-askpop-format")
+                tip(fmt, "Format")
+                self._format_btn = fmt
                 # chat bubble + arrow (own icons, tools/editor_src/build_icons.mjs):
                 # up while the box holds a conversation, down while it holds only the selection
                 chat = ui.button(icon=ico(CHAT_ICON[False]), color=None)
@@ -179,6 +185,22 @@ class AskPopup:
                 chat.props("round flat dense").classes("pp-askpop-to-chat")
                 tip(chat, "Move to chat")
         self._set_mode("closed")
+
+    def _open_format(self, args: dict[str, Any]) -> None:
+        """The format button: this box gives way to the formatting menu for its selection."""
+        target = self._target
+        if target is None or target.whole:
+            return
+        self.close()
+        self._pane.open_format_menu_for(
+            target, float(args.get("clientX", 0)), float(args.get("clientY", 0))
+        )
+
+    def dismiss_box(self) -> None:
+        """Close the small box (not a mini chat, nor one being typed in): the formatting menu
+        opens over the selection instead."""
+        if self._mode == "box" and not (self._input.value or "").strip() and not self._rewriting:
+            self.close()
 
     def _set_mode(self, mode: Mode) -> None:
         self._mode = mode

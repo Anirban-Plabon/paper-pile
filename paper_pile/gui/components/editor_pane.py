@@ -26,7 +26,7 @@ from typing import Any
 from nicegui import background_tasks, ui
 
 import paper_pile.core.commands_builtin  # noqa: F401  (importing it registers the slash commands)
-from paper_pile.core import assets
+from paper_pile.core import assets, formatting
 from paper_pile.core.ai.access import AccessDeniedError
 from paper_pile.core.ai.cleanup import StreamCleaner, heading_floor
 from paper_pile.core.ai.commands import AiCommand, ai_command, command_target
@@ -102,6 +102,8 @@ from paper_pile.core.daily import (
     synced_formats,
 )
 from paper_pile.core.events import EventBus
+from paper_pile.core.format_items import ALIGN_ITEMS, EDIT_ITEMS, pinned_items
+from paper_pile.core.formatting import set_comment
 from paper_pile.core.history import History, Sessions
 from paper_pile.core.index import Backlink, Index
 from paper_pile.core.links import (
@@ -146,6 +148,7 @@ from paper_pile.gui.components.ai_progress import AiProgress
 from paper_pile.gui.components.ask_popup import AskPopup, AskTarget
 from paper_pile.gui.components.backlinks import BacklinkItem, BacklinksPane
 from paper_pile.gui.components.editor import Editor, Mode
+from paper_pile.gui.components.format_menu import FormatMenu, FormatTarget
 from paper_pile.gui.components.live_edit import LiveEdit
 from paper_pile.gui.components.note_actions import note_actions, pick_split_note
 from paper_pile.gui.components.note_head import NoteHead
@@ -354,6 +357,13 @@ class EditorPane:
         self._host = ui.element("div").classes("pp-host")  # dialogs + toasts; takes no space
         with self._host:
             self.ask_popup = AskPopup(self)  # the Ask box under a selection (PLAN §4.27)
+            self.format_menu = FormatMenu(  # right-click on a selection / Ask box (PLAN §4.38)
+                pinned=self._format_pinned,
+                save_pinned=self._save_format_pinned,
+                apply=self._apply_format,
+                find_notes=self._find_note_names,
+                ai_on=self._ask_box_on,
+            )
         self.bus.subscribe("tree.open", lambda path: self._spawn(self.open(path)))
         ui.on("pp_note_drop", lambda e: self._spawn(self._on_note_drop(e.args)))
         ui.on("pp_chat_note_drop", lambda e: self._on_chat_drop(dict(e.args)))
@@ -401,6 +411,8 @@ class EditorPane:
             on_page_break=lambda e: self._spawn(self._on_page_break(e.args)),
             on_page_break_move=lambda e: self._spawn(self._on_page_break_move(e.args)),
             on_page_count=lambda e: self._on_page_count(e.args),
+            on_comment_set=lambda e: self._spawn(self._on_comment_set(e.args)),
+            on_format_menu=lambda e: self._open_format_menu(dict(e.args), slot),
         )
 
     # ---- split view ----------------------------------------------------------------------
@@ -963,6 +975,93 @@ class EditorPane:
         target = self.tabs.cycle(step)
         if target is not None and target != self.tabs.active:
             self._activate(target)
+
+    # ---- formatting menu (PLAN §4.38) -----------------------------------------------------
+
+    def _format_pinned(self) -> list[str]:
+        raw = self._config.get("editor.format_pinned") if self._config else None
+        return pinned_items(raw)
+
+    def _save_format_pinned(self, ids: list[str]) -> None:
+        if self._config is None:
+            return
+        self._config.set("editor.format_pinned", ids, "global")
+        try:
+            self._config.save("global")
+        except OSError:
+            log.exception("could not save the settings")
+            self._toast("Could not save the settings.", error=True)
+
+    def _find_note_names(self, query: str) -> list[str]:
+        """Note names for the link box: those starting with ``query`` first, then containing it."""
+        paths = self.index.paths() if self.index is not None else []
+        names = sorted({note_name(p) for p in paths if not is_plain_text(p)}, key=str.lower)
+        q = query.strip().lower()
+        if not q:
+            return names[:6]
+        first = [n for n in names if n.lower().startswith(q)]
+        return first + [n for n in names if q in n.lower() and n not in first]
+
+    def _open_format_menu(self, args: dict[str, Any], slot: int) -> None:
+        """A right-click on the selection: the formatting menu at the pointer."""
+        tab_id = args.get("docId")
+        if not isinstance(tab_id, int) or self._shown[slot] != tab_id or self._active_is_plain():
+            return
+        self.ask_popup.dismiss_box()
+        target = FormatTarget(tab_id, slot, int(args.get("from", 0)), int(args.get("to", 0)))
+        self.format_menu.open(target, float(args.get("x", 0)), float(args.get("y", 0)))
+
+    def open_format_menu_for(self, target: AskTarget, x: float, y: float) -> None:
+        """The Ask box's format button: the menu for the box's selection."""
+        if target.whole or self._shown[self._slot] != target.tab_id:
+            return
+        where = FormatTarget(target.tab_id, self._slot, target.start, target.end)
+        self.format_menu.open(where, x, y)
+
+    async def _apply_format(self, target: FormatTarget, item_id: str, arg: str | None) -> None:
+        """Run a menu item on the target's selection (one undo step, the words stay selected)."""
+        if self._shown[target.slot] != target.doc_id:
+            return  # the side shows another note by now
+        editor = self._editors[target.slot]
+        if item_id in EDIT_ITEMS:
+            editor.clipboard(item_id, target.start, target.end)
+            return
+        if item_id in ALIGN_ITEMS:
+            editor.align_blocks(item_id.removeprefix("align-"), target.start, target.end)
+            editor.focus()
+            return
+        if item_id == "ask-ai":
+            editor.slash_for_selection(target.start, target.end)
+            return
+        text = await self._live_text(target.doc_id)
+        if text is None:
+            return
+        start, end = codepoint_index(text, target.start), codepoint_index(text, target.end)
+        try:
+            edit = formatting.apply(text, start, end, item_id, arg)
+        except ValueError:
+            log.warning("formatting menu asked for an unknown item %r", item_id)
+            return
+        if edit is None:
+            if item_id == "link":
+                self._toast("A link is one line of text: select words on one line.")
+            editor.focus()
+            return
+        if await self._apply_edit(target.doc_id, text, edit):
+            editor.focus()
+
+    async def _on_comment_set(self, args: dict[str, Any]) -> None:
+        """A comment edited (or emptied: deleted) in its window: one undo step."""
+        tab_id = args.get("docId")
+        if not isinstance(tab_id, int) or tab_id not in self.buffers:
+            return
+        text = await self._live_text(tab_id)
+        if text is None:
+            return
+        at = codepoint_index(text, int(args.get("from", -1)))
+        edit = set_comment(text, at, str(args.get("body", "")))
+        if edit is not None:
+            await self._apply_edit(tab_id, text, edit, move_caret=False)
 
     def _move_tab(self, src: int, dst: int, after: bool) -> None:
         if self.tabs.move(src, dst, after=after):
@@ -2332,7 +2431,9 @@ class EditorPane:
             }
             for c in edit.changes
         ]
-        cursor = utf16_index(after, edit.cursor) if move_caret else None
+        cursor: int | list[int] | None = utf16_index(after, edit.cursor) if move_caret else None
+        if move_caret and edit.anchor is not None:  # keep a selection (formatting menu)
+            cursor = [utf16_index(after, edit.anchor), utf16_index(after, edit.cursor)]
         if not await self._editor_for(tab_id).apply_changes(tab_id, changes, before, cursor):
             return False
         self.buffers[tab_id].set_text(after)
