@@ -6,6 +6,7 @@
 Legend: 🧠 = needs Opus (see PLAN §6 model guidance) · ⬜ todo · 🔄 in progress · ✅ done · ⛔ blocked · ⏭️ skipped/deferred
 
 ## Current focus
+- **Phase:** P37 — List / chip polish, comments, formatting menu (user request 2026-11-20, PLAN §4.38): P37.1–P37.3 done; P37.4 / P37.5 wait for the user's answers; P37.6–P37.12 (formatting menu, comments) next
 - **Phase:** P36 — Tree expand / collapse all, settings switch, mini chat frame + resize, one right-pane width, calendar month picker, `--live-css` (user request 2026-11-19, PLAN §4.37): P36.1–P36.6 done; P36.14 (chat context bar, Auto / Read) done; P36.15 (context bar, second round: folder menu, fit stages, hide button) done
 - **Phase:** P35 — Rendering audit: tables, math, paste (user request 2026-11-18, PLAN §4.36): P35.1–P35.9 done; `tools/qa_render.py` 389 passed, 0 failed, 3 known (inline math across a line break)
 - **Phase:** P34 — Calendar week, side-pane buttons and small UI fixes (user request 2026-11-18, PLAN §4.35): P34.1–P34.14, P34.16 done; P34.15 (AI chip over growing text) built, waiting for a real-app check
@@ -337,6 +338,22 @@ Legend: 🧠 = needs Opus (see PLAN §6 model guidance) · ⬜ todo · 🔄 in p
 | P27.2 | No "token repeat limit reached" on edits | ✅ | `GenerationOptions.repeat_penalty` (1.1 on text answers, none on JSON), `RepeatLoopError`, `EditRun._ask` retries once at 0.7; 4 tests; eval case 17 added. Eval gemma4:12b ×2: 26/28 before → 27/30 after (06 fails before and after; 17 1/2: one run echoed the paragraph unchanged — not a loop, see Open issues) |
 | P27.3 | Fixed blocks change when asked | ✅ | `unlock_asked` + `FIXED_KIND_WORDS` (edit_run.py), `GuardContext.convert` skips G5 / G6; 7 tests; eval case 18 (ASCII diagram → mermaid) gemma4:12b 3/3 in 2 calls, case 10 3/3. Repro on the user's note with NeoHorse-1:9B: before "cut off or empty", after one change replacing exactly the code block |
 
+### P37 — List / chip polish, comments, formatting menu (user request 2026-11-20)
+| ID | Task | Status | Notes |
+|---|---|---|---|
+| P37.1 | Bullets 6.5 px, 5 px right, nested 15 px per level | ✅ | 2026-11-20 · app.css `--pp-bullet-shift` / `--pp-nest-step`; `NestWidget` (widgets.js) replaces a nested bullet's leading spaces when all parents are plain bullets (livepreview.js `plainBulletParents`); measured: dot 6.5 px, centres 304 / 319 / 334 px |
+| P37.2 | Tag chip + TODAY badge rounded rectangle | ✅ | 2026-11-20 · `.pp-tag`, `.pp-cal-card-badge`: `padding: 2px 6px; border-radius: 6px` (measured) |
+| P37.3 | Info box line gap | ✅ | 2026-11-20 · `.pp-fm-row` line-height 1.6 → 1.8 + 1 px padding (row 23.4 px) |
+| P37.4 | Tab reorder slow (move a tab left / right) | 🔄 | 2026-11-20 · user: the slow part is moving a tab left / right, not switching (switch: perf_ui median 120 ms on 2 000 notes) |
+| P37.5 | New bullet: one empty line before / after | ⬜ | user 2026-11-20: real empty lines in the file (typed `- ` under text; leaving the list) |
+| P37.6 | `core/formatting.py` toggles | ⬜ | |
+| P37.7 | Parser + editor + export: `==`, `<u>`, colour span | ⬜ | |
+| P37.8 | Comments `%%…%%` (margin icon + mini window) and `//` inline | ⬜ | |
+| P37.9 | Formatting button + popup (5 pinned, More, Customize) | ⬜ | |
+| P37.10 | Right-click menu on a selection | ⬜ | |
+| P37.11 | Export *Keep highlights* switch | ⬜ | |
+| P37.12 | AI edits keep the marks | ⬜ | |
+
 ### P36 — Tree, switches, mini chat, calendar picker, live CSS (user request 2026-11-19)
 | ID | Task | Status | Notes |
 |---|---|---|---|
@@ -504,6 +521,9 @@ Legend: 🧠 = needs Opus (see PLAN §6 model guidance) · ⬜ todo · 🔄 in p
 <!-- YYYY-MM-DD · decision · reason · (who: user / claude) -->
 | Date | Decision | Reason | By |
 |---|---|---|---|
+| 2026-11-20 | P37 formats (user's choices): comments as `%%…%%` right after the commented text (hidden, margin icon); `//` inline comments from `//` (line start or after a space) to the line end, never in code / math / links / URLs; underline `<u>` and colour `<span style="color:…">` with an allow-list in the parser (`html: False` kept for everything else); highlight `==…==`; export: comments never, highlights by a *Keep highlights* switch | user answers 2026-11-20 (file-format decisions are the user's) | user |
+| 2026-11-20 | P37.1: a nested bullet's 15 px step is a replace widget over its leading spaces (not CSS on the line), only when every parent is a plain bullet — under a number / checkbox the parent's text column decides where the child starts, so a fixed step could put it left of the parent's text start in a misleading way | user: "gap from second order to first order should be 15 px" | claude |
+| 2026-11-20 | P37.2: "padding 6 px from text" taken as 6 px left / right and 2 px top / bottom: the chip sits inside a text line, 6 px above and below would push the lines apart | the chip's height would change the line height (CodeMirror measures lines) | claude |
 | 2026-11-20 | P36.17: the editor's bullet replaces the marker AND its space, so the gap no longer depends on the font's space width; width 1.4em = the chat's `padding-left` (measured: chat dot → text 11.2 px at 13 px, editor was 5.4 px at 14 px, now 12.2 px). The 7 px dot (user 2026-11-19) is kept | user: "i liked the chat style make it for window as well" | claude |
 | 2026-11-19 | The user's agy sign-in is copied into the app's agy home (one way, when it changed in the real home; removed when signed out there; wiped with the session). Nothing else of the real home is shared, and the real home is never written | agy 1.5.11 on WSL stores the sign-in as a file under HOME, so the separate home (P28.8) was signed out ("lists no models … sign in"). Copying back the app's refreshed token was left out: writing the user's own agy files would race their agy; the real one stays valid, the app's agy refreshes its own copy | claude |
 | 2026-11-19 | P36.16: the mini chat's inner box is a `::before` of the window (not a new wrapper element), so askpop.js's drag / resize / side logic keeps the same children; outer corners 16 px (local `--pp-r-popup`, so the halo and grow animation follow), inner 10 px (concentric with the 6 px inset); icon box a see-through white (the user's open choice, default taken) | user screenshot (accent frame, 52 / 6 px insets) | claude |
@@ -1225,3 +1245,4 @@ Legend: 🧠 = needs Opus (see PLAN §6 model guidance) · ⬜ todo · 🔄 in p
 - 2026-11-20 · P36.16 4th round (user): hide button always boxed (own 36 × 34 box −3 px into the bar's padding; inside the tool box at fit 1), chat.js `HIDE` width; mini chat AI icon on the inner box's left edge (x 6). Measured at 760 / 440 / 300 px and folded: bar 40 px, arrow 6 px from top / right
 - 2026-11-20 · P36.16: mini chat × on the inner box's right edge (6 px from the frame, measured)
 - 2026-11-20 · P36.17: editor bullet gap like the chat (12.2 px at 14 px, measured in the real app; wrapped lines under the text); qa_editor 359/359 (as root it needs `QTWEBENGINE_DISABLE_SANDBOX=1`); 1822 tests
+- 2026-11-20 · P37.1–P37.3: bullets 6.5 px / +5 px / nested 15 px per level (NestWidget), tag chip + TODAY badge rounded rectangles (2 × 6 px padding), info rows line-height 1.8; measured in the real app; P37 spec (formatting menu, comments) in PLAN §4.38

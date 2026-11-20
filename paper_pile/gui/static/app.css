@@ -256,9 +256,12 @@ body.pp-native.pp-right-open .pp-rtabbar { padding-right: 108px; }
 /* Lists, tasks, quotes, rules (tools/editor_src/livepreview.js) */
 /* A bullet replaces `- ` (marker + space) and is as wide as the chat's list indent (1.4em, user
    2026-11-20: the chat's gap between dot and text); the dot stays centred in the first column. */
-.pp-editor { --pp-bullet-w: 1.4em; }
+/* user 2026-11-20: bullets 5 px further right (`--pp-bullet-shift`); a nested level starts 15 px right
+   of its parent's bullet (`--pp-nest-step`, NestWidget draws the leading spaces). */
+.pp-editor { --pp-bullet-w: 1.4em; --pp-bullet-shift: 5px; --pp-nest-step: 15px; }
 .pp-bullet { display: inline-block; box-sizing: border-box; width: var(--pp-bullet-w); text-indent: 0; color: var(--pp-accent); }
-.pp-bullet:not([data-glyph]) { padding-left: calc(.5ch - .25em); }
+.pp-bullet:not([data-glyph]) { padding-left: calc(.5ch - .25em + var(--pp-bullet-shift)); }
+.pp-nest { display: inline-block; text-indent: 0; }
 .pp-list-num { color: var(--pp-muted); }
 .pp-task { display: inline-block; width: 2ch; text-align: left; text-indent: 0; cursor: pointer; }
 .pp-task .pp-box { display: inline-block; box-sizing: border-box; width: 1.5ch; height: 1.5ch; border: 1.5px solid var(--pp-muted); border-radius: var(--pp-r-sm); vertical-align: -0.2em; }
@@ -311,7 +314,7 @@ body.pp-native.pp-right-open .pp-rtabbar { padding-right: 108px; }
 .pp-table code:not(.pp-code) { background: var(--pp-code-bg, #f3f4f6); border-radius: var(--pp-r-sm); padding: 0 3px; }
 .pp-fm-line { color: var(--pp-muted); font-size: .88em; }
 .pp-frontmatter { box-sizing: border-box; margin: 4px 6px 10px; padding: 6px 10px; border: 1px solid var(--pp-border); border-radius: var(--pp-r-ctrl); background: var(--pp-bg-side); font-size: .85em; color: var(--pp-muted); cursor: text; }
-.pp-fm-row { display: flex; gap: 12px; line-height: 1.6; }
+.pp-fm-row { display: flex; gap: 12px; line-height: 1.8; padding: 1px 0; }  /* user 2026-11-20: was 1.6 — congested */
 .pp-fm-key { flex: 0 0 9ch; font-weight: 600; opacity: .8; overflow: hidden; text-overflow: ellipsis; }
 .pp-fm-val { color: var(--pp-fg); overflow-wrap: anywhere; }
 .pp-fm-row[hidden] { display: none; }
@@ -978,7 +981,7 @@ body.body--dark .pp-instr-box textarea { color-scheme: dark; }  /* the corner gr
 .pp-cal-card-top { gap: 8px; min-width: 0; }
 .pp-cal-card-day { font-size: 13px; font-weight: 700; color: var(--pp-accent); }
 .pp-cal-card-date { font-size: 12px; color: var(--pp-muted); }
-.pp-cal-card-badge { margin-left: auto; font-size: 10px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--pp-on-accent); background: var(--pp-accent); border-radius: 999px; padding: 1px 7px; }
+.pp-cal-card-badge { margin-left: auto; font-size: 10px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--pp-on-accent); background: var(--pp-accent); border-radius: 6px; padding: 2px 6px; }  /* the tag chip's shape (user 2026-11-20) */
 .pp-cal-card-text { font-size: 12.5px; line-height: 1.45; color: var(--pp-fg); opacity: .85; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; overflow: hidden; overflow-wrap: anywhere; }
 .pp-cal-card-empty { color: var(--pp-muted); font-style: italic; }
 .pp-cal-card-today, .pp-cal-card-today:hover { background: rgba(var(--pp-accent-rgb), .18); }
@@ -1255,7 +1258,8 @@ input::selection, textarea::selection { background: rgba(var(--pp-accent-rgb), .
 .pp-split-pane > .pp-editor { flex: 1 1 0; min-height: 0; height: auto; }
 
 /* Tags (PLAN §4.16): inline #tag chips, the tags row of the properties block, the #tag tab */
-.pp-tag { display: inline-block; padding: 0 7px; margin: 0 1px; border-radius: 999px; line-height: 1.45; font-size: .9em; color: rgb(var(--pp-accent-rgb)); background: rgba(var(--pp-accent-rgb), .12); cursor: pointer; }
+/* user 2026-11-20: 6 px from the text left and right, 2 px above / below (it sits in a text line), a 6 px rounded rectangle (was a thin pill) */
+.pp-tag { display: inline-block; padding: 2px 6px; margin: 0 1px; border-radius: 6px; line-height: 1.45; font-size: .9em; color: rgb(var(--pp-accent-rgb)); background: rgba(var(--pp-accent-rgb), .12); cursor: pointer; }
 .pp-tag:hover { background: rgba(var(--pp-accent-rgb), .22); }
 .pp-tag.pp-tag-edit { padding: 0; background: none; border-radius: 0; cursor: text; font-size: inherit; line-height: inherit; }
 .pp-fm-val.pp-fm-tags { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; }
@@ -2158,7 +2162,8 @@ body.body--dark .pp-aidiff-chip-warn { color: #e3b341; }
 /* List bullets as exact shapes (user 2026-11-19: radius 1 px more than the font's dot, 2.5 → 3.5 px).
    The shape's centre sits in the middle of the first column, where the dot's was (0.39em over the
    baseline). widgets.js sets data-glyph; an unknown glyph is still drawn as text. */
-.pp-bullet[data-glyph]::before { content: ""; display: inline-block; box-sizing: border-box; width: 7px; height: 7px; margin-left: calc(.5ch - 3.5px); vertical-align: calc(0.39em - 3.5px); background: var(--pp-accent); }
+/* user 2026-11-20: 0.5 px smaller (7 → 6.5 px), 5 px further right */
+.pp-bullet[data-glyph]::before { content: ""; display: inline-block; box-sizing: border-box; width: 6.5px; height: 6.5px; margin-left: calc(.5ch - 3.25px + var(--pp-bullet-shift)); vertical-align: calc(0.39em - 3.25px); background: var(--pp-accent); }
 .pp-bullet[data-glyph="disc"]::before { border-radius: 50%; }
 .pp-bullet[data-glyph="circle"]::before { border-radius: 50%; background: transparent; border: 1.5px solid var(--pp-accent); }
 .pp-bullet[data-glyph="square"]::before { border-radius: 1px; }

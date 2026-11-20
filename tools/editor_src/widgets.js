@@ -42,6 +42,24 @@ export class BulletWidget extends WidgetType {
   }
 }
 
+// Replaces the leading spaces of a nested bullet item: each level is a fixed step (app.css
+// `--pp-nest-step`, user 2026-11-20: 15 px from the parent's bullet), not a number of characters.
+export class NestWidget extends WidgetType {
+  constructor(depth) {
+    super();
+    this.depth = depth;
+  }
+  eq(other) {
+    return other.depth === this.depth;
+  }
+  toDOM() {
+    const el = document.createElement("span");
+    el.className = "pp-nest";
+    el.style.width = `calc(${this.depth} * var(--pp-nest-step))`;
+    return el;
+  }
+}
+
 // Replaces `- [ ]` / `- [x]`. `offset` is where the state character sits relative to the widget.
 export class CheckboxWidget extends WidgetType {
   constructor(checked, offset) {

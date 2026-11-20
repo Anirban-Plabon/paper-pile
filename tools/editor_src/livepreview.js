@@ -14,7 +14,7 @@ import { parseWikilink } from "./wikilink.js";
 import { activeLines, isHoldChange, refreshEffect, touches } from "./reveal.js";
 import { CodeCopyWidget } from "./blockactions.js";
 import { FoldToggle, foldEffects, foldState } from "./fold.js";
-import { BulletWidget, CalloutLabelWidget, CheckboxWidget, HrWidget, ImageWidget, MathWidget, PageBreakWidget } from "./widgets.js";
+import { BulletWidget, CalloutLabelWidget, CheckboxWidget, HrWidget, ImageWidget, MathWidget, NestWidget, PageBreakWidget } from "./widgets.js";
 
 const hide = Decoration.replace({});
 const mark = (cls) => Decoration.mark({ class: cls });
@@ -105,11 +105,23 @@ const numberPadded = (pad) => Decoration.mark({ class: "pp-list-num", attributes
 // up with the quote bar's offset `--pp-qpad`, so a list inside a quote stays inside the bar.
 // `bullet`: the item's `- ` is drawn as a bullet widget `--pp-bullet-w` wide (app.css), so the hang is
 // that width plus the characters left around it, not two columns.
-const hangOf = (cols, bullet) => (bullet ? `calc(${cols - 2}ch + var(--pp-bullet-w))` : `${cols}ch`);
-const hangingIndent = (cols, bullet) =>
-  Decoration.line({ class: "pp-li", attributes: { style: `--pp-hang:${hangOf(cols, bullet)}` } });
-const continuationIndent = (cols, lead, bullet) =>
-  Decoration.line({ class: "pp-li", attributes: { style: `--pp-hang:${hangOf(cols, bullet)};--pp-pull:${Math.min(cols, lead)}ch` } });
+// `nest`: levels of a nested bullet whose leading spaces are drawn as fixed steps (NestWidget).
+const hangOf = (cols, bullet, nest = 0) =>
+  bullet ? `calc(${cols - 2}ch + var(--pp-bullet-w) + ${nest} * var(--pp-nest-step))` : `${cols}ch`;
+const hangingIndent = (cols, bullet, nest) =>
+  Decoration.line({ class: "pp-li", attributes: { style: `--pp-hang:${hangOf(cols, bullet, nest)}` } });
+// `pull`: the line's own leading characters pulled back (at most the item's text column)
+const continuationIndent = (cols, pull, bullet, nest) =>
+  Decoration.line({ class: "pp-li", attributes: { style: `--pp-hang:${hangOf(cols, bullet, nest)};--pp-pull:${pull}ch` } });
+// Are all the list items around `item` plain bullets (`- x`, not numbers or tasks)?
+function plainBulletParents(item) {
+  for (let a = item.parent?.parent; a; a = a.parent) {
+    if (a.name !== "ListItem") continue;
+    if (a.parent?.name !== "BulletList" || a.getChild("Task")) return false;
+  }
+  return true;
+}
+
 // How many characters of a line the quote marks (`> `) hide when the line is not being edited.
 const quotePrefix = (text) => /^(?:>[ ]?)+/.exec(text)?.[0].length ?? 0;
 
@@ -182,6 +194,8 @@ const handlers = {
 
     let col; // visual column where the item's text starts on its first line
     let bullet = false; // the marker and its space are drawn as one bullet widget
+    let nest = 0; // nested bullet: its leading spaces are drawn as `nest` fixed steps instead
+    let stepped = 0; // how many of those leading characters the steps replace
     if (box && !raw) {
       const checked = /[xX]/.test(cx.doc.sliceString(box.from + 1, box.from + 2));
       cx.out.push(
@@ -208,6 +222,15 @@ const handlers = {
         // the widget covers the marker and one space: the gap to the text is the chat's (user 2026-11-20)
         bullet = true;
         cx.out.push(Decoration.replace({ widget: new BulletWidget(LIST_GLYPHS[depth % LIST_GLYPHS.length]) }).range(mark.from, mark.to + 1));
+        // every level is 15 px right of its parent's bullet (user 2026-11-20) when all the parents
+        // are plain bullets too (a number or checkbox parent keeps the character indent)
+        const indentFrom = Math.max(first.from + quotePrefix(first.text), mark.from - /[ \t]*$/.exec(cx.doc.sliceString(first.from, mark.from))[0].length);
+        if (depth > 0 && indentFrom < mark.from && plainBulletParents(item)) {
+          nest = depth;
+          stepped = mark.from - indentFrom;
+          col -= stepped;
+          cx.out.push(Decoration.replace({ widget: new NestWidget(depth) }).range(indentFrom, mark.from));
+        }
       }
     }
     const own = task ? [task] : item.getChildren("Paragraph");
@@ -218,11 +241,12 @@ const handlers = {
         const hidden = cx.active.has(n) ? 0 : quotePrefix(line.text);
         const hang = Math.max(0, col - hidden);
         const asBullet = bullet && hang >= 2;
+        const steps = asBullet ? nest : 0;
         // a continuation line (also a "lazy" one written without indentation) sits under the
         // item's text: only its own leading spaces are pulled back, not the whole hang
         const prefix = quotePrefix(line.text);
         const lead = prefix - hidden + /^[ \t]*/.exec(line.text.slice(prefix))[0].length;
-        cx.out.push((n === first.number ? hangingIndent(hang, asBullet) : continuationIndent(hang, lead, asBullet)).range(line.from));
+        cx.out.push((n === first.number ? hangingIndent(hang, asBullet, steps) : continuationIndent(hang, Math.min(hang + (steps ? stepped : 0), lead), asBullet, steps)).range(line.from));
       }
     }
   },

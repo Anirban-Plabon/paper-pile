@@ -784,6 +784,16 @@ User: smart paste once failed to render a table, now LaTeX fails; test all kinds
 - **Mini chat frame + bar overlap fix (user 2026-11-19, P36.16):** the mini chat is an accent-coloured frame holding the header (the sparkle in a 30 × 28 rounded box, white title, × and drag dots) and an inner box in the theme's background, 42 px from the frame's top edge and 6 px from its left, right and bottom edges (corners: the Ask box's 24 px outside, 18 px inside). Icon, drag dots and × sit on one centre line; the dots are 6 × 2 in a lighter chip (user 2026-11-20). Third round (user 2026-11-20): the frame has the idle send button's colour (accent at 35 % over the background, solid) with the header in the text colour; its corners follow the AI icon box (8 px + the box's 7 px from the top = 15 px, inner 9 px). Context bar: every item 28 px tall in 6 px of bar padding (bar 40 px at every stage); only the three icons together (Web search, edits, hide) get a 34 px tool box with 3 px padding; the hide button always has a box (user 2026-11-20, 4th round): its own 36 × 34 box (3 px padding) at every other stage and when folded, the shared tool box at the three-icon stage; an icon-only folder has none. The mini chat's AI icon and × sit on the inner box's left and right edges (6 px from the frame). The context bar's buttons never draw outside themselves: a squeezed model button shortens its name with "…" instead of spilling its icons over the folder and hide boxes.
 - **Live CSS (development):** `paper-pile --live-css` reloads `app.css` / `print.css` in the open window within 0.5 s of an edit (mtime check per page, the new sheet loaded before the old one goes), no restart or reload.
 
+### 4.38 List / chip polish, comments and the formatting menu (user request 2026-11-20, P37)
+- **Lists:** bullet dots 6.5 px (0.5 px smaller than P36.7), drawn 5 px further right in their column (`--pp-bullet-shift`); a nested bullet sits exactly 15 px right of its parent's bullet per level (`--pp-nest-step`): the item's leading spaces are drawn as a fixed-width spacer (`NestWidget`, livepreview.js) when every parent item is a plain bullet; under a number or checkbox the character indent stays.
+- **Chips:** the `#tag` chip and the week cards' TODAY badge are rounded rectangles (6 px corners) with 6 px left / right and 2 px top / bottom padding (it sits in a text line). The note's info box (front matter) rows: line-height 1.8 and 1 px above / below (was 1.6).
+- **Formatting menu:** a button next to the Ask box's *Move to chat* opens a popup with the user's **5 pinned items** (default Highlight, Comment, Underline, Text colour, Link), *More…* (every item) and *Customize…* (choose the pinned items; setting `editor.format_pinned`, a list of ids). A **right-click on a selection** opens a menu with every item (the `.pp-ctxmenu` style, placed by `menus.js`). Items: Highlight, Comment, Underline, Text colour, Link (note picker or URL), Bold, Italic, Strikethrough, Inline code, Cut, Copy, Paste, Delete, Quote, Bulleted / Numbered / To-do list, Heading 1–3, Align left / center / right / justify (the existing block alignment, §4.34), Ask AI.
+- **How an item works:** `core/formatting.py` (pure) turns `(text, from, to, kind, arg)` into changes + a new selection; every inline item is a toggle (run again on formatted text: removed). The editor sends `{kind, from, to}`, Python answers, the editor applies it as one undo step (`applyChanges`). Line items (quote, lists) add / remove their prefix on every selected line.
+- **What goes in the file:** highlight `==text==`; underline `<u>text</u>`; text colour `<span style="color:#rrggbb">text</span>` from a fixed palette of 8 (each with a dark-theme variant in the editor). The parser keeps `html: False` but accepts exactly these two tags (an allow-list rule); anything else stays text.
+- **Comments:** *Add comment* on a selection writes `%%the comment%%` right after the selected text (the Obsidian comment). The editor hides it and draws a comment icon in the note's right margin on that line (it follows the line); a click opens a mini window with the comment (edit / delete). **Inline comments:** `//` at the start of a line or after a space turns the rest of that line into a comment — never inside code, math, links or URLs (`https://`). Both kinds are grey (a lighter grey in dark mode). **Comments never appear in export or print.**
+- **Export:** the export / print dialog gets a *Keep highlights* switch (on by default): `<mark>` or plain text. Underline and colour export as they look.
+- **AI edits** keep `==…==`, `<u>`, colour spans and `%%…%%` comments of the text they rewrite (tested).
+
 ## 5. Data formats
 
 **SQLite schema (`.paper-pile/index.db`)** — cache only:
@@ -1089,6 +1099,22 @@ Order: security first (P23.1–P23.7), then context (P23.8–P23.12), failures (
 | P28.8 | agy in its own home, wiped after the session | agy sees the app's HOME, never the user's (test); session end wipes all but program files, not while another app process uses it, leftovers wiped at start, never the real home (tests); model list kept 10 min (test); real agy: no new entry in `~/.gemini`; old entries removed by `tools/agy_forget_app.py` |
 | P28.9 | agy uses the user's sign-in | a sign-in in the real home reaches the app's home before the next run / listing, a change there is copied again, the app's refresh is kept, a sign-out removes it, the real home is never written (tests); a change drops the kept model list (test); real agy lists models and answers with a signed-in real home |
 | P28.6 | Settings follow the backend (user 2026-10-31) | switching keeps / restores each backend's address, model, key variable; Provider list shows each backend's status (hosted API never probed unasked); hints and key row per backend; model list = current backend's; no control overflows its box (tests + real app) |
+
+### P37 — List / chip polish, comments, formatting menu (user request 2026-11-20, §4.38)
+| ID | Task | Acceptance |
+|---|---|---|
+| P37.1 | Bullets 6.5 px, 5 px right, nested 15 px per level | measured in the real app: dot 6.5 px, centres 15 px apart per level, wrapped lines under the text |
+| P37.2 | Tag chip + TODAY badge: rounded rectangle, 6 px padding | computed `padding: 2px 6px`, `border-radius: 6px` |
+| P37.3 | Info box rows less congested | front matter row line-height 1.8 |
+| P37.4 | Moving a tab left / right is fast | tab reorder measured before / after in the real app |
+| P37.5 | New bullet: one empty line before and after | typing `- ` under a paragraph adds an empty line above; leaving the list leaves one below (with 'Blank lines around blocks' on); unit + qa_editor checks |
+| P37.6 | `core/formatting.py` toggles | unit tests: each item on / off, multi-line, inside list / quote, nested marks |
+| P37.7 | Parser + editor + export for `==`, `<u>`, colour span | `qa_render.py` corpus cases; `check_sync`; export HTML |
+| P37.8 | Comments: `%%…%%` margin icon + mini window, `//` inline | real app: icon on the line, click shows / edits; `https://` not a comment; export has neither |
+| P37.9 | Formatting button + popup (5 pinned, More, Customize) | real clicks; pinned list saved in settings |
+| P37.10 | Right-click menu on a selection with every item | real right-click; each item applies |
+| P37.11 | Export *Keep highlights* switch | export with / without `<mark>` |
+| P37.12 | AI edits keep the marks | edit tests with marks in the rewritten text |
 
 ### P36 — Tree, switches, mini chat, calendar picker, live CSS (user request 2026-11-19, §4.37)
 | ID | Task | Acceptance |
