@@ -459,6 +459,15 @@ body.pp-page-dragging, body.pp-page-dragging * { cursor: row-resize !important; 
 .pp-tabstrip-split > .pp-tabbar-right { flex: 0 1 auto; }
 /* where a dragged tab lands (static/tabs.js): one rounded accent bar centred on the tab divider,
    sliding between gaps and bouncing as it arrives */
+/* Chrome-like tab drag (static/tabs.js, user 2026-11-20): the dragged tab is lifted over its
+   neighbours, which slide aside; pulled out of the bar, a copy follows the pointer */
+.pp-tab[data-pp-dragging] { background: var(--pp-bg); color: var(--pp-fg); box-shadow: 0 2px 10px rgba(0, 0, 0, .18); border-radius: var(--pp-r-ctrl) var(--pp-r-ctrl) 0 0; }
+.pp-tab[data-pp-dragging].pp-tab-active { box-shadow: inset 0 2px 0 var(--pp-accent), 0 2px 10px rgba(0, 0, 0, .18); }
+.pp-tab-ghost { position: fixed; z-index: 3000; pointer-events: none; display: flex; background: var(--pp-bg); color: var(--pp-fg); border: 1px solid var(--pp-border); border-radius: var(--pp-r-ctrl); box-shadow: 0 8px 24px rgba(0, 0, 0, .22); opacity: 1; }
+.pp-tab-ghost::before, .pp-tab-ghost::after { display: none !important; }  /* no ramps / divider on the floating copy */
+html.pp-tab-dragging, html.pp-tab-dragging * { cursor: grabbing !important; }
+html.pp-tab-dragging .pp-tab:hover { background: transparent; }
+html.pp-tab-dragging .pp-tab-active:hover, html.pp-tab-dragging .pp-tab-shown:hover, html.pp-tab-dragging .pp-tab[data-pp-dragging]:hover { background: var(--pp-bg); }
 .pp-tab-marker { position: fixed; z-index: 30; width: 4px; border-radius: 2px; background: var(--pp-accent); pointer-events: none; opacity: 0; transform-origin: 50% 100%; transition: left var(--pp-dur) var(--pp-ease), opacity var(--pp-dur-fast) var(--pp-ease); }
 .pp-tab-marker.pp-on { opacity: 1; }
 .pp-tab-marker.pp-jump { animation: pp-tab-jump calc(360ms * var(--pp-motion)) cubic-bezier(.3, 1.6, .5, 1); }

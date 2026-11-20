@@ -345,6 +345,7 @@ Legend: 🧠 = needs Opus (see PLAN §6 model guidance) · ⬜ todo · 🔄 in p
 | P37.2 | Tag chip + TODAY badge rounded rectangle | ✅ | 2026-11-20 · `.pp-tag`, `.pp-cal-card-badge`: `padding: 2px 6px; border-radius: 6px` (measured) |
 | P37.3 | Info box line gap | ✅ | 2026-11-20 · `.pp-fm-row` line-height 1.6 → 1.8 + 1 px padding (row 23.4 px) |
 | P37.4 | Tab reorder slow (move a tab left / right) | ✅ | 2026-11-20 · user: the slow part is moving a tab, not switching (switch: perf_ui median 120 ms). A move rebuilt the whole bar (every chip + its right-click menu); now `TabBar.reorder` moves the existing chips (`Element.move`) and the list menu is refilled. Real app, 14 tabs, `pp_tab_move` → new order painted (2 frames): median 83 → 33 ms; order and clicks checked after a move |
+| P37.13 | Chrome-like tab drag | ✅ | 2026-11-20 · tabs.js pointer drag (follow, slide aside, glide into the slot, transforms dropped in the frame the new order lands; out of the bar: ghost + `window.ppNoteZones` / marker on the other split bar; Esc cancels); `draggable` off on chips; notedrop.js zones exposed. Real app, CDP mouse events: 13/13 (slide by the tab's width, order, no styles left, no jump per frame, click still switches, drag-out opens a split) |
 | P37.5 | New bullet: one empty line before / after | ⬜ | user 2026-11-20: real empty lines in the file (typed `- ` under text; leaving the list) |
 | P37.6 | `core/formatting.py` toggles | ⬜ | |
 | P37.7 | Parser + editor + export: `==`, `<u>`, colour span | ⬜ | |
@@ -521,6 +522,7 @@ Legend: 🧠 = needs Opus (see PLAN §6 model guidance) · ⬜ todo · 🔄 in p
 <!-- YYYY-MM-DD · decision · reason · (who: user / claude) -->
 | Date | Decision | Reason | By |
 |---|---|---|---|
+| 2026-11-20 | P37.13: tab drag with pointer events instead of HTML5 drag & drop; a drag does not switch the active tab (its click is swallowed); the drop zones of notedrop.js are shared through `window.ppNoteZones` | HTML5's drag image is a fixed snapshot: the tab could not follow the strip nor the others slide (user: like Chrome) | claude |
 | 2026-11-20 | P37 formats (user's choices): comments as `%%…%%` right after the commented text (hidden, margin icon); `//` inline comments from `//` (line start or after a space) to the line end, never in code / math / links / URLs; underline `<u>` and colour `<span style="color:…">` with an allow-list in the parser (`html: False` kept for everything else); highlight `==…==`; export: comments never, highlights by a *Keep highlights* switch | user answers 2026-11-20 (file-format decisions are the user's) | user |
 | 2026-11-20 | P37.1: a nested bullet's 15 px step is a replace widget over its leading spaces (not CSS on the line), only when every parent is a plain bullet — under a number / checkbox the parent's text column decides where the child starts, so a fixed step could put it left of the parent's text start in a misleading way | user: "gap from second order to first order should be 15 px" | claude |
 | 2026-11-20 | P37.2: "padding 6 px from text" taken as 6 px left / right and 2 px top / bottom: the chip sits inside a text line, 6 px above and below would push the lines apart | the chip's height would change the line height (CodeMirror measures lines) | claude |
@@ -1247,3 +1249,4 @@ Legend: 🧠 = needs Opus (see PLAN §6 model guidance) · ⬜ todo · 🔄 in p
 - 2026-11-20 · P36.17: editor bullet gap like the chat (12.2 px at 14 px, measured in the real app; wrapped lines under the text); qa_editor 359/359 (as root it needs `QTWEBENGINE_DISABLE_SANDBOX=1`); 1822 tests
 - 2026-11-20 · P37.1–P37.3: bullets 6.5 px / +5 px / nested 15 px per level (NestWidget), tag chip + TODAY badge rounded rectangles (2 × 6 px padding), info rows line-height 1.8; measured in the real app; P37 spec (formatting menu, comments) in PLAN §4.38
 - 2026-11-20 · P37.4: tab move redraws only the order (`TabBar.reorder`), 83 → 33 ms median for 14 tabs in the real app; 1825 tests
+- 2026-11-20 · P37.13: Chrome-like tab drag (follow, slide aside, glide, ghost out of the bar); real-app mouse checks 13/13; 1825 tests

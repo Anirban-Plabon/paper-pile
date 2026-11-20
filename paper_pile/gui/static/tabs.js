@@ -1,11 +1,20 @@
-// Thin capture layer for the tab bar (paper_pile/gui/components/tabs.py): drag-to-reorder only.
+// Thin capture layer for the tab bar (paper_pile/gui/components/tabs.py): dragging only.
 // Click, middle-click and the close button are plain NiceGUI events; Python decides everything.
+//
+// Dragging is Chrome-like (user 2026-11-20), with pointer events (not HTML5 drag, whose image
+// cannot follow the strip): inside its bar the tab follows the pointer and the others slide aside;
+// on release it glides into its slot and Python is told (`pp_tab_move`), whose reorder lands with
+// no jump (the transforms go in the frame the new order arrives). Pulled away from the bar, a copy
+// of the tab follows the pointer: onto an editor / the chat it is a note drop (notedrop.js zones),
+// onto the other split bar a move there (accent marker).
 (function () {
   const tabOf = (el) => (el && el.closest ? el.closest('.pp-tab') : null);
   const barOf = (el) => (el && el.closest ? el.closest('.pp-tabbar') : null);
-  let dragId = null;
-  let overEl = null;
-  // One accent bar for the whole page, centred on the divider line between two tabs.
+  const START_PX = 5;   // a press becomes a drag after this much movement
+  const DETACH_PX = 28; // this far above / below the bar, the tab leaves it
+  const EDGE_PX = 28;   // autoscroll the bar when the pointer is this close to its edge
+
+  // ---- the accent marker between two tabs (a drop on the other split bar) ----
   let marker = null;
   let markKey = null;
   const showMarker = (tab, after) => {
@@ -17,11 +26,7 @@
     }
     const key = tab.dataset.doc + (after ? '>' : '<');
     if (key === markKey) return;
-    // "after this tab" and "before the next one" are the same gap: same key, no jump
-    const next = after ? tab.nextElementSibling : null;
-    const gapKey = next && next.classList.contains('pp-tab') ? next.dataset.doc + '<' : key;
-    if (gapKey === markKey) return;
-    markKey = gapKey;
+    markKey = key;
     const r = tab.getBoundingClientRect();
     const line = getComputedStyle(tab, '::after');
     const top = parseFloat(line.top) || 10, bottom = parseFloat(line.bottom) || 9;
@@ -36,59 +41,228 @@
     void marker.offsetWidth;  // restart the bounce
     marker.classList.add('pp-jump');
   };
-  const clearOver = () => {
-    overEl = null;
-  };
   const hideMarker = () => {
     markKey = null;
     if (marker) marker.classList.remove('pp-on', 'pp-jump');
   };
 
-  document.addEventListener('dragstart', (e) => {
-    const tab = tabOf(e.target);
-    if (!tab) return;
-    dragId = tab.dataset.doc;
-    e.dataTransfer.setData('text/plain', dragId);
-    e.dataTransfer.effectAllowed = 'move';
-  });
-  document.addEventListener('dragover', (e) => {
-    if (dragId === null) return;
-    const tab = tabOf(e.target);
-    clearOver();
-    if (!tab) {
-      const bar = barOf(e.target);
-      if (bar) { // empty part of the bar = "move to the end"
-        e.preventDefault();
-        const tabs = bar.querySelectorAll('.pp-tab');
-        if (tabs.length) showMarker(tabs[tabs.length - 1], true);
-      } else hideMarker();
+  let press = null;     // {tab, bar, x, y, id} until the pointer moves far enough
+  let drag = null;      // the drag in progress
+  let swallowClick = false;
+
+  function begin(p) {
+    const tabs = [...p.bar.querySelectorAll(':scope > .pp-tab')];
+    const from = tabs.indexOf(p.tab);
+    drag = {
+      tab: p.tab, bar: p.bar, tabs, from, to: from,
+      rects: tabs.map((t) => t.getBoundingClientRect()),
+      startX: p.x, scroll0: p.bar.scrollLeft, x: p.x, y: p.y,
+      out: false, ghost: null, ghostDx: 0, ghostDy: 0, raf: 0,
+    };
+    p.tab.style.transition = 'none';
+    p.tab.style.zIndex = '3';
+    p.tab.dataset.ppDragging = '1';
+    for (const t of tabs) if (t !== p.tab) t.style.transition = `transform var(--pp-dur) var(--pp-ease)`;
+    document.documentElement.classList.add('pp-tab-dragging');
+    drag.raf = requestAnimationFrame(tick);
+  }
+
+  // where the dragged tab would go and how everything is drawn, from the pointer
+  function layout() {
+    const d = drag;
+    const w = d.rects[d.from].width;
+    const shift = d.x - d.startX + (d.bar.scrollLeft - d.scroll0);
+    const first = d.rects[0].left, last = d.rects[d.rects.length - 1].right;
+    const left = Math.min(Math.max(d.rects[d.from].left + shift, first), last - w);
+    const dx = left - d.rects[d.from].left;
+    const centre = left + w / 2;
+    let to = d.from;
+    while (to < d.tabs.length - 1 && centre > d.rects[to + 1].left + d.rects[to + 1].width / 2) to++;
+    while (to > 0 && centre < d.rects[to - 1].left + d.rects[to - 1].width / 2) to--;
+    d.to = to;
+    d.tab.style.transform = `translateX(${dx}px)`;
+    d.tabs.forEach((t, i) => {
+      if (t === d.tab) return;
+      const moveBy = d.from < to && i > d.from && i <= to ? -w : d.from > to && i >= to && i < d.from ? w : 0;
+      t.style.transform = moveBy ? `translateX(${moveBy}px)` : '';
+    });
+  }
+
+  // the slot's offset from the tab's own place (where it glides on release)
+  function slotOffset(d) {
+    let off = 0;
+    if (d.to > d.from) for (let i = d.from + 1; i <= d.to; i++) off += d.rects[i].width;
+    else for (let i = d.to; i < d.from; i++) off -= d.rects[i].width;
+    return off;
+  }
+
+  function tick() {
+    const d = drag;
+    if (!d) return;
+    if (!d.out) {  // the pointer near an edge of an overflowing bar: scroll it
+      const r = d.bar.getBoundingClientRect();
+      const step = d.x < r.left + EDGE_PX ? -8 : d.x > r.right - EDGE_PX ? 8 : 0;
+      if (step) { d.bar.scrollLeft += step; layout(); }
+    }
+    d.raf = requestAnimationFrame(tick);
+  }
+
+  function detach() {
+    const d = drag;
+    d.out = true;
+    d.tabs.forEach((t) => { if (t !== d.tab) t.style.transform = ''; });
+    d.tab.style.transition = `transform var(--pp-dur) var(--pp-ease), opacity var(--pp-dur) var(--pp-ease)`;
+    d.tab.style.transform = '';
+    d.tab.style.opacity = '.35';
+    if (!d.ghost) {
+      const r = d.rects[d.from];
+      d.ghost = d.tab.cloneNode(true);
+      d.ghost.removeAttribute('id');
+      d.ghost.removeAttribute('data-pp-dragging');
+      d.ghost.className = d.tab.className + ' pp-tab-ghost';
+      d.ghost.style.cssText = `width:${r.width}px;height:${r.height}px;transform:none;opacity:1`;
+      d.ghostDx = d.startX - r.left;
+      d.ghostDy = r.height / 2;
+      document.body.appendChild(d.ghost);
+    }
+    d.ghost.style.display = '';
+  }
+
+  function attach() {
+    const d = drag;
+    d.out = false;
+    d.tab.style.transition = 'none';
+    d.tab.style.opacity = '';
+    if (d.ghost) d.ghost.style.display = 'none';
+    window.ppNoteZones && window.ppNoteZones.end();
+    hideMarker();
+    layout();
+  }
+
+  // outside its bar: what is under the pointer (the ghost takes no pointer events)
+  function overOutside() {
+    const d = drag;
+    d.ghost.style.left = `${d.x - d.ghostDx}px`;
+    d.ghost.style.top = `${d.y - d.ghostDy}px`;
+    const target = document.elementFromPoint(d.x, d.y);
+    const bar = barOf(target);
+    if (bar && bar !== d.bar) {
+      window.ppNoteZones && window.ppNoteZones.end();
+      const tab = tabOf(target);
+      const tabs = bar.querySelectorAll('.pp-tab');
+      if (tab) {
+        const r = tab.getBoundingClientRect();
+        showMarker(tab, d.x > r.left + r.width / 2);
+      } else if (tabs.length) showMarker(tabs[tabs.length - 1], true);
       return;
     }
-    e.preventDefault();
-    e.dataTransfer.dropEffect = 'move';
-    const r = tab.getBoundingClientRect();
-    overEl = tab;
-    showMarker(tab, e.clientX > r.left + r.width / 2);
-  });
-  document.addEventListener('drop', (e) => {
-    if (dragId === null) return;
-    const src = dragId;
-    dragId = null;
-    const tab = tabOf(e.target);
-    clearOver();
     hideMarker();
-    if (tab) {
-      const r = tab.getBoundingClientRect();
-      e.preventDefault();
-      emitEvent('pp_tab_move', { src: src, dst: tab.dataset.doc, after: e.clientX > r.left + r.width / 2 });
-    } else if (barOf(e.target)) {
-      const tabs = barOf(e.target).querySelectorAll('.pp-tab');
-      if (!tabs.length) return;
-      e.preventDefault();
-      emitEvent('pp_tab_move', { src: src, dst: tabs[tabs.length - 1].dataset.doc, after: true });
+    window.ppNoteZones && window.ppNoteZones.over(target, d.x);
+  }
+
+  function inBand(d) {
+    const r = d.bar.getBoundingClientRect();
+    return d.y > r.top - DETACH_PX && d.y < r.bottom + DETACH_PX;
+  }
+
+  // forget every inline style the drag set (at once, no transition)
+  function reset(tabs) {
+    for (const t of tabs) {
+      t.style.transition = 'none';
+      t.style.transform = '';
+      t.style.opacity = '';
+      t.style.zIndex = '';
+      delete t.dataset.ppDragging;
     }
-  });
-  document.addEventListener('dragend', () => { dragId = null; clearOver(); hideMarker(); });
+    void document.body.offsetWidth;
+    for (const t of tabs) t.style.transition = '';
+  }
+
+  function finish(cancelled) {
+    const d = drag;
+    drag = null;
+    cancelAnimationFrame(d.raf);
+    document.documentElement.classList.remove('pp-tab-dragging');
+    if (d.ghost) d.ghost.remove();
+    const src = d.tab.dataset.doc;
+    if (cancelled) { window.ppNoteZones && window.ppNoteZones.end(); hideMarker(); reset(d.tabs); return; }
+    if (d.out) {
+      const target = document.elementFromPoint(d.x, d.y);
+      const bar = barOf(target);
+      hideMarker();
+      if (bar && bar !== d.bar) {
+        window.ppNoteZones && window.ppNoteZones.end();
+        const tab = tabOf(target);
+        const tabs = bar.querySelectorAll('.pp-tab');
+        if (tab) {
+          const r = tab.getBoundingClientRect();
+          emitEvent('pp_tab_move', { src, dst: tab.dataset.doc, after: d.x > r.left + r.width / 2 });
+        } else if (tabs.length) emitEvent('pp_tab_move', { src, dst: tabs[tabs.length - 1].dataset.doc, after: true });
+      } else if (window.ppNoteZones) window.ppNoteZones.drop(target, d.x, { doc: src });
+      reset(d.tabs);
+      return;
+    }
+    if (d.to === d.from) {  // back where it was: glide home
+      d.tab.style.transition = `transform var(--pp-dur) var(--pp-ease)`;
+      d.tab.style.transform = '';
+      const motion = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--pp-motion')) || 1;
+      setTimeout(() => reset(d.tabs), 160 * motion + 60);  // after the glide (--pp-dur)
+      return;
+    }
+    // glide into the slot, then wait for Python's new order and drop the transforms in that frame
+    d.tab.style.transition = `transform var(--pp-dur) var(--pp-ease)`;
+    d.tab.style.transform = `translateX(${slotOffset(d)}px)`;
+    const dst = d.tabs[d.to].dataset.doc;
+    const done = () => { mo.disconnect(); clearTimeout(timer); reset(d.tabs); };
+    const mo = new MutationObserver(done);
+    mo.observe(d.bar, { childList: true });
+    const timer = setTimeout(done, 1500);  // no answer (nothing changed): put everything back
+    emitEvent('pp_tab_move', { src, dst, after: d.to > d.from });
+  }
+
+  document.addEventListener('pointerdown', (e) => {
+    if (e.button !== 0 || drag) return;
+    const tab = tabOf(e.target);
+    const bar = barOf(tab);
+    if (!tab || !bar || (e.target.closest && e.target.closest('.pp-tab-close'))) return;
+    press = { tab, bar, x: e.clientX, y: e.clientY, id: e.pointerId };
+  }, true);
+
+  document.addEventListener('pointermove', (e) => {
+    if (press && !drag && e.pointerId === press.id) {
+      if (Math.hypot(e.clientX - press.x, e.clientY - press.y) < START_PX) return;
+      try { press.tab.setPointerCapture(e.pointerId); } catch (_) { /* gone */ }
+      begin(press);
+      press = null;
+    }
+    if (!drag) return;
+    e.preventDefault();
+    drag.x = e.clientX;
+    drag.y = e.clientY;
+    const inside = inBand(drag);
+    if (inside && drag.out) attach();
+    else if (!inside && !drag.out) detach();
+    if (drag.out) overOutside();
+    else layout();
+  }, true);
+
+  document.addEventListener('pointerup', (e) => {
+    press = null;
+    if (!drag) return;
+    drag.x = e.clientX;
+    drag.y = e.clientY;
+    swallowClick = true;  // the click after a drag must not also switch tabs
+    setTimeout(() => { swallowClick = false; }, 0);
+    finish(false);
+  }, true);
+
+  document.addEventListener('pointercancel', () => { press = null; if (drag) finish(true); }, true);
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && drag) finish(true); }, true);
+  document.addEventListener('click', (e) => {
+    if (swallowClick && tabOf(e.target)) { e.stopPropagation(); e.preventDefault(); swallowClick = false; }
+  }, true);
+  // no HTML5 drag of a tab (tabs.py also leaves `draggable` off)
+  document.addEventListener('dragstart', (e) => { if (tabOf(e.target)) e.preventDefault(); }, true);
 })();
 
 // Right pane tabs (paper_pile/gui/components/right_pane.py): when the titles do not all fit,

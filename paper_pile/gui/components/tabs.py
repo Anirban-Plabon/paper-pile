@@ -173,7 +173,6 @@ class TabBar:
         chip._props["data-doc"] = str(tab_id)
         if side == 0:
             self._chips[tab_id] = chip
-        chip._props["draggable"] = "true"
         if split is not None and self._on_activate_side is not None:
             chip.on("click", lambda _e, i=tab_id, s=side: self._on_activate_side(i, s))  # type: ignore[misc]
         else:
