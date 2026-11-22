@@ -10,8 +10,11 @@ through the event bus:
   ``vault.renamed``  (old, new)          rename or move (a folder path covers its children)
   ``vault.deleted``  (path, trashed)     moved to ``.trash/``
 
-Pinned notes (right-click → Pin) are listed above the folders. A folder's + (on hover) makes a
-new note in it. Inside a folder its notes are in a box that shows at most ``NOTES_SHOWN`` of
+Pinned folders and notes (right-click or ⋯ → Pin) are listed above the folders; a pinned
+folder's row shows it in the tree. A folder row has, on hover, expand / collapse all inside, ⋯
+(the folder's menu: Pin, *Colour and icon* — 8 colours, 16 icons, ``core.folder_looks`` —, new
+note / folder, rename …; in a narrow pane the expand button moves into it) and + (a new note in
+it). Inside a folder its notes are in a box that shows at most ``NOTES_SHOWN`` of
 them and scrolls (user, 2026-11-04); in the daily-notes folder they are by date, newest first,
 and the box opens scrolled to today's note (the future days above it; ``static/tree.js``),
 marked with a dot — every time the folder is opened.
@@ -34,6 +37,7 @@ Delete trashes the selection, Ctrl+A selects every shown row, Esc clears the sel
 
 import asyncio
 import html
+import json
 import logging
 from collections.abc import Awaitable, Callable
 from datetime import date
@@ -43,6 +47,8 @@ from nicegui import background_tasks, run, ui
 
 from paper_pile.core.daily import daily_date, daily_order
 from paper_pile.core.events import EventBus
+from paper_pile.core.folder_looks import FOLDER_ICONS, FolderLooks
+from paper_pile.core.formatting import COLORS
 from paper_pile.core.fsutil import reveal_in_file_manager
 from paper_pile.core.index import SearchHit
 from paper_pile.core.vault import TreeEntry, Vault, VaultError
@@ -56,6 +62,7 @@ INDENT_PX = 14
 BASE_PAD_PX = 6  # padding inside a row's box before its icon
 ROW_INSET_PX = 6  # a top-level row's box starts 6 px in, so names line up with "Files"
 MENU_W, MENU_H = 210, 250  # rough size, only used to keep the menu on screen
+LOOKS_H = 330  # the colour and icon picker's rough height (same use)
 RECENT_SHOWN = 50  # notes listed in search mode
 HITS_SHOWN = 50  # vault-search hits listed
 VAULT_ROOT = ""  # the location value that means "the vault itself"
@@ -90,6 +97,8 @@ class FileTree:
         self.bus = bus
         self.can_reveal = can_reveal
         self._expanded: set[str] = set()
+        self._looks = FolderLooks(vault.root)  # folder colour / icon / pin (view state)
+        self._menu_at: dict[str, Any] = {}  # where the open menu was asked for (x, y, vw, vh)
         self._selected: str | None = None  # the last clicked row (anchor of Shift+click)
         self._picked: set[str] = set()  # every selected row
         self._cursor: str | None = None  # the keyboard's row (moves with ↑/↓)
@@ -140,6 +149,9 @@ class FileTree:
         ui.on("pp_tree_add", lambda e: self._guard(self._new_note(str(e.args["path"]))))
         ui.on("pp_tree_fold", lambda e: self._guard(self._fold_folder(str(e.args["path"]))))
         ui.on("pp_ctx_close", lambda _e: self._close_menu())
+        # folder looks follow renames, moves and deletes wherever they come from
+        self.bus.subscribe("vault.renamed", lambda old, new: self._looks.renamed(old, new))
+        self.bus.subscribe("vault.deleted", lambda path, trashed: self._looks.deleted(path))
         # a tab's menu renames through the tree (same dialog as the tree's own Rename)
         self.bus.subscribe(
             "note.rename",
@@ -299,11 +311,26 @@ class FileTree:
         self._rows[path] = row
 
     def _render_pins(self) -> None:
-        """The pinned notes, above the folders (a click opens one; right-click: Unpin)."""
+        """The pinned folders and notes, above the folders (a click shows the folder in the
+        tree / opens the note; right-click: Unpin)."""
+        folders = [p for p in self._looks.pinned() if self._folder_exists(p)]
         pins = [p for p in self._pinned() if self.vault.exists(p)]
-        if not pins:
+        if not pins and not folders:
             return
         ui.label("Pinned").classes("pp-tree-group")
+        for path in folders:
+            row = ui.element("div").classes("pp-tree-row pp-tree-pinrow")
+            row._props["data-path"] = path
+            row._props["data-dir"] = "1"
+            row._props["data-pin"] = "1"
+            row.style(f"padding-left: {BASE_PAD_PX}px")
+            with row:
+                line_icon("pin", "s").classes("pp-ico pp-ico-chev")
+                self._folder_icon(path)
+                ui.label(path.rsplit("/", 1)[-1]).classes("pp-tree-name")
+                parent = path.rpartition("/")[0]
+                if parent:
+                    ui.label(parent).classes("pp-muted pp-tree-sub")
         for path in pins:
             row = ui.element("div").classes("pp-tree-row pp-tree-pinrow")
             row._props["data-path"] = path
@@ -367,7 +394,7 @@ class FileTree:
             if entry.is_dir:
                 chevron = "chevron-down" if entry.path in self._expanded else "chevron-right"
                 line_icon(chevron, "s").classes("pp-ico-chev")
-                line_icon("folder").classes("pp-ico pp-ico-folder")
+                self._folder_icon(entry.path)
             else:
                 ui.element("span").classes("pp-ico pp-ico-chev")  # aligns notes
                 line_icon("file-text").classes("pp-ico pp-ico-note")
@@ -375,14 +402,29 @@ class FileTree:
             if dot:
                 mark = ui.element("span").classes("pp-tree-dot")
                 mark._props["data-tip"] = dot
-            if entry.is_dir:  # static/tree.js: expand / collapse all inside, then new note here
+            if entry.is_dir:  # static/tree.js: expand / collapse all inside, menu, new note here
                 is_open = entry.path in self._expanded
                 fold = line_icon("chevrons-down-up" if is_open else "chevrons-up-down")
                 fold.classes("pp-tree-add pp-tree-fold")
                 fold._props["data-tip"] = "Collapse all inside" if is_open else "Expand all inside"
+                more = line_icon("ellipsis").classes("pp-tree-add pp-tree-more")
+                more._props["data-tip"] = "Folder menu"
                 add = line_icon("plus").classes("pp-tree-add pp-tree-new")
                 add._props["data-tip"] = "New note here"
         self._rows[entry.path] = row
+
+    def _folder_exists(self, path: str) -> bool:
+        try:
+            return self.vault.resolve(path).is_dir()
+        except VaultError:
+            return False
+
+    def _folder_icon(self, path: str) -> None:
+        """A folder's icon in its chosen look (default: the folder in the accent colour)."""
+        color = self._looks.color(path)
+        icon = line_icon(self._looks.icon(path)).classes("pp-ico pp-ico-folder")
+        if color:
+            icon.classes(f"pp-fc-{color}")
 
     def _apply_selection(self) -> None:
         self._picked &= self._rows.keys()  # rows no longer shown (collapsed, gone) drop out
@@ -437,6 +479,14 @@ class FileTree:
             self._picked ^= {path}
             self._selected = self._cursor = path
             self._apply_selection()
+            return
+        if args.get("pin") and args["isDir"]:  # a pinned folder: show it, open, in the tree
+            self._expanded.add(path)
+            self._reveal_and_select(path)
+            row = f".pp-tree-row:not([data-pin])[data-path={json.dumps(path)}]"
+            ui.run_javascript(
+                f"document.querySelector({json.dumps(row)})?.scrollIntoView({{block: 'nearest'}})"
+            )
             return
         self._select(path)
         if args["isDir"]:
@@ -532,19 +582,23 @@ class FileTree:
 
     async def _on_context(self, args: dict[str, Any]) -> None:
         path, on_row, is_dir = str(args["path"]), bool(args["onRow"]), bool(args["isDir"])
-        if on_row and path in self._picked and len(self._picked) > 1:
+        if on_row and path in self._picked and len(self._picked) > 1 and not args.get("more"):
             self._open_menu(args, self._group_menu)
             return
-        if on_row:
+        if on_row and not args.get("pin"):
             self._select(path)
-        self._open_menu(args, lambda: self._row_menu(path, on_row, is_dir))
+        fold = bool(args.get("narrow"))  # the row's expand button is hidden: it is in the menu
+        self._open_menu(args, lambda: self._row_menu(path, on_row, is_dir, fold=fold))
 
-    def _open_menu(self, args: dict[str, Any], fill: Callable[[], None]) -> None:
+    def _open_menu(
+        self, args: dict[str, Any], fill: Callable[[], None], high: int = MENU_H
+    ) -> None:
+        self._menu_at = args
         self._menu.clear()
         with self._menu:
             fill()
         x = max(0, min(int(args["x"]), int(args["vw"]) - MENU_W))
-        y = max(0, min(int(args["y"]), int(args["vh"]) - MENU_H))
+        y = max(0, min(int(args["y"]), int(args["vh"]) - high))
         self._menu.style(f"left: {x}px; top: {y}px")
         self._menu.classes("pp-ctxmenu-open")
 
@@ -558,7 +612,20 @@ class FileTree:
             f"Delete {len(paths)} items", "trash-2", lambda: self._delete(*paths), danger=True
         )
 
-    def _row_menu(self, path: str, on_row: bool, is_dir: bool) -> None:
+    def _row_menu(self, path: str, on_row: bool, is_dir: bool, *, fold: bool = False) -> None:
+        if on_row and is_dir and fold:
+            is_open = path in self._expanded
+            self._item(
+                "Collapse all inside" if is_open else "Expand all inside",
+                "chevrons-down-up" if is_open else "chevrons-up-down",
+                lambda: self._fold_folder(path),
+            )
+        if on_row and is_dir:
+            if self._looks.is_pinned(path):
+                self._item("Unpin", "pin-off", lambda: self._pin_folder(path, False))
+            else:
+                self._item("Pin", "pin", lambda: self._pin_folder(path, True))
+            self._item("Colour and icon…", "palette", lambda: self._show_looks(path), keep=True)
         if is_dir:
             folder = path if on_row else ""
             self._item("New note", "file-plus", lambda: self._new_note(folder))
@@ -583,6 +650,67 @@ class FileTree:
                     lambda: self._reveal(path),
                 )
 
+    async def _pin_folder(self, path: str, on: bool) -> None:
+        if self._looks.set_pinned(path, on):
+            self.refresh()
+
+    # ---- folder colour and icon (user 2026-11-22) ------------------------------------------
+
+    async def _show_looks(self, path: str) -> None:
+        """The menu turns into the folder's colour (2 × 4) and icon (4 × 4) picker."""
+        self._open_menu(self._menu_at, lambda: self._looks_menu(path), LOOKS_H)
+
+    def _looks_menu(self, path: str) -> None:
+        color, icon = self._looks.color(path), self._looks.icon(path)
+        with ui.element("div").classes("pp-looks"):
+            with ui.element("div").classes("pp-looks-head"):
+                back = icon_button("chevron-left", lambda: self._looks_back(path), "Back", size="s")
+                back.classes("pp-looks-back")
+                ui.label(path.rsplit("/", 1)[-1]).classes("pp-looks-title")
+            ui.label("Colour").classes("pp-looks-label")
+            with ui.element("div").classes("pp-looks-colors"):
+                for name, code in COLORS.items():
+                    sw = ui.element("div").classes(
+                        "pp-looks-swatch" + (" pp-looks-on" if name == color else "")
+                    )
+                    sw._props["style"] = f"--sw: {code}"
+                    sw._props["data-tip"] = name.capitalize()
+                    sw.on("click", lambda _e, n=name: self._set_look(path, "color", n))
+            ui.label("Icon").classes("pp-looks-label")
+            with ui.element("div").classes("pp-looks-icons"):
+                for name in FOLDER_ICONS:
+                    tile = ui.element("div").classes(
+                        "pp-looks-icon" + (" pp-looks-on" if name == icon else "")
+                    )
+                    tile._props["data-tip"] = name.replace("-", " ").capitalize()
+                    with tile:
+                        glyph = line_icon(name)
+                        if color:
+                            glyph.classes(f"pp-fc-{color}")
+                    tile.on("click", lambda _e, n=name: self._set_look(path, "icon", n))
+            reset = ui.button("Default look", icon=ico("rotate-ccw"), color=None)
+            reset.props("flat dense no-caps align=left").classes("pp-ctx-item pp-looks-reset")
+            reset.on("click", lambda _e: self._set_look(path, "reset", ""))
+            if not color and icon == "folder":
+                reset.props("disable")
+
+    def _looks_back(self, path: str) -> None:
+        self._open_menu(self._menu_at, lambda: self._row_menu(path, True, True))
+
+    def _set_look(self, path: str, what: str, value: str) -> None:
+        """Apply a pick (the chosen colour again = back to the default) and redraw the picker,
+        which stays open so colour and icon can be tried together."""
+        if what == "color":
+            self._looks.set_color(path, "" if value == self._looks.color(path) else value)
+        elif what == "icon":
+            self._looks.set_icon(path, value)
+        else:
+            self._looks.reset(path)
+        self.refresh()
+        self._menu.clear()
+        with self._menu:  # the clicked element is gone: build in the menu's own slot
+            self._looks_menu(path)
+
     async def _pin(self, path: str, on: bool) -> None:
         self.bus.publish("note.pin", path=path, on=on)  # the editor pane owns the pins
 
@@ -591,10 +719,19 @@ class FileTree:
             self.bus.publish("tree.add_to_chat", path=path)
 
     def _item(
-        self, label: str, icon: str, action: Callable[[], Awaitable[None]], *, danger: bool = False
+        self,
+        label: str,
+        icon: str,
+        action: Callable[[], Awaitable[None]],
+        *,
+        danger: bool = False,
+        keep: bool = False,
     ) -> None:
+        """A menu row; ``keep``: the action shows something else in the menu (no close)."""
+
         async def run() -> None:
-            self._close_menu()
+            if not keep:
+                self._close_menu()
             await self._guard(action())
 
         # color=None: no Quasar colour class, so our CSS decides (layered !important rules win)

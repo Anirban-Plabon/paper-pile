@@ -800,6 +800,8 @@ User: smart paste once failed to render a table, now LaTeX fails; test all kinds
 - **Popup look (user 2026-11-20; comment window, formatting menu, right-click menu):** 6 px padding around the content, 6 px inside icon tiles and buttons, fields told apart by a tint (`--pp-pop-field`), no outline; the comment window's icon sits in a tile in the pin's colour.
 - **Export:** Settings → Page view → *Highlights in exports* (`print.keep_highlights`, on by default): `<mark>` or plain text in Markdown / HTML / PDF exports (exports have no dialog, so the switch the user chose is a setting). Comments (`%%…%%`, `//`) are removed from every export, a line that held only a comment goes; code, math and front matter are written as they are (`strip_for_export`). Underline and colour export as they look.
 - **AI edits:** `%%comments%%` are lifted out of the text (and context) sent to the model and put back after the same words — at the end if the rewrite dropped them, never lost (`core/ai/protect.py`); `//` comments, `<u>` and colour spans are "Keep exactly" tokens checked in the answer (guard G3); `==highlights==` are inline markup like `**bold**`.
+- **Round 3 (user 2026-11-22):** split view's tab row line sits exactly on the divider (the left tab bar is the left side's width; it was 4 px short). The closed AI / Calendar box keeps 30 px from the note header's tools box in split view too (the × ⋯ box is 30 px wider than the lone ⋯, so the box moves 30 px further left). Header trail in split view: every heading between the title and the last one is a middle ⋯ (U+22EF; the heading's name in its tip, still a jump; supersedes "middle parts 1 word"). Quote bar: 6 px longer at each end (3 px past the first / last line instead of 3 px inside).
+- **Folder looks (user 2026-11-22):** a folder row has, on hover, expand / collapse all inside, **⋯** (the folder's menu, the same as its right-click menu) and +; while the tree is narrower than 220 px the expand button is hidden and is the menu's first item. The folder menu adds **Pin / Unpin** (pinned folders head the tree's *Pinned* group above the pinned notes; a click shows that folder open and selected in the tree) and **Colour and icon…**: the menu turns into a picker — 8 colours (the text palette, 2 rows × 4 rounded squares; the chosen one ringed, picked again = default) and 16 icons (4 × 4: folder, book, briefcase, graduation cap, code, flask, light bulb, star, heart, image, music, calendar, people, archive, globe, inbox) drawn in the chosen colour, plus *Default look*; it stays open while trying. View state in `.paper-pile/folders.json` (`core/folder_looks.py`, §5); renames / moves / deletes carry the entries along.
 
 ## 5. Data formats
 
@@ -836,6 +838,8 @@ meta(key TEXT PK, value TEXT)   -- schema_version
 `granted: null` = revoked (file types and exclusions kept for the next Allow). This file — not the settings — decides what the AI may read.
 
 **table_widths.json** (`.paper-pile/table_widths.json`, `core/table_widths.py`, P32): dragged table column widths, view state only (losing it loses nothing but widths): `{"notes/a.md": {"Name|Value|Note": [120, 80, 240]}}` — per note, keyed by the header cells joined with `|`, CSS px clamped to 40–4000; read tolerantly, written atomically; renames move entries, deletes drop them.
+
+**folders.json** (`.paper-pile/folders.json`, `core/folder_looks.py`, P37.25): how folders look in the tree, view state only: `{"looks": {"Projects": {"color": "red", "icon": "briefcase"}}, "pinned": ["Projects"]}` — colour = a palette name (`core/formatting.py` COLORS), icon = one of `FOLDER_ICONS`; unknown values dropped on read; written atomically; renames move entries (and those under a folder), deletes drop them.
 
 **history.db** (`.paper-pile/history.db`, `core/history.py`): versions of notes (§4.18), including "before AI" ones; a cache-like store the app can lose without losing notes.
 
@@ -1129,6 +1133,11 @@ Order: security first (P23.1–P23.7), then context (P23.8–P23.12), failures (
 | P37.18 | Quote bar accent + rounded; callouts own colours | computed colours / radius in the real app |
 | P37.19 | Chat context bar hide button: one box | box = button = 30 × 28, same box at rest and on hover |
 | P37.20 | Note header trail with H3 | `title › H1 › H2 › H3`, 3 words each, clickable, headings above the view only; split: middle parts 1 word; ‹ › stop at H3 (unit + real app) |
+| P37.21 | Split tab row line on the divider | right tab bar's left edge x = divider x (real app) |
+| P37.22 | Split: AI / Calendar box 30 px from the × ⋯ box | measured gap 30 px in split and single view (real app) |
+| P37.23 | Split trail: middle headings ⋯ | `title › ⋯ › ⋯ › H3` in split view, never cut (real app) |
+| P37.24 | Quote bar 6 px longer each end | `top` / `bottom` −3 px on the first / last line |
+| P37.25 | Folder ⋯ menu, colour + icon, pin | ⋯ opens the folder menu; picker 2 × 4 colours, 4 × 4 icons, saved + kept after restart; pinned folder in *Pinned*, click reveals it; narrow tree: expand in the menu (unit + real clicks) |
 | P37.14 | Ask box tools chip, comment colours, popup look | format (three bars) + Move to chat in one chip matching the card; comment window: no field outline, 6 px paddings, icon tile, grey / red / yellow / green pin colour saved in the file (real app, light + dark) |
 
 ### P36 — Tree, switches, mini chat, calendar picker, live CSS (user request 2026-11-19, §4.37)

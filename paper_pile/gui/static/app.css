@@ -227,8 +227,34 @@ body.pp-native.pp-right-open .pp-rtabbar { padding-right: 108px; }
 .pp-tree-group-end { height: 1px; margin: 6px 12px; background: var(--pp-border); }
 .pp-tree-pinrow .pp-ico-chev { color: var(--pp-muted); }
 .pp-tree-row > .pp-tree-add:hover { opacity: 1; color: var(--pp-fg); background: rgba(127, 127, 127, .22); }
-/* a folder's expand / collapse-all button stands left of its + (user 2026-11-19) */
-.pp-tree-row > .pp-tree-fold + .pp-tree-new { margin-left: 2px; }
+/* a folder's hover buttons: expand / collapse all (user 2026-11-19), ⋯ its menu, + (user 2026-11-22) */
+.pp-tree-row > .pp-tree-add + .pp-tree-add { margin-left: 2px; }
+/* a narrow pane: the expand button goes into the ⋯ menu (tree.js tells the menu) */
+.pp-tree { container: pptree / inline-size; }
+@container pptree (max-width: 219px) { .pp-tree-row > .pp-tree-fold { display: none; } }
+/* a folder's chosen colour (core/folder_looks.py): the palette's shades, dark-theme variants */
+body.body--dark :is(.pp-tree, .pp-looks) .pp-fc-gray { color: #9b9b9b; }
+body.body--dark :is(.pp-tree, .pp-looks) .pp-fc-red { color: #ff6b6b; }
+body.body--dark :is(.pp-tree, .pp-looks) .pp-fc-orange { color: #ffa344; }
+body.body--dark :is(.pp-tree, .pp-looks) .pp-fc-yellow { color: #ffdc49; }
+body.body--dark :is(.pp-tree, .pp-looks) .pp-fc-green { color: #4dab9a; }
+body.body--dark :is(.pp-tree, .pp-looks) .pp-fc-blue { color: #529cca; }
+body.body--dark :is(.pp-tree, .pp-looks) .pp-fc-purple { color: #b48ae0; }
+body.body--dark :is(.pp-tree, .pp-looks) .pp-fc-pink { color: #e255a1; }
+/* the folder menu's colour and icon picker: 2 × 4 rounded colour squares, 4 × 4 icon tiles */
+.pp-looks { display: flex; flex-direction: column; width: 196px; }
+.pp-looks-head { display: flex; align-items: center; gap: 4px; padding: 0 0 4px; }
+.pp-looks-title { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; font-weight: 600; }
+.pp-looks-label { padding: 6px 6px 4px; font-size: 11px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; color: var(--pp-muted); }
+.pp-looks-colors, .pp-looks-icons { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; padding: 0 6px; }
+.pp-looks-swatch { height: 30px; border-radius: var(--pp-r-ctrl); background: var(--sw); cursor: pointer; box-shadow: inset 0 0 0 1px rgba(0, 0, 0, .08); transition: transform var(--pp-dur-fast) ease; }
+.pp-looks-swatch:hover { transform: scale(1.08); }
+.pp-looks-swatch.pp-looks-on { box-shadow: 0 0 0 2px var(--pp-bg), 0 0 0 4px var(--sw); }
+.pp-looks-icon { height: 34px; display: flex; align-items: center; justify-content: center; border-radius: var(--pp-r-ctrl); cursor: pointer; color: var(--pp-accent); background: var(--pp-pop-field, rgba(127, 127, 127, .08)); transition: background-color var(--pp-dur-fast) ease; }
+.pp-looks-icon .q-icon { font-size: var(--pp-icon-m); }
+.pp-looks-icon:hover { background: rgba(127, 127, 127, .2); }
+.pp-looks-icon.pp-looks-on { box-shadow: inset 0 0 0 1.5px currentColor; background: rgba(var(--pp-accent-rgb), .12); }
+.pp-looks-reset.q-btn { margin-top: 8px; }
 /* the header's expand / collapse-all button, right after the word FILES */
 .pp-files-head .pp-files-foldall.q-btn { margin-left: 4px; color: var(--pp-muted); }
 .pp-tree-name { overflow: hidden; text-overflow: ellipsis; font-size: 13px; pointer-events: none; }
@@ -281,8 +307,8 @@ body.pp-native.pp-right-open .pp-rtabbar { padding-right: 108px; }
 .pp-editor .cm-line.pp-quote-3 { --pp-qpad: 4.8ch; --pp-bars: linear-gradient(var(--pp-bar), var(--pp-bar)) calc(6px + 1.6ch) 0 / 3px 100% no-repeat, linear-gradient(var(--pp-bar), var(--pp-bar)) calc(6px + 3.2ch) 0 / 3px 100% no-repeat; }
 .pp-editor .cm-line.pp-quote { background: var(--pp-bars); }
 .pp-editor .cm-line.pp-quote::after { content: ""; position: absolute; left: 6px; top: 0; bottom: 0; width: 3px; background: var(--pp-bar); pointer-events: none; }
-.pp-editor .cm-line.pp-quote-top::after { top: 3px; border-top-left-radius: 1.5px; border-top-right-radius: 1.5px; }
-.pp-editor .cm-line.pp-quote-bottom::after { bottom: 3px; border-bottom-left-radius: 1.5px; border-bottom-right-radius: 1.5px; }
+.pp-editor .cm-line.pp-quote-top::after { top: -3px; border-top-left-radius: 1.5px; border-top-right-radius: 1.5px; }
+.pp-editor .cm-line.pp-quote-bottom::after { bottom: -3px; border-bottom-left-radius: 1.5px; border-bottom-right-radius: 1.5px; }
 .pp-editor .cm-line.pp-quote.pp-callout::after { content: none; }  /* a callout draws its own stick */
 .pp-editor .cm-line.pp-quote, .pp-editor .cm-line.pp-li { padding-left: calc(6px + var(--pp-qpad, 0px) + var(--pp-hang, 0px)); text-indent: calc(-1 * var(--pp-pull, var(--pp-hang, 0px))); }
 /* a code block inside a quote keeps the bar and draws its card to the right of it */
@@ -384,7 +410,7 @@ body.pp-page-dragging, body.pp-page-dragging * { cursor: row-resize !important; 
 /* split view (P13.8): the right side's tab starts at the divider; the other side's note is marked
    more softly than the side being typed in */
 .pp-tab-shown { background: var(--pp-bg); color: var(--pp-fg); box-shadow: inset 0 2px 0 rgba(var(--pp-accent-rgb), .35); }
-.pp-tabstrip-split > .pp-tabbar:first-child { flex: 0 0 calc(var(--pp-split-left, 50%) - 4px); }
+.pp-tabstrip-split > .pp-tabbar:first-child { flex: 0 0 var(--pp-split-left, 50%); }  /* the right bar's line on the divider (user 2026-11-22: it was 4 px off) */
 .pp-tabbar-right { flex: 1 1 0; min-width: 0; height: 100%; border-left: 1px solid var(--pp-border); }
 /* a note dragged over an editor (static/notedrop.js) */
 .pp-split-pane.pp-drop-here::after, .pp-editor-area.pp-drop-here::after, .pp-editor-area.pp-drop-split::after, .pp-chat.pp-drop-chat::after { content: ""; position: absolute; top: 4px; bottom: 4px; z-index: 20; pointer-events: none; background: rgba(var(--pp-accent-rgb), .08); border: 2px dashed rgba(var(--pp-accent-rgb), .55); border-radius: var(--pp-r-popup); animation: pp-drop-in var(--pp-dur) var(--pp-ease); }
@@ -1654,6 +1680,9 @@ body.body--dark { --pp-set-box-bg: rgba(255, 255, 255, .035); }
 /* 30 px between it and the pane toggle's box (user 2026-11-18), a dot of radius 3 px in the accent colour on the strip's
    line in the middle of that gap and the same on its left (the box's centre is on that line; each dot's centre is 15 px past the box's edge) */
 .pp-tabstrip > .pp-reopen { margin-right: 30px; }
+/* split view: the note header's × ⋯ box is 30 px wider than the lone ⋯ (to its left), so the box moves
+   30 px further left and keeps the same 30 px from it (user 2026-11-22) */
+.pp-tabstrip-split > .pp-reopen { margin-right: 60px; }
 /* Each side is one 18 px piece from the dot's outer edge to the box: the dot (radius 3 px, accent) and,
    between it and the box, a patch that hides the strip's line (2 px tall around the line at the box's
    centre: strip colour above it, page colour below it), so no line runs from the box to the dots. */
@@ -1724,6 +1753,7 @@ body.body--dark { --pp-set-box-bg: rgba(255, 255, 255, .035); }
 .pp-notehead-trail { flex: 1 1 0; min-width: 0; display: flex; align-items: center; gap: 2px; overflow: hidden; }
 .pp-notehead-part { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--pp-muted); padding: 2px 4px; border-radius: var(--pp-r-sm); cursor: pointer; transition: background-color var(--pp-dur-fast) ease, color var(--pp-dur-fast) ease; }
 .pp-notehead-part:hover { background: rgba(127, 127, 127, .12); color: var(--pp-fg); }
+.pp-notehead-part.pp-notehead-mid { flex: none; overflow: visible; }  /* split view's ⋯ is never cut */
 .pp-notehead-trail .pp-notehead-sep { padding: 0 2px; }
 .pp-notehead-nav, .pp-notehead-tools { flex: none; }
 .pp-notehead-nav { gap: 0; }  /* the arrows: plain buttons, no box */

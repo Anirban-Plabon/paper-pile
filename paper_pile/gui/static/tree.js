@@ -5,6 +5,11 @@
   const rowOf = (el) => (el && el.closest ? el.closest('.pp-tree-row') : null);
   const treeOf = (el) => (el && el.closest ? el.closest('.pp-tree') : null);
   const menuOpen = () => document.querySelector('.pp-ctxmenu-open');
+  // a narrow pane hides a folder row's expand button (app.css container query): its menu has it
+  const foldHidden = (row) => {
+    const fold = row.querySelector('.pp-tree-fold');
+    return !!fold && getComputedStyle(fold).display === 'none';
+  };
   let dragPath = null;
   let overEl = null;
 
@@ -145,6 +150,15 @@
       emitEvent('pp_tree_fold', { path: row.dataset.path });
       return;
     }
+    const more = row && e.target.closest('.pp-tree-more');
+    if (more) { // a folder's ⋯: its menu, under the button (the same menu as a right-click)
+      const b = more.getBoundingClientRect();
+      emitEvent('pp_tree_context', {
+        path: row.dataset.path, isDir: true, onRow: true, more: true, narrow: foldHidden(row),
+        x: b.left, y: b.bottom + 4, vw: window.innerWidth, vh: window.innerHeight,
+      });
+      return;
+    }
     if (row && e.target.closest('.pp-tree-add')) { // a folder's +: a new note in it
       emitEvent('pp_tree_add', { path: row.dataset.path });
       return;
@@ -154,6 +168,7 @@
       emitEvent('pp_tree_click', {
         path: row.dataset.path, isDir: row.dataset.dir === '1',
         toggle: e.ctrlKey || e.metaKey, range: e.shiftKey, find: row.dataset.find || '',
+        pin: row.dataset.pin === '1',
       });
       if (e.shiftKey) window.getSelection().removeAllRanges();
     }
@@ -167,6 +182,8 @@
       path: row ? row.dataset.path : '',
       isDir: row ? row.dataset.dir === '1' : true,
       onRow: !!row,
+      pin: !!row && row.dataset.pin === '1',
+      narrow: !!row && foldHidden(row),
       x: e.clientX, y: e.clientY,
       vw: window.innerWidth, vh: window.innerHeight,
     });

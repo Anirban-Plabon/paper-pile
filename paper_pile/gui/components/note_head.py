@@ -1,7 +1,7 @@
 """The bar on top of each editor (P21): ‹ › jump to the previous / next ``#`` – ``###`` section,
 then the note's title and the trail of headings above the view (``title › H1 › H2 › H3``, each at
-most 3 words then …; in split view the middle ones 1 word; a click on a heading jumps to it — user
-2026-11-22),
+most 3 words then …; in split view every heading but the last is a ⋯ — the H1 too, the title
+is first; a click on a heading jumps to it — user 2026-11-22),
 then the note's own buttons on the right: ⋯, and in split view × (close this side) before it —
 boxed together only while there are two (user, 2026-11-04). In split view each side has its own
 bar; the side being typed in is marked, and a click on its title shows another note there.
@@ -18,6 +18,8 @@ from paper_pile.core.parser import Heading
 from paper_pile.core.sections import short_label
 from paper_pile.gui.icons import icon_button
 from paper_pile.gui.tips import tip
+
+MIDDLE = "⋯"  # a middle heading's place in split view
 
 
 class NoteHead:
@@ -80,9 +82,12 @@ class NoteHead:
         with self._trail:
             for i, head in enumerate(trail):
                 ui.label("›").classes("pp-notehead-sep")
-                middle = self._split and 0 < i < last  # split view: the middle ones 1 word
-                part = ui.label(short_label(head.text, 1) if middle else short_label(head.text))
-                part.classes("pp-notehead-part" + (" pp-notehead-last" if i == last else ""))
+                # split view: every heading between the title and the last one is a ⋯ (its name
+                # in the tip, still a jump; user 2026-11-22)
+                middle = self._split and i < last
+                part = ui.label(MIDDLE if middle else short_label(head.text))
+                cls = " pp-notehead-mid" if middle else " pp-notehead-last" if i == last else ""
+                part.classes("pp-notehead-part" + cls)
                 part.on("click", lambda _e, line=head.line: self._on_heading(line))
                 tip(part, head.text)
 
