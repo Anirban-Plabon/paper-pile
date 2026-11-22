@@ -15,6 +15,7 @@ from pathlib import Path
 
 from paper_pile.core.alignment import ALIGN_CSS, Entry, align_tokens
 from paper_pile.core.assets import sniff_image
+from paper_pile.core.formatting import COLOR_CSS
 from paper_pile.core.parser import image_spans, render_html
 from paper_pile.core.rewrite import Edit, apply_edits, locate_spans, scan_destination
 from paper_pile.core.vault import Vault, VaultError
@@ -95,6 +96,6 @@ def export_html(
     return (
         '<!doctype html>\n<html>\n<head>\n<meta charset="utf-8">\n'
         '<meta name="viewport" content="width=device-width, initial-scale=1">\n'
-        f"<title>{escape(title)}</title>\n<style>{_STYLE}{ALIGN_CSS}</style>\n</head>\n"
+        f"<title>{escape(title)}</title>\n<style>{_STYLE}{ALIGN_CSS}{COLOR_CSS}</style>\n</head>\n"
         f"<body>\n<main>\n{body}</main>\n</body>\n</html>\n"
     )

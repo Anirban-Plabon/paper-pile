@@ -42,6 +42,12 @@ COLORS: dict[str, str] = {
     "pink": "#c14c8a",
 }
 
+_NAME_OF: dict[str, str] = {code: name for name, code in COLORS.items()}
+# exports and print: a palette name in a span shows paper-pile's shade, not the browser's
+COLOR_CSS = "".join(
+    f'span[style="color:{name}"] {{ color: {code} !important; }}\n' for name, code in COLORS.items()
+)
+
 LINE_KINDS = ("quote", "bullet", "numbered", "todo", "h1", "h2", "h3")
 _SPAN_OPEN = re.compile(r'<span style="color:\s*(#[0-9a-fA-F]{3,8}|[a-z]+)\s*;?">$')
 _SPAN_CLOSE = "</span>"
@@ -167,10 +173,15 @@ def _with_selection(changes: list[TextChange], first: int, last: int) -> TextEdi
 
 
 def color_code(name: str) -> str | None:
-    """A palette name or a ``#rgb`` / ``#rrggbb`` code -> the code to write; None if unknown."""
-    if name in COLORS:
-        return COLORS[name]
-    return name.lower() if re.fullmatch(r"#[0-9a-fA-F]{3}(?:[0-9a-fA-F]{3})?", name) else None
+    """A palette name or a ``#rgb`` / ``#rrggbb`` code -> what to write in the span; None if
+    unknown. A palette colour is written by its CSS name (``color:red``, user 2026-11-22: readable
+    in the file, coloured in other apps), also when given as its palette code."""
+    low = name.lower()
+    if low in COLORS:
+        return low
+    if low in _NAME_OF:
+        return _NAME_OF[low]
+    return low if re.fullmatch(r"#[0-9a-f]{3}(?:[0-9a-f]{3})?", low) else None
 
 
 def _span_around(text: str, part: Part) -> tuple[int, str] | None:
@@ -181,7 +192,10 @@ def _span_around(text: str, part: Part) -> tuple[int, str] | None:
     if lt < 0:
         return None
     m = _SPAN_OPEN.match(text[lt : part.start])
-    return (lt, m.group(1).lower()) if m else None
+    if m is None:
+        return None
+    code = m.group(1).lower()
+    return lt, _NAME_OF.get(code, code)  # an older span's palette code counts as its name
 
 
 def _color(text: str, start: int, end: int, color: str | None) -> TextEdit | None:
@@ -253,12 +267,14 @@ def clean_comment(comment: str) -> str:
 
 
 def _comment(text: str, start: int, end: int, comment: str | None) -> TextEdit | None:
+    """``comment`` may open with its pin colour (``{red} words``, as written in the file)."""
     parts = _parts(text, start, end)
-    body = clean_comment(comment or "")
+    color, raw = split_comment(comment or "")
+    body = clean_comment(raw)
     if not parts or not body:
         return None
     a, b = parts[0].start, parts[-1].end
-    return TextEdit((TextChange(b, b, f"%%{body}%%"),), b, a)
+    return TextEdit((TextChange(b, b, comment_mark(body, color)),), b, a)
 
 
 # A comment's pin colour (user 2026-11-20): grey without a mark, else ``%%{red} text%%``.

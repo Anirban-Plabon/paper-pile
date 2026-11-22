@@ -83,15 +83,22 @@ def test_empty_selection_does_nothing() -> None:
 
 def test_color_on_change_off() -> None:
     red, sel = toggle("x red y", "red", "color", "red")
-    assert red == f'x <span style="color:{COLORS["red"]}">red</span> y' and sel == "red"
+    assert red == 'x <span style="color:red">red</span> y' and sel == "red"  # by name
     start = red.index("red<")
     blue, sel = run(red, apply(red, start, start + 3, "color", "blue"))
-    assert blue == f'x <span style="color:{COLORS["blue"]}">red</span> y' and sel == "red"
+    assert blue == 'x <span style="color:blue">red</span> y' and sel == "red"
     start = blue.index("red<")
     plain, _ = run(blue, apply(blue, start, start + 3, "color", "blue"))  # same colour: off
     assert plain == "x red y"
     plain2, _ = run(blue, apply(blue, start, start + 3, "color", None))
     assert plain2 == "x red y"
+
+
+def test_an_older_palette_code_counts_as_its_name() -> None:
+    old = f'x <span style="color:{COLORS["red"]}">w</span>'
+    start = old.index("w<")
+    assert run(old, apply(old, start, start + 1, "color", "red"))[0] == "x w"  # same colour: off
+    assert toggle("a b", "b", "color", COLORS["green"])[0] == 'a <span style="color:green">b</span>'
 
 
 def test_color_takes_a_code_and_refuses_junk() -> None:
@@ -123,6 +130,8 @@ def test_comment_goes_after_the_words() -> None:
     out, sel = toggle("plan due Friday.", "Friday", "comment", "check\nwith Sam")
     assert out == "plan due Friday%%check with Sam%%." and sel == "Friday"
     assert apply("a b", 2, 3, "comment", "   ") is None
+    assert toggle("a b", "b", "comment", "{red} look")[0] == "a b%%{red} look%%"  # pin colour
+    assert toggle("a b", "b", "comment", "{blue} x")[0] == "a b%%{blue} x%%"  # not a pin colour
 
 
 def test_comment_text_cannot_end_the_comment_early() -> None:
@@ -230,3 +239,12 @@ def test_export_keeps_a_note_without_comments_unchanged() -> None:
 
     text = "# T\n\n- a\n- b  \n\n| x | y |\n| - | - |\n| 1 | 2 |\n"
     assert strip_for_export(text) == text
+
+
+def test_print_css_has_the_colour_shades() -> None:
+    from pathlib import Path
+
+    from paper_pile.core.formatting import COLOR_CSS
+
+    css = (Path(__file__).parents[2] / "paper_pile/gui/static/print.css").read_text()
+    assert all(line in css for line in COLOR_CSS.splitlines())

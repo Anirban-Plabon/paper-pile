@@ -15,7 +15,7 @@ import { activeLines, isHoldChange, refreshEffect, touches } from "./reveal.js";
 import { CodeCopyWidget } from "./blockactions.js";
 import { FoldToggle, foldEffects, foldState } from "./fold.js";
 import { CommentPin } from "./comments.js";
-import { PALETTE } from "./format.js";
+import { PALETTE, pairFormatTag } from "./format.js";
 import { BulletWidget, CalloutLabelWidget, CheckboxWidget, HrWidget, ImageWidget, MathWidget, NestWidget, PageBreakWidget } from "./widgets.js";
 
 const hide = Decoration.replace({});
@@ -98,7 +98,9 @@ function calloutHeader(cx, line) {
   return [null, m[3]];
 }
 
-const QUOTE_LINE = [1, 2, 3].map((n) => lineDeco(`pp-quote pp-quote-${n}`));
+// a quote line per depth (1–3) and edge (first / last line of the quote: the bar's rounded ends)
+const QUOTE_EDGE = ["", " pp-quote-top", " pp-quote-bottom", " pp-quote-top pp-quote-bottom"];
+const QUOTE_LINE = [1, 2, 3].map((n) => QUOTE_EDGE.map((edge) => lineDeco(`pp-quote pp-quote-${n}${edge}`)));
 const LIST_GLYPHS = ["\u2022", "\u25E6", "\u25AA"]; // bullet, white bullet, small square, repeating with depth
 const LIST_NUM = mark("pp-list-num");
 const TASK_DONE = mark("pp-task-done");
@@ -135,7 +137,6 @@ function context(view) {
 }
 
 // `<u>` / `<span style="color:…">` and their closing tag (format.js FormatTag), PLAN §4.38
-const tagKind = (t) => (t === "<u>" || t === "</u>" ? "u" : "span");
 const COMMENT_MARK = mark("pp-comment");
 const FORMAT_TAG_RAW = mark("pp-format-tag");
 const UNDERLINE = mark("pp-underline");
@@ -143,7 +144,7 @@ const COMMENT_LINE = lineDeco("pp-cmt-line");
 function colorDeco(tag) {
   const m = /color:\s*([^;"]+)/.exec(tag);
   const code = m ? m[1].trim().toLowerCase() : "";
-  const name = PALETTE[code];
+  const name = PALETTE[code] ?? (Object.values(PALETTE).includes(code) ? code : null); // `#e03e3e` or `red`
   return name
     ? Decoration.mark({ class: `pp-fc pp-fc-${name}` })
     : Decoration.mark({ class: "pp-fc", attributes: { style: `color:${code}` } });
@@ -161,28 +162,18 @@ const handlers = {
     ]),
   ),
 
-  // An opening tag finds its closing one among the next siblings (same kind, nesting counted);
-  // the words between get the style, the tags hide while the caret is not on the pair. A tag
-  // without its pair stays text.
+  // An opening tag finds its closing one (format.js pairFormatTag); the words between get the
+  // style; underline tags hide while the caret is not on the pair, colour tags always.
   FormatTag: (cx, node) => {
-    const text = cx.doc.sliceString(node.from, node.to);
-    if (text.startsWith("</")) return;
-    const kind = tagKind(text);
-    let depth = 0;
-    let close = null;
-    for (let n = node.node.nextSibling; n; n = n.nextSibling) {
-      if (n.name !== "FormatTag") continue;
-      const t = cx.doc.sliceString(n.from, n.to);
-      if (tagKind(t) !== kind) continue;
-      if (!t.startsWith("</")) depth++;
-      else if (depth-- === 0) { close = n; break; }
-    }
-    if (!close) return;
-    if (close.from > node.to) cx.out.push((kind === "u" ? UNDERLINE : colorDeco(text)).range(node.to, close.from));
-    if (touches(cx.state, node.from, close.to)) {
-      cx.out.push(FORMAT_TAG_RAW.range(node.from, node.to), FORMAT_TAG_RAW.range(close.from, close.to));
+    const pair = pairFormatTag(cx.doc, node.node);
+    if (!pair) return;
+    const { kind, text, open, close } = pair;
+    if (close.from > open.to) cx.out.push((kind === "u" ? UNDERLINE : colorDeco(text)).range(open.to, close.from));
+    // a colour's tags are never shown (user 2026-11-22; colorspan.js keeps the caret out of them)
+    if (kind === "u" && touches(cx.state, open.from, close.to)) {
+      cx.out.push(FORMAT_TAG_RAW.range(open.from, open.to), FORMAT_TAG_RAW.range(close.from, close.to));
     } else {
-      cx.out.push(hide.range(node.from, node.to), hide.range(close.from, close.to));
+      cx.out.push(hide.range(open.from, open.to), hide.range(close.from, close.to));
     }
   },
 
@@ -518,7 +509,8 @@ function build(view) {
     });
   }
   for (const [lineNo, depth] of cx.quoteDepth) {
-    cx.out.push(QUOTE_LINE[Math.min(depth, 3) - 1].range(cx.doc.line(lineNo).from));
+    const edge = (cx.quoteDepth.has(lineNo - 1) ? 0 : 1) + (cx.quoteDepth.has(lineNo + 1) ? 0 : 2);
+    cx.out.push(QUOTE_LINE[Math.min(depth, 3) - 1][edge].range(cx.doc.line(lineNo).from));
   }
   for (const [lineNo, bodies] of cx.comments || []) {
     const line = cx.doc.line(lineNo);

@@ -238,13 +238,21 @@
     const area = e.target && e.target.closest && e.target.closest('.pp-askpop textarea');
     if (!area || e.isComposing) return;
     const k = (e.key || '').toLowerCase();
-    if ((e.ctrlKey || e.metaKey) && !e.altKey && (k === 'c' || k === 'x' || k === 'v')
+    if ((e.ctrlKey || e.metaKey) && !e.altKey && !e.shiftKey && (k === 'c' || k === 'x' || k === 'v')
         && !area.value && box().classList.contains('pp-askpop-box')) {
       // nothing typed yet: copy / cut / paste are for the selected text in the note. The note
       // gets the focus now, before the browser acts, and the box closes; not prevented.
       const editor = lastEditor && lastEditor.isConnected ? lastEditor : document.querySelector('.pp-editor .cm-content');
       if (editor && !(window.ppFocusEditor && window.ppFocusEditor(editor))) editor.focus({ preventScroll: true });
       emitEvent('pp_askpop_close', { key: true });
+      return;
+    }
+    const fmt = window.ppFormatKind && window.ppFormatKind(e);
+    if (fmt && box().classList.contains('pp-askpop-box')) {
+      // Ctrl+B / I / U … (formatkeys.js): the box opened over a selection, so the formatting
+      // keys are for the selected words in the note
+      const editor = lastEditor && lastEditor.isConnected ? lastEditor : document.querySelector('.pp-editor .cm-content');
+      if (editor && window.ppFormatKey(editor, fmt)) { e.preventDefault(); e.stopPropagation(); }
       return;
     }
     const rows = [...document.querySelectorAll('.pp-askpop-cmds .pp-askpop-cmd')];

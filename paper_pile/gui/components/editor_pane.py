@@ -121,11 +121,11 @@ from paper_pile.core.picker import search_notes
 from paper_pile.core.recovery import RecoveryEntry, RecoveryStore
 from paper_pile.core.rewrite import Edit, plan_rewrites
 from paper_pile.core.sections import (
-    current_section,
     next_start,
     note_title,
     previous_start,
     section_heads,
+    trail,
 )
 from paper_pile.core.session import renamed
 from paper_pile.core.settings import PAGE_VIEWS, get_nested, sanitized
@@ -363,6 +363,7 @@ class EditorPane:
                 apply=self._apply_format,
                 find_notes=self._find_note_names,
                 ai_on=self._ask_box_on,
+                add_comment=self._add_comment,
             )
         self.bus.subscribe("tree.open", lambda path: self._spawn(self.open(path)))
         ui.on("pp_note_drop", lambda e: self._spawn(self._on_note_drop(e.args)))
@@ -413,6 +414,8 @@ class EditorPane:
             on_page_count=lambda e: self._on_page_count(e.args),
             on_comment_set=lambda e: self._spawn(self._on_comment_set(e.args)),
             on_format_menu=lambda e: self._open_format_menu(dict(e.args), slot),
+            on_format_key=lambda e: self._on_format_key(dict(e.args), slot),
+            on_comment_add=lambda e: self._on_comment_add(dict(e.args), slot),
         )
 
     # ---- split view ----------------------------------------------------------------------
@@ -465,6 +468,7 @@ class EditorPane:
             on_next=lambda: self._jump_section(slot, 1),
             on_title=choose,
             on_close=lambda: self.close_side(slot),
+            on_heading=lambda line: self._goto_heading(slot, line),
         )
         head.build()
         head.bar.set_visibility(False)
@@ -655,17 +659,16 @@ class EditorPane:
             head.set_split(self._split_open, slot == self._slot)
             title, heads = self._sections_of(tab_id, buf)
             top = self._tops.get(tab_id, (1, False))[0]
-            current = current_section(heads, top)
-            section = current.text if current is not None else ""
-            if section.casefold() == title.casefold():
-                section = ""  # `# Name` under the title Name: said once
+            path = trail(heads, top)
+            if path and path[0].text.casefold() == title.casefold():
+                path = path[1:]  # `# Name` under the title Name: said once
             can_prev = previous_start(heads, top) is not None
-            head.show(title, section, can_prev, next_start(heads, top) is not None)
+            head.show(title, path, can_prev, next_start(heads, top) is not None)
 
     def _sections_of(
         self, tab_id: int, buf: NoteBuffer, *, fresh: bool = False
     ) -> tuple[str, list[Heading]]:
-        """The note's title and its ``#`` / ``##`` sections. While the text keeps changing
+        """The note's title and its ``#`` – ``###`` sections. While the text keeps changing
         (typing) the last ones are used and read again after a pause (a whole-note parse on every
         change event would load the UI thread); ``fresh`` reads them now."""
         cached = self._section_heads.get(tab_id)
@@ -697,6 +700,12 @@ class EditorPane:
             return
         self._tops[tab_id] = (int(args.get("line", 1)), bool(args.get("atEnd")))
         self._show_heads()
+
+    def _goto_heading(self, slot: int, line: int) -> None:
+        """A heading in side ``slot``'s header trail clicked: show it at the top."""
+        self._focused(slot)
+        if self._shown[slot] is not None:
+            self._editors[slot].goto_line(line)
 
     def _jump_section(self, slot: int, step: int) -> None:
         """‹ / ›: to the start of the previous / next section of the note on side ``slot``."""
@@ -1010,6 +1019,38 @@ class EditorPane:
         self.ask_popup.dismiss_box()
         target = FormatTarget(tab_id, slot, int(args.get("from", 0)), int(args.get("to", 0)))
         self.format_menu.open(target, float(args.get("x", 0)), float(args.get("y", 0)))
+
+    async def _on_format_key(self, args: dict[str, Any], slot: int) -> None:
+        """A formatting shortcut on the selection (formatkeys.js): the item at once, or the menu's
+        Link / Comment box when the item needs a value."""
+        tab_id, kind = args.get("docId"), str(args.get("kind", ""))
+        if not isinstance(tab_id, int) or self._shown[slot] != tab_id or self._active_is_plain():
+            return
+        target = FormatTarget(tab_id, slot, int(args.get("from", 0)), int(args.get("to", 0)))
+        if kind == "comment":
+            self.ask_popup.dismiss_box()
+            self._add_comment(target)
+            return
+        if kind == "link":
+            self.ask_popup.dismiss_box()
+            self.format_menu.open(target, float(args.get("x", 0)), float(args.get("y", 0)), "link")
+            return
+        await self._apply_format(target, kind, None)
+
+    def _add_comment(self, target: FormatTarget) -> None:
+        """The new-comment window under the target's selection (comments.js)."""
+        if self._shown[target.slot] == target.doc_id:
+            self._editors[target.slot].add_comment(target.start, target.end)
+
+    async def _on_comment_add(self, args: dict[str, Any], slot: int) -> None:
+        """Add comment in the new-comment window: ``%%{colour} text%%`` after the words."""
+        tab_id = args.get("docId")
+        if not isinstance(tab_id, int) or self._shown[slot] != tab_id:
+            return
+        target = FormatTarget(tab_id, slot, int(args.get("from", 0)), int(args.get("to", 0)))
+        color = str(args.get("color") or "")
+        body = str(args.get("body", ""))
+        await self._apply_format(target, "comment", f"{{{color}}} {body}" if color else body)
 
     def open_format_menu_for(self, target: AskTarget, x: float, y: float) -> None:
         """The Ask box's format button: the menu for the box's selection."""

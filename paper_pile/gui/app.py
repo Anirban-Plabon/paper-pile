@@ -75,7 +75,8 @@ def _build_pages(host: VaultHost, *, native: bool) -> None:
                 "ctrl+shift+f": layout.search_vault,
                 "ctrl+shift+o": layout.toggle_outline,
                 "alt+shift+f": lambda: background_tasks.create(layout.tidy_note()),
-            }
+            },
+            editor_first={"ctrl+b"},  # with words selected in a note: bold (formatkeys.js)
         )
 
 

@@ -109,6 +109,9 @@ export default {
     async slashForSelection(from, to) {  // the formatting menu's "Ask AI…"
       return (await this.ready).slashForSelection(from, to);
     },
+    async addComment(from, to) {  // the new-comment window (comments.js)
+      return (await this.ready).addComment(from, to);
+    },
     async gotoLine(line) {
       (await this.ready).gotoLine(line);
     },

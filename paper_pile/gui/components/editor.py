@@ -63,6 +63,8 @@ class Editor(
         on_page_count: Handler | None = None,
         on_comment_set: Handler | None = None,
         on_format_menu: Handler | None = None,
+        on_format_key: Handler | None = None,
+        on_comment_add: Handler | None = None,
     ) -> None:
         super().__init__()
         self._props["initialText"] = text
@@ -93,6 +95,10 @@ class Editor(
             self.on("comment_set", on_comment_set)
         if on_format_menu:  # a right-click on the selection (slash.js)
             self.on("format_menu", on_format_menu)
+        if on_format_key:  # Ctrl+B / I / U … on the selection (formatkeys.js)
+            self.on("format_key", on_format_key)
+        if on_comment_add:  # Add comment in the new-comment window (comments.js)
+            self.on("comment_add", on_comment_add)
         if on_blur:
             self.on("blur", on_blur)
         if on_save:
@@ -289,6 +295,10 @@ class Editor(
     def slash_for_selection(self, start: int, end: int) -> None:
         """Select ``start..end`` and open the slash menu of AI commands for it."""
         self.run_method("slashForSelection", start, end)
+
+    def add_comment(self, start: int, end: int) -> None:
+        """Open the new-comment window for ``start..end`` (UTF-16 offsets of the note on screen)."""
+        self.run_method("addComment", start, end)
 
     def goto_line(self, line: int) -> None:
         """Put the caret on a 1-based line of the shown note and scroll it to the top."""

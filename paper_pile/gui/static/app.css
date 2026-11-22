@@ -246,7 +246,7 @@ body.pp-native.pp-right-open .pp-rtabbar { padding-right: 108px; }
 
 /* Editor host */
 .pp-editor { font-family: var(--pp-editor-font); font-size: var(--pp-editor-size); line-height: var(--pp-editor-lh); background: var(--pp-bg); color: var(--pp-fg); }
-.pp-editor .cm-content { padding: 16px 28px; }
+.pp-editor .cm-content { padding: 16px 34px 16px 28px; }  /* right: the comment lane (6 + 24 + 6 px from the text; lines keep 2 px of their own) */
 .pp-editor .cm-editor.cm-focused { outline: none; }
 .pp-banner { width: 100%; flex-shrink: 0; gap: 10px; padding: 5px 12px; background: var(--pp-banner-bg); border-bottom: 1px solid var(--pp-banner-border); color: var(--pp-banner-fg); font-size: 13px; }
 .pp-banner-text { flex: 1 1 auto; }
@@ -273,11 +273,17 @@ body.pp-native.pp-right-open .pp-rtabbar { padding-right: 108px; }
    content is pushed right by its depth (`--pp-qpad`), one 3px bar per level is drawn at the normal
    text column (`--pp-bars`). List lines add their hanging indent (`--pp-hang`) on top of that, so
    bullets, numbers and checkboxes of a list in a quote sit inside the bar. */
-.pp-editor .cm-line.pp-quote { --pp-bar: #c3c8d0; color: var(--pp-muted); }
-.pp-editor .cm-line.pp-quote-1 { --pp-qpad: 1.6ch; --pp-bars: linear-gradient(var(--pp-bar), var(--pp-bar)) 6px 0 / 3px 100% no-repeat; }
-.pp-editor .cm-line.pp-quote-2 { --pp-qpad: 3.2ch; --pp-bars: linear-gradient(var(--pp-bar), var(--pp-bar)) 6px 0 / 3px 100% no-repeat, linear-gradient(var(--pp-bar), var(--pp-bar)) calc(6px + 1.6ch) 0 / 3px 100% no-repeat; }
-.pp-editor .cm-line.pp-quote-3 { --pp-qpad: 4.8ch; --pp-bars: linear-gradient(var(--pp-bar), var(--pp-bar)) 6px 0 / 3px 100% no-repeat, linear-gradient(var(--pp-bar), var(--pp-bar)) calc(6px + 1.6ch) 0 / 3px 100% no-repeat, linear-gradient(var(--pp-bar), var(--pp-bar)) calc(6px + 3.2ch) 0 / 3px 100% no-repeat; }
+.pp-editor .cm-line.pp-quote { --pp-bar: var(--pp-accent); color: var(--pp-muted); position: relative; }
+/* the outer bar is the line's ::after (user 2026-11-22: accent colour, rounded ends on the quote's
+   first / last line); the inner bars of nested quotes are backgrounds in the same colour */
+.pp-editor .cm-line.pp-quote-1 { --pp-qpad: 1.6ch; --pp-bars: none; }
+.pp-editor .cm-line.pp-quote-2 { --pp-qpad: 3.2ch; --pp-bars: linear-gradient(var(--pp-bar), var(--pp-bar)) calc(6px + 1.6ch) 0 / 3px 100% no-repeat; }
+.pp-editor .cm-line.pp-quote-3 { --pp-qpad: 4.8ch; --pp-bars: linear-gradient(var(--pp-bar), var(--pp-bar)) calc(6px + 1.6ch) 0 / 3px 100% no-repeat, linear-gradient(var(--pp-bar), var(--pp-bar)) calc(6px + 3.2ch) 0 / 3px 100% no-repeat; }
 .pp-editor .cm-line.pp-quote { background: var(--pp-bars); }
+.pp-editor .cm-line.pp-quote::after { content: ""; position: absolute; left: 6px; top: 0; bottom: 0; width: 3px; background: var(--pp-bar); pointer-events: none; }
+.pp-editor .cm-line.pp-quote-top::after { top: 3px; border-top-left-radius: 1.5px; border-top-right-radius: 1.5px; }
+.pp-editor .cm-line.pp-quote-bottom::after { bottom: 3px; border-bottom-left-radius: 1.5px; border-bottom-right-radius: 1.5px; }
+.pp-editor .cm-line.pp-quote.pp-callout::after { content: none; }  /* a callout draws its own stick */
 .pp-editor .cm-line.pp-quote, .pp-editor .cm-line.pp-li { padding-left: calc(6px + var(--pp-qpad, 0px) + var(--pp-hang, 0px)); text-indent: calc(-1 * var(--pp-pull, var(--pp-hang, 0px))); }
 /* a code block inside a quote keeps the bar and draws its card to the right of it */
 .pp-editor .cm-line.pp-quote.pp-codeblock { background: var(--pp-bars), linear-gradient(var(--pp-code-bg), var(--pp-code-bg)) calc(6px + var(--pp-qpad)) 0 / calc(100% - 6px - var(--pp-qpad)) 100% no-repeat; padding-left: calc(6px + var(--pp-qpad) + 12px); text-indent: 0; border-radius: 0; }
@@ -491,7 +497,6 @@ html.pp-tab-dragging .pp-tab-active:hover, html.pp-tab-dragging .pp-tab-shown:ho
 /* Dark editor: everything inside the editor reads the --pp-* variables, so redefining them here
    re-colours links, quotes, tables, front matter, borders... P8.1 will drive these from a theme. */
 .pp-editor.pp-dark { color-scheme: dark; }
-.pp-editor.pp-dark .cm-line.pp-quote { --pp-bar: #4b5160; }
 .pp-editor.pp-dark .pp-code { background: rgba(var(--pp-accent-rgb), .2); }
 .pp-editor.pp-dark .pp-image img { opacity: .92; }
 .pp-editor.pp-dark .cm-cursor { border-left-color: #ddd; }
@@ -749,7 +754,8 @@ html.pp-tab-dragging .pp-tab-active:hover, html.pp-tab-dragging .pp-tab-shown:ho
 .pp-chat-chip-body { width: 100%; max-height: 200px; overflow: auto; padding: 4px 10px; border-radius: var(--pp-r-ctrl); background: rgba(127, 127, 127, .08); }
 
 /* callouts: a quote that opens with a bold label gets a tinted box; its text is untouched */
-.pp-editor .cm-line.pp-quote.pp-callout { --pp-bar: var(--pp-accent); background-color: rgba(var(--pp-accent-rgb), .13); }
+/* callout colours are their own, never the accent (user 2026-11-22): plain = blue */
+.pp-editor .cm-line.pp-quote.pp-callout { --pp-bar: #3b82f6; background-color: rgba(59, 130, 246, .13); }
 /* copy button on code, math and diagram blocks */
 .pp-editor .cm-line.pp-code-first { position: relative; padding-right: 44px; }
 .pp-blockcopy-wrap { position: absolute; top: 3px; right: 6px; z-index: 2; }
@@ -1289,7 +1295,7 @@ input::selection, textarea::selection { background: rgba(var(--pp-accent-rgb), .
 
 /* Callouts (`> **Note:** …`): a card like the properties block — thin border, rounded corners,
    a light tint — in the callout's colour, with a rounded colour stick on the left */
-.pp-editor .cm-line.pp-quote.pp-callout { --pp-c: var(--pp-accent-rgb); position: relative; background: rgba(var(--pp-c), .08); border-left: 1px solid rgba(var(--pp-c), .35); border-right: 1px solid rgba(var(--pp-c), .35); padding-left: 24px; padding-right: 12px; color: var(--pp-fg); }
+.pp-editor .cm-line.pp-quote.pp-callout { --pp-c: 59, 130, 246; position: relative; background: rgba(var(--pp-c), .08); border-left: 1px solid rgba(var(--pp-c), .35); border-right: 1px solid rgba(var(--pp-c), .35); padding-left: 24px; padding-right: 12px; color: var(--pp-fg); }
 .pp-editor .cm-line.pp-quote.pp-callout-ok { --pp-c: 34, 160, 107; }
 .pp-editor .cm-line.pp-quote.pp-callout-warn { --pp-c: 217, 130, 43; }
 .pp-editor .cm-line.pp-quote.pp-callout-bad { --pp-c: 214, 69, 69; }
@@ -1711,9 +1717,14 @@ body.body--dark { --pp-set-box-bg: rgba(255, 255, 255, .035); }
 /* as tall as the footer (the Backlinks bar), like the top row and the chat's title row */
 .pp-notehead { width: 100%; flex: none; height: var(--pp-foot-h); gap: 8px; padding: 0 8px; border-bottom: 1px solid var(--pp-border); background: var(--pp-bg); }
 .pp-notehead-crumb { flex: 1 1 auto; min-width: 0; gap: 6px; font-size: 13px; }
-.pp-notehead-title { flex: 0 1 auto; min-width: 0; max-width: 60%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; color: var(--pp-fg); padding: 2px 4px; border-radius: var(--pp-r-sm); }
+.pp-notehead-title { flex: 0 1 auto; min-width: 0; max-width: 40%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; color: var(--pp-fg); padding: 2px 4px; border-radius: var(--pp-r-sm); }
 .pp-notehead-sep { flex: none; color: var(--pp-muted); }
-.pp-notehead-section { flex: 1 1 0; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--pp-muted); }
+/* the headings above the view (user 2026-11-22): each part is clickable (jumps to it), at most
+   3 words (cut in Python); a part still too long for the bar is cut with … */
+.pp-notehead-trail { flex: 1 1 0; min-width: 0; display: flex; align-items: center; gap: 2px; overflow: hidden; }
+.pp-notehead-part { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--pp-muted); padding: 2px 4px; border-radius: var(--pp-r-sm); cursor: pointer; transition: background-color var(--pp-dur-fast) ease, color var(--pp-dur-fast) ease; }
+.pp-notehead-part:hover { background: rgba(127, 127, 127, .12); color: var(--pp-fg); }
+.pp-notehead-trail .pp-notehead-sep { padding: 0 2px; }
 .pp-notehead-nav, .pp-notehead-tools { flex: none; }
 .pp-notehead-nav { gap: 0; }  /* the arrows: plain buttons, no box */
 .pp-notehead .pp-icon-btn.q-btn.disabled { opacity: .35 !important; }
@@ -2214,8 +2225,10 @@ body.body--dark .pp-aidiff-chip-warn { color: #e3b341; }
 /* the boxes (like the panes' tool boxes): the hide button's always, the folder's when it is an icon */
 .pp-chat-bar-box { display: flex; align-items: center; flex: 0 1 auto; min-width: 0; }
 .pp-chat-bar-tools { display: flex; align-items: center; flex: none; gap: 2px; border-radius: calc(var(--pp-r-ctrl) + 3px); }
-.pp-chat-bar-hidebox { flex: none; padding: 3px; border-radius: calc(var(--pp-r-ctrl) + 3px); background: rgba(127, 127, 127, .14); }
-.pp-chat-bar-tools .pp-chat-bar-hidebox { margin: -3px -3px -3px 2px; }
+/* the hide button's box is the button itself (user 2026-11-22): the same 30 × 28 box at rest and
+   on hover (hover only darkens it), no larger box around it */
+.pp-chat-bar-hidebox { flex: none; padding: 0; border-radius: var(--pp-r-ctrl); background: rgba(127, 127, 127, .14); }
+.pp-chat-bar-tools .pp-chat-bar-hidebox { margin: 0 0 0 2px; }
 .pp-chat-bar:is([data-pp-fit="1"], [data-pp-fit="2"], [data-pp-fit="3"]) .pp-chat-bar-tools { margin-left: 4px; }
 .pp-chat-bar:is([data-pp-fit="2"], [data-pp-fit="3"]) .pp-chat-bar-tools .pp-chat-bar-hidebox { margin-left: 0; }
 .pp-chat-bar[data-pp-fit="1"] .pp-chat-bar-tools .pp-chat-bar-hidebox { margin: 0; padding: 0; background: none; }
@@ -2230,12 +2243,14 @@ body.body--dark .pp-aidiff-chip-warn { color: #e3b341; }
 .pp-chat-bar[data-pp-fit="3"] .pp-chat-bar-folderbox { flex: none; }
 .pp-chat-bar[data-pp-fit="3"] .pp-chat-model.q-btn { margin-left: 4px; }
 .pp-chat-bar .pp-chat-bar-fold.q-btn { flex: none; width: 30px; min-width: 30px; height: 28px; min-height: 0; padding: 0; color: var(--pp-muted); }
-.pp-chat-bar .pp-chat-bar-fold.q-btn:hover { background: var(--pp-bg); color: var(--pp-fg); box-shadow: 0 1px 3px rgba(0, 0, 0, .15); }
+.pp-chat-bar .pp-chat-bar-fold.q-btn:hover { background: rgba(127, 127, 127, .14); color: var(--pp-fg); }
+/* inside the three-icon tool box (fit 1) it hovers like the icons next to it */
+.pp-chat-bar[data-pp-fit="1"]:not(.pp-chat-bar-folded) .pp-chat-bar-fold.q-btn:hover { background: var(--pp-bg); box-shadow: 0 1px 3px rgba(0, 0, 0, .15); }
 .pp-chat-bar-fold .q-icon { transition: transform var(--pp-dur) var(--pp-ease); }
 /* folded: the model and the hide button only */
 .pp-chat-bar.pp-chat-bar-folded :is(.pp-chat-bar-folderbox, .pp-chat-bar-div, .pp-chat-bar-web, .pp-chat-bar-edits) { display: none; }
 .pp-chat-bar.pp-chat-bar-folded .pp-chat-bar-tools { margin: 0 0 0 4px; padding: 0; background: none; }
-.pp-chat-bar.pp-chat-bar-folded .pp-chat-bar-tools .pp-chat-bar-hidebox { margin: -3px -3px -3px 0; padding: 3px; background: rgba(127, 127, 127, .14); }
+.pp-chat-bar.pp-chat-bar-folded .pp-chat-bar-tools .pp-chat-bar-hidebox { margin: 0; padding: 0; background: rgba(127, 127, 127, .14); }
 .pp-chat-bar.pp-chat-bar-folded .pp-chat-model.q-btn { margin-left: 0; }
 .pp-chat-bar-folded .pp-chat-bar-fold .q-icon { transform: rotate(180deg); }
 /* the folder menu: a search field, the whole vault and its folders (scrolls), a folder outside */
@@ -2277,10 +2292,12 @@ body.body--dark { --pp-hl: rgba(255, 213, 0, .26); --pp-comment: #a4aab3; --pp-p
 .pp-editor.pp-dark .pp-fc-gray { color: #9b9b9b; } .pp-editor.pp-dark .pp-fc-red { color: #ff6b6b; } .pp-editor.pp-dark .pp-fc-orange { color: #ffa344; }
 .pp-editor.pp-dark .pp-fc-yellow { color: #ffdc49; } .pp-editor.pp-dark .pp-fc-green { color: #4dab9a; } .pp-editor.pp-dark .pp-fc-blue { color: #529cca; }
 .pp-editor.pp-dark .pp-fc-purple { color: #b48ae0; } .pp-editor.pp-dark .pp-fc-pink { color: #e255a1; }
-/* a line holding hidden %%comments%%: room on the right for its pin, which sits in that margin */
-.pp-editor .cm-line.pp-cmt-line { position: relative; padding-right: 34px; }
+/* a line holding hidden %%comments%%: its pin sits in the comment lane right of the text (user
+   2026-11-22): 6 px from the text column, 24 px pin, 6 px to the edge — every line keeps the same
+   width, with or without a comment (the lane is the content's right padding) */
+.pp-editor .cm-line.pp-cmt-line { position: relative; }
 .pp-cmt-anchor { display: inline; }  /* not positioned: the pin sits against the line */
-.pp-cmt-pin { position: absolute; right: 4px; top: calc((1lh - 24px) / 2); width: 24px; height: 24px; display: inline-flex; align-items: center; justify-content: center; text-indent: 0; border-radius: var(--pp-r-ctrl); cursor: pointer; user-select: none; transition: background-color var(--pp-dur-fast) ease, color var(--pp-dur-fast) ease; }
+.pp-cmt-pin { position: absolute; right: -28px; top: calc((1lh - 24px) / 2); width: 24px; height: 24px; display: inline-flex; align-items: center; justify-content: center; text-indent: 0; border-radius: var(--pp-r-ctrl); cursor: pointer; user-select: none; transition: background-color var(--pp-dur-fast) ease, color var(--pp-dur-fast) ease; }
 .pp-cmt-pin .pp-cmt-icon { display: inline-flex; width: 15px; height: 15px; }
 .pp-cmt-pin svg, .pp-cmt-pop .pp-cmt-icon svg { width: 100%; height: 100%; }
 .pp-cmt-count { position: absolute; right: -3px; top: -4px; min-width: 14px; height: 14px; padding: 0 3px; border-radius: 7px; font-size: 9px; line-height: 14px; font-weight: 700; text-align: center; color: var(--pp-on-accent); background: var(--pp-accent); }
@@ -2304,7 +2321,8 @@ body.body--dark { --pp-cmt-red: #ff6b6b; --pp-cmt-yellow: #f2c94c; --pp-cmt-gree
 .pp-cmt-x { display: inline-flex; align-items: center; justify-content: center; padding: 6px; border: 0; border-radius: var(--pp-r-ctrl); background: none; color: var(--pp-muted); cursor: pointer; }
 .pp-cmt-x:hover { background: rgba(127, 127, 127, .15); color: var(--pp-fg); }
 .pp-cmt-item { display: flex; flex-direction: column; gap: 6px; }
-.pp-cmt-text { display: block; width: 100%; box-sizing: border-box; resize: none; min-height: 32px; padding: 6px; border: 0; border-radius: var(--pp-r-ctrl); background: var(--pp-pop-field); color: var(--pp-fg); font: inherit; line-height: 20px; outline: none; }
+.pp-cmt-text::placeholder { color: var(--pp-muted); opacity: .7; }
+.pp-cmt-text { display: block; width: 100%; box-sizing: border-box; resize: none; min-height: 52px; padding: 6px; border: 0; border-radius: var(--pp-r-ctrl); background: var(--pp-pop-field); color: var(--pp-comment); font: inherit; line-height: 20px; outline: none; }
 .pp-cmt-actions { display: flex; align-items: center; gap: 6px; }
 .pp-cmt-colors { display: flex; align-items: center; gap: 2px; margin-right: auto; }
 .pp-cmt-dot { display: inline-flex; padding: 6px; border: 0; border-radius: var(--pp-r-ctrl); background: none; cursor: pointer; }
@@ -2344,10 +2362,7 @@ body.body--dark { --pp-cmt-red: #ff6b6b; --pp-cmt-yellow: #f2c94c; --pp-cmt-gree
 .pp-fmenu-swatches { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; padding: 6px; flex: none; }
 .pp-fmenu-swatch { height: 30px; border-radius: var(--pp-r-ctrl); background: var(--sw); cursor: pointer; box-shadow: inset 0 0 0 1px rgba(0, 0, 0, .08); transition: transform var(--pp-dur-fast) ease; }
 .pp-fmenu-swatch:hover { transform: scale(1.08); }
-/* Link and Comment: one field (and a button), told apart by its tint, no outline (user 2026-11-20) */
-.pp-fmenu-input, .pp-fmenu-text { margin: 0 0 6px; padding: 0 6px; border: 0; border-radius: var(--pp-r-ctrl); background: var(--pp-pop-field); flex: none; }
+/* Link: one field, told apart by its tint, no outline (user 2026-11-20) */
+.pp-fmenu-input { margin: 0 0 6px; padding: 0 6px; border: 0; border-radius: var(--pp-r-ctrl); background: var(--pp-pop-field); flex: none; }
 .pp-fmenu-input .q-field__control, .pp-fmenu-input .q-field__native { min-height: 32px; height: 32px; }
-.pp-fmenu-text .q-field__native { min-height: 52px; padding: 6px 0; color: var(--pp-fg); line-height: 20px; }
 .pp-fmenu-notes { display: flex; flex-direction: column; flex: none; }
-.pp-fmenu-actions { display: flex; justify-content: flex-end; gap: 6px; flex: none; }
-.pp-fmenu-btn.q-btn { height: 28px; min-height: 0; padding: 6px 10px; border-radius: var(--pp-r-ctrl); background: var(--pp-accent); color: var(--pp-on-accent); font-size: 12px; }

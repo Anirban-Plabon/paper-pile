@@ -9,6 +9,7 @@
 //  * `%%comment%%` on one line: Comment (+ CommentMark at both ends).
 //  * `//` at the start of a line or after a space: LineComment to the end of the line.
 // Code spans are consumed by their own rule first, so none of these is seen inside code.
+import { syntaxTree } from "@codemirror/language";
 import { tags as t } from "@lezer/highlight";
 
 const EQ = 61; // =
@@ -97,3 +98,37 @@ export const FormatExt = {
     },
   ],
 };
+
+// `<u>` / `<span …>` tags paired with their closing tag (same kind, nesting counted) among the
+// next siblings; a tag without its pair stays text. livepreview.js styles the words between,
+// colorspan.js keeps the caret out of hidden colour tags.
+export const tagKind = (t) => (t === "<u>" || t === "</u>" ? "u" : "span");
+
+export function pairFormatTag(doc, node) {
+  const text = doc.sliceString(node.from, node.to);
+  if (text.startsWith("</")) return null;
+  const kind = tagKind(text);
+  let depth = 0;
+  for (let n = node.nextSibling; n; n = n.nextSibling) {
+    if (n.name !== "FormatTag") continue;
+    const t2 = doc.sliceString(n.from, n.to);
+    if (tagKind(t2) !== kind) continue;
+    if (!t2.startsWith("</")) depth++;
+    else if (depth-- === 0) return { kind, text, open: { from: node.from, to: node.to }, close: { from: n.from, to: n.to } };
+  }
+  return null;
+}
+
+export function pairFormatTags(state, from, to) {
+  const out = [];
+  syntaxTree(state).iterate({
+    from,
+    to,
+    enter(n) {
+      if (n.name !== "FormatTag") return;
+      const pair = pairFormatTag(state.doc, n.node);
+      if (pair) out.push(pair);
+    },
+  });
+  return out;
+}

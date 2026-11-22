@@ -1,8 +1,9 @@
 """The formatting menu (PLAN §4.38): opened by the Ask box's format button or a right-click on a
 selection. The user's pinned items first (five by default), then *More* (every item by group)
-and *Customize* (which items are pinned). Colour, Link and Comment ask for their value in the
-same box first. ``static/formatmenu.js`` places it and reports clicks outside; what an item does
-is :mod:`paper_pile.core.formatting` (the editor pane applies it).
+and *Customize* (which items are pinned). Colour and Link ask for their value in the same box
+first; Comment closes the menu and opens the comment window (the one a comment pin opens, with
+Add comment; ``comments.js``). ``static/formatmenu.js`` places it and reports clicks outside;
+what an item does is :mod:`paper_pile.core.formatting` (the editor pane applies it).
 """
 
 from __future__ import annotations
@@ -20,7 +21,7 @@ from paper_pile.gui.icons import line_icon
 
 log = logging.getLogger("paper_pile.format_menu")
 
-View = Literal["main", "more", "customize", "color", "link", "comment"]
+View = Literal["main", "more", "customize", "color", "link"]
 
 
 @dataclass(frozen=True, slots=True)
@@ -42,7 +43,9 @@ class FormatMenu:
         apply: Callable[[FormatTarget, str, str | None], Awaitable[None]],
         find_notes: Callable[[str], list[str]],
         ai_on: Callable[[], bool],
+        add_comment: Callable[[FormatTarget], None],
     ) -> None:
+        self._add_comment = add_comment  # the editor's new-comment window for the target
         self._pinned = pinned
         self._save_pinned = save_pinned
         self._apply = apply
@@ -58,9 +61,9 @@ class FormatMenu:
 
     # ---- opening ----------------------------------------------------------------------------
 
-    def open(self, target: FormatTarget, x: float, y: float) -> None:
+    def open(self, target: FormatTarget, x: float, y: float, view: View = "main") -> None:
         self._target = target
-        self._show("main")
+        self._show(view)
         self._root.set_visibility(True)
         self._client.run_javascript(f"window.ppFmenuPlace && window.ppFmenuPlace({x:.0f}, {y:.0f})")
 
@@ -85,7 +88,6 @@ class FormatMenu:
                 "customize": self._customize,
                 "color": self._color,
                 "link": self._link,
-                "comment": self._comment,
             }[view]()
         self._client.run_javascript("window.ppFmenuReplace && window.ppFmenuReplace()")
 
@@ -199,25 +201,6 @@ class FormatMenu:
         box.on("keydown.enter", lambda _e: enter())
         fill("")
 
-    def _comment(self) -> None:
-        self._back("Comment")
-        box = (
-            ui.textarea(placeholder="Write a comment")
-            .props("dense borderless autogrow autofocus")
-            .classes("pp-fmenu-text")
-        )
-
-        def add() -> Awaitable[None] | None:
-            if (box.value or "").strip():  # one line: Enter adds it
-                return self._pick("comment", str(box.value))
-            return None
-
-        box.on("keydown.enter.prevent", lambda _e: add())
-        with ui.element("div").classes("pp-fmenu-actions"):
-            ui.button("Add comment", on_click=add, color=None).props("flat dense no-caps").classes(
-                "pp-fmenu-btn"
-            )
-
     # ---- picking ----------------------------------------------------------------------------
 
     def _pick(
@@ -226,6 +209,12 @@ class FormatMenu:
         """An item clicked: ask for its value first when it needs one, else run it. Returns the
         run's coroutine, which NiceGUI awaits in the clicked element's slot."""
         item = BY_ID.get(item_id)
+        if item_id == "comment" and arg is None:
+            target = self._target
+            self.close()
+            if target is not None:
+                self._add_comment(target)
+            return None
         if item is not None and item.asks and arg is None and not force:
             self._show(item.asks)  # type: ignore[arg-type]
             return None

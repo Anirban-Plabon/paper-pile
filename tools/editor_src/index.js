@@ -21,6 +21,9 @@ import { pageDrag } from "./pagedrag.js";
 import { frontMatterEnd, pageView, printLayoutReady } from "./pageview.js";
 import { selectionSync } from "./selectionsync.js";
 import { closeSlash, setSlashResults, slashExtension, slashForSelection } from "./slash.js";
+import { editorHasSelection, formatKeyFor, formatKeys, formatKind } from "./formatkeys.js";
+import { addCommentWindow } from "./comments.js";
+import { colorShortcutExt, colorSpans } from "./colorspan.js";
 import { focusTableCell, tableKeys } from "./tablewidget.js";
 import { streamAppend, streamBegin, streamEnd, streamField } from "./stream.js";
 import { proposalExtension, showLiveText, showProposal } from "./proposal.js";
@@ -65,6 +68,9 @@ if (typeof window !== "undefined") {
   // Focus the editor that owns `dom` with its selection on screen at once (askpop.js: copy, cut
   // and paste typed in the Ask box go to the note's selection). A plain DOM focus() restores the
   // selection a moment later, after the browser has already copied nothing.
+  window.ppEditorHasSelection = editorHasSelection; // shortcuts.py: Ctrl+B bolds a selection
+  window.ppFormatKind = formatKind; // askpop.js: Ctrl+B … in the Ask box format the selection
+  window.ppFormatKey = formatKeyFor;
   window.ppFocusEditor = (dom) => {
     const view = dom && EditorView.findFromDOM(dom);
     if (!view) return false;
@@ -132,7 +138,7 @@ export function createEditor(
     o.pageView ? pageView({ style: o.pageStyle, paper: o.paper, textWidthMm: o.textWidthMm, paperHeightMm: o.paperHeightMm, marginMm: o.marginMm }) : [],
   ];
   const themeSlot = new Compartment();
-  const modeExt = (m) => (m === "live" ? [alignment, revealHold, livePreview, blocks, tableKeys] : []);
+  const modeExt = (m) => (m === "live" ? [alignment, revealHold, livePreview, colorSpans, blocks, tableKeys] : []);
   parent.classList.toggle("pp-dark", theme === "dark");
   let timer = null;
   let rawUntil = 0;
@@ -324,6 +330,8 @@ export function createEditor(
           syntaxHighlighting(classHighlighter), // `tok-*` classes inside code blocks; colours live in CSS
           modeSlot.of(modeExt(currentMode)),
           slashExtension(),
+          formatKeys, // Ctrl+B / I / U … on a selection (formatkeys.js)
+          colorShortcutExt, // `=r words r=` -> a colour span (colorspan.js)
           selectionSync({ onSettle: settlePopup }),
           EditorView.domEventHandlers({
             paste: handlePaste,
@@ -615,6 +623,11 @@ export function createEditor(
       view.focus();
       view.dispatch({ selection: { anchor: from, head: to } });
       return slashForSelection(view);
+    },
+    // The formatting menu's Comment / Ctrl+Shift+M: the new-comment window for `from`..`to`.
+    addComment(from, to) {
+      view.dispatch({ selection: { anchor: from, head: to } });
+      return addCommentWindow(view, from, to);
     },
     // An AI answer typed into the note at `pos` as it arrives (see stream.js).
     streamBegin(id, pos, chip) {

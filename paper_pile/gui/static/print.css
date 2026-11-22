@@ -59,7 +59,7 @@ li.task-list-item input { margin: 0 .5em 0 0; vertical-align: middle; }
 blockquote { padding: 0 0 0 1.6ch; border-left: 3px solid var(--pp-quote-bar); color: var(--pp-muted); margin-left: 6px; }
 blockquote > * { margin: 0; }
 blockquote > * + * { margin-top: var(--pp-gap); }
-blockquote.pp-callout { color: var(--pp-fg); border-left-color: var(--pp-accent); background: rgba(var(--pp-accent-rgb), .13); border-radius: 6px; padding: 4px 12px 4px 1.6ch; }
+blockquote.pp-callout { color: var(--pp-fg); border-left-color: #3b82f6; background: rgba(59, 130, 246, .13); border-radius: 6px; padding: 4px 12px 4px 1.6ch; }
 blockquote.pp-callout-ok { border-left-color: #22a06b; background: rgba(34, 160, 107, .14); }
 blockquote.pp-callout-warn { border-left-color: #d9822b; background: rgba(217, 130, 43, .15); }
 blockquote.pp-callout-bad { border-left-color: #d64545; background: rgba(214, 69, 69, .13); }
@@ -77,4 +77,13 @@ th { background: var(--pp-code-bg); font-weight: 600; }
 .footnotes { font-size: .9em; color: var(--pp-muted); }
 .pp-page-break { display: none; }
 /* ==highlights== (PLAN §4.38; off in Settings: written as plain text before rendering) */
+/* text colours by name show paper-pile's shades (core/formatting.py COLOR_CSS; a test keeps them equal) */
+span[style="color:gray"] { color: #787774 !important; }
+span[style="color:red"] { color: #e03e3e !important; }
+span[style="color:orange"] { color: #d9730d !important; }
+span[style="color:yellow"] { color: #cb912f !important; }
+span[style="color:green"] { color: #448361 !important; }
+span[style="color:blue"] { color: #337ea9 !important; }
+span[style="color:purple"] { color: #9065b0 !important; }
+span[style="color:pink"] { color: #c14c8a !important; }
 mark { background: #fff1a8; color: inherit; border-radius: 2px; padding: 0 .1em; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
