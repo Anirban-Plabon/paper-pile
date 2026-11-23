@@ -92,6 +92,8 @@ class TabBar:
         self._bar: ui.element
         self._dots: dict[int, ui.label] = {}
         self._chips: dict[int, ui.element] = {}  # the left bar's chips by tab id
+        self._colored: list[tuple[int, ui.element]] = []  # every chip (both bars), for tints
+        self._colors: dict[int, str] = {}  # tab id → the note's colour (core/note_color.py)
         self._split: SplitTabs | None = None  # as of the last render
         self._list_menu: ui.menu
 
@@ -139,6 +141,7 @@ class TabBar:
         self._right.clear()
         self._dots.clear()
         self._chips.clear()
+        self._colored.clear()
         self._split = split
         self._right.set_visibility(split is not None and split.right is not None)
         if split is not None:
@@ -171,6 +174,9 @@ class TabBar:
         elif tab_id == (split.left, split.right)[side]:
             chip.classes("pp-tab-active" if side == split.active_slot else "pp-tab-shown")
         chip._props["data-doc"] = str(tab_id)
+        if self._colors.get(tab_id):  # the note's colour tints its tab (user 2026-11-22)
+            chip._props["data-color"] = self._colors[tab_id]
+        self._colored.append((tab_id, chip))
         if side == 0:
             self._chips[tab_id] = chip
         if split is not None and self._on_activate_side is not None:
@@ -240,6 +246,19 @@ class TabBar:
                     ui.label(name).classes("pp-note-menu-label")
                     if hint is not None:
                         ui.label(hint).classes("pp-tab-hint")
+
+    def set_colors(self, colors: dict[int, str]) -> None:
+        """Each note's colour on its tab, without rebuilding the bar (``""``: none)."""
+        self._colors = dict(colors)
+        for tab_id, chip in self._colored:
+            color = self._colors.get(tab_id, "")
+            if chip._props.get("data-color", "") == color:
+                continue
+            if color:
+                chip._props["data-color"] = color
+            else:
+                chip._props.pop("data-color", None)
+            chip.update()
 
     def set_unsaved(self, unsaved: dict[int, bool]) -> None:
         """Show or hide each tab's dirty dot without rebuilding the bar."""

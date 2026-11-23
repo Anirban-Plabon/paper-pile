@@ -16,6 +16,9 @@ import { parseWikilink } from "./wikilink.js";
 import { cachedSvg, renderMermaid } from "./mermaidrender.js";
 import { frontMatterEnd, pageViewFacet } from "./pageview.js";
 
+// the eight palette names (core/formatting.py COLORS) a note may take as its colour
+const NOTE_COLORS = ["gray", "red", "orange", "yellow", "green", "blue", "purple", "pink"];
+
 export const themeFacet = Facet.define({ combine: (v) => v[0] ?? "light" });
 
 function revealOnMouseDown(dom, view) {
@@ -81,6 +84,10 @@ class FrontMatterWidget extends WidgetType {
     el.className = "pp-frontmatter";
     const rows = this.rows();
     if (!rows.length) el.textContent = "properties";
+    // the note's colour (`color: red`, core/note_color.py; user 2026-11-22) tints the box
+    const color = rows.find(([k]) => k.trim().toLowerCase() === "color");
+    const name = color ? color[1].trim().replace(/^["']|["']$/g, "").toLowerCase() : "";
+    if (NOTE_COLORS.includes(name)) el.dataset.color = name;
     for (const [k, v] of rows) {
       const row = document.createElement("div");
       row.className = "pp-fm-row";

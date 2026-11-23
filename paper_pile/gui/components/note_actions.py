@@ -72,7 +72,18 @@ def note_actions(pane: "EditorPane", note: Callable[[], str | None] | None = Non
         export_pdf=with_note(lambda p: _export_pdf(pane, p)),
         align_note=lambda align: _align(pane, current(), align),
         note_align=lambda: pane.note_align(current() or ""),
+        set_note_color=with_color_of(pane, current),
+        note_color=lambda: pane.note_color(current() or ""),
     )
+
+
+def with_color_of(pane: "EditorPane", current: Callable[[], str | None]) -> Callable[[str], None]:
+    def pick(color: str) -> None:
+        path = current()
+        if path is not None:
+            pane.set_note_color(path, color)
+
+    return pick
 
 
 def _align(pane: "EditorPane", path: str | None, align: str) -> None:

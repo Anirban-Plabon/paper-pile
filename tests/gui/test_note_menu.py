@@ -48,6 +48,8 @@ async def test_every_item_runs_its_action(user: User) -> None:
             **{k: (lambda k=k: called.append(k)) for k in LABELS},
             align_note=lambda a: called.append(f"align {a}"),
             note_align=lambda: "left",
+            set_note_color=lambda c: called.append(f"color {c}"),
+            note_color=lambda: "",
         )
         menu = NoteMenu(actions)
         menu.build()
@@ -61,6 +63,11 @@ async def test_every_item_runs_its_action(user: User) -> None:
     user.find(marker="Align note center").click()  # the whole note's alignment (PLAN §4.34)
     assert called[-1] == "align center"
     assert "pp-on" in next(iter(user.find(marker="Align note center").elements)).classes
+    user.find(marker="Note colour red").click()  # the note's colour (user 2026-11-22)
+    assert called[-1] == "color red"
+    assert "pp-on" in next(iter(user.find(marker="Note colour red").elements)).classes
+    user.find(marker="Note colour none").click()
+    assert called[-1] == "color "
     before = len(called)
     user.find(marker="Open in default app").click()  # shown, not implemented
     assert len(called) == before

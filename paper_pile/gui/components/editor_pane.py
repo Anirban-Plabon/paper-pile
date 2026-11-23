@@ -114,6 +114,7 @@ from paper_pile.core.links import (
     resolve_wikilink,
     wikilink_to,
 )
+from paper_pile.core.note_color import note_color, with_color
 from paper_pile.core.page_move import move_page_break
 from paper_pile.core.parser import Heading, find_heading
 from paper_pile.core.paste import needs_own_lines, smart_paste
@@ -246,6 +247,7 @@ class EditorPane:
         self._streams = 0
         self._table_lock = asyncio.Lock()  # table edits apply one after the other
         self._table_widths = TableWidths(vault.root)  # dragged column widths (view state)
+        self._tab_colors: dict[int, str] = {}  # tab id → its note's colour, as last shown
         self._alignment = Alignment(vault.root)  # note / block alignment (view state, §4.34)
         self._insert_lock = asyncio.Lock()  # inserted blocks (images, embeds) too
         self._awaiting_recovery: set[str] = set()  # notes with crash text not decided on yet
@@ -2690,6 +2692,10 @@ class EditorPane:
 
     def _refresh(self) -> None:
         unsaved = self._unsaved()
+        colors = {i: note_color(b.text) for i, b in self.buffers.items()}
+        if colors != self._tab_colors:  # a note's colour changed (⋯ menu, or typed)
+            self._tab_colors = colors
+            self._tabbar.set_colors(colors)
         if self._structure_changed():
             self._tabbar.render(unsaved, self._split_tabs())
             self.refresh_backlinks()  # split opened / closed, or a side shows another note
@@ -3380,6 +3386,21 @@ class EditorPane:
         if tab is not None:
             return self.buffers[tab.id].text.replace("\r\n", "\n")
         return self.vault.read_text(path)
+
+    def note_color(self, path: str) -> str:
+        """The note's colour (``color:`` in its front matter), ``""`` when none."""
+        try:
+            return note_color(self.note_text(path))
+        except (VaultError, OSError):
+            return ""
+
+    def set_note_color(self, path: str, color: str) -> None:
+        """Give the note a colour (``""``: none) — the ⋯ menu's colour row (user 2026-11-22)."""
+        text = self.note_text(path)
+        new = with_color(text, color)
+        if new != text:
+            self.replace_note(path, new)
+            self._refresh()
 
     def replace_note(self, path: str, text: str) -> None:
         """Give a note a new text (outside the user's typing): the open tab shows it, the file is

@@ -9,6 +9,7 @@ from typing import Any
 
 from nicegui import background_tasks, ui
 
+from paper_pile.core.formatting import COLORS
 from paper_pile.gui.icons import icon_button, line_icon
 
 Action = Callable[[], Any]  # may return an awaitable
@@ -38,6 +39,9 @@ class NoteActions:
     # the whole note's alignment (PLAN §4.34): set one / read the current one
     align_note: Callable[[str], Any]
     note_align: Callable[[], str]
+    # the note's colour (``color:`` in its front matter, core/note_color.py; "" = none)
+    set_note_color: Callable[[str], Any]
+    note_color: Callable[[], str]
 
 
 # (alignment, icon, name) of the four choices, in the order shown
@@ -77,6 +81,42 @@ class AlignRow:
             button.classes(add="pp-on") if align == now else button.classes(remove="pp-on")
 
 
+class ColorRow:
+    """A menu row "Colour" with the eight palette dots and × (no colour), the current one
+    marked; a click keeps the menu open (user 2026-11-22: the note's tab and properties box
+    take the colour)."""
+
+    def __init__(self, current: Callable[[], str], pick: Callable[[str], Any]) -> None:
+        self._current = current
+        self._dots: dict[str, ui.element] = {}
+        with ui.element("div").classes("pp-note-menu-item pp-color-row"):
+            line_icon("palette").classes("pp-note-menu-icon")
+            ui.label("Colour").classes("pp-note-menu-label")
+            with ui.element("div").classes("pp-color-dots"):
+                for name, code in (("", ""), *COLORS.items()):
+                    dot = ui.element("div").classes("pp-color-dot" + ("" if name else " pp-none"))
+                    if code:
+                        dot._props["style"] = f"--sw: {code}"
+                    dot._props["data-tip"] = name.capitalize() if name else "No colour"
+                    if not name:
+                        with dot:
+                            line_icon("x", "s")
+
+                    def choose(_e: Any = None, n: str = name) -> None:
+                        pick(n)
+                        self.refresh(n)
+
+                    dot.on("click", choose)
+                    dot.mark(f"Note colour {name or 'none'}")
+                    self._dots[name] = dot
+
+    def refresh(self, current: str | None = None) -> None:
+        """Mark the note's colour (call before the menu shows)."""
+        now = self._current() if current is None else current
+        for name, dot in self._dots.items():
+            dot.classes(add="pp-on") if name == now else dot.classes(remove="pp-on")
+
+
 class NoteMenu:
     def __init__(self, actions: NoteActions) -> None:
         self._actions = actions
@@ -110,7 +150,8 @@ class NoteMenu:
             self._item("folder-input", "Move to…", a.move)
             self._item("merge", "Merge into…", a.merge)
             align = AlignRow(a.note_align, a.align_note)
-            menu.on("before-show", lambda: align.refresh())
+            color = ColorRow(a.note_color, a.set_note_color)
+            menu.on("before-show", lambda: (align.refresh(), color.refresh()))
             self._ai_parts.append(ui.separator())
             self._ai_parts.append(ui.label("AI").classes("pp-note-menu-group"))
             for icon, label, action in (

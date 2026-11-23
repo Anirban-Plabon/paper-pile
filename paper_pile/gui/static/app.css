@@ -231,7 +231,9 @@ body.pp-native.pp-right-open .pp-rtabbar { padding-right: 108px; }
 .pp-tree-row > .pp-tree-add + .pp-tree-add { margin-left: 2px; }
 /* a narrow pane: the expand button goes into the ⋯ menu (tree.js tells the menu) */
 .pp-tree { container: pptree / inline-size; }
-@container pptree (max-width: 219px) { .pp-tree-row > .pp-tree-fold { display: none; } }
+@container pptree (max-width: 219px) { .pp-tree-row > .pp-tree-fold { display: none; } .pp-tree-row > .pp-tree-more { margin-left: auto; } }
+/* the buttons always sit at the row's right end; a squeezed row shortens the name instead (user 2026-11-22) */
+.pp-tree-row > .pp-tree-name { min-width: 0; flex: 0 1 auto; }
 /* a folder's chosen colour (core/folder_looks.py): the palette's shades, dark-theme variants */
 body.body--dark :is(.pp-tree, .pp-looks) .pp-fc-gray { color: #9b9b9b; }
 body.body--dark :is(.pp-tree, .pp-looks) .pp-fc-red { color: #ff6b6b; }
@@ -1016,13 +1018,13 @@ body.body--dark .pp-instr-box textarea { color-scheme: dark; }  /* the corner gr
    accent, date, the note's first two lines; today's card is accent-tinted */
 .pp-cal-week { width: 100%; gap: 6px; margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--pp-border); flex-wrap: nowrap; }
 .pp-cal-week-head { font-size: 10px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: var(--pp-muted); padding: 0 2px 2px; }
-.pp-cal-card { width: 100%; display: flex; flex-direction: column; gap: 3px; padding: 8px 12px 9px; border-radius: var(--pp-r-ctrl); background: rgba(var(--pp-accent-rgb), .07); cursor: pointer; user-select: none; transition: background-color var(--pp-dur-fast) ease; }  /* flat accent tint, no outline (2nd round) */
+.pp-cal-card { position: relative; width: 100%; display: flex; flex-direction: column; gap: 3px; padding: 8px 12px 9px; border-radius: var(--pp-r-ctrl); background: rgba(var(--pp-accent-rgb), .07); cursor: pointer; user-select: none; transition: background-color var(--pp-dur-fast) ease; }  /* flat accent tint, no outline (2nd round) */
 .pp-cal-card > * { pointer-events: none; }
 .pp-cal-card:hover { background: rgba(var(--pp-accent-rgb), .12); }
 .pp-cal-card-top { gap: 8px; min-width: 0; }
 .pp-cal-card-day { font-size: 13px; font-weight: 700; color: var(--pp-accent); }
 .pp-cal-card-date { font-size: 12px; color: var(--pp-muted); }
-.pp-cal-card-badge { margin-left: auto; font-size: 10px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--pp-on-accent); background: var(--pp-accent); border-radius: 6px; padding: 2px 6px; }  /* the tag chip's shape (user 2026-11-20) */
+.pp-cal-card-badge { position: absolute; top: 6px; right: 6px; font-size: 10px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--pp-on-accent); background: var(--pp-accent); border-radius: 6px; padding: 2px 6px; }  /* the tag chip's shape (user 2026-11-20) */
 .pp-cal-card-text { font-size: 12.5px; line-height: 1.45; color: var(--pp-fg); opacity: .85; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; overflow: hidden; overflow-wrap: anywhere; }
 .pp-cal-card-empty { color: var(--pp-muted); font-style: italic; }
 .pp-cal-card-today, .pp-cal-card-today:hover { background: rgba(var(--pp-accent-rgb), .18); }
@@ -1349,6 +1351,13 @@ input::selection, textarea::selection { background: rgba(var(--pp-accent-rgb), .
 .pp-table-preview { margin: 0; padding-top: 4px; }
 .pp-embed { margin: 0 6px; }
 .pp-fm-wrap { padding: 4px 6px 10px; }
+/* the properties box is one grid (user 2026-11-22): the key column is as wide as the longest key, up to
+   about 3 words (22ch), and a longer key wraps between whole words only, never inside one — the values
+   start on one line for every row */
+.pp-frontmatter { display: grid; grid-template-columns: fit-content(22ch) minmax(0, 1fr); column-gap: 12px; align-items: start; }
+.pp-fm-row { display: contents; }
+.pp-fm-row > * { line-height: 1.8; padding: 1px 0; }
+.pp-fm-key { flex: none; overflow: visible; text-overflow: clip; white-space: normal; overflow-wrap: normal; word-break: normal; }
 .pp-frontmatter { margin: 0; max-width: 100%; }
 .pp-editor .cm-line.pp-code-first { margin-top: 0; }
 .pp-editor .cm-line.pp-code-last { margin-bottom: 0; }
@@ -2037,6 +2046,8 @@ body.body--dark .pp-aidiff-chip-warn { color: #e3b341; }
 /* the menus' "Align note" row: a label and four buttons, the current one marked */
 .pp-note-menu .pp-align-row { display: flex; align-items: center; gap: 10px; min-height: 32px; padding: 0 4px 0 10px; font-size: 13px; }
 .pp-note-menu .pp-align-row .pp-note-menu-label { flex: 1 1 auto; }
+.pp-note-menu .pp-color-row { display: flex; align-items: center; gap: 10px; min-height: 32px; padding: 0 8px 0 10px; font-size: 13px; }
+.pp-note-menu .pp-color-row .pp-note-menu-label { flex: 1 1 auto; }
 .pp-align-seg { display: flex; gap: 2px; }
 .pp-align-seg .pp-icon-btn.pp-on { background: rgba(var(--pp-accent-rgb), .16); color: var(--pp-accent); }
 /* fields inside the editor (table cells): CodeMirror's drawSelection paints a focused element's
@@ -2396,3 +2407,34 @@ body.body--dark { --pp-cmt-red: #ff6b6b; --pp-cmt-yellow: #f2c94c; --pp-cmt-gree
 .pp-fmenu-input { margin: 0 0 6px; padding: 0 6px; border: 0; border-radius: var(--pp-r-ctrl); background: var(--pp-pop-field); flex: none; }
 .pp-fmenu-input .q-field__control, .pp-fmenu-input .q-field__native { min-height: 32px; height: 32px; }
 .pp-fmenu-notes { display: flex; flex-direction: column; flex: none; }
+
+/* A note's colour (`color:` in its front matter, core/note_color.py; user 2026-11-22): a light tint of it on
+   its tab and on its properties box, laid over their own background; the ⋯ menu's Colour row picks it */
+:is(.pp-tab, .pp-frontmatter)[data-color="gray"] { --pp-nc: 120, 119, 116; }
+:is(.pp-tab, .pp-frontmatter)[data-color="red"] { --pp-nc: 224, 62, 62; }
+:is(.pp-tab, .pp-frontmatter)[data-color="orange"] { --pp-nc: 217, 115, 13; }
+:is(.pp-tab, .pp-frontmatter)[data-color="yellow"] { --pp-nc: 203, 145, 47; }
+:is(.pp-tab, .pp-frontmatter)[data-color="green"] { --pp-nc: 68, 131, 97; }
+:is(.pp-tab, .pp-frontmatter)[data-color="blue"] { --pp-nc: 51, 126, 169; }
+:is(.pp-tab, .pp-frontmatter)[data-color="purple"] { --pp-nc: 144, 101, 176; }
+:is(.pp-tab, .pp-frontmatter)[data-color="pink"] { --pp-nc: 193, 76, 138; }
+body.body--dark .pp-tab[data-color="gray"], .pp-editor.pp-dark .pp-frontmatter[data-color="gray"] { --pp-nc: 155, 155, 155; }
+body.body--dark .pp-tab[data-color="red"], .pp-editor.pp-dark .pp-frontmatter[data-color="red"] { --pp-nc: 255, 107, 107; }
+body.body--dark .pp-tab[data-color="orange"], .pp-editor.pp-dark .pp-frontmatter[data-color="orange"] { --pp-nc: 255, 163, 68; }
+body.body--dark .pp-tab[data-color="yellow"], .pp-editor.pp-dark .pp-frontmatter[data-color="yellow"] { --pp-nc: 255, 220, 73; }
+body.body--dark .pp-tab[data-color="green"], .pp-editor.pp-dark .pp-frontmatter[data-color="green"] { --pp-nc: 77, 171, 154; }
+body.body--dark .pp-tab[data-color="blue"], .pp-editor.pp-dark .pp-frontmatter[data-color="blue"] { --pp-nc: 82, 156, 202; }
+body.body--dark .pp-tab[data-color="purple"], .pp-editor.pp-dark .pp-frontmatter[data-color="purple"] { --pp-nc: 180, 138, 224; }
+body.body--dark .pp-tab[data-color="pink"], .pp-editor.pp-dark .pp-frontmatter[data-color="pink"] { --pp-nc: 226, 85, 161; }
+.pp-tab[data-color] { background-image: linear-gradient(rgba(var(--pp-nc), .16), rgba(var(--pp-nc), .16)); }
+/* the open tab: one solid mix, so its curved feet (box-shadows in --pp-tab-fill) take the same tint */
+.pp-tab[data-color]:is(.pp-tab-active, .pp-tab-shown) { --pp-tab-fill: color-mix(in srgb, rgb(var(--pp-nc)) 12%, var(--pp-bg)); background-color: var(--pp-tab-fill); background-image: none; }
+.pp-frontmatter[data-color] { background-image: linear-gradient(rgba(var(--pp-nc), .10), rgba(var(--pp-nc), .10)); border-color: rgba(var(--pp-nc), .35); }
+/* the ⋯ menu's Colour row: × (no colour) and the eight dots, the note's own ringed */
+.pp-color-row { cursor: default; }
+.pp-color-dots { display: flex; align-items: center; gap: 4px; margin-left: auto; }
+.pp-color-dot { width: 16px; height: 16px; border-radius: 50%; background: var(--sw); cursor: pointer; box-shadow: inset 0 0 0 1px rgba(0, 0, 0, .12); transition: transform var(--pp-dur-fast) ease; display: flex; align-items: center; justify-content: center; }
+.pp-color-dot:hover { transform: scale(1.15); }
+.pp-color-dot.pp-none { background: transparent; color: var(--pp-muted); box-shadow: inset 0 0 0 1px var(--pp-border); }
+.pp-color-dot.pp-none .q-icon { font-size: 11px; }
+.pp-color-dot.pp-on { box-shadow: 0 0 0 2px var(--pp-bg), 0 0 0 3.5px var(--sw, var(--pp-muted)); }
