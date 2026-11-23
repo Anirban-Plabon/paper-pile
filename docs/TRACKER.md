@@ -6,6 +6,7 @@
 Legend: 🧠 = needs Opus (see PLAN §6 model guidance) · ⬜ todo · 🔄 in progress · ✅ done · ⛔ blocked · ⏭️ skipped/deferred
 
 ## Current focus
+- **Phase:** P38 — Performance on any machine, without taking it over (user request 2026-11-23, PLAN §4.39): planned (P38.1–P38.21, all ⬜); next P38.1 (resource checks + machine matrix, baseline). Two answers wait for the user (Open issues)
 - **Phase:** P37 — List / chip polish, comments, formatting menu (user request 2026-11-20, PLAN §4.38): P37.1–P37.29 done (P37.21–P37.25: split line / spacing / trail ⋯, quote bar, folder looks + pins; P37.15–P37.20: the user's toolbar review 2026-11-22 — one comment window + lane, colour by name with hidden tags and `=r … r=`, shortcuts, quote bar, chat hide box, header trail); for the user to try
 - **Phase:** P36 — Tree expand / collapse all, settings switch, mini chat frame + resize, one right-pane width, calendar month picker, `--live-css` (user request 2026-11-19, PLAN §4.37): P36.1–P36.6 done; P36.14 (chat context bar, Auto / Read) done; P36.15 (context bar, second round: folder menu, fit stages, hide button) done
 - **Phase:** P35 — Rendering audit: tables, math, paste (user request 2026-11-18, PLAN §4.36): P35.1–P35.9 done; `tools/qa_render.py` 389 passed, 0 failed, 3 known (inline math across a line break)
@@ -32,6 +33,9 @@ Legend: 🧠 = needs Opus (see PLAN §6 model guidance) · ⬜ todo · 🔄 in p
 ## Open issues
 - 2026-11-12 · P29.16 · Ask box with Antigravity (Gemini 3.8 flash) still edits on some requests to be told something worded as commands (held-out-4: "describe the trade-offs", "outline the argument", "break this down for me", "characterize each option"). v3 of `understand.py` is neutral on gemma4 and helps Gemini only partly (9 → 11/16). Next: a structural fix rather than another prompt sentence; write a fresh held-out-6 before trying it. 2026-11-12 · ornith-1.5:9b: v3 worse than v1 (eval 28 → 25, held-out-4 10 → 4/16): it picks the enum's first value `the_text_itself` for every request and the rule "want: change exactly when result is…" copies it into `want`, so the agreement guard never fires. v4 to try: safe value first in the enum, `want` decided on its own (no tie to `result`)
 <!-- - [ ] YYYY-MM-DD · task ID · what's blocking · what's needed -->
+- 2026-11-23 · P38.18 · model preload: proposed default = load on the first move toward the AI (chat / Ask box opened) instead of at start, never on battery — needs the user's yes / no
+- 2026-11-23 · P38.20 · *Battery saver*: on by itself while on battery, or only when chosen? — needs the user's answer
+- 2026-11-23 · P38.16 (optional) · keep `index.db` in `.paper-pile/` (spec, §5) or move the cache to `~/.cache/paper-pile/` (faster on slow vault disks)? Stays put unless the user decides
 - 2026-11-22 · (found during P37.15) · ArrowUp gets stuck on a heading whose text wraps whole onto a second row (a narrow editor, a long word): the browser may break after the fold chevron / CodeMirror's widget-buffer images, the hidden `# ` stays alone on the first row, and ArrowUp from the line start finds the same position. Same on HEAD with `# Headings!!` in qa_editor's 136 px lines; the comment lane (6 px narrower lines) makes qa_editor's `# Heading` wrap, so `h1: at the start · line above the first block` fails (363/364). Needs: no break opportunity before the heading's text (e.g. the chevron out of the flow) or a caret fix, then qa_editor 364/364
 - 2026-11-22 · (found during P37 checks) · `tools/qa_render.py` 385/389: 4 `align:` table checks fail (a centred / right table overflows the text's right edge by ~60 px in the 800 px test window). Same numbers on a clean HEAD (dde6fb4) checkout, so older than P37.15; cause not known yet. Needs: find which change since the 389/0 run (P37.10)
 - 2026-11-11 · (found during P33.6) · `tools/qa_print.py` 66/68: "paper: Letter lays the note out again" (Settings pick not made: nav=False picked=False) and "real pages: every sheet is the paper's height" (1124 px sheets, want 1056). Same 2 failures with the P33.6 print changes removed, so they come from earlier uncommitted work in the tree; cause not known yet. Needs: run on a clean HEAD checkout to find which change
@@ -340,6 +344,31 @@ Legend: 🧠 = needs Opus (see PLAN §6 model guidance) · ⬜ todo · 🔄 in p
 | P27.2 | No "token repeat limit reached" on edits | ✅ | `GenerationOptions.repeat_penalty` (1.1 on text answers, none on JSON), `RepeatLoopError`, `EditRun._ask` retries once at 0.7; 4 tests; eval case 17 added. Eval gemma4:12b ×2: 26/28 before → 27/30 after (06 fails before and after; 17 1/2: one run echoed the paragraph unchanged — not a loop, see Open issues) |
 | P27.3 | Fixed blocks change when asked | ✅ | `unlock_asked` + `FIXED_KIND_WORDS` (edit_run.py), `GuardContext.convert` skips G5 / G6; 7 tests; eval case 18 (ASCII diagram → mermaid) gemma4:12b 3/3 in 2 calls, case 10 3/3. Repro on the user's note with NeoHorse-1:9B: before "cut off or empty", after one change replacing exactly the code block |
 
+### P38 — Performance on any machine, without taking it over (user request 2026-11-23)
+| ID | Task | Status | Notes |
+|---|---|---|---|
+| P38.1 | Resource checks + machine matrix in `tools/perf_ui.py` | ⬜ | baseline 2026-11-23 (assessment, one run each, Linux-FS copy, 2 000 notes): window 2.7 s, first text 11.7 s; switch tab 504 ms, new note 1 442 ms, close tab 363 ms, palette 308 ms, settings 361 ms; pane toggles 33 / 40 fps; on `/mnt/l` imports 13.3 s |
+| P38.2 | Machine profile `core/machine.py` | ⬜ | |
+| P38.3 | Resource budget + shared workers `core/workers.py` | ⬜ | |
+| P38.4 | Idle is idle | ⬜ | `chat.js` 250 ms + 400 ms timers; health check every 30 s also while minimized |
+| P38.5 | Renderer memory growth | ⬜ | user's app 2026-11-23: renderer RSS 604 → 1 008 MB in ≈ 40 min |
+| P38.6 | Window process first + splash | ⬜ | NiceGUI spawns the window after the server's imports, and the window re-imports NiceGUI (7.5–8.2 s on `/mnt/l`) |
+| P38.7 | Lazy imports | ⬜ | own modules ≈ 4.5 s of 12.5 s on `/mnt/l` (AI stack 1.5 s, chat / settings / dialogs ≈ 0.6 s, bs4 0.26 s) |
+| P38.8 | Active tab first, the rest lazy | ⬜ | |
+| P38.9 | Index sync + walk in parallel | ⬜ | `/mnt/l` stat + read of 618 files: 5.5 s serial → 0.70 s with 8 threads |
+| P38.10 | Saving off the UI loop | ⬜ | was a P19 "next candidate" |
+| P38.11 | Own writes ignored, tree in place | ⬜ | was a P19 "next candidate" |
+| P38.12 | Tab switch / new note / close tab: paint first | ⬜ | tab strip in place was a P19 "next candidate" |
+| P38.13 | GPU detection + Light effects | ⬜ | default `llvmpipe`; `GALLIUM_DRIVER=d3d12` → `D3D12 (AMD Radeon)` in a Qt probe |
+| P38.14 | Tailwind off | ⬜ | P20's waiting step; A/B: pane toggles 33–40 → 50–52 fps, settings 361 → 208 ms |
+| P38.15 | Parse process for big re-indexes | ⬜ | parse ≈ 3.4 ms per 5 KB note |
+| P38.16 | Lighter index-cache writes | ⬜ | SQLite commit 7.3 ms on `/mnt/l` vs 2.1 ms on ext4 |
+| P38.17 | AI requests in parallel per backend | ⬜ | judge batches and cards are sent one after another today |
+| P38.18 | Model preload policy | ⬜ | waits for the user's answer (Open issues) |
+| P38.19 | Tab hibernation, cache limits, memory pressure | ⬜ | |
+| P38.20 | Battery + Settings → Performance | ⬜ | battery default waits for the user's answer (Open issues) |
+| P38.21 | Before / after numbers | ⬜ | |
+
 ### P37 — List / chip polish, comments, formatting menu (user request 2026-11-20)
 | ID | Task | Status | Notes |
 |---|---|---|---|
@@ -540,6 +569,8 @@ Legend: 🧠 = needs Opus (see PLAN §6 model guidance) · ⬜ todo · 🔄 in p
 <!-- YYYY-MM-DD · decision · reason · (who: user / claude) -->
 | Date | Decision | Reason | By |
 |---|---|---|---|
+| 2026-11-23 | P38 added (PLAN §4.39): performance on any machine without taking it over — machine profile, one resource budget with shared workers (limits, low priority for background, yields to pressure / battery), idle = idle, bounded memory, startup before first paint, the UI loop only builds UI, GPU detection + automatic Light effects, Tailwind off, parallel AI per backend, Settings → Performance, a machine matrix with budgets | user: slow startup / scrolling / buttons; constraints: code is not moved, native window only, must suit any hardware, must not hog resources. Measured basis in §4.39 | user |
+| 2026-11-23 | P38: file-work threads are sized by measured disk latency, not core count; CPU work goes to a separate process only for big jobs | `/mnt/l` stat + read 618 files: 5.5 s → 0.70 s with 8 threads (no gain past 8); parsing holds the GIL (≈ 3.4 ms / 5 KB note), so threads would not speed it and would stall the UI loop; a process costs ≈ 1 s to start on a slow disk | claude |
 | 2026-11-22 | P37.29: note colour in the front matter (`color: red`), tab + properties box tint, picked in the ⋯ menu | user chose places 1 + 3 and the ⋯ menu; front matter was the proposed default (travels with the file; .paper-pile would lose it on outside moves) and not objected to | user |
 | 2026-11-22 | P37.25: folder colour / icon / pin are view state in `.paper-pile/folders.json` (like table widths), not in the folders (no marker files in the user's vault); pinned folders listed before pinned notes; a pinned folder's click shows it in the tree (expanded, selected) instead of a second copy of its contents | data safety: nothing written into the vault's folders; one row per path in the tree | claude |
 | 2026-11-22 | P37.25: "beside the expand button on the right add ⋯" read as the row order expand · ⋯ · + (the + stays last); the colour picker opens inside the menu (‹ back) rather than as a second popup | user's wording; one popup | claude |
@@ -1296,3 +1327,4 @@ Legend: 🧠 = needs Opus (see PLAN §6 model guidance) · ⬜ todo · 🔄 in p
 - 2026-11-22 · P37.26–P37.28: folder row buttons at the right end, properties keys break at whole words (3-word column), TODAY badge 6 px from the corner; real app checked
 - 2026-11-22 · P37.21–P37.25 (user's round 3): split tab line on the divider, AI / Calendar box 30 px from the split × ⋯ box, split trail `⋯`, quote bar 6 px longer, folder ⋯ menu with colour (2 × 4) / icon (4 × 4) picker and folder pins; real app checked for each; 1911 tests; qa_editor 363/1 (the known open issue)
 - 2026-11-22 · P37.15–P37.20 (user's toolbar review): one comment window + comment lane, colour by CSS name with hidden atomic tags, carry-on and `=r … r=`, formatting shortcuts (also from the Ask box), accent quote bar with rounded ends, callouts in fixed colours, chat hide box 30 × 28, header trail `title › H1 › H2 › H3`; real app 34/34 (one check was the script's own mistake); 1902 tests; qa_editor 363/1 and qa_render 385/4 — both open issues, the qa_render ones older
+- 2026-11-23 · P38 planned (PLAN §4.39, 21 tasks): performance assessment measured (imports 13.3 s on /mnt/l vs 1.35 s, window process starts after the server's imports, llvmpipe instead of the GPU, Tailwind runtime, 8× from parallel file reads on 9p, idle ≈ 3 % CPU, renderer 604 → 1 008 MB in 40 min); docs only, no code
