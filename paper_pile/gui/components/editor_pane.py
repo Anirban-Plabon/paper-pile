@@ -1054,12 +1054,15 @@ class EditorPane:
         body = str(args.get("body", ""))
         await self._apply_format(target, "comment", f"{{{color}}} {body}" if color else body)
 
-    def open_format_menu_for(self, target: AskTarget, x: float, y: float) -> None:
-        """The Ask box's format button: the menu for the box's selection."""
+    def open_format_menu_for(
+        self, target: AskTarget, x: float, y: float, *, table: bool = False
+    ) -> None:
+        """The Ask box's format button: the menu for the box's selection (``table``: a selected
+        block of table cells, which only gets the edit items)."""
         if target.whole or self._shown[self._slot] != target.tab_id:
             return
         where = FormatTarget(target.tab_id, self._slot, target.start, target.end)
-        self.format_menu.open(where, x, y)
+        self.format_menu.open(where, x, y, "table" if table else "main")
 
     async def _apply_format(self, target: FormatTarget, item_id: str, arg: str | None) -> None:
         """Run a menu item on the target's selection (one undo step, the words stay selected)."""

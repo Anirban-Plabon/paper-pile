@@ -111,9 +111,6 @@
     moved = false;
     side = null; // chosen again for this selection, once the box is shown
     const el = box();
-    // over a block of table cells the text formatting does not apply (it would wrap the table's
-    // lines): the tools chip has no Format button then (app.css, data attribute: see CLAUDE.md)
-    if (el) el.dataset.ppTable = window.ppTableBlock && window.ppTableBlock.active() ? '1' : '';
     if (el) requestAnimationFrame(() => place(el)); // the size observer places it when shown
     window.ppAskFocus();
   };
@@ -235,20 +232,6 @@
     const c = e.target && e.target.closest && e.target.closest('.cm-content');
     if (c) lastEditor = c;
   }, true);
-
-  // the tools chip's Copy: the selected block of table cells, else the note's selected text (the
-  // browser's own copy, from the editor that had the selection); the box closes
-  window.ppAskCopy = function () {
-    if (window.ppTableBlock && window.ppTableBlock.active()) {
-      window.ppTableBlock.run('copy');
-    } else {
-      const editor = lastEditor && lastEditor.isConnected ? lastEditor : document.querySelector('.pp-editor .cm-content');
-      if (!editor) return;
-      if (!(window.ppFocusEditor && window.ppFocusEditor(editor))) editor.focus({ preventScroll: true });
-      document.execCommand('copy');
-    }
-    emitEvent('pp_askpop_close', {});
-  };
 
   // keys in the box: Enter sends (Shift+Enter: new line), Esc closes, the / list moves
   document.addEventListener('keydown', function (e) {

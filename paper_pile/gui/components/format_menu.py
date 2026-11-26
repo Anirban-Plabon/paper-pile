@@ -21,7 +21,9 @@ from paper_pile.gui.icons import line_icon
 
 log = logging.getLogger("paper_pile.format_menu")
 
-View = Literal["main", "more", "customize", "color", "link"]
+TABLE_ITEMS = ("copy", "cut", "paste", "delete")
+
+View = Literal["main", "more", "customize", "color", "link", "table"]
 
 
 @dataclass(frozen=True, slots=True)
@@ -88,6 +90,7 @@ class FormatMenu:
                 "customize": self._customize,
                 "color": self._color,
                 "link": self._link,
+                "table": self._table,
             }[view]()
         self._client.run_javascript("window.ppFmenuReplace && window.ppFmenuReplace()")
 
@@ -124,13 +127,20 @@ class FormatMenu:
         pinned = [BY_ID[i] for i in self._pinned() if i in BY_ID]
         for item in pinned:
             self._row(item)
-        if pinned:
-            ui.element("div").classes("pp-fmenu-sep")
+        if "copy" not in self._pinned():
+            self._row(BY_ID["copy"])  # always at hand (user 2026-11-26), unless pinned already
+        ui.element("div").classes("pp-fmenu-sep")
         self._link_row("sliders-horizontal", "More", "more", lambda: self._show("more"))
         self._link_row("pin", "Customize", "customize", lambda: self._show("customize"))
         if self._ai_on():
             ui.element("div").classes("pp-fmenu-sep")
             self._link_row("sparkles", "Ask AI…", None, lambda: self._pick("ask-ai"))
+
+    def _table(self) -> None:
+        """A selected block of table cells (or whole rows / columns): the edit items only; the
+        table widget does them (tablewidget.js ``blockClipboard``)."""
+        for item_id in TABLE_ITEMS:
+            self._row(BY_ID[item_id])
 
     def _more(self) -> None:
         self._back("All items")

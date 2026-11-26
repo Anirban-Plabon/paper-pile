@@ -45,6 +45,7 @@ def _build_pages(host: VaultHost, *, native: bool) -> None:
         ui.add_head_html(f'<script src="{static_url("notedrop.js")}" defer></script>')
         ui.add_head_html(f'<script src="{static_url("panes.js")}" defer></script>')
         ui.add_head_html(f'<script src="{static_url("chat.js")}" defer></script>')
+        ui.add_head_html(f'<script src="{static_url("pairs.js")}" defer></script>')
         ui.add_head_html(f'<script src="{static_url("askpop.js")}" defer></script>')
         ui.add_head_html(f'<script src="{static_url("formatmenu.js")}" defer></script>')
         ui.add_head_html(f'<script src="{static_url("marks.js")}" defer></script>')

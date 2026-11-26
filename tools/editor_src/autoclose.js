@@ -3,6 +3,7 @@
 // Nothing is added when the fence being typed closes an open block.
 import { Prec } from "@codemirror/state";
 import { EditorView, keymap } from "@codemirror/view";
+import { syntaxTree } from "@codemirror/language";
 
 const PAIRS = [
   { ch: "`", open: "``", mark: "```", line: /^\s*```/ },
@@ -48,49 +49,47 @@ function stepIn(view) {
 
 export const autoClose = [typed, Prec.highest(keymap.of([{ key: "Enter", run: stepIn }]))];
 
-// ---- brackets: ( [ { are written in pairs ---------------------------------------------------
-const CLOSER = { "(": ")", "[": "]", "{": "}" };
-const CLOSERS = new Set(Object.values(CLOSER));
+// ---- marks and brackets written in pairs (user 2026-11-26) ---------------------------------
+// The rules are shared with the chat boxes and table cells: window.ppPairs (static/pairs.js).
+// Here they get the note's syntax tree for "is this code" (marks are plain in code and maths).
+const CODE = new Set(["InlineCode", "FencedCode", "CodeBlock", "CodeText", "InlineMath", "BlockMath", "HTMLBlock", "Comment"]);
 
-const unmatched = (before, open, close) => {
-  let depth = 0;
-  for (const ch of before) {
-    if (ch === open) depth++;
-    else if (ch === close && depth > 0) depth--;
-  }
-  return depth;
-};
-
-const brackets = EditorView.inputHandler.of((view, from, to, text) => {
-  if (from !== to || text.length !== 1) return false;
-  const { doc } = view.state;
-  const line = doc.lineAt(from);
-  const next = doc.sliceString(from, Math.min(from + 1, line.to));
-  if (CLOSER[text] && (next === "" || /\s/.test(next) || CLOSERS.has(next))) {
-    view.dispatch({ changes: { from, insert: text + CLOSER[text] }, selection: { anchor: from + 1 }, userEvent: "input.type" });
-    return true;
-  }
-  if (CLOSERS.has(text) && next === text) {
-    const open = Object.keys(CLOSER).find((k) => CLOSER[k] === text);
-    if (unmatched(doc.sliceString(line.from, from), open, text) > 0) {
-      view.dispatch({ selection: { anchor: from + 1 }, userEvent: "input.type" });
-      return true;
-    }
-  }
+function inCode(state, pos) {
+  for (let node = syntaxTree(state).resolveInner(pos, -1); node; node = node.parent) if (CODE.has(node.name)) return true;
   return false;
+}
+
+// replace [from - back, to + fwd] with r.text, then select r.a..r.b in it
+function apply(view, from, to, r, userEvent) {
+  const start = from - r.back;
+  view.dispatch({
+    changes: { from: start, to: to + r.fwd, insert: r.text },
+    selection: { anchor: start + r.a, head: start + r.b },
+    userEvent,
+    scrollIntoView: true,
+  });
+  return true;
+}
+
+const pairs = EditorView.inputHandler.of((view, from, to, text) => {
+  const P = window.ppPairs;
+  const { state } = view;
+  if (!P || text.length !== 1 || state.selection.ranges.length > 1) return false;
+  const a = state.doc.lineAt(from);
+  const b = state.doc.lineAt(to);
+  const r = P.typed(state.sliceDoc(a.from, from), state.sliceDoc(to, b.to), state.sliceDoc(from, to), text, text !== "`" && inCode(state, from));
+  return r ? apply(view, from, to, r, "input.type") : false;
 });
 
 // Backspace between an empty pair removes both marks.
 function deletePair(view) {
+  const P = window.ppPairs;
   const { state } = view;
   const sel = state.selection.main;
-  if (!sel.empty || sel.from === 0) return false;
-  const before = state.sliceDoc(sel.from - 1, sel.from);
-  if (CLOSER[before] && state.sliceDoc(sel.from, sel.from + 1) === CLOSER[before]) {
-    view.dispatch({ changes: { from: sel.from - 1, to: sel.from + 1 }, userEvent: "delete.backward" });
-    return true;
-  }
-  return false;
+  if (!P || !sel.empty || state.selection.ranges.length > 1) return false;
+  const line = state.doc.lineAt(sel.from);
+  const r = P.back(state.sliceDoc(line.from, sel.from), state.sliceDoc(sel.from, line.to));
+  return r ? apply(view, sel.from, sel.from, r, "delete.backward") : false;
 }
 
-export const autoBrackets = [brackets, Prec.highest(keymap.of([{ key: "Backspace", run: deletePair }]))];
+export const autoBrackets = [pairs, Prec.highest(keymap.of([{ key: "Backspace", run: deletePair }]))];

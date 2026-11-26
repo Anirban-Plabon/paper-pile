@@ -174,16 +174,17 @@ class AskPopup:
                 # selection (PLAN §4.38) and Move to chat
                 with ui.row().classes("pp-askpop-tools items-center no-wrap"):
                     fmt = ui.button(icon=ico("menu"), color=None)
-                    fmt.on("click", lambda e: self._open_format(e.args), ["clientX", "clientY"])
+                    # over a selected block of table cells the menu has the edit items only
+                    # (Copy, Cut, Paste, Delete: text formatting would break the table)
+                    fmt.on(
+                        "click",
+                        lambda e: self._open_format(e.args),
+                        js_handler="(e) => emit({clientX: e.clientX, clientY: e.clientY,"
+                        " table: !!(window.ppTableBlock && window.ppTableBlock.active())})",
+                    )
                     fmt.props("round flat dense").classes("pp-askpop-tool pp-askpop-format")
                     tip(fmt, "Format")
                     self._format_btn = fmt
-                    # Copy (user 2026-11-26): the selection, or a selected block of table cells
-                    # (static/askpop.js; copying needs the browser's own copy, so no round trip)
-                    copy = ui.button(icon=ico("copy"), color=None)
-                    copy.on("click", js_handler="() => window.ppAskCopy && window.ppAskCopy()")
-                    copy.props("round flat dense").classes("pp-askpop-tool pp-askpop-copy")
-                    tip(copy, "Copy")
                     # chat bubble + arrow (own icons, tools/editor_src/build_icons.mjs):
                     # up while the box holds a conversation, down while it holds only the selection
                     chat = ui.button(icon=ico(CHAT_ICON[False]), color=None)
@@ -201,7 +202,10 @@ class AskPopup:
             return
         self.close()
         self._pane.open_format_menu_for(
-            target, float(args.get("clientX", 0)), float(args.get("clientY", 0))
+            target,
+            float(args.get("clientX", 0)),
+            float(args.get("clientY", 0)),
+            table=bool(args.get("table")),
         )
 
     def dismiss_box(self) -> None:

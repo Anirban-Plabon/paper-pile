@@ -1025,15 +1025,18 @@ window.ppTableBlock = {
 };
 
 // ---- row and column handles, + between rows / columns (user 2026-11-26) -----------------------
-// Over the table the pointer's row gets a grip at the table's left edge and its column one on the
-// top edge. Click a grip: that row / column is selected (Shift+click: up to it); then Delete or
+// Over the table the pointer's row gets a grip just left of the table, as tall as the row, and
+// its column one just above it, as wide as the column (user 2026-11-26: easy to reach); hovering a
+// grip tints what it picks. Click a grip: that row / column is selected (Shift+click: up to it); then Delete or
 // Backspace removes it, Copy copies it. Drag a grip: the row / column moves where the line shows.
 // Near the line between two rows (at the left edge) or two columns (at the top edge) a + appears
 // that inserts one there. One overlay per editor, in the editor's own box (the table's box clips
 // what sticks out of it); it follows the pointer and hides on scroll.
 
-const GRIP_ZONE_X = 34; // px left of the table's left edge where its row grips stay shown
-const GRIP_ZONE_Y = 28; // px above the table's top edge where its column grips stay shown
+const GRIP_ZONE_X = 40; // px left of the table's left edge where its row grips stay shown
+const GRIP_ZONE_Y = 36; // px above the table's top edge where its column grips stay shown
+const GRIP_GAP = 9; // px from the table's edge to the middle of a grip
+const PLUS_GAP = 27; // px from the table's edge to the middle of a +, beyond the grips
 const PLUS_SNAP = 8; // px from a row / column line where its + appears
 const DRAG_PX = 4; // a grip moved further than this is a drag, not a click
 
@@ -1102,10 +1105,23 @@ function installHandles(view) {
   plus(h.colPlus, "col");
   h.rowGrip.addEventListener("mousedown", (e) => startGrip(h, host, e, "row"));
   h.colGrip.addEventListener("mousedown", (e) => startGrip(h, host, e, "col"));
+  // hovering a grip tints the row / column a click would pick
+  for (const [b, which] of [[h.rowGrip, "row"], [h.colGrip, "col"]]) {
+    b.addEventListener("mouseenter", () => tintLine(h.wrap, which, which === "row" ? h.row : h.col));
+    b.addEventListener("mouseleave", () => tintLine(h.wrap, null));
+  }
+}
+
+function tintLine(wrap, which, at = -1) {
+  if (!wrap || !wrap._cells) return;
+  wrap._cells.forEach((line, r) =>
+    line.forEach((td, c) => td.classList.toggle("pp-thover", which === "row" ? r === at : which === "col" ? c === at : false)),
+  );
 }
 
 function hideHandles(h) {
   for (const b of [h.rowGrip, h.colGrip, h.rowPlus, h.colPlus, h.line]) b.style.display = "none";
+  tintLine(h.wrap, null);
   h.wrap = null;
   h.row = h.col = h.rowAt = h.colAt = -1;
 }
@@ -1145,6 +1161,7 @@ function trackHandles(h, host, e) {
     }
   }
   if (!wrap || !wrap._cells || wrap._resizing) return hideHandles(h);
+  if (h.wrap && h.wrap !== wrap) tintLine(h.wrap, null);
   const hb = host.getBoundingClientRect();
   const { rows, cols } = tableEdges(wrap);
   const nearest = (edges, v) => {
@@ -1156,11 +1173,11 @@ function trackHandles(h, host, e) {
   h.col = nearest(cols, x);
   const [rt, rb] = rows[h.row];
   const [cl, cr] = cols[h.col];
-  // the grips leave the lines free at both ends, for the + there
-  h.rowGrip.style.height = `${Math.max(10, Math.min(22, rb - rt - 2 * PLUS_SNAP))}px`;
-  h.colGrip.style.width = `${Math.max(10, Math.min(22, cr - cl - 2 * PLUS_SNAP))}px`;
-  place(h.rowGrip, hb, box.left - 1, (rt + rb) / 2);
-  place(h.colGrip, hb, (cl + cr) / 2, box.top - 1);
+  // a grip covers its whole row / column (the + sit further out, so the lines stay theirs)
+  h.rowGrip.style.height = `${Math.max(12, rb - rt - 4)}px`;
+  h.colGrip.style.width = `${Math.max(12, cr - cl - 4)}px`;
+  place(h.rowGrip, hb, box.left - GRIP_GAP, (rt + rb) / 2);
+  place(h.colGrip, hb, (cl + cr) / 2, box.top - GRIP_GAP);
   // a + on the line between two rows (not above the header: a table starts with it)
   h.rowAt = -1;
   if (x <= box.left + GRIP_ZONE_X) {
@@ -1169,7 +1186,7 @@ function trackHandles(h, host, e) {
       if (Math.abs(y - line) <= PLUS_SNAP) h.rowAt = k;
     }
   }
-  if (h.rowAt >= 1) place(h.rowPlus, hb, box.left - 22, h.rowAt < rows.length ? rows[h.rowAt][0] : rows[rows.length - 1][1]);
+  if (h.rowAt >= 1) place(h.rowPlus, hb, box.left - PLUS_GAP, h.rowAt < rows.length ? rows[h.rowAt][0] : rows[rows.length - 1][1]);
   else h.rowPlus.style.display = "none";
   h.colAt = -1;
   if (y <= box.top + GRIP_ZONE_Y) {
@@ -1178,7 +1195,7 @@ function trackHandles(h, host, e) {
       if (Math.abs(x - line) <= PLUS_SNAP) h.colAt = k;
     }
   }
-  if (h.colAt >= 0) place(h.colPlus, hb, h.colAt < cols.length ? cols[h.colAt][0] : cols[cols.length - 1][1], box.top - 20);
+  if (h.colAt >= 0) place(h.colPlus, hb, h.colAt < cols.length ? cols[h.colAt][0] : cols[cols.length - 1][1], box.top - PLUS_GAP);
   else h.colPlus.style.display = "none";
   if (h.line.dataset.kind !== "drag") h.line.style.display = "none";
   paintHandles(wrap);
