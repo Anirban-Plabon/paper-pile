@@ -109,6 +109,7 @@ export class TableWidget extends WidgetType {
   toDOM(view) {
     const wrap = el("div", "pp-table pp-table-edit");
     wrap._view = view;
+    installHandles(view);
     wrap._model = null;
     this.fill(wrap);
     this.wire(wrap);
@@ -270,6 +271,11 @@ function showValue(td, state, node, value) {
 function startEdit(wrap, td) {
   commitActive(wrap, td);
   if (td._input) return;
+  // the input is one line: the cell keeps the height it had (a wrapped cell would shrink the row,
+  // and everything under the table — in page view the page edges too — would move)
+  const cs = getComputedStyle(td);
+  const inner = td.getBoundingClientRect().height - ["paddingTop", "paddingBottom", "borderTopWidth", "borderBottomWidth"].reduce((a, k) => a + (parseFloat(cs[k]) || 0), 0);
+  td.style.height = `${Math.max(0, inner)}px`; // a cell's CSS height is its content box
   const input = el("input", "pp-table-input");
   input.type = "text";
   input.size = 1; // its default ~20-character width would widen the column (cells jumped on click)
@@ -320,6 +326,7 @@ function commit(wrap, td) {
 function endEdit(wrap, td) {
   if (!td._input) return;
   td._input = null;
+  td.style.height = "";
   if (wrap._active === td) wrap._active = null;
   renderCell(wrap, td);
 }
@@ -501,6 +508,8 @@ function openMenu(wrap, td, x, y) {
   items.push(null);
   items.push(["Insert column left", run({ op: "insert_col", at: c }, r, c)]);
   items.push(["Insert column right", run({ op: "insert_col", at: c + 1 }, r, c + 1)]);
+  if (c >= 1) items.push(["Move column left", run({ op: "move_col", col: c, to: c - 1 }, r, c - 1)]);
+  if (c < C - 1) items.push(["Move column right", run({ op: "move_col", col: c, to: c + 1 }, r, c + 1)]);
   if (C > 1) items.push(["Delete column", run({ op: "delete_col", col: c })]);
   items.push(null);
   // the column's markdown alignment (`:---:`) — its cells only
@@ -622,11 +631,13 @@ export const tableKeys = Prec.high(
 // from its top-left cell, Shift+arrows grow or shrink it, Esc or an arrow leaves it. What the
 // markdown becomes is decided in Python (`cells` in core/tables.py).
 
-function selectBlock(wrap, r0, c0, r1, c1) {
+// `kind`: "row" / "col" when whole rows / columns were picked with their handle (Delete and
+// Backspace then remove them), else a block of cells (the keys empty them).
+function selectBlock(wrap, r0, c0, r1, c1, kind = null) {
   const R = wrap._cells.length;
   const C = wrap._cells[0].length;
   const clamp = (v, n) => Math.max(0, Math.min(n - 1, v));
-  wrap._sel = { r0: clamp(r0, R), c0: clamp(c0, C), r1: clamp(r1, R), c1: clamp(c1, C) };
+  wrap._sel = { r0: clamp(r0, R), c0: clamp(c0, C), r1: clamp(r1, R), c1: clamp(c1, C), kind };
   // the table takes the focus first: the cell's input then blurs (it commits and ends itself)
   // with focus inside the table, so the block is not dropped as "focus left the table"
   if (document.activeElement !== wrap) wrap.focus({ preventScroll: true });
@@ -660,6 +671,7 @@ function paintBlock(wrap) {
     }),
   );
   wrap.classList.toggle("pp-table-block", !!box);
+  paintHandles(wrap);
 }
 
 // `report`: also tell the Ask box the block is gone (not when the focus merely left the table —
@@ -700,6 +712,24 @@ function clearCells(wrap) {
   const b = blockBox(wrap._sel);
   const empty = blockValues(wrap).map((line) => line.map(() => ""));
   writeCells(wrap, b.top, b.left, empty);
+}
+
+const span = (a, b) => Array.from({ length: b - a + 1 }, (_, i) => a + i);
+
+// Delete / Backspace on a selection: picked rows / columns go (Python decides what that means:
+// the header's place is taken by the next row; deleting all of them removes the table), a block of
+// cells is emptied.
+function deleteBlock(wrap) {
+  const sel = wrap._sel;
+  if (!sel) return;
+  const b = blockBox(sel);
+  if (sel.kind === "row" || sel.kind === "col") {
+    const op = sel.kind === "row" ? { op: "delete_rows", rows: span(b.top, b.bottom) } : { op: "delete_cols", cols: span(b.left, b.right) };
+    clearBlock(wrap);
+    sendOp(wrap, op);
+    return;
+  }
+  clearCells(wrap);
 }
 
 // The copied block is a table wherever it is pasted: text/html holds a <table> (Smart Paste turns
@@ -762,11 +792,14 @@ function onBlockKey(e, wrap) {
     focusCell(wrap, sel.r0, sel.c0);
   } else if (e.key === "Delete" || e.key === "Backspace") {
     e.preventDefault();
-    clearCells(wrap);
+    deleteBlock(wrap);
   } else if (arrows[e.key] && e.shiftKey) {
     e.preventDefault();
     const [dr, dc] = arrows[e.key];
-    selectBlock(wrap, sel.r0, sel.c0, sel.r1 + dr, sel.c1 + dc);
+    // whole rows grow up / down, whole columns left / right; anything else makes a block of cells
+    if (sel.kind === "row" && dr) selectBlock(wrap, sel.r0, sel.c0, sel.r1 + dr, sel.c1, "row");
+    else if (sel.kind === "col" && dc) selectBlock(wrap, sel.r0, sel.c0, sel.r1, sel.c1 + dc, "col");
+    else selectBlock(wrap, sel.r0, sel.c0, sel.r1 + dr, sel.c1 + dc);
     reportBlock(wrap);
   } else if (arrows[e.key] || e.key === "Enter" || e.key === "Tab") {
     e.preventDefault();
@@ -843,7 +876,9 @@ function reportCellText(wrap, td, input) {
   reportSelection(view, cell.from + at[start], cell.from + at[end], { left: r.left, top: r.top, bottom: r.bottom });
 }
 
-const inAskBox = (el) => !!(el && el.closest && el.closest(".pp-askpop"));
+// the Ask box, or the formatting menu its Format button opens (its Copy / Cut / Delete are for
+// the block, so the block stays selected while it is open)
+const inAskBox = (el) => !!(el && el.closest && el.closest(".pp-askpop, .pp-fmenu"));
 
 // The Ask box took the focus to ask about a selection in this table: the block stays painted
 // until the user goes on elsewhere (a click or the focus outside the box).
@@ -852,7 +887,8 @@ function keepForAskBox(wrap, done = () => clearBlock(wrap, false)) {
     if (inAskBox(e.target)) return;
     document.removeEventListener("mousedown", away, true);
     document.removeEventListener("focusin", away, true);
-    if (!wrap.contains(e.target)) done(); // a click in the table handles itself
+    // a click in the table (or on its row / column grips) handles itself
+    if (!wrap.contains(e.target) && !(e.target.closest && e.target.closest(".pp-thandles"))) done();
   };
   document.addEventListener("mousedown", away, true);
   document.addEventListener("focusin", away, true);
@@ -929,6 +965,302 @@ function startResize(wrap, col, x0) {
     (editorContext.tableWidths[rt.notePath] ??= {})[key] = rounded;
     rt.emit("table_widths", { path: rt.notePath, key, widths: rounded });
     measureAgain(view); // rows may wrap to more lines now
+  };
+  document.addEventListener("mousemove", move, true);
+  document.addEventListener("mouseup", up, true);
+}
+
+// ---- the selected block from outside the table (the Ask box, the formatting menu) --------------
+// With the AI on, the Ask box opens over a block a moment after it is selected and takes the
+// focus. The keys and edit items meant for the block come back here (askpop.js, `clipboard` in
+// index.js): copy / cut / paste give the table the focus before the browser acts, Delete goes to
+// `deleteBlock`.
+
+function selectedBlock(root = document) {
+  for (const w of root.querySelectorAll(".pp-table-edit.pp-table-block")) if (w._sel && w.isConnected) return w;
+  return null;
+}
+
+// `op`: copy / cut / paste / delete. True when a block was there to take it. Copy and cut go
+// through the browser's own copy (`copyBlock` fills the clipboard); paste reads the clipboard.
+export async function blockClipboard(op, root = document) {
+  const wrap = selectedBlock(root);
+  if (!wrap) return false;
+  wrap.focus({ preventScroll: true });
+  if (op === "copy" || op === "cut") {
+    // with no text selected the browser's copy event goes to <body>, not to the table: catch it
+    // there for this one copy (a cut is a copy, then the cells are emptied)
+    const once = (e) => copyBlock(e, wrap, op === "cut");
+    document.addEventListener("copy", once, true);
+    try {
+      document.execCommand("copy");
+    } finally {
+      document.removeEventListener("copy", once, true);
+    }
+  } else if (op === "delete") {
+    deleteBlock(wrap);
+  } else if (op === "paste") {
+    let text = "";
+    try {
+      text = await navigator.clipboard.readText();
+    } catch (_) {
+      return true; // no clipboard access here: Ctrl+V into the table still works
+    }
+    if (!text) return true;
+    const b = blockBox(wrap._sel);
+    sendOp(wrap, { op: "paste", row: b.top, col: b.left, text });
+  }
+  return true;
+}
+
+window.ppTableBlock = {
+  // Ctrl+C / X / V in the Ask box: the table takes the focus now, the browser then acts on it
+  focus() {
+    const wrap = selectedBlock();
+    if (wrap) wrap.focus({ preventScroll: true });
+    return !!wrap;
+  },
+  run: (op) => blockClipboard(op),
+  active: () => !!selectedBlock(),
+};
+
+// ---- row and column handles, + between rows / columns (user 2026-11-26) -----------------------
+// Over the table the pointer's row gets a grip at the table's left edge and its column one on the
+// top edge. Click a grip: that row / column is selected (Shift+click: up to it); then Delete or
+// Backspace removes it, Copy copies it. Drag a grip: the row / column moves where the line shows.
+// Near the line between two rows (at the left edge) or two columns (at the top edge) a + appears
+// that inserts one there. One overlay per editor, in the editor's own box (the table's box clips
+// what sticks out of it); it follows the pointer and hides on scroll.
+
+const GRIP_ZONE_X = 34; // px left of the table's left edge where its row grips stay shown
+const GRIP_ZONE_Y = 28; // px above the table's top edge where its column grips stay shown
+const PLUS_SNAP = 8; // px from a row / column line where its + appears
+const DRAG_PX = 4; // a grip moved further than this is a drag, not a click
+
+function installHandles(view) {
+  const host = view.dom;
+  if (host._ppHandles) return;
+  const layer = el("div", "pp-thandles");
+  const button = (cls, icon, tip) => {
+    const b = el("button", `pp-thandle ${cls}`);
+    b.type = "button";
+    b.tabIndex = -1;
+    b.innerHTML = window.ppIconSvg?.(icon, "s") ?? "";
+    b.dataset.tip = tip;
+    layer.appendChild(b);
+    return b;
+  };
+  const h = {
+    layer,
+    rowGrip: button("pp-thandle-row", "grip-vertical", "Click to select row · drag to move"),
+    colGrip: button("pp-thandle-col", "grip-horizontal", "Click to select column · drag to move"),
+    rowPlus: button("pp-thandle-plus", "plus", "Insert row here"),
+    colPlus: button("pp-thandle-plus", "plus", "Insert column here"),
+    line: layer.appendChild(el("div", "pp-thandle-line")),
+    wrap: null,
+    row: -1,
+    col: -1,
+    rowAt: -1, // where the row + inserts (grid index), or -1
+    colAt: -1,
+    drag: null,
+  };
+  host._ppHandles = h;
+  host.appendChild(layer);
+  hideHandles(h);
+
+  host.addEventListener("mousemove", (e) => {
+    if (!h.drag) trackHandles(h, host, e);
+  });
+  host.addEventListener("mouseleave", () => {
+    if (!h.drag) hideHandles(h);
+  });
+  view.scrollDOM.addEventListener("scroll", () => {
+    if (!h.drag) hideHandles(h);
+  }, { passive: true });
+
+  const plus = (b, which) => {
+    b.addEventListener("mouseenter", () => showLine(h, which, which === "row" ? h.rowAt : h.colAt));
+    b.addEventListener("mouseleave", () => (h.line.style.display = "none"));
+    b.addEventListener("mousedown", (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      const wrap = h.wrap;
+      if (!wrap || !wrap.isConnected) return;
+      commitActive(wrap);
+      clearBlock(wrap);
+      if (which === "row" && h.rowAt >= 1) {
+        focusTableCell(h.rowAt, 0);
+        sendOp(wrap, { op: "insert_row", at: h.rowAt });
+      } else if (which === "col" && h.colAt >= 0) {
+        focusTableCell(0, h.colAt);
+        sendOp(wrap, { op: "insert_col", at: h.colAt });
+      }
+      hideHandles(h);
+    });
+  };
+  plus(h.rowPlus, "row");
+  plus(h.colPlus, "col");
+  h.rowGrip.addEventListener("mousedown", (e) => startGrip(h, host, e, "row"));
+  h.colGrip.addEventListener("mousedown", (e) => startGrip(h, host, e, "col"));
+}
+
+function hideHandles(h) {
+  for (const b of [h.rowGrip, h.colGrip, h.rowPlus, h.colPlus, h.line]) b.style.display = "none";
+  h.wrap = null;
+  h.row = h.col = h.rowAt = h.colAt = -1;
+}
+
+// the rows' and columns' edges on screen: `rows[i] = [top, bottom]`, `cols[j] = [left, right]`
+function tableEdges(wrap) {
+  const rows = wrap._cells.map((line) => {
+    const r = line[0].getBoundingClientRect();
+    return [r.top, r.bottom];
+  });
+  const cols = wrap._cells[0].map((td) => {
+    const r = td.getBoundingClientRect();
+    return [r.left, r.right];
+  });
+  return { rows, cols };
+}
+
+const place = (node, host, x, y) => {
+  node.style.display = "";
+  node.style.left = `${x - host.left}px`;
+  node.style.top = `${y - host.top}px`;
+};
+
+function trackHandles(h, host, e) {
+  if (e.target.closest && e.target.closest(".pp-thandles")) return; // on a handle: it stays put
+  const x = e.clientX;
+  const y = e.clientY;
+  let wrap = null;
+  let box = null;
+  for (const w of host.querySelectorAll(".pp-table-edit")) {
+    const t = w.querySelector("table");
+    const r = t && t.getBoundingClientRect();
+    if (r && x >= r.left - GRIP_ZONE_X && x <= r.right + 4 && y >= r.top - GRIP_ZONE_Y && y <= r.bottom + 4) {
+      wrap = w;
+      box = r;
+      break;
+    }
+  }
+  if (!wrap || !wrap._cells || wrap._resizing) return hideHandles(h);
+  const hb = host.getBoundingClientRect();
+  const { rows, cols } = tableEdges(wrap);
+  const nearest = (edges, v) => {
+    const i = edges.findIndex(([a, b]) => v >= a && v <= b);
+    return i >= 0 ? i : v < edges[0][0] ? 0 : edges.length - 1;
+  };
+  h.wrap = wrap;
+  h.row = nearest(rows, y);
+  h.col = nearest(cols, x);
+  const [rt, rb] = rows[h.row];
+  const [cl, cr] = cols[h.col];
+  // the grips leave the lines free at both ends, for the + there
+  h.rowGrip.style.height = `${Math.max(10, Math.min(22, rb - rt - 2 * PLUS_SNAP))}px`;
+  h.colGrip.style.width = `${Math.max(10, Math.min(22, cr - cl - 2 * PLUS_SNAP))}px`;
+  place(h.rowGrip, hb, box.left - 1, (rt + rb) / 2);
+  place(h.colGrip, hb, (cl + cr) / 2, box.top - 1);
+  // a + on the line between two rows (not above the header: a table starts with it)
+  h.rowAt = -1;
+  if (x <= box.left + GRIP_ZONE_X) {
+    for (let k = 1; k <= rows.length; k++) {
+      const line = k < rows.length ? rows[k][0] : rows[k - 1][1];
+      if (Math.abs(y - line) <= PLUS_SNAP) h.rowAt = k;
+    }
+  }
+  if (h.rowAt >= 1) place(h.rowPlus, hb, box.left - 22, h.rowAt < rows.length ? rows[h.rowAt][0] : rows[rows.length - 1][1]);
+  else h.rowPlus.style.display = "none";
+  h.colAt = -1;
+  if (y <= box.top + GRIP_ZONE_Y) {
+    for (let k = 0; k <= cols.length; k++) {
+      const line = k < cols.length ? cols[k][0] : cols[k - 1][1];
+      if (Math.abs(x - line) <= PLUS_SNAP) h.colAt = k;
+    }
+  }
+  if (h.colAt >= 0) place(h.colPlus, hb, h.colAt < cols.length ? cols[h.colAt][0] : cols[cols.length - 1][1], box.top - 20);
+  else h.colPlus.style.display = "none";
+  if (h.line.dataset.kind !== "drag") h.line.style.display = "none";
+  paintHandles(wrap);
+}
+
+// the guide line where a row / column would go: row line `at` (grid index of the row that will be
+// there) or column line `at`
+function showLine(h, which, at) {
+  const wrap = h.wrap;
+  if (!wrap || at < 0) return;
+  const host = wrap._view.dom.getBoundingClientRect();
+  const table = wrap.querySelector("table").getBoundingClientRect();
+  const { rows, cols } = tableEdges(wrap);
+  const s = h.line.style;
+  s.display = "";
+  if (which === "row") {
+    const y = at < rows.length ? rows[at][0] : rows[rows.length - 1][1];
+    Object.assign(s, { left: `${table.left - host.left}px`, top: `${y - host.top - 1}px`, width: `${table.width}px`, height: "2px" });
+  } else {
+    const x = at < cols.length ? cols[at][0] : cols[cols.length - 1][1];
+    Object.assign(s, { left: `${x - host.left - 1}px`, top: `${table.top - host.top}px`, width: "2px", height: `${table.height}px` });
+  }
+}
+
+// the grips of picked rows / columns are drawn picked
+function paintHandles(wrap) {
+  const h = wrap._view && wrap._view.dom._ppHandles;
+  if (!h || h.wrap !== wrap) return;
+  const sel = wrap._sel;
+  const b = sel && blockBox(sel);
+  h.rowGrip.classList.toggle("pp-thandle-on", !!b && sel.kind === "row" && h.row >= b.top && h.row <= b.bottom);
+  h.colGrip.classList.toggle("pp-thandle-on", !!b && sel.kind === "col" && h.col >= b.left && h.col <= b.right);
+}
+
+function startGrip(h, host, e, which) {
+  if (e.button !== 0) return;
+  e.preventDefault();
+  e.stopPropagation();
+  const wrap = h.wrap;
+  if (!wrap || !wrap.isConnected) return;
+  commitActive(wrap);
+  const from = which === "row" ? h.row : h.col;
+  const R = wrap._cells.length;
+  const C = wrap._cells[0].length;
+  const x0 = e.clientX;
+  const y0 = e.clientY;
+  const pick = (a, b) => (which === "row" ? selectBlock(wrap, a, 0, b, C - 1, "row") : selectBlock(wrap, 0, a, R - 1, b, "col"));
+  let target = -1; // the line the row / column is dropped on (grid index), during a drag
+  const move = (ev) => {
+    if (!h.drag && Math.hypot(ev.clientX - x0, ev.clientY - y0) <= DRAG_PX) return;
+    if (!h.drag) {
+      h.drag = which;
+      h.line.dataset.kind = "drag";
+      document.body.classList.add("pp-tdragging");
+      pick(from, from);
+    }
+    const { rows, cols } = tableEdges(wrap);
+    const edges = which === "row" ? rows : cols;
+    const v = which === "row" ? ev.clientY : ev.clientX;
+    target = edges.filter(([a, b]) => v > (a + b) / 2).length; // lines above / left of the pointer
+    showLine(h, which, target);
+  };
+  const up = () => {
+    document.removeEventListener("mousemove", move, true);
+    document.removeEventListener("mouseup", up, true);
+    document.body.classList.remove("pp-tdragging");
+    h.line.dataset.kind = "";
+    h.line.style.display = "none";
+    if (!h.drag) {
+      // a click: the row / column is picked (Shift: from the one picked before)
+      const sel = wrap._sel;
+      const anchor = e.shiftKey && sel && sel.kind === which ? (which === "row" ? sel.r0 : sel.c0) : from;
+      pick(anchor, from);
+      reportBlock(wrap);
+      return;
+    }
+    h.drag = null;
+    const to = target > from ? target - 1 : target;
+    if (target < 0 || to === from) return;
+    sendOp(wrap, which === "row" ? { op: "move_row", row: from, to } : { op: "move_col", col: from, to });
+    pick(to, to); // the same shape: the table is patched in place and the moved one stays picked
+    hideHandles(h);
   };
   document.addEventListener("mousemove", move, true);
   document.addEventListener("mouseup", up, true);

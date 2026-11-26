@@ -1652,6 +1652,8 @@ class EditorPane:
             result = apply_op(text[start:end], op)
             if result is None or result.text == text[start:end]:
                 return
+            if not result.text and text[end : end + 1] == "\n":
+                end += 1  # every row / column deleted: the table's lines go, not just its text
             edit = TextEdit((TextChange(start, end, result.text),), start)
             await self._apply_edit(tab_id, text, edit, move_caret=False)
 

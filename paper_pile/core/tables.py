@@ -41,8 +41,11 @@ class Table:
 
 @dataclass(frozen=True, slots=True)
 class TableResult:
-    text: str
+    text: str  # "" when the action removed the whole table (every row or column deleted)
     focus: tuple[int, int]  # (row, col) to put the cursor in afterwards; row 0 is the header
+
+
+_REMOVED = (-1, -1)  # an operation's answer: the table is gone
 
 
 # ---- parsing ---------------------------------------------------------------------------------
@@ -201,6 +204,8 @@ def apply_op(text: str, op: dict[str, Any]) -> TableResult | None:
     if focus is None:
         log.warning("ignored table operation %r", op)
         return None
+    if focus == _REMOVED:
+        return TableResult("", (0, 0))
     return TableResult(format_table(table), focus)
 
 
@@ -270,11 +275,68 @@ def _op_delete_row(t: Table, op: dict[str, Any]) -> tuple[int, int] | None:
 
 
 def _op_move_row(t: Table, op: dict[str, Any]) -> tuple[int, int] | None:
+    """Row ``row`` (grid index, 0 = header) moves to index ``to``. A row moved to the top
+    becomes the header and the old header the first body row (the grid is one list)."""
     row, to = _int(op, "row"), _int(op, "to")
-    if row is None or to is None or not (1 <= row <= len(t.rows) and 1 <= to <= len(t.rows)):
+    last = len(t.rows)
+    if row is None or to is None or not (0 <= row <= last and 0 <= to <= last):
         return None
-    t.rows.insert(to - 1, t.rows.pop(row - 1))
+    grid = t.grid()
+    grid.insert(to, grid.pop(row))
+    t.header, t.rows = grid[0], grid[1:]
     return to, 0
+
+
+def _op_move_col(t: Table, op: dict[str, Any]) -> tuple[int, int] | None:
+    """Column ``col`` moves to index ``to``; its alignment goes with it."""
+    col, to = _int(op, "col"), _int(op, "to")
+    if col is None or to is None or not (0 <= col < t.columns and 0 <= to < t.columns):
+        return None
+    for line in (t.aligns, *t.grid()):
+        line.insert(to, line.pop(col))
+    return 0, to
+
+
+def _indices(op: dict[str, Any], key: str, size: int) -> list[int] | None:
+    """A list of distinct in-range indices under ``key``, highest first (deleting from the end
+    keeps the others in place); None if the list is missing, empty or holds anything else."""
+    values = op.get(key)
+    if not isinstance(values, list) or not values:
+        return None
+    out: set[int] = set()
+    for v in values:
+        if not isinstance(v, int) or isinstance(v, bool) or not 0 <= v < size:
+            return None
+        out.add(v)
+    return sorted(out, reverse=True)
+
+
+def _op_delete_rows(t: Table, op: dict[str, Any]) -> tuple[int, int] | None:
+    """Selected rows go (grid indices; 0 = the header, whose place the next row left takes).
+    Every row deleted: the table goes."""
+    grid = t.grid()
+    rows = _indices(op, "rows", len(grid))
+    if rows is None:
+        return None
+    if len(rows) == len(grid):
+        return _REMOVED
+    for r in rows:
+        del grid[r]
+    t.header, t.rows = grid[0], grid[1:]
+    return min(rows[-1], len(grid) - 1), 0
+
+
+def _op_delete_cols(t: Table, op: dict[str, Any]) -> tuple[int, int] | None:
+    """Selected columns go. Every column deleted: the table goes."""
+    cols = _indices(op, "cols", t.columns)
+    if cols is None:
+        return None
+    if len(cols) == t.columns:
+        return _REMOVED
+    for c in cols:
+        for line in (t.aligns, *t.grid()):
+            del line[c]
+    return 0, min(cols[-1], t.columns - 1)
 
 
 def _op_insert_col(t: Table, op: dict[str, Any]) -> tuple[int, int] | None:
@@ -313,6 +375,9 @@ _OPS = {
     "insert_row": _op_insert_row,
     "delete_row": _op_delete_row,
     "move_row": _op_move_row,
+    "move_col": _op_move_col,
+    "delete_rows": _op_delete_rows,
+    "delete_cols": _op_delete_cols,
     "insert_col": _op_insert_col,
     "delete_col": _op_delete_col,
     "align": _op_align,

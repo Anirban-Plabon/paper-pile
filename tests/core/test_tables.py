@@ -141,6 +141,52 @@ def test_move_row() -> None:
     assert values(text)[1:] == [["3", "4"], ["1", "2"]] and focus == (1, 0)
 
 
+def test_move_row_to_and_from_the_header() -> None:
+    text, focus = run(SIMPLE, op="move_row", row=2, to=0)
+    assert values(text) == [["3", "4"], ["a", "b"], ["1", "2"]] and focus == (0, 0)
+    text, focus = run(SIMPLE, op="move_row", row=0, to=2)
+    assert values(text) == [["1", "2"], ["3", "4"], ["a", "b"]] and focus == (2, 0)
+
+
+def test_move_column_takes_its_alignment() -> None:
+    aligned = "| a | b | c |\n| :-- | --: | :-: |\n| 1 | 2 | 3 |"
+    text, focus = run(aligned, op="move_col", col=0, to=2)
+    t = parse_table(text)
+    assert t is not None and focus == (0, 2)
+    assert t.grid() == [["b", "c", "a"], ["2", "3", "1"]]
+    assert t.aligns == ["right", "center", "left"]
+    text, _ = run(aligned, op="move_col", col=2, to=0)
+    assert values(text)[0] == ["c", "a", "b"]
+
+
+def test_delete_several_rows() -> None:
+    text, focus = run(SIMPLE, op="delete_rows", rows=[1, 2])
+    assert values(text) == [["a", "b"]] and focus == (0, 0)
+    text, focus = run(SIMPLE, op="delete_rows", rows=[2])
+    assert values(text) == [["a", "b"], ["1", "2"]] and focus == (1, 0)
+
+
+def test_deleting_the_header_row_promotes_the_next_row() -> None:
+    text, focus = run(SIMPLE, op="delete_rows", rows=[0])
+    assert values(text) == [["1", "2"], ["3", "4"]] and focus == (0, 0)
+
+
+def test_delete_several_columns() -> None:
+    wide = "| a | b | c |\n| --- | :-: | --- |\n| 1 | 2 | 3 |"
+    text, focus = run(wide, op="delete_cols", cols=[0, 2])
+    t = parse_table(text)
+    assert t is not None and t.grid() == [["b"], ["2"]] and t.aligns == ["center"]
+    assert focus == (0, 0)
+
+
+@pytest.mark.parametrize(
+    "op", [{"op": "delete_rows", "rows": [0, 1, 2]}, {"op": "delete_cols", "cols": [1, 0]}]
+)
+def test_deleting_every_row_or_column_removes_the_table(op: dict[str, object]) -> None:
+    result = apply_op(SIMPLE, op)
+    assert result is not None and result.text == ""
+
+
 def test_insert_and_delete_columns() -> None:
     text, focus = run(SIMPLE, op="insert_col", at=1)
     assert values(text) == [["a", "", "b"], ["1", "", "2"], ["3", "", "4"]] and focus == (0, 1)
@@ -170,8 +216,16 @@ def test_align_column() -> None:
         {"op": "insert_row", "at": 9},
         {"op": "delete_row", "row": 0},  # the header stays
         {"op": "delete_row", "row": 9},
-        {"op": "move_row", "row": 0, "to": 1},
+        {"op": "move_row", "row": 0, "to": 3},
         {"op": "move_row", "row": 1, "to": 5},
+        {"op": "move_col", "col": 0, "to": 2},
+        {"op": "move_col", "col": -1, "to": 0},
+        {"op": "delete_rows", "rows": []},
+        {"op": "delete_rows", "rows": [1, 9]},
+        {"op": "delete_rows", "rows": [True]},
+        {"op": "delete_rows", "rows": 1},
+        {"op": "delete_cols", "cols": [2]},
+        {"op": "delete_cols", "cols": ["0"]},
         {"op": "insert_col", "at": -1},
         {"op": "delete_col", "col": 7},
         {"op": "align", "col": 0, "align": "diagonal"},
@@ -231,9 +285,12 @@ def test_random_operations_keep_a_valid_table() -> None:
                 },
                 {
                     "op": "move_row",
-                    "row": rng.randint(1, max(1, rows)),
-                    "to": rng.randint(1, max(1, rows)),
+                    "row": rng.randint(0, rows),
+                    "to": rng.randint(0, rows),
                 },
+                {"op": "move_col", "col": rng.randrange(cols), "to": rng.randrange(cols)},
+                {"op": "delete_rows", "rows": [rng.randint(1, max(1, rows))]},
+                {"op": "delete_cols", "cols": [rng.randrange(cols)] if cols > 1 else [9]},
             ]
         )
         result = apply_op(text, op)

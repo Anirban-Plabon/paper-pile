@@ -24,7 +24,7 @@ import { closeSlash, setSlashResults, slashExtension, slashForSelection } from "
 import { editorHasSelection, formatKeyFor, formatKeys, formatKind } from "./formatkeys.js";
 import { addCommentWindow } from "./comments.js";
 import { colorShortcutExt, colorSpans } from "./colorspan.js";
-import { focusTableCell, tableKeys } from "./tablewidget.js";
+import { blockClipboard, focusTableCell, tableKeys } from "./tablewidget.js";
 import { streamAppend, streamBegin, streamEnd, streamField } from "./stream.js";
 import { proposalExtension, showLiveText, showProposal } from "./proposal.js";
 import { askAbout, markTarget, selectPopup, settlePopup } from "./selectpopup.js";
@@ -581,6 +581,8 @@ export function createEditor(
     // The formatting menu's edit items (PLAN §4.38) on `from`..`to`: cut / copy / paste / delete.
     // Paste goes the way Ctrl+V does (Python's paste handling), as plain text.
     async clipboard(op, from, to) {
+      // a block of table cells is selected: the items are for its cells (or picked rows / columns)
+      if (await blockClipboard(op, view.dom)) return true;
       const max = view.state.doc.length;
       const a = Math.max(0, Math.min(from, max));
       const b = Math.max(a, Math.min(to, max));

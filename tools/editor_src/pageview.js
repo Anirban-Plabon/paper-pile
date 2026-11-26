@@ -275,6 +275,9 @@ const sizer = ViewPlugin.fromClass(
   },
 );
 
+// Is a table in this editor being edited (a cell's input or a selected block has the focus)?
+const tableBeingEdited = (view) => !!view.dom.querySelector(".pp-table-edit:focus-within");
+
 // Asks for a layout after each pause in typing and applies the answer.
 const controller = ViewPlugin.fromClass(
   class {
@@ -285,6 +288,7 @@ const controller = ViewPlugin.fromClass(
       this.frames = {}; // "main", "probe": hidden frames the print page is laid out in
       this.probes = new Map(); // seq → resolve, for trial layouts (probe)
       this.pagesBefore = null; // a page break was dragged: the page count before it
+      this.held = null; // while a table is edited: removes the focus listener that ends the hold
       this.schedule(50);
     }
     update(u) {
@@ -305,11 +309,31 @@ const controller = ViewPlugin.fromClass(
       this.timer = setTimeout(() => this.request(), ms);
     }
     request() {
+      if (tableBeingEdited(this.view)) return this.holdForTable();
       const { state } = this.view;
       const rt = rtOf(state);
       const seq = ++seqCounter;
       this.pending = { seq, doc: state.doc, changes: ChangeSet.empty(state.doc.length) };
       rt.emit("print_layout", { docId: rt.getDocId(), seq, text: state.doc.toString() });
+    }
+    // A table cell is being typed in (or a block of cells is selected): no new layout until the
+    // focus leaves the table, so the table never jumps to another page while it is edited (each
+    // committed cell rewrites the table, and a new layout could move its page start).
+    holdForTable() {
+      if (this.held) return;
+      const dom = this.view.dom;
+      const check = () =>
+        setTimeout(() => {
+          if (!this.held || tableBeingEdited(this.view)) return;
+          this.releaseHold();
+          this.schedule(LAYOUT_DELAY_MS);
+        }, 0);
+      dom.addEventListener("focusout", check, true);
+      this.held = () => dom.removeEventListener("focusout", check, true);
+    }
+    releaseHold() {
+      if (this.held) this.held();
+      this.held = null;
     }
     // A trial layout of `text` (not shown): its pages `[{ page, line }]`, or null.
     probe(text) {
@@ -342,6 +366,12 @@ const controller = ViewPlugin.fromClass(
       }
       const pending = this.pending;
       if (!pending || pending.seq !== seq) return;
+      if (tableBeingEdited(this.view)) {
+        // typing in a table started meanwhile: the table must not move to another page under the
+        // caret; this answer is dropped and a new layout made once the table is left
+        this.pending = null;
+        return this.holdForTable();
+      }
       const starts = pages
         .filter((p) => p.page > 1 && p.line > 0 && p.line <= pending.doc.lines)
         .map((p) => ({ pos: pending.changes.mapPos(pending.doc.line(p.line).from, -1), page: p.page }));
@@ -387,6 +417,7 @@ const controller = ViewPlugin.fromClass(
     }
     destroy() {
       clearTimeout(this.timer);
+      this.releaseHold();
       Object.values(this.frames).forEach((f) => f.remove());
       this.probes.forEach((resolve) => resolve(null));
     }

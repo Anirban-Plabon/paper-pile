@@ -178,6 +178,12 @@ class AskPopup:
                     fmt.props("round flat dense").classes("pp-askpop-tool pp-askpop-format")
                     tip(fmt, "Format")
                     self._format_btn = fmt
+                    # Copy (user 2026-11-26): the selection, or a selected block of table cells
+                    # (static/askpop.js; copying needs the browser's own copy, so no round trip)
+                    copy = ui.button(icon=ico("copy"), color=None)
+                    copy.on("click", js_handler="() => window.ppAskCopy && window.ppAskCopy()")
+                    copy.props("round flat dense").classes("pp-askpop-tool pp-askpop-copy")
+                    tip(copy, "Copy")
                     # chat bubble + arrow (own icons, tools/editor_src/build_icons.mjs):
                     # up while the box holds a conversation, down while it holds only the selection
                     chat = ui.button(icon=ico(CHAT_ICON[False]), color=None)

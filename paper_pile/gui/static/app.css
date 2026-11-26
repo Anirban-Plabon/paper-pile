@@ -625,6 +625,18 @@ html.pp-tab-dragging .pp-tab-active:hover, html.pp-tab-dragging .pp-tab-shown:ho
 .pp-tmenu-item:hover { background: rgba(var(--pp-accent-rgb), .14); }
 .pp-tmenu-sep { height: 1px; margin: 4px 2px; background: var(--pp-border); }
 .pp-table-edit th { text-align: left; }
+/* row / column grips and the + between rows / columns (tablewidget.js, user 2026-11-26): one
+   overlay per editor, placed by JS centred on the point it is given */
+.pp-thandles { position: absolute; inset: 0; pointer-events: none; z-index: 6; overflow: visible; }
+.pp-thandle { position: absolute; pointer-events: auto; transform: translate(-50%, -50%); display: inline-flex; align-items: center; justify-content: center; padding: 0; margin: 0; border: 1px solid var(--pp-border); background: var(--pp-bg); color: var(--pp-muted); border-radius: var(--pp-r-sm); cursor: grab; font: inherit; line-height: 1; box-shadow: 0 1px 3px rgba(0, 0, 0, .08); transition: background-color var(--pp-dur-fast), color var(--pp-dur-fast), border-color var(--pp-dur-fast); }
+.pp-thandle svg { flex: none; width: 12px; height: 12px; }
+.pp-thandle-row { width: 14px; height: 22px; }  /* height / width set by JS: never over a row / column line */
+.pp-thandle-col { width: 22px; height: 14px; }
+.pp-thandle-plus { width: 18px; height: 18px; border-radius: 50%; cursor: pointer; }
+.pp-thandle:hover, .pp-thandle-on { color: var(--pp-accent); border-color: rgb(var(--pp-accent-rgb)); background: color-mix(in srgb, var(--pp-bg) 86%, rgb(var(--pp-accent-rgb))); }
+.pp-thandle-on { color: #fff; background: rgb(var(--pp-accent-rgb)); }
+.pp-thandle-line { position: absolute; pointer-events: none; background: rgb(var(--pp-accent-rgb)); border-radius: 1px; }
+.pp-tdragging, .pp-tdragging * { cursor: grabbing !important; user-select: none; }
 
 /* image resize handle (P5.3) */
 .pp-image { position: relative; }
@@ -1811,7 +1823,7 @@ body.body--dark .pp-aidiff-chip-warn { color: #e3b341; }
    the composer's card with Move to chat beside it (box), grown into a small floating chat (chat),
    or dissolved while the AI rewrites the text (gone). askpop.js sets left / top; it lives in
    <body> (ui.teleport). */
-.pp-askpop { --pp-askpop-tint: var(--pp-bg); --pp-askpop-line: var(--pp-border); --pp-askpop-full: 480px; position: fixed; z-index: 3000; left: 0; top: 0; width: min(361px, calc(100vw - 12px));  /* the card (251) + 6 + the tools chip (82), user 2026-11-20 */ padding: 10px; border: 1px solid transparent; display: flex; flex-direction: column; gap: 6px; font-family: Roboto, -apple-system, "Helvetica Neue", Helvetica, Arial, sans-serif; color: var(--pp-fg); }
+.pp-askpop { --pp-askpop-tint: var(--pp-bg); --pp-askpop-line: var(--pp-border); --pp-askpop-full: 480px; position: fixed; z-index: 3000; left: 0; top: 0; width: min(395px, calc(100vw - 12px));  /* the card (251) + 6 + the tools chip (116), user 2026-11-20 / 26 */ padding: 10px; border: 1px solid transparent; display: flex; flex-direction: column; gap: 6px; font-family: Roboto, -apple-system, "Helvetica Neue", Helvetica, Arial, sans-serif; color: var(--pp-fg); }
 /* the small box: its card + Move to chat as wide as the editor's / menu (320 px, user 2026-11-06) */
 .pp-askpop-box { animation: pp-pop var(--pp-dur) var(--pp-ease); }
 .pp-askpop-bottom { width: 100%; flex: none; gap: 6px; }
@@ -1845,9 +1857,10 @@ body.body--dark .pp-aidiff-chip-warn { color: #e3b341; }
 .pp-askpop .pp-chat-multi .pp-askpop-row { grid-template-areas: "plus input input" ". . send"; }
 .pp-askpop textarea::placeholder { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .pp-askpop-chip { align-self: start; line-height: 34px; padding-left: 6px; font-size: 13.5px; font-weight: 600; white-space: nowrap; color: var(--pp-accent); }
-/* Format + Move to chat as one chip (user 2026-11-20): as tall as the card (48 px) with its
-   24 px corners, 6 px around its two 34 px round buttons; in the mini chat only Move to chat */
-.pp-askpop { --pp-askpop-tools: 82px; }
+/* Format + Copy + Move to chat as one chip (user 2026-11-20, Copy 2026-11-26): as tall as the
+   card (48 px) with its 24 px corners, 6 px around its three 34 px round buttons; in the mini
+   chat only Move to chat */
+.pp-askpop { --pp-askpop-tools: 116px; }
 .pp-askpop-chat { --pp-askpop-tools: 48px; }
 .pp-askpop-tools { flex: none; gap: 0; height: 48px; padding: 0 6px; border-radius: 24px; background: var(--pp-askpop-tint); border: 1px solid var(--pp-askpop-line); box-shadow: 0 4px 16px rgba(0, 0, 0, .12); }
 .pp-askpop-tool.q-btn { flex: none; width: 34px; height: 34px; min-width: 34px; min-height: 0; padding: 0; color: var(--pp-fg); }
@@ -2378,7 +2391,9 @@ body.body--dark { --pp-cmt-red: #ff6b6b; --pp-cmt-yellow: #f2c94c; --pp-cmt-gree
 
 /* The formatting menu (components/format_menu.py, static/formatmenu.js; PLAN §4.38): the look of
    the other popup menus — icon, label, a muted markdown hint on the right */
-.pp-askpop-chat .pp-askpop-format { display: none; }  /* the mini chat is about a question, not the words' look */
+.pp-askpop-chat .pp-askpop-format, .pp-askpop-chat .pp-askpop-copy { display: none; }  /* the mini chat is about a question, not the words' look */
+.pp-askpop.pp-askpop-box[data-pp-table="1"] { --pp-askpop-tools: 82px; width: min(361px, calc(100vw - 12px)); }
+.pp-askpop[data-pp-table="1"] .pp-askpop-format { display: none; }  /* a block of table cells: Copy, not text formatting */
 .pp-fmenu { position: fixed; z-index: 2600; left: -9999px; top: 0; width: 248px; max-height: min(460px, calc(100vh - var(--pp-inset-bottom, 0px) - 16px)); display: flex; flex-direction: column; padding: 6px; border: 1px solid var(--pp-border); border-radius: var(--pp-r-popup); background: var(--pp-bg); color: var(--pp-fg); box-shadow: 0 10px 30px rgba(0, 0, 0, .18); font-size: 13px; user-select: none; animation: pp-drop-in var(--pp-dur) var(--pp-ease); }
 .pp-fmenu-item { display: flex; align-items: center; gap: 10px; min-height: 32px; padding: 6px; border-radius: var(--pp-r-ctrl); cursor: pointer; flex: none; }
 .pp-fmenu-item:hover { background: rgba(127, 127, 127, .12); }

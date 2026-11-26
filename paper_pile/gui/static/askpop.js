@@ -111,6 +111,9 @@
     moved = false;
     side = null; // chosen again for this selection, once the box is shown
     const el = box();
+    // over a block of table cells the text formatting does not apply (it would wrap the table's
+    // lines): the tools chip has no Format button then (app.css, data attribute: see CLAUDE.md)
+    if (el) el.dataset.ppTable = window.ppTableBlock && window.ppTableBlock.active() ? '1' : '';
     if (el) requestAnimationFrame(() => place(el)); // the size observer places it when shown
     window.ppAskFocus();
   };
@@ -233,6 +236,20 @@
     if (c) lastEditor = c;
   }, true);
 
+  // the tools chip's Copy: the selected block of table cells, else the note's selected text (the
+  // browser's own copy, from the editor that had the selection); the box closes
+  window.ppAskCopy = function () {
+    if (window.ppTableBlock && window.ppTableBlock.active()) {
+      window.ppTableBlock.run('copy');
+    } else {
+      const editor = lastEditor && lastEditor.isConnected ? lastEditor : document.querySelector('.pp-editor .cm-content');
+      if (!editor) return;
+      if (!(window.ppFocusEditor && window.ppFocusEditor(editor))) editor.focus({ preventScroll: true });
+      document.execCommand('copy');
+    }
+    emitEvent('pp_askpop_close', {});
+  };
+
   // keys in the box: Enter sends (Shift+Enter: new line), Esc closes, the / list moves
   document.addEventListener('keydown', function (e) {
     const area = e.target && e.target.closest && e.target.closest('.pp-askpop textarea');
@@ -240,6 +257,12 @@
     const k = (e.key || '').toLowerCase();
     if ((e.ctrlKey || e.metaKey) && !e.altKey && !e.shiftKey && (k === 'c' || k === 'x' || k === 'v')
         && !area.value && box().classList.contains('pp-askpop-box')) {
+      // a block of table cells is selected (tablewidget.js): the table takes the keys; the box
+      // closes without giving the caret to the note (the block stays selected)
+      if (window.ppTableBlock && window.ppTableBlock.focus()) {
+        emitEvent('pp_askpop_close', {});
+        return;
+      }
       // nothing typed yet: copy / cut / paste are for the selected text in the note. The note
       // gets the focus now, before the browser acts, and the box closes; not prevented.
       const editor = lastEditor && lastEditor.isConnected ? lastEditor : document.querySelector('.pp-editor .cm-content');
@@ -262,7 +285,13 @@
     } else if (e.key === 'Backspace' && !area.value && shown(document.querySelector('.pp-askpop-chip'))) {
       emitEvent('pp_askpop_unchip', {});
     } else if ((e.key === 'Backspace' || e.key === 'Delete') && !area.value && box().classList.contains('pp-askpop-box')) {
-      emitEvent('pp_askpop_delete', {}); // nothing typed yet: the key is for the selected text
+      if (window.ppTableBlock && window.ppTableBlock.active()) {
+        // picked table rows / columns go, a block of cells is emptied (tablewidget.js)
+        window.ppTableBlock.run('delete');
+        emitEvent('pp_askpop_close', {});
+      } else {
+        emitEvent('pp_askpop_delete', {}); // nothing typed yet: the key is for the selected text
+      }
     } else if (e.key === 'Escape') {
       emitEvent('pp_askpop_close', { key: true });
     } else if (rows.length && (e.key === 'ArrowDown' || e.key === 'ArrowUp')) {
