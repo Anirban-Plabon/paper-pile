@@ -209,6 +209,7 @@ async def run(port: int) -> list[tuple[str, str, bool, str]]:
         await list_gap_checks(cdp, results)
         await lazy_checks(cdp, results)
         await page_break_checks(cdp, results)
+        await selection_checks(cdp, results)
         return results
 
 
@@ -448,6 +449,30 @@ async def page_break_checks(cdp: Cdp, results: list[tuple[str, str, bool, str]])
     results.append(
         ("page break", "text right under it: no longer a break", not r["widget"], repr(r))
     )
+
+
+SELECTION_JS = r"""(() => {
+  const v = qa.view();
+  v.dispatch({selection: {anchor: 0, head: v.state.doc.length}}); v.focus();
+  return new Promise((ok) => requestAnimationFrame(() => requestAnimationFrame(() => {
+    const w = [...document.querySelectorAll('.pp-split .cm-content > :not(.cm-line):not(.cm-widgetBuffer)')].find((e) => e.getBoundingClientRect().height > 10);
+    const blocks = [...document.querySelectorAll('.pp-split .pp-sel-block')].map((e) => e.getBoundingClientRect());
+    const r = w ? w.getBoundingClientRect() : null;
+    const covered = !!r && blocks.some((b) => b.top <= r.top + 1 && b.bottom >= r.bottom - 1);
+    ok({widget: !!w, blocks: blocks.length, covered});
+  })));
+})()"""
+
+
+async def selection_checks(cdp: Cdp, results: list[tuple[str, str, bool, str]]) -> None:
+    """A selection across a rendered block covers the whole block (no gap where it is)."""
+    for kind in ("table", "math", "mermaid"):
+        await cdp.js(f"qa.set({json.dumps(f'top{chr(10) * 2}{BLOCKS[kind]}{chr(10) * 2}bottom')})")
+        await asyncio.sleep(0.6)
+        r = await cdp.js(SELECTION_JS)
+        results.append(
+            (f"{kind}: selection", "band covers the block", bool(r and r["covered"]), repr(r))
+        )
 
 
 def main() -> int:

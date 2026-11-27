@@ -1171,6 +1171,7 @@ Order: security first (P23.1–P23.7), then context (P23.8–P23.12), failures (
 | P39.7 | Copy in the Format menu, not the tools chip; table menu over a block | real app: tools chip has 2 buttons; text selected → Format menu lists Copy → clipboard has the text; row picked → Format → Copy · Cut · Paste · Delete → clipboard has the row as a markdown table |
 | P39.8 | Grips as tall / wide as their row / column, outside the table; hover tint | real app (pages and off): pointer on the grip left of r3 → r3's 3 cells tinted; click → r3 picked |
 | P39.9 | Marks in pairs in the editor, chat / Ask box and table cells | node cases (`tests/js/pairs_cases.mjs`); real keys: editor `**bold**`, `==hi==`, `(a)`, wrap a selection, ``` fence + `* item` unchanged; chat, Ask box and a table cell give the same |
+| P39.10 | A selection across a rendered block (table, maths, diagram) covers the whole block, one even tint | `tools/qa_editor.py` selection checks; real-app screenshot: text → table → text selected, no gap, no darker band |
 
 ### P38 — Performance on any machine, without taking it over (user request 2026-11-23, §4.39)
 Order: measuring first (P38.1), then the foundation (P38.2–P38.3), idle and memory (P38.4–P38.5), startup (P38.6–P38.8), the UI loop (P38.9–P38.12), rendering (P38.13–P38.14), heavy work and AI (P38.15–P38.18), memory limits and settings (P38.19–P38.20), numbers (P38.21). Every task: before / after with `tools/perf_ui.py`, real-app checks on a COPY of a vault.
