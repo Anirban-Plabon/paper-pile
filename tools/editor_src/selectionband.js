@@ -5,11 +5,9 @@
 // focused), the band alone shows it: one highlight at a time. It is drawn OVER the text,
 // see-through (as the AI band): under it, real pages' sheet (the content's own background) and
 // rendered blocks with a background would hide it while the mouse is still selecting.
-// CodeMirror's rectangles skip rendered blocks (a table, code, math, an image: one replaced block
-// to the editor), so a selection across one showed a gap there and nothing said the block was in
-// it: each rendered block the selection overlaps is covered whole, edge to edge like a line.
-import { BlockType, RectangleMarker, layer } from "@codemirror/view";
-import { lineBox } from "./aiband.js";
+// Rendered blocks (a table, maths, a diagram) the selection overlaps are covered whole (aiband.js).
+import { RectangleMarker, layer } from "@codemirror/view";
+import { lineBox, renderedBlocks, withBlocks } from "./aiband.js";
 import { askBandShown } from "./selectpopup.js";
 
 export const selectionBand = layer({
@@ -28,41 +26,8 @@ export const selectionBand = layer({
         if (end > left) out.push(new RectangleMarker("pp-sel", left, m.top, end - left, m.height));
       }
     }
-    return withBlocks(out, renderedBlocks(view, box));
+    return withBlocks(out, renderedBlocks(view, view.state.selection.ranges, box, "pp-sel"));
   },
   update: (u) => u.selectionSet || u.docChanged || u.viewportChanged || u.geometryChanged || u.focusChanged || u.transactions.some((tr) => tr.effects.length),
 });
 
-// The rendered blocks (replaced block widgets) in view that a non-empty selection range overlaps.
-function renderedBlocks(view, box) {
-  const ranges = view.state.selection.ranges.filter((r) => !r.empty);
-  if (!ranges.length) return [];
-  const scroller = view.scrollDOM.getBoundingClientRect();
-  const base = view.documentTop - scroller.top + view.scrollDOM.scrollTop;
-  const out = [];
-  for (const line of view.viewportLineBlocks) {
-    for (const b of Array.isArray(line.type) ? line.type : [line]) {
-      if (b.type !== BlockType.WidgetRange || b.height <= 0 || b.to <= b.from) continue;
-      if (!ranges.some((r) => r.from < b.to && r.to > b.from)) continue;
-      out.push(new RectangleMarker("pp-sel pp-sel-block", box.left, base + b.top, box.width, b.height));
-    }
-  }
-  return out;
-}
-
-// `rects` with the blocks added: whatever part of a rectangle lies beside a block is cut away (the
-// two would overlap and tint it twice).
-function withBlocks(rects, blocks) {
-  for (const b of blocks) {
-    const top = b.top;
-    const bottom = b.top + b.height;
-    rects = rects.flatMap((m) => {
-      if (m.top >= bottom || m.top + m.height <= top) return [m];
-      const parts = [];
-      if (m.top < top) parts.push(new RectangleMarker("pp-sel", m.left, m.top, m.width, top - m.top));
-      if (m.top + m.height > bottom) parts.push(new RectangleMarker("pp-sel", m.left, bottom, m.width, m.top + m.height - bottom));
-      return parts;
-    });
-  }
-  return rects.concat(blocks);
-}

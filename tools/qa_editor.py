@@ -456,7 +456,7 @@ SELECTION_JS = r"""(() => {
   v.dispatch({selection: {anchor: 0, head: v.state.doc.length}}); v.focus();
   return new Promise((ok) => requestAnimationFrame(() => requestAnimationFrame(() => {
     const w = [...document.querySelectorAll('.pp-split .cm-content > :not(.cm-line):not(.cm-widgetBuffer)')].find((e) => e.getBoundingClientRect().height > 10);
-    const blocks = [...document.querySelectorAll('.pp-split .pp-sel-block')].map((e) => e.getBoundingClientRect());
+    const blocks = [...document.querySelectorAll('.pp-split .pp-sel.pp-band-block')].map((e) => e.getBoundingClientRect());
     const r = w ? w.getBoundingClientRect() : null;
     const covered = !!r && blocks.some((b) => b.top <= r.top + 1 && b.bottom >= r.bottom - 1);
     ok({widget: !!w, blocks: blocks.length, covered});

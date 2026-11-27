@@ -19,6 +19,7 @@ Usage:  uv run python tools/qa_render.py [--keep] [--all]
 """
 
 import asyncio
+import base64
 import json
 import os
 import shutil
@@ -226,11 +227,13 @@ class Cdp:
             if r.get("id") == self.n:
                 return r.get("result", {}).get("result", {}).get("value")
 
-    async def call(self, method: str, **params: object) -> None:
+    async def call(self, method: str, **params: object) -> dict:
         self.n += 1
         await self.ws.send(json.dumps({"id": self.n, "method": method, "params": params}))
-        while json.loads(await self.ws.recv()).get("id") != self.n:
-            pass
+        while True:
+            r = json.loads(await self.ws.recv())
+            if r.get("id") == self.n:
+                return r.get("result", {})
 
     async def click(self, x: float, y: float) -> None:
         for t in ("mousePressed", "mouseReleased"):
@@ -412,6 +415,58 @@ async def select_checks(cdp: Cdp, results: list) -> None:
             str(box),
         )
     )
+    # text → whole table → text (user 2026-11-27): with the Ask box open the band shows the table too
+    await fresh()
+    await drag(cdp, await cdp.js(word_at("Hello")), await cdp.js(word_at("end")))
+    r = await cdp.js(BAND_OVER_TABLE)
+    results.append(
+        (
+            "select: text across a whole table",
+            "Ask band covers the table",
+            bool(await cdp.js(POPUP_SHOWN)) and bool(r.get("covered")) and not r.get("overlap"),
+            repr(r),
+        )
+    )
+    if os.environ.get("QA_SHOTS"):
+        shot = await cdp.call("Page.captureScreenshot", format="png")
+        Path(os.environ["QA_SHOTS"], "ask-across-table.png").write_bytes(
+            base64.b64decode(shot["data"])
+        )
+
+
+# the Ask band over a selection that runs across a whole table: the table's box, and whether the
+# band's rectangles cover it with no gap and no overlap (two layers tint twice)
+BAND_OVER_TABLE = r"""(() => {
+  const t = document.querySelector('.pp-split .pp-table-edit');
+  const bands = [...document.querySelectorAll('.pp-split .pp-ai-band-layer .pp-ai-band')].map((b) => b.getBoundingClientRect()).sort((a, b) => a.top - b.top);
+  if (!t) return {table: false};
+  const r = t.getBoundingClientRect();
+  let at = r.top, overlap = false;
+  for (let i = 0; i < bands.length; i++) {
+    const b = bands[i];
+    if (i && b.top < bands[i - 1].bottom - 0.5 && b.left < bands[i - 1].right && b.right > bands[i - 1].left) overlap = true;
+    if (b.top <= at + 0.5 && b.bottom > at) at = b.bottom;
+  }
+  return {table: true, bands: bands.length, covered: at >= r.bottom - 0.5, overlap};
+})()"""
+
+
+async def drag(cdp: Cdp, a: list, b: list) -> None:
+    await cdp.call(
+        "Input.dispatchMouseEvent", type="mousePressed", x=a[0], y=a[1], button="left", clickCount=1
+    )
+    for k in range(1, 9):
+        x, y = a[0] + (b[0] - a[0]) * k / 8, a[1] + (b[1] - a[1]) * k / 8
+        await cdp.call("Input.dispatchMouseEvent", type="mouseMoved", x=x, y=y, button="left")
+    await cdp.call(
+        "Input.dispatchMouseEvent",
+        type="mouseReleased",
+        x=b[0],
+        y=b[1],
+        button="left",
+        clickCount=1,
+    )
+    await asyncio.sleep(1.5)
 
 
 ALIGN_NOTE = "Para one\n\n| a | b |\n| --- | --- |\n| 1 | 2 |\n\nend"

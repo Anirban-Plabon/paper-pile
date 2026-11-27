@@ -70,8 +70,9 @@ export function bandLayer(className, ranges, changed) {
   });
 }
 
-// from..to without the tables in it: a table marks its own selection (a word in a cell, a block of
-// cells — tablewidget.js), a band over its lines would cover the whole table.
+// from..to without a table it lies inside: a table marks its own selection (a word in a cell, a
+// block of cells — tablewidget.js), a band over its lines would cover the whole table. A table the
+// range passes over whole (text above → table → text below) stays in: nothing else would show it.
 function withoutTables(state, from, to) {
   const tables = [];
   syntaxTree(state).iterate({
@@ -79,7 +80,7 @@ function withoutTables(state, from, to) {
     to,
     enter(n) {
       if (n.name !== "Table") return;
-      tables.push([n.from, n.to]);
+      if (n.from < from || n.to > to) tables.push([n.from, n.to]);
       return false;
     },
   });
@@ -103,19 +104,62 @@ export function exactLayer(className, ranges, changed) {
       const box = lineBox(view);
       const right = box.left + box.width;
       const len = view.state.doc.length;
-      const out = [];
+      let out = [];
       for (const { from, to, cls } of ranges(view.state, view)) {
         const name = cls ? `${className} ${cls}` : className;
-        for (const [a, b] of withoutTables(view.state, Math.min(from, len), Math.min(to, len))) {
+        const parts = withoutTables(view.state, Math.min(from, len), Math.min(to, len));
+        const rects = [];
+        for (const [a, b] of parts) {
           for (const m of RectangleMarker.forRange(view, name, EditorSelection.range(a, b))) {
             const left = Math.max(m.left, box.left);
             const end = Math.min(m.left + m.width, right);
-            if (end > left) out.push(new RectangleMarker(name, left, m.top, end - left, m.height));
+            if (end > left) rects.push(new RectangleMarker(name, left, m.top, end - left, m.height));
           }
         }
+        out = out.concat(withBlocks(rects, renderedBlocks(view, parts, box, name)));
       }
       return out;
     },
     update: (u) => u.docChanged || u.viewportChanged || u.geometryChanged || u.focusChanged || changed(u),
   });
+}
+
+// ---- rendered blocks in a selection ------------------------------------------------------------
+// CodeMirror's rectangles skip rendered blocks (a table, maths, a diagram: one replaced block to
+// the editor), so a selection across one showed a gap there and nothing said the block was in it
+// (user 2026-11-27). Each rendered block a range overlaps is covered whole, edge to edge like a line.
+
+// One rectangle per rendered block (replaced block widget) in view that one of `ranges`
+// ([from, to] or {from, to}) overlaps.
+export function renderedBlocks(view, ranges, box, className) {
+  const spans = ranges.map((r) => (Array.isArray(r) ? r : [r.from, r.to])).filter(([a, b]) => b > a);
+  if (!spans.length) return [];
+  const scroller = view.scrollDOM.getBoundingClientRect();
+  const base = view.documentTop - scroller.top + view.scrollDOM.scrollTop;
+  const out = [];
+  for (const line of view.viewportLineBlocks) {
+    for (const b of Array.isArray(line.type) ? line.type : [line]) {
+      if (b.type !== BlockType.WidgetRange || b.height <= 0 || b.to <= b.from) continue;
+      if (!spans.some(([from, to]) => from < b.to && to > b.from)) continue;
+      out.push(new RectangleMarker(`${className} pp-band-block`, box.left, base + b.top, box.width, b.height));
+    }
+  }
+  return out;
+}
+
+// `rects` with the blocks added: whatever part of a rectangle lies beside a block is cut away (the
+// two would overlap and tint it twice).
+export function withBlocks(rects, blocks) {
+  for (const b of blocks) {
+    const top = b.top;
+    const bottom = b.top + b.height;
+    rects = rects.flatMap((m) => {
+      if (m.top >= bottom || m.top + m.height <= top) return [m];
+      const parts = [];
+      if (m.top < top) parts.push(new RectangleMarker(m.className, m.left, m.top, m.width, top - m.top));
+      if (m.top + m.height > bottom) parts.push(new RectangleMarker(m.className, m.left, bottom, m.width, m.top + m.height - bottom));
+      return parts;
+    });
+  }
+  return rects.concat(blocks);
 }
